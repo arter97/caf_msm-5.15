@@ -43,6 +43,10 @@ void nf_conntrack_cleanup_end(void);
 bool nf_ct_invert_tuple(struct nf_conntrack_tuple *inverse,
 			const struct nf_conntrack_tuple *orig);
 
+#ifdef CONFIG_ENABLE_SFE
+extern void (*delete_sfe_entry)(struct nf_conn *ct);
+#endif
+
 /* Find a connection corresponding to a tuple. */
 struct nf_conntrack_tuple_hash *
 nf_conntrack_find_get(struct net *net,

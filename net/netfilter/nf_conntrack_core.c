@@ -626,9 +626,17 @@ static void destroy_gre_conntrack(struct nf_conn *ct)
 #endif
 }
 
+#ifdef CONFIG_ENABLE_SFE
+void (*delete_sfe_entry)(struct nf_conn *ct) __rcu __read_mostly;
+EXPORT_SYMBOL(delete_sfe_entry);
+#endif
+
 void nf_ct_destroy(struct nf_conntrack *nfct)
 {
 	struct nf_conn *ct = (struct nf_conn *)nfct;
+#ifdef CONFIG_ENABLE_SFE
+	void (*delete_entry)(struct nf_conn *ct);
+#endif
 
 	pr_debug("%s(%p)\n", __func__, ct);
 	WARN_ON(refcount_read(&nfct->use) != 0);
@@ -640,6 +648,14 @@ void nf_ct_destroy(struct nf_conntrack *nfct)
 
 	if (unlikely(nf_ct_protonum(ct) == IPPROTO_GRE))
 		destroy_gre_conntrack(ct);
+
+#ifdef CONFIG_ENABLE_SFE
+	if (ct->sfe_entry) {
+		delete_entry = rcu_dereference(delete_sfe_entry);
+		if (delete_entry)
+			delete_entry(ct);
+	}
+#endif
 
 	local_bh_disable();
 	/* Expectations will have been removed in clean_from_lists,
