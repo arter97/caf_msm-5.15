@@ -5242,6 +5242,11 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
 	return 0;
 }
 
+#ifdef CONFIG_ENABLE_GSB
+int (*gsb_nw_stack_recv)(struct sk_buff *skb) __rcu __read_mostly;
+EXPORT_SYMBOL(gsb_nw_stack_recv);
+#endif
+
 #ifdef CONFIG_ENABLE_SFE
 int (*athrs_fast_nat_recv)(struct sk_buff *skb) __rcu __read_mostly;
 EXPORT_SYMBOL(athrs_fast_nat_recv);
@@ -5259,6 +5264,10 @@ static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 	__be16 type;
 #ifdef CONFIG_ENABLE_SFE
 	int (*fast_recv)(struct sk_buff *skb);
+#endif
+
+#ifdef CONFIG_ENABLE_GSB
+	int (*gsb_ns_recv)(struct sk_buff *skb);
 #endif
 
 	net_timestamp_check(!netdev_tstamp_prequeue, skb);
@@ -5334,6 +5343,16 @@ skip_taps:
 #endif
 	skb_reset_redirect(skb);
 skip_classify:
+#ifdef CONFIG_ENABLE_GSB
+	gsb_ns_recv = rcu_dereference(gsb_nw_stack_recv);
+	if (gsb_ns_recv) {
+		if (gsb_ns_recv(skb)) {
+			ret = NET_RX_SUCCESS;
+			goto out;
+		}
+	}
+#endif
+
 #ifdef CONFIG_ENABLE_SFE
 	fast_recv = rcu_dereference(athrs_fast_nat_recv);
 	if (fast_recv) {
