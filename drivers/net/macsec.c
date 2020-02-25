@@ -1008,8 +1008,15 @@ static enum rx_handler_result handle_not_macsec(struct sk_buff *skb)
 		 * the SecTAG, so we have to deduce which port to deliver to.
 		 */
 		if (macsec_is_offloaded(macsec) && netif_running(ndev)) {
-			if (ether_addr_equal_64bits(hdr->h_dest,
-						    ndev->dev_addr)) {
+			if (ndev->flags & IFF_PROMISC) {
+				nskb = skb_clone(skb, GFP_ATOMIC);
+				if (!nskb)
+					break;
+
+				nskb->dev = ndev;
+				netif_rx(nskb);
+			} else if (ether_addr_equal_64bits(hdr->h_dest,
+							   ndev->dev_addr)) {
 				/* exact match, divert skb to this port */
 				skb->dev = ndev;
 				skb->pkt_type = PACKET_HOST;
