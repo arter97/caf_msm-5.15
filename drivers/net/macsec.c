@@ -1008,6 +1008,9 @@ static enum rx_handler_result handle_not_macsec(struct sk_buff *skb)
 		 * the SecTAG, so we have to deduce which port to deliver to.
 		 */
 		if (macsec_is_offloaded(macsec) && netif_running(ndev)) {
+			if (hdr->h_proto == htons(ETH_P_PAE))
+				continue;
+
 			if (ndev->flags & IFF_PROMISC) {
 				nskb = skb_clone(skb, GFP_ATOMIC);
 				if (!nskb)
