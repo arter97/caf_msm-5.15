@@ -1811,6 +1811,7 @@ nl80211_send_iftype_data(struct sk_buff *msg,
 			return -ENOBUFS;
 	}
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	if (eht_cap->has_eht && he_cap->has_he) {
 		u8 mcs_nss_size, ppe_thresh_size;
 		u16 ppe_thres_hdr;
@@ -1847,6 +1848,21 @@ nl80211_send_iftype_data(struct sk_buff *msg,
 	    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_VENDOR_ELEMS,
 		    iftdata->vendor_elems.len, iftdata->vendor_elems.data))
 		return -ENOBUFS;
+
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+	if (eht_cap->has_eht) {
+		if (nla_put(msg, NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC,
+			    sizeof(eht_cap->eht_cap_elem.mac_cap_info),
+			    eht_cap->eht_cap_elem.mac_cap_info) ||
+		    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY,
+			    sizeof(eht_cap->eht_cap_elem.phy_cap_info),
+			    eht_cap->eht_cap_elem.phy_cap_info) ||
+		    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MCS_SET,
+			    sizeof(eht_cap->eht_mcs_nss_supp),
+			    &eht_cap->eht_mcs_nss_supp))
+			return -ENOBUFS;
+	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	return 0;
 }
@@ -5614,6 +5630,7 @@ static int nl80211_calculate_ap_params(struct cfg80211_ap_settings *params)
 	cap = cfg80211_find_ext_elem(WLAN_EID_EXT_HE_OPERATION, ies, ies_len);
 	if (cap && cap->datalen >= sizeof(*params->he_oper) + 1)
 		params->he_oper = (void *)(cap->data + 1);
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	cap = cfg80211_find_ext_elem(WLAN_EID_EXT_EHT_CAPABILITY, ies, ies_len);
 	if (cap) {
 		if (!cap->datalen)
@@ -5633,6 +5650,7 @@ static int nl80211_calculate_ap_params(struct cfg80211_ap_settings *params)
 						cap->datalen - 1))
 			return -EINVAL;
 	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 	return 0;
 }
 
@@ -6846,6 +6864,7 @@ static int nl80211_set_station_tdls(struct genl_info *info,
 		params->he_capa_len =
 			nla_len(info->attrs[NL80211_ATTR_HE_CAPABILITY]);
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 		if (info->attrs[NL80211_ATTR_EHT_CAPABILITY]) {
 			params->eht_capa =
 				nla_data(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
@@ -6857,7 +6876,17 @@ static int nl80211_set_station_tdls(struct genl_info *info,
 							params->eht_capa_len))
 				return -EINVAL;
 		}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 	}
+
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+	if (info->attrs[NL80211_ATTR_EHT_CAPABILITY]) {
+		params->eht_capa =
+			nla_data(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
+		params->eht_capa_len =
+			nla_len(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
+	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	err = nl80211_parse_sta_channel_info(info, params);
 	if (err)
@@ -7115,6 +7144,7 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
 		params.he_capa_len =
 			nla_len(info->attrs[NL80211_ATTR_HE_CAPABILITY]);
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 		if (info->attrs[NL80211_ATTR_EHT_CAPABILITY]) {
 			params.eht_capa =
 				nla_data(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
@@ -7126,11 +7156,21 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
 							params.eht_capa_len))
 				return -EINVAL;
 		}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 	}
 
 	if (info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY])
 		params.he_6ghz_capa =
 			nla_data(info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY]);
+
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+	if (info->attrs[NL80211_ATTR_EHT_CAPABILITY]) {
+		params.eht_capa =
+			nla_data(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
+		params.eht_capa_len =
+			nla_len(info->attrs[NL80211_ATTR_EHT_CAPABILITY]);
+	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	if (info->attrs[NL80211_ATTR_OPMODE_NOTIF]) {
 		params.opmode_notif_used = true;
