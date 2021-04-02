@@ -139,6 +139,7 @@
 #define IPA_IOCTL_ADD_UC_ACT_ENTRY              83
 #define IPA_IOCTL_DEL_UC_ACT_ENTRY              84
 #define IPA_IOCTL_SET_SW_FLT                    85
+#define IPA_IOCTL_GET_HW_FEATURE_SUPPORT        86
 #define IPA_IOCTL_SET_PKT_THRESHOLD             87
 #define IPA_IOCTL_ADD_EoGRE_MAPPING             88
 #define IPA_IOCTL_DEL_EoGRE_MAPPING             89
@@ -1090,6 +1091,17 @@ enum ipa_hw_type {
 #define IPA_HW_v5_2 IPA_HW_v5_2
 #define IPA_HW_v5_5 IPA_HW_v5_5
 #define IPA_HW_v6_0 IPA_HW_v6_0
+
+/**
+ * enum ipa_hw_feature_support - IPA HW supported feature
+ * ETH_BRIDGING_SUPPORT: To check ETH BRIDGING support.
+ * Add here new feature information need to send to userspace
+ */
+enum ipa_hw_feature_support {
+	ETH_BRIDGING_SUPPORT = 0,
+};
+
+#define IPA_HW_ETH_BRIDGING_SUPPORT_BMSK 0x1
 
 /**
  * struct ipa_rule_attrib - attributes of a routing/filtering
@@ -3811,6 +3823,10 @@ struct ipa_ioc_ext_router_info {
 #define IPA_IOC_SET_EXT_ROUTER_MODE _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_SET_EXT_ROUTER_MODE, \
 				struct ipa_ioc_ext_router_info)
+
+#define IPA_IOC_GET_HW_FEATURE_SUPPORT _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_GET_HW_FEATURE_SUPPORT, \
+				__u32)
 /*
  * unique magic number of the Tethering bridge ioctls
  */
