@@ -833,6 +833,7 @@ struct key_params {
 	ANDROID_VENDOR_DATA(2);
 };
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 /**
  * struct cfg80211_chan_def - channel definition
  * @chan: the (control) channel
@@ -864,6 +865,33 @@ struct cfg80211_chan_def {
 	ANDROID_VENDOR_DATA(3);
 	ANDROID_VENDOR_DATA(4);
 };
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+#define IEEE80211_EHT_PUNCTURE_BITMAP_DEFAULT 0xffff
+
+/**
+ * struct cfg80211_chan_def - channel definition
+ * @chan: the (control) channel
+ * @width: channel width
+ * @center_freq1: center frequency of first segment
+ * @center_freq2: center frequency of second segment
+ *	(only with 80+80 MHz)
+ * @edmg: define the EDMG channels configuration.
+ *	If edmg is requested (i.e. the .channels member is non-zero),
+ *	chan will define the primary channel and all other
+ *	parameters are ignored.
+ * @freq1_offset: offset from @center_freq1, in KHz
+ * @puncture_bitmap: puncture bitmap
+ */
+struct cfg80211_chan_def {
+	struct ieee80211_channel *chan;
+	enum nl80211_chan_width width;
+	u32 center_freq1;
+	u32 center_freq2;
+	struct ieee80211_edmg edmg;
+	u16 freq1_offset;
+	u32 puncture_bitmap;
+};
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 /*
  * cfg80211_bitrate_mask - masks for bitrate control
