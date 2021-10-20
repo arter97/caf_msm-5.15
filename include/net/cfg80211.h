@@ -6142,6 +6142,7 @@ static inline void wiphy_unlock(struct wiphy *wiphy)
 	mutex_unlock(&wiphy->mtx);
 }
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 /**
  * struct wireless_dev - wireless device state
  *
@@ -6353,6 +6354,206 @@ struct wireless_dev {
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
 };
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+/**
+ * struct wireless_dev - wireless device state
+ *
+ * For netdevs, this structure must be allocated by the driver
+ * that uses the ieee80211_ptr field in struct net_device (this
+ * is intentional so it can be allocated along with the netdev.)
+ * It need not be registered then as netdev registration will
+ * be intercepted by cfg80211 to see the new wireless device,
+ * however, drivers must lock the wiphy before registering or
+ * unregistering netdevs if they pre-create any netdevs (in ops
+ * called from cfg80211, the wiphy is already locked.)
+ *
+ * For non-netdev uses, it must also be allocated by the driver
+ * in response to the cfg80211 callbacks that require it, as
+ * there's no netdev registration in that case it may not be
+ * allocated outside of callback operations that return it.
+ *
+ * @wiphy: pointer to hardware description
+ * @iftype: interface type
+ * @registered: is this wdev already registered with cfg80211
+ * @registering: indicates we're doing registration under wiphy lock
+ *	for the notifier
+ * @list: (private) Used to collect the interfaces
+ * @netdev: (private) Used to reference back to the netdev, may be %NULL
+ * @identifier: (private) Identifier used in nl80211 to identify this
+ *	wireless device if it has no netdev
+ * @u: union containing data specific to @iftype
+ * @connected: indicates if connected or not (STA mode)
+ * @bssid: (private) Used by the internal configuration code
+ * @wext: (private) Used by the internal wireless extensions compat code
+ * @wext.ibss: (private) IBSS data part of wext handling
+ * @wext.connect: (private) connection handling data
+ * @wext.keys: (private) (WEP) key data
+ * @wext.ie: (private) extra elements for association
+ * @wext.ie_len: (private) length of extra elements
+ * @wext.bssid: (private) selected network BSSID
+ * @wext.ssid: (private) selected network SSID
+ * @wext.default_key: (private) selected default key index
+ * @wext.default_mgmt_key: (private) selected default management key index
+ * @wext.prev_bssid: (private) previous BSSID for reassociation
+ * @wext.prev_bssid_valid: (private) previous BSSID validity
+ * @use_4addr: indicates 4addr mode is used on this interface, must be
+ *	set by driver (if supported) on add_interface BEFORE registering the
+ *	netdev and may otherwise be used by driver read-only, will be update
+ *	by cfg80211 on change_interface
+ * @mgmt_registrations: list of registrations for management frames
+ * @mgmt_registrations_need_update: mgmt registrations were updated,
+ *	need to propagate the update to the driver
+ * @mtx: mutex used to lock data in this struct, may be used by drivers
+ *	and some API functions require it held
+ * @beacon_interval: beacon interval used on this device for transmitting
+ *	beacons, 0 when not valid
+ * @address: The address for this device, valid only if @netdev is %NULL
+ * @is_running: true if this is a non-netdev device that has been started, e.g.
+ *	the P2P Device.
+ * @cac_started: true if DFS channel availability check has been started
+ * @cac_start_time: timestamp (jiffies) when the dfs state was entered.
+ * @cac_time_ms: CAC time in ms
+ * @ps: powersave mode is enabled
+ * @ps_timeout: dynamic powersave timeout
+ * @ap_unexpected_nlportid: (private) netlink port ID of application
+ *	registered for unexpected class 3 frames (AP mode)
+ * @conn: (private) cfg80211 software SME connection state machine data
+ * @connect_keys: (private) keys to set after connection is established
+ * @conn_bss_type: connecting/connected BSS type
+ * @conn_owner_nlportid: (private) connection owner socket port ID
+ * @disconnect_wk: (private) auto-disconnect work
+ * @disconnect_bssid: (private) the BSSID to use for auto-disconnect
+ * @event_list: (private) list for internal event processing
+ * @event_lock: (private) lock for event list
+ * @owner_nlportid: (private) owner socket port ID
+ * @nl_owner_dead: (private) owner socket went away
+ * @cqm_config: (private) nl80211 RSSI monitor state
+ * @pmsr_list: (private) peer measurement requests
+ * @pmsr_lock: (private) peer measurements requests/results lock
+ * @pmsr_free_wk: (private) peer measurements cleanup work
+ * @unprot_beacon_reported: (private) timestamp of last
+ *	unprotected beacon report
+ * @links: array of %IEEE80211_MLD_MAX_NUM_LINKS elements containing @addr
+ *	@ap and @client for each link
+ * @valid_links: bitmap describing what elements of @links are valid
+ */
+struct wireless_dev {
+	struct wiphy *wiphy;
+	enum nl80211_iftype iftype;
+
+	/* the remainder of this struct should be private to cfg80211 */
+	struct list_head list;
+	struct net_device *netdev;
+
+	u32 identifier;
+
+	struct list_head mgmt_registrations;
+	u8 mgmt_registrations_need_update:1;
+
+	struct mutex mtx;
+
+	bool use_4addr, is_running, registered, registering;
+
+	u8 address[ETH_ALEN] __aligned(sizeof(u16));
+
+	/* currently used for IBSS and SME - might be rearranged later */
+	struct cfg80211_conn *conn;
+	struct cfg80211_cached_keys *connect_keys;
+	enum ieee80211_bss_type conn_bss_type;
+	u32 conn_owner_nlportid;
+
+	struct work_struct disconnect_wk;
+	u8 disconnect_bssid[ETH_ALEN];
+
+	struct list_head event_list;
+	spinlock_t event_lock;
+
+	u8 connected:1;
+
+	bool ps;
+	int ps_timeout;
+
+	u32 ap_unexpected_nlportid;
+
+	u32 owner_nlportid;
+	bool nl_owner_dead;
+
+	/* FIXME: need to rework radar detection for MLO */
+	bool cac_started;
+	unsigned long cac_start_time;
+	unsigned int cac_time_ms;
+
+#ifdef CONFIG_CFG80211_WEXT
+	/* wext data */
+	struct {
+		struct cfg80211_ibss_params ibss;
+		struct cfg80211_connect_params connect;
+		struct cfg80211_cached_keys *keys;
+		const u8 *ie;
+		size_t ie_len;
+		u8 bssid[ETH_ALEN];
+		u8 prev_bssid[ETH_ALEN];
+		u8 ssid[IEEE80211_MAX_SSID_LEN];
+		s8 default_key, default_mgmt_key;
+		bool prev_bssid_valid;
+	} wext;
+#endif
+
+	struct cfg80211_cqm_config *cqm_config;
+
+	struct list_head pmsr_list;
+	spinlock_t pmsr_lock;
+	struct work_struct pmsr_free_wk;
+
+	unsigned long unprot_beacon_reported;
+
+	union {
+		struct {
+			u8 connected_addr[ETH_ALEN] __aligned(2);
+			u8 ssid[IEEE80211_MAX_SSID_LEN];
+			u8 ssid_len;
+		} client;
+		struct {
+			int beacon_interval;
+			struct cfg80211_chan_def preset_chandef;
+			struct cfg80211_chan_def chandef;
+			u8 id[IEEE80211_MAX_SSID_LEN];
+			u8 id_len, id_up_len;
+		} mesh;
+		struct {
+			struct cfg80211_chan_def preset_chandef;
+			u8 ssid[IEEE80211_MAX_SSID_LEN];
+			u8 ssid_len;
+		} ap;
+		struct {
+			struct cfg80211_internal_bss *current_bss;
+			struct cfg80211_chan_def chandef;
+			int beacon_interval;
+			u8 ssid[IEEE80211_MAX_SSID_LEN];
+			u8 ssid_len;
+		} ibss;
+		struct {
+			struct cfg80211_chan_def chandef;
+		} ocb;
+	} u;
+
+	struct {
+		u8 addr[ETH_ALEN] __aligned(2);
+		union {
+			struct {
+				unsigned int beacon_interval;
+				struct cfg80211_chan_def chandef;
+			} ap;
+			struct {
+				struct cfg80211_internal_bss *current_bss;
+			} client;
+		};
+	} links[IEEE80211_MLD_MAX_NUM_LINKS];
+	u16 valid_links;
+
+	u8 mld_address[ETH_ALEN] __aligned(sizeof(u16));
+};
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 static inline u8 *wdev_address(struct wireless_dev *wdev)
 {
