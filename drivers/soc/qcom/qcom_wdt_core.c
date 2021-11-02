@@ -279,6 +279,19 @@ static struct notifier_block qcom_wdt_notif_block = {
 };
 
 #ifdef CONFIG_PM_SLEEP
+#ifdef CONFIG_QTI_QUIN_GVM
+int qcom_wdt_pet_suspend(struct device *dev)
+{
+	return 0;
+}
+EXPORT_SYMBOL(qcom_wdt_pet_suspend);
+
+int qcom_wdt_pet_resume(struct device *dev)
+{
+	return 0;
+}
+EXPORT_SYMBOL(qcom_wdt_pet_resume);
+#else
 /**
  *  qcom_wdt_pet_suspend() - Suspends qcom watchdog functionality.
  *
@@ -373,6 +386,7 @@ int qcom_wdt_pet_resume(struct device *dev)
 	return 0;
 }
 EXPORT_SYMBOL(qcom_wdt_pet_resume);
+#endif
 #endif
 
 static void qcom_wdt_reset_on_oops(struct msm_watchdog_data *wdog_dd,
