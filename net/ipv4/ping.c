@@ -305,7 +305,6 @@ static int ping_check_bind_addr(struct sock *sk, struct inet_sock *isk,
 	struct net *net = sock_net(sk);
 	if (sk->sk_family == AF_INET) {
 		struct sockaddr_in *addr = (struct sockaddr_in *) uaddr;
-		u32 tb_id = RT_TABLE_LOCAL;
 		int chk_addr_ret;
 
 		if (addr_len < sizeof(*addr))
@@ -319,17 +318,11 @@ static int ping_check_bind_addr(struct sock *sk, struct inet_sock *isk,
 		pr_debug("ping_check_bind_addr(sk=%p,addr=%pI4,port=%d)\n",
 			 sk, &addr->sin_addr.s_addr, ntohs(addr->sin_port));
 
-		if (addr->sin_addr.s_addr == htonl(INADDR_ANY))
-			chk_addr_ret = RTN_LOCAL;
-		else {
-			tb_id = l3mdev_fib_table_by_index(net, sk->sk_bound_dev_if) ? : tb_id;
-			chk_addr_ret = inet_addr_type_table(net, addr->sin_addr.s_addr, tb_id);
-		}
+		chk_addr_ret = inet_addr_type(net, addr->sin_addr.s_addr);
 
-		if ((!inet_can_nonlocal_bind(net, isk) &&
-		     chk_addr_ret != RTN_LOCAL) ||
-		    chk_addr_ret == RTN_MULTICAST ||
-		    chk_addr_ret == RTN_BROADCAST)
+		if (!inet_addr_valid_or_nonlocal(net, inet_sk(sk),
+					         addr->sin_addr.s_addr,
+	                                         chk_addr_ret))
 			return -EADDRNOTAVAIL;
 
 #if IS_ENABLED(CONFIG_IPV6)
