@@ -896,7 +896,7 @@ struct cfg80211_chan_def {
 	ANDROID_VENDOR_DATA(4);
 };
 #else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
-#define IEEE80211_EHT_PUNCTURE_BITMAP_DEFAULT 0xffff
+#define IEEE80211_EHT_PUNCTURE_BITMAP_DEFAULT 0x0
 
 /**
  * struct cfg80211_chan_def - channel definition
