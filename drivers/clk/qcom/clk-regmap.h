@@ -57,6 +57,7 @@ struct clk_regmap {
 #define QCOM_CLK_IS_CRITICAL BIT(0)
 #define QCOM_CLK_BOOT_CRITICAL BIT(1)
 	unsigned long flags;
+	unsigned long unique_id;
 };
 
 static inline struct clk_regmap *to_clk_regmap(struct clk_hw *hw)
