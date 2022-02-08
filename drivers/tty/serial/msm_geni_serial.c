@@ -1695,7 +1695,12 @@ static void msm_geni_uart_gsi_xfer_tx(struct work_struct *work)
 	dump_ipc(uport, msm_port->ipc_log_tx, "DMA Tx",
 		 (char *)&xmit->buf[xmit->tail], 0, xmit_size);
 
-	msm_geni_allocate_chan(uport);
+	ret = msm_geni_allocate_chan(uport);
+	if (ret) {
+		dev_err(uport->dev, "%s: Allocation of Channel failed:%d\n",
+			__func__, ret);
+		return;
+	}
 	sg_init_table(msm_port->gsi->tx_sg, 3);
 	sg_set_buf(msm_port->gsi->tx_sg, &msm_port->gsi->tx_cfg0_t,
 		   sizeof(msm_port->gsi->tx_cfg0_t));
@@ -1786,7 +1791,15 @@ static int msm_geni_uart_gsi_xfer_rx(struct uart_port *uport)
 	struct device *rx_dev = msm_port->wrapper_dev;
 	int i, k, index = 0;
 
-	msm_geni_allocate_chan(uport);
+	if (!msm_port->port_setup) {
+		dev_err(uport->dev, "%s: Port setup not yet done\n", __func__);
+		return -EAGAIN;
+	}
+
+	if (msm_geni_allocate_chan(uport)) {
+		dev_err(uport->dev, "%s: Allocation of Channel failed\n", __func__);
+		return -ENOMEM;
+	}
 	sg_init_table(msm_port->gsi->rx_sg, 6);
 	sg_set_buf(msm_port->gsi->rx_sg, &msm_port->gsi->rx_cfg0_t,
 		   sizeof(msm_port->gsi->rx_cfg0_t));
@@ -2175,7 +2188,9 @@ static void start_rx_sequencer(struct uart_port *uport)
 	} else if (port->xfer_mode == GENI_GPI_DMA) {
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 			     "%s: start xfer_rx\n", __func__);
-		msm_geni_uart_gsi_xfer_rx(uport);
+		if (msm_geni_uart_gsi_xfer_rx(uport))
+			IPC_LOG_MSG(port->ipc_log_misc,
+				    "%s: RX xfer is failed\n", __func__);
 		return;
 	}
 	if (geni_status & S_GENI_CMD_ACTIVE) {
@@ -3220,13 +3235,6 @@ static int msm_geni_serial_port_setup(struct uart_port *uport)
 	geni_write_reg(rxstale, uport->membase, SE_UART_RX_STALE_CNT);
 	if (msm_port->gsi_mode) {
 		msm_port->xfer_mode = GENI_GPI_DMA;
-		msm_port->tx_wq = alloc_workqueue("%s", WQ_HIGHPRI, 1,
-						  dev_name(uport->dev));
-		msm_port->rx_wq = alloc_workqueue("%s", WQ_HIGHPRI, 1,
-						  dev_name(uport->dev));
-		INIT_WORK(&msm_port->tx_xfer_work, msm_geni_uart_gsi_xfer_tx);
-		INIT_WORK(&msm_port->rx_cancel_work,
-			  msm_geni_uart_gsi_cancel_rx);
 	} else if (!uart_console(uport)) {
 		/* For now only assume FIFO mode. */
 		msm_port->xfer_mode = GENI_SE_DMA;
@@ -3893,6 +3901,27 @@ static const struct of_device_id msm_geni_device_tbl[] = {
 	{},
 };
 
+static void msm_geni_serial_init_gsi(struct uart_port *uport)
+{
+	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
+
+	msm_port->gsi_mode = geni_read_reg(uport->membase,
+					   GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+	dev_info(uport->dev, "gsi_mode:%d\n", msm_port->gsi_mode);
+	if (msm_port->gsi_mode) {
+		msm_port->gsi = devm_kzalloc(uport->dev, sizeof(*msm_port->gsi),
+					     GFP_KERNEL);
+		msm_port->xfer_mode = GENI_GPI_DMA;
+		msm_port->tx_wq = alloc_workqueue("%s", WQ_HIGHPRI, 1,
+						  dev_name(uport->dev));
+		msm_port->rx_wq = alloc_workqueue("%s", WQ_HIGHPRI, 1,
+						  dev_name(uport->dev));
+		INIT_WORK(&msm_port->tx_xfer_work, msm_geni_uart_gsi_xfer_tx);
+		INIT_WORK(&msm_port->rx_cancel_work,
+			  msm_geni_uart_gsi_cancel_rx);
+	}
+}
+
 static int msm_geni_serial_get_ver_info(struct uart_port *uport)
 {
 	u32 hw_ver = 0x0;
@@ -4275,16 +4304,6 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Serial port%d added.FifoSize %d is_console%d\n",
 				line, uport->fifosize, is_console);
 
-	dev_port->gsi_mode = geni_read_reg(uport->membase,
-					   GENI_IF_DISABLE_RO) &
-					   FIFO_IF_DISABLE;
-	dev_err(uport->dev, "gsi_mode:%d\n", dev_port->gsi_mode);
-	if (dev_port->gsi_mode) {
-		dev_port->gsi = devm_kzalloc(uport->dev,
-					     sizeof(*dev_port->gsi),
-					     GFP_KERNEL);
-	}
-
 	device_create_file(uport->dev, &dev_attr_loopback);
 	device_create_file(uport->dev, &dev_attr_xfer_mode);
 	device_create_file(uport->dev, &dev_attr_ver_info);
@@ -4292,6 +4311,8 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	dev_port->port_setup = false;
 
 	dev_port->uart_error = UART_ERROR_DEFAULT;
+	/* Initialize the GSI mode */
+	msm_geni_serial_init_gsi(uport);
 
 	/*
 	 * In abrupt kill scenarios, previous state of the uart causing runtime
@@ -4325,6 +4346,10 @@ static int msm_geni_serial_remove(struct platform_device *pdev)
 	if (!uart_console(&port->uport))
 		wakeup_source_unregister(port->geni_wake);
 	uart_remove_one_port(drv, &port->uport);
+	if (port->gsi_mode) {
+		destroy_workqueue(port->tx_wq);
+		destroy_workqueue(port->rx_wq);
+	}
 	if (port->rx_dma) {
 		geni_se_common_iommu_free_buf(port->wrapper_dev, &port->rx_dma,
 					port->rx_buf, DMA_RX_BUF_SIZE);
