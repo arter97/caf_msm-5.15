@@ -2363,7 +2363,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct stmmac_resources stmmac_res;
 	struct qcom_ethqos *ethqos = NULL;
-
 	int ret;
 	struct net_device *ndev;
 	struct stmmac_priv *priv;
@@ -2571,6 +2570,17 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
 
+	if (plat_dat->mdio_bus_data &&
+	    (plat_dat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII))
+		plat_dat->mdio_bus_data->has_xpcs = true;
+
+	if (plat_dat->mdio_bus_data->has_xpcs) {
+		ret = ethqos_xpcs_init(plat_dat->phy_interface);
+		if (ret < 0)
+			goto err_clk;
+	}
+
 	if (!priv->plat->mac2mac_en) {
 		if (!ethqos_phy_intr_config(ethqos))
 			ethqos_phy_intr_enable(ethqos);
@@ -2667,6 +2677,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
+
+	if (priv->hw->qxpcs)
+		qcom_xpcs_destroy(priv->hw->qxpcs);
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
