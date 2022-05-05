@@ -37,6 +37,7 @@
 #endif /* CONFIG_DEBUG_FS */
 #include <linux/net_tstamp.h>
 #include <linux/phylink.h>
+#include <linux/pcs-xpcs-qcom.h>
 #include <linux/udp.h>
 #include <linux/bpf_trace.h>
 #include <net/pkt_cls.h>
@@ -521,6 +522,10 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 				xpcs_config_eee(priv->hw->xpcs,
 						priv->plat->mult_fact_100ns,
 						false);
+			if (priv->hw->qxpcs)
+				qcom_xpcs_config_eee(priv->hw->qxpcs,
+						     priv->plat->mult_fact_100ns,
+						     false);
 		}
 		mutex_unlock(&priv->lock);
 		return false;
@@ -534,6 +539,12 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 			xpcs_config_eee(priv->hw->xpcs,
 					priv->plat->mult_fact_100ns,
 					true);
+		if (priv->hw->qxpcs) {
+			priv->plat->mult_fact_100ns = 9;
+			qcom_xpcs_config_eee(priv->hw->qxpcs,
+					     priv->plat->mult_fact_100ns,
+					     true);
+		}
 	}
 
 	if (priv->plat->has_gmac4 && priv->tx_lpi_timer <= STMMAC_ET_MAX) {
@@ -1113,6 +1124,8 @@ static void stmmac_validate(struct phylink_config *config,
 	/* If PCS is supported, check which modes it supports. */
 	if (priv->hw->xpcs)
 		xpcs_validate(priv->hw->xpcs, supported, state);
+	if (priv->hw->qxpcs)
+		qcom_xpcs_validate(priv->hw->qxpcs, supported, state);
 }
 
 static void stmmac_mac_config(struct phylink_config *config, unsigned int mode,
@@ -3869,8 +3882,10 @@ static int stmmac_open(struct net_device *dev)
 	if (!priv->plat->mac2mac_en &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
-	    (!priv->hw->xpcs ||
-	     xpcs_get_an_mode(priv->hw->xpcs, mode) != DW_AN_C73)) {
+	    ((!priv->hw->xpcs ||
+	     xpcs_get_an_mode(priv->hw->xpcs, mode) != DW_AN_C73) &&
+	    (!priv->hw->qxpcs ||
+	     qcom_xpcs_get_an_mode(priv->hw->qxpcs, mode) != DW_AN_C73))) {
 		ret = stmmac_init_phy(dev);
 		if (ret) {
 			netdev_err(priv->dev,
