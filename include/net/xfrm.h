@@ -135,7 +135,6 @@ struct xfrm_dev_offload {
 	struct net_device	*dev;
 	struct net_device	*real_dev;
 	unsigned long		offload_handle;
-	u8			flags;
 	u8			dir : 2;
 };
 
