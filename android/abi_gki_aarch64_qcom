@@ -2159,6 +2159,7 @@
   v4l2_event_dequeue
   v4l2_event_pending
   v4l2_fh_release
+  v4l2_s_ctrl
   v4l2_subdev_call_wrappers
   vabits_actual
   vb2_create_bufs
