@@ -119,10 +119,16 @@ static int __maybe_unused gh_guest_memshare_nb_handler(struct notifier_block *th
 	struct gh_tlmm_vm_info *vm_info;
 	struct gh_rm_notif_vm_status_payload *vm_status_payload = data;
 	u8 vm_status = vm_status_payload->vm_status;
+	gh_vmid_t peer_vmid;
 
 	vm_info = container_of(this, struct gh_tlmm_vm_info, guest_memshare_nb);
 
 	if (cmd != GH_RM_NOTIF_VM_STATUS)
+		return NOTIFY_DONE;
+
+	gh_rm_get_vmid(GH_TRUSTED_VM, &peer_vmid);
+
+	if (peer_vmid != vm_status_payload->vmid)
 		return NOTIFY_DONE;
 
 	/*
@@ -335,16 +341,15 @@ static int gh_tlmm_vm_mem_access_probe(struct platform_device *pdev)
 		gh_tlmm_vm_info_data.mem_cookie = mem_cookie;
 		gh_tlmm_vm_info_data.guest_memshare_nb.notifier_call = gh_guest_memshare_nb_handler;
 
-		/* Higher priority than guestVM loader */
-		gh_tlmm_vm_info_data.guest_memshare_nb.priority = 1;
+		gh_tlmm_vm_info_data.guest_memshare_nb.priority = INT_MAX;
 		ret = gh_rm_register_notifier(&gh_tlmm_vm_info_data.guest_memshare_nb);
 		if (ret)
 			return ret;
 	} else {
-		/* GH_TRUSTED_VM */
 		ret = gh_rm_get_vmid(GH_TRUSTED_VM, &vmid);
 		if (ret)
 			return ret;
+
 
 		gh_tlmm_vm_mem_release(&gh_tlmm_vm_info_data);
 	}

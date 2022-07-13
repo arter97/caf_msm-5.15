@@ -20,7 +20,7 @@ static DEFINE_RAW_SPINLOCK(halt_lock);
 
 struct halt_cpu_state {
 	u64		last_halt;
-	int		ref_count;
+	u8		reason;
 };
 
 static DEFINE_PER_CPU(struct halt_cpu_state, halt_state);
@@ -325,7 +325,7 @@ static int start_cpus(struct cpumask *cpus)
 		/* kick the cpu so it can pull tasks
 		 * after the mask has been cleared.
 		 */
-		walt_kick_cpu(cpu);
+		walt_smp_call_newidle_balance(cpu);
 	}
 
 	trace_halt_cpus(cpus, start_time, 0, 0);
@@ -333,20 +333,18 @@ static int start_cpus(struct cpumask *cpus)
 	return 0;
 }
 
-/* increment/decrement ref count for cpus in yield/halt mask */
-static void update_ref_counts(struct cpumask *cpus, bool halt)
+/* update reason for cpus in yield/halt mask */
+static void update_reasons(struct cpumask *cpus, bool halt, enum pause_reason reason)
 {
 	int cpu;
 	struct halt_cpu_state *halt_cpu_state;
 
 	for_each_cpu(cpu, cpus) {
 		halt_cpu_state = per_cpu_ptr(&halt_state, cpu);
-		if (halt) {
-			halt_cpu_state->ref_count++;
-		} else {
-			WARN_ON_ONCE(halt_cpu_state->ref_count == 0);
-			halt_cpu_state->ref_count--;
-		}
+		if (halt)
+			halt_cpu_state->reason |=  reason;
+		else
+			halt_cpu_state->reason &= ~reason;
 	}
 }
 
@@ -358,13 +356,13 @@ static void update_halt_cpus(struct cpumask *cpus)
 
 	for_each_cpu(cpu, cpus) {
 		halt_cpu_state = per_cpu_ptr(&halt_state, cpu);
-		if (halt_cpu_state->ref_count)
+		if (halt_cpu_state->reason)
 			cpumask_clear_cpu(cpu, cpus);
 	}
 }
 
 /* cpus will be modified */
-int walt_halt_cpus(struct cpumask *cpus)
+int walt_halt_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
 	int ret = 0;
 	cpumask_t requested_cpus;
@@ -378,7 +376,7 @@ int walt_halt_cpus(struct cpumask *cpus)
 	update_halt_cpus(cpus);
 
 	if (cpumask_empty(cpus)) {
-		update_ref_counts(&requested_cpus, true);
+		update_reasons(&requested_cpus, true, reason);
 		goto unlock;
 	}
 
@@ -388,21 +386,21 @@ int walt_halt_cpus(struct cpumask *cpus)
 		pr_debug("halt_cpus failure ret=%d cpus=%*pbl\n", ret,
 			 cpumask_pr_args(&requested_cpus));
 	else
-		update_ref_counts(&requested_cpus, true);
+		update_reasons(&requested_cpus, true, reason);
 unlock:
 	raw_spin_unlock_irqrestore(&halt_lock, flags);
 
 	return ret;
 }
 
-int walt_pause_cpus(struct cpumask *cpus)
+int walt_pause_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
-	return walt_halt_cpus(cpus);
+	return walt_halt_cpus(cpus, reason);
 }
 EXPORT_SYMBOL(walt_pause_cpus);
 
 /* cpus will be modified */
-int walt_start_cpus(struct cpumask *cpus)
+int walt_start_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
 	int ret = 0;
 	cpumask_t requested_cpus;
@@ -410,9 +408,9 @@ int walt_start_cpus(struct cpumask *cpus)
 
 	raw_spin_lock_irqsave(&halt_lock, flags);
 	cpumask_copy(&requested_cpus, cpus);
-	update_ref_counts(&requested_cpus, false);
+	update_reasons(&requested_cpus, false, reason);
 
-	/* remove cpus that should still be halted, due to ref-counts */
+	/* remove cpus that should still be halted */
 	update_halt_cpus(cpus);
 
 	ret = start_cpus(cpus);
@@ -421,7 +419,7 @@ int walt_start_cpus(struct cpumask *cpus)
 		pr_debug("halt_cpus failure ret=%d cpus=%*pbl\n", ret,
 			 cpumask_pr_args(&requested_cpus));
 		/* restore/increment ref counts in case of error */
-		update_ref_counts(&requested_cpus, true);
+		update_reasons(&requested_cpus, true, reason);
 	}
 
 	raw_spin_unlock_irqrestore(&halt_lock, flags);
@@ -429,9 +427,9 @@ int walt_start_cpus(struct cpumask *cpus)
 	return ret;
 }
 
-int walt_resume_cpus(struct cpumask *cpus)
+int walt_resume_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
-	return walt_start_cpus(cpus);
+	return walt_start_cpus(cpus, reason);
 }
 EXPORT_SYMBOL(walt_resume_cpus);
 
@@ -519,12 +517,33 @@ static void android_rvh_rto_next_cpu(void *unused, int rto_cpu, struct cpumask *
 	}
 }
 
-static void android_rvh_is_cpu_allowed(void *unused, int cpu, bool *allowed)
+/**
+ * android_rvh_is_cpu_allowed: disallow cpus that are halted
+ *
+ * Caveat: For 32 bit tasks that are being directed to a halted cpu, allow the halted cpu
+ *         in a particular case (32 bit task, in execve, moving to a 32 bit cpu)
+ *         This is to handle the call to is_cpu_allowed() from __migrate_task, in the
+ *         event that a 32bit task is being execve'd.
+ */
+static void android_rvh_is_cpu_allowed(void *unused, struct task_struct *p, int cpu, bool *allowed)
 {
 	if (unlikely(walt_disabled))
 		return;
 
-	*allowed = !cpumask_test_cpu(cpu, cpu_halt_mask);
+	if (cpumask_test_cpu(cpu, cpu_halt_mask)) {
+
+		/* default reject for any halted cpu */
+		*allowed = false;
+
+		if (is_compat_thread(task_thread_info(p)) &&
+		    p->in_execve) {
+			/*
+			 * the task is 32 bit capable and
+			 * the context is execve. allow this cpu.
+			 */
+			*allowed = true;
+		}
+	}
 }
 
 void walt_halt_init(void)

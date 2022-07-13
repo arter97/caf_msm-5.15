@@ -791,7 +791,8 @@ static int segments_edid_read(struct anx7625_data *ctx,
 static int sp_tx_edid_read(struct anx7625_data *ctx,
 			   u8 *pedid_blocks_buf)
 {
-	u8 offset, edid_pos;
+	u8 offset;
+	int edid_pos;
 	int count, blocks_num;
 	u8 pblock_buf[MAX_DPCD_BUFFER_SIZE];
 	u8 i, j;
@@ -1115,9 +1116,6 @@ static void anx7625_hpd_polling(struct anx7625_data *ctx)
 			  INTERFACE_CHANGE_INT, 0);
 
 	anx7625_start_dp_work(ctx);
-
-	if (!ctx->pdata.panel_bridge && ctx->bridge_attached)
-		drm_helper_hpd_irq_event(ctx->bridge.dev);
 }
 
 static void anx7625_remove_edid(struct anx7625_data *ctx)
@@ -1202,9 +1200,6 @@ static void anx7625_work_func(struct work_struct *work)
 	event = anx7625_hpd_change_detect(ctx);
 	if (event < 0)
 		goto unlock;
-
-	if (ctx->bridge_attached)
-		drm_helper_hpd_irq_event(ctx->bridge.dev);
 
 unlock:
 	mutex_unlock(&ctx->lock);
@@ -1384,8 +1379,6 @@ static int anx7625_bridge_attach(struct drm_bridge *bridge,
 		if (err)
 			return err;
 	}
-
-	ctx->bridge_attached = 1;
 
 	return 0;
 }

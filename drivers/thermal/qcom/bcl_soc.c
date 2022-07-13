@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:%s " fmt, KBUILD_MODNAME, __func__
@@ -16,6 +16,7 @@
 #include <linux/mutex.h>
 #include <linux/power_supply.h>
 #include <linux/thermal.h>
+#include "thermal_zone_internal.h"
 
 #define BCL_DRIVER_NAME       "bcl_soc_peripheral"
 
@@ -32,6 +33,39 @@ struct bcl_device {
 };
 
 static struct bcl_device *bcl_perph;
+
+static int bcl_soc_get_trend(void *data, int trip,
+				    enum thermal_trend *trend)
+{
+	struct bcl_device *bcl_perph = data;
+	struct thermal_zone_device *tz = bcl_perph->tz_dev;
+	int trip_temp = 0, trip_hyst = 0, temp, ret;
+
+	if (!tz)
+		return -EINVAL;
+
+	ret = tz->ops->get_trip_temp(tz, trip, &trip_temp);
+	if (ret)
+		return ret;
+
+	if (tz->ops->get_trip_hyst) {
+		ret = tz->ops->get_trip_hyst(tz, trip, &trip_hyst);
+		if (ret)
+			return ret;
+	}
+	temp = READ_ONCE(tz->temperature);
+
+	if (temp >= trip_temp)
+		*trend = THERMAL_TREND_RAISING;
+	else if (!trip_hyst && temp < trip_temp)
+		*trend = THERMAL_TREND_DROPPING;
+	else if (temp <= (trip_temp - trip_hyst))
+		*trend = THERMAL_TREND_DROPPING;
+	else
+		*trend = THERMAL_TREND_STABLE;
+
+	return 0;
+}
 
 static int bcl_set_soc(void *data, int low, int high)
 {
@@ -119,9 +153,11 @@ static int bcl_soc_remove(struct platform_device *pdev)
 {
 	power_supply_unreg_notifier(&bcl_perph->psy_nb);
 	flush_work(&bcl_perph->soc_eval_work);
-	if (bcl_perph->tz_dev)
+	if (bcl_perph->tz_dev) {
 		thermal_zone_of_sensor_unregister(&pdev->dev,
 				bcl_perph->tz_dev);
+		qti_update_tz_ops(bcl_perph->tz_dev, false);
+	}
 
 	return 0;
 }
@@ -138,6 +174,7 @@ static int bcl_soc_probe(struct platform_device *pdev)
 	bcl_perph->dev = &pdev->dev;
 	bcl_perph->ops.get_temp = bcl_read_soc;
 	bcl_perph->ops.set_trips = bcl_set_soc;
+	bcl_perph->ops.get_trend = bcl_soc_get_trend;
 	INIT_WORK(&bcl_perph->soc_eval_work, bcl_evaluate_soc);
 	bcl_perph->psy_nb.notifier_call = battery_supply_callback;
 	ret = power_supply_reg_notifier(&bcl_perph->psy_nb);
@@ -156,6 +193,7 @@ static int bcl_soc_probe(struct platform_device *pdev)
 		bcl_perph->tz_dev = NULL;
 		goto bcl_soc_probe_exit;
 	}
+	qti_update_tz_ops(bcl_perph->tz_dev, true);
 	thermal_zone_device_update(bcl_perph->tz_dev, THERMAL_DEVICE_UP);
 	schedule_work(&bcl_perph->soc_eval_work);
 

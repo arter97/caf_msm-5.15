@@ -193,8 +193,7 @@ int gh_rm_get_vminfo(enum gh_vm_names vm_name, struct gh_vminfo *vm)
 		return -EINVAL;
 
 	spin_lock(&gh_vm_table_lock);
-	if (!vm->guid || !vm->uri || !vm->name || !vm->sign_auth
-		|| vm_name < GH_SELF_VM || vm_name > GH_VM_MAX) {
+	if (vm_name < GH_SELF_VM || vm_name > GH_VM_MAX) {
 		spin_unlock(&gh_vm_table_lock);
 		return -EINVAL;
 	}
@@ -289,6 +288,10 @@ static int gh_rm_vm_lookup_name_uri(gh_rm_msgid_t msg_id, const char *data,
 
 	req_payload_size = sizeof(*req_payload) + round_up(size, 4);
 	req_payload = kzalloc(req_payload_size, GFP_KERNEL);
+
+	if (!req_payload)
+		return -ENOMEM;
+
 	req_payload->size = size;
 	memcpy(req_payload->data, data, size);
 

@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (c) 2015-2022, Qualcomm Innovation Center, Inc. All rights reserved.*/
+/*
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
 
 #ifndef __MHI_H
 #define __MHI_H
@@ -453,6 +456,7 @@ struct event_req {
 	struct list_head	list;
 	u32			flush_num;
 	bool		is_cmd_cpl;
+	bool		is_stale;
 };
 
 struct mhi_cmd_cmpl_ctx {

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2012-2022, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef ADSPRPC_SHARED_H
 #define ADSPRPC_SHARED_H
@@ -91,12 +92,6 @@
 /* Set FastRPC session ID to 1 */
 #define FASTRPC_MODE_SESSION     4
 
-/* INIT a new process or attach to guestos */
-#define FASTRPC_INIT_ATTACH      0
-#define FASTRPC_INIT_CREATE      1
-#define FASTRPC_INIT_CREATE_STATIC  2
-#define FASTRPC_INIT_ATTACH_SENSORS 3
-
 /* Retrives number of input buffers from the scalars parameter */
 #define REMOTE_SCALARS_INBUFS(sc)        (((sc) >> 16) & 0x0ff)
 
@@ -108,6 +103,19 @@
 
 /* Retrives number of output handles from the scalars parameter */
 #define REMOTE_SCALARS_OUTHANDLES(sc)    ((sc) & 0x0f)
+
+/* Remote domains ID */
+#define ADSP_DOMAIN_ID	(0)
+#define MDSP_DOMAIN_ID	(1)
+#define SDSP_DOMAIN_ID	(2)
+#define CDSP_DOMAIN_ID	(3)
+#define MAX_DOMAIN_ID	CDSP_DOMAIN_ID
+
+#define NUM_CHANNELS	4	/* adsp, mdsp, slpi, cdsp*/
+#define NUM_SESSIONS	13	/* max 12 compute, 1 cpz */
+
+#define VALID_FASTRPC_CID(cid) \
+	(cid >= ADSP_DOMAIN_ID && cid < NUM_CHANNELS)
 
 #define REMOTE_SCALARS_LENGTH(sc)	(REMOTE_SCALARS_INBUFS(sc) +\
 					REMOTE_SCALARS_OUTBUFS(sc) +\
@@ -275,6 +283,15 @@ struct fastrpc_ioctl_notif_rsp {
 	int domain;					/* Domain of User PD */
 	int session;				/* Session ID of User PD */
 	uint32_t status;			/* Status of the process */
+};
+
+/* INIT a new process or attach to guestos */
+enum fastrpc_init_flags {
+	FASTRPC_INIT_NO_CREATE       = -1,
+	FASTRPC_INIT_ATTACH          = 0,
+	FASTRPC_INIT_CREATE          = 1,
+	FASTRPC_INIT_CREATE_STATIC   = 2,
+	FASTRPC_INIT_ATTACH_SENSORS  = 3,
 };
 
 enum fastrpc_invoke2_type {
@@ -593,6 +610,15 @@ enum fastrpc_process_exit_states {
 	FASTRPC_PROCESS_DSP_EXIT_ERROR				= 4,
 };
 
+inline int fastrpc_transport_send(int cid, void *rpc_msg, uint32_t rpc_msg_size, bool trusted_vm);
+inline int fastrpc_handle_rpc_response(void *data, int len, int cid);
+inline int verify_transport_device(int cid, bool trusted_vm);
+int fastrpc_transport_init(void);
+void fastrpc_transport_deinit(void);
+void fastrpc_transport_session_init(int cid, char *subsys);
+void fastrpc_transport_session_deinit(int cid);
+int fastrpc_wait_for_transport_interrupt(int cid, unsigned int flags);
+
 static inline struct smq_invoke_buf *smq_invoke_buf_start(remote_arg64_t *pra,
 							uint32_t sc)
 {
@@ -608,10 +634,6 @@ static inline struct smq_phy_page *smq_phy_page_start(uint32_t sc,
 
 	return (struct smq_phy_page *)(&buf[nTotal]);
 }
-
-
-#define NUM_CHANNELS	4	/* adsp, mdsp, slpi, cdsp*/
-#define NUM_SESSIONS	13	/* max 12 compute, 1 cpz */
 
 /*
  * Fastrpc context ID bit-map:
@@ -690,9 +712,9 @@ struct fastrpc_buf {
 struct fastrpc_ctx_lst;
 
 struct fastrpc_tx_msg {
-	struct smq_msg msg; /* Msg sent to remote subsystem */
-	int rpmsg_send_err; /* rpmsg error */
-	int64_t ns;         /* Timestamp (in ns) of msg */
+	struct smq_msg msg;     /* Msg sent to remote subsystem */
+	int transport_send_err; /* transport error */
+	int64_t ns;             /* Timestamp (in ns) of msg */
 	uint64_t xo_time_in_us; /* XO Timestamp (in us) of sent message */
 };
 
@@ -702,7 +724,7 @@ struct fastrpc_rx_msg {
 	uint64_t xo_time_in_us; /* XO Timestamp (in us) of response */
 };
 
-struct fastrpc_rpmsg_log {
+struct fastrpc_transport_log {
 	unsigned int tx_index;  /* Current index of 'tx_msgs' array */
 	unsigned int rx_index;  /* Current index of 'rx_msgs' array */
 
@@ -821,8 +843,9 @@ struct fastrpc_static_pd {
 	void *pdrhandle;
 	uint64_t pdrcount;
 	uint64_t prevpdrcount;
-	int ispdup;
+	atomic_t ispdup;
 	int cid;
+	wait_queue_head_t wait_for_pdup;
 };
 
 struct fastrpc_dsp_capabilities {
@@ -833,7 +856,6 @@ struct fastrpc_dsp_capabilities {
 struct fastrpc_channel_ctx {
 	char *name;
 	char *subsys;
-	struct rpmsg_device *rpdev;
 	struct device *dev;
 	struct fastrpc_session_ctx session[NUM_SESSIONS];
 	struct fastrpc_static_pd spd[NUM_SESSIONS];
@@ -841,7 +863,6 @@ struct fastrpc_channel_ctx {
 	struct completion workport;
 	struct notifier_block nb;
 	struct mutex smd_mutex;
-	struct mutex rpmsg_mutex;
 	uint64_t sesscount;
 	uint64_t ssrcount;
 	void *handle;
@@ -860,7 +881,7 @@ struct fastrpc_channel_ctx {
 	bool cpuinfo_status;
 	struct smq_invoke_ctx *ctxtable[FASTRPC_CTX_MAX];
 	spinlock_t ctxlock;
-	struct fastrpc_rpmsg_log gmsg_log;
+	struct fastrpc_transport_log gmsg_log;
 	struct hlist_head initmems;
 	/* Store gfa structure debug details */
 	struct fastrpc_buf *buf;
@@ -881,7 +902,7 @@ struct fastrpc_apps {
 	/* Indicates fastrpc device node info */
 	struct device *dev_fastrpc;
 	unsigned int latency;
-	int rpmsg_register;
+	int transport_initialized;
 	/* Flag to determine fastrpc bus registration */
 	int fastrpc_bus_register;
 	bool legacy_remote_heap;
@@ -992,6 +1013,7 @@ struct fastrpc_file {
 	int tgid_open;	/* Process ID during device open */
 	int tgid;		/* Process ID that uses device for RPC calls */
 	int cid;
+	bool trusted_vm;
 	uint64_t ssrcount;
 	int pd;
 	char *servloc_name;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
  */
 
@@ -113,6 +114,7 @@ static const char *const pmic_models[] = {
 #endif /* CONFIG_DEBUG_FS */
 
 static uint32_t socinfo_format;
+static const char *sku;
 
 enum {
 	HW_PLATFORM_UNKNOWN = 0,
@@ -192,6 +194,51 @@ static const char * const hw_platform_subtype[] = {
 	[PLATFORM_SUBTYPE_STRANGE] = "strange",
 	[PLATFORM_SUBTYPE_STRANGE_2A] = "strange_2a",
 	[PLATFORM_SUBTYPE_INVALID] = "Invalid",
+};
+
+enum {
+	/* External SKU */
+	SKU_UNKNOWN = 0x0,
+	SKU_AA = 0x1,
+	SKU_AB = 0x2,
+	SKU_AC = 0x3,
+	SKU_AD = 0x4,
+	SKU_AE = 0x5,
+	SKU_AF = 0x6,
+	SKU_EXT_RESERVE,
+
+	/* Internal SKU */
+	SKU_Y0 = 0xf1,
+	SKU_Y1 = 0xf2,
+	SKU_Y2 = 0xf3,
+	SKU_Y3 = 0xf4,
+	SKU_Y4 = 0xf5,
+	SKU_Y5 = 0xf6,
+	SKU_Y6 = 0xf7,
+	SKU_Y7 = 0xf8,
+	SKU_INT_RESERVE,
+};
+
+static const char * const hw_platform_esku[] = {
+	[SKU_UNKNOWN] = "Unknown",
+	[SKU_AA] = "AA",
+	[SKU_AB] = "AB",
+	[SKU_AC] = "AC",
+	[SKU_AD] = "AD",
+	[SKU_AE] = "AE",
+	[SKU_AF] = "AF",
+};
+
+#define SKU_INT_MASK 0x0f
+static const char * const hw_platform_isku[] = {
+	[SKU_Y0 & SKU_INT_MASK] = "Y0",
+	[SKU_Y1 & SKU_INT_MASK] = "Y1",
+	[SKU_Y2 & SKU_INT_MASK] = "Y2",
+	[SKU_Y3 & SKU_INT_MASK] = "Y3",
+	[SKU_Y4 & SKU_INT_MASK] = "Y4",
+	[SKU_Y5 & SKU_INT_MASK] = "Y5",
+	[SKU_Y6 & SKU_INT_MASK] = "Y6",
+	[SKU_Y7 & SKU_INT_MASK] = "Y7",
 };
 
 /* Socinfo SMEM item structure */
@@ -443,6 +490,35 @@ static uint32_t socinfo_get_nmodem_supported(void)
 		: 0;
 }
 
+/* Version 16 */
+static uint32_t socinfo_get_eskuid(void)
+{
+	return socinfo ?
+		(socinfo_format >= SOCINFO_VERSION(0, 16) ?
+			le32_to_cpu(socinfo->esku) : 0)
+		: 0;
+}
+
+static const char *socinfo_get_esku_mapping(void)
+{
+	uint32_t id = socinfo_get_eskuid();
+
+	if (id > SKU_UNKNOWN && id < SKU_EXT_RESERVE)
+		return hw_platform_esku[id];
+	else if (id >= SKU_Y0 && id < SKU_INT_RESERVE)
+		return hw_platform_isku[id & SKU_INT_MASK];
+
+	return NULL;
+}
+
+static uint32_t socinfo_get_nproduct_code(void)
+{
+	return socinfo ?
+		(socinfo_format >= SOCINFO_VERSION(0, 16) ?
+			le32_to_cpu(socinfo->nproduct_code) : 0)
+		: 0;
+}
+
 /* Version 2 */
 static ssize_t
 msm_get_raw_id(struct device *dev,
@@ -679,6 +755,27 @@ msm_get_nmodem_supported(struct device *dev,
 }
 ATTR_DEFINE(nmodem_supported);
 
+/* Version 16 */
+static ssize_t
+msm_get_sku(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	return sysfs_emit(buf, "%s\n", sku ? sku : "Unknown");
+}
+ATTR_DEFINE(sku);
+
+static ssize_t
+msm_get_esku(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	const char *esku = socinfo_get_esku_mapping();
+
+	return sysfs_emit(buf, "%s\n", esku ? esku : "Unknown");
+}
+ATTR_DEFINE(esku);
+
 struct qcom_socinfo {
 	struct soc_device *soc_dev;
 	struct soc_device_attribute attr;
@@ -809,49 +906,6 @@ static const struct soc_id soc_id[] = {
 	{ 539, "CINDERRU"},
 	{ 545, "CINDERDU"},
 };
-
-struct soc_sku {
-	u32 id;
-	u32 feature_id;
-	const char *sku_name;
-};
-
-static const struct soc_sku soc_sku[] = {
-	{ 415, 0, "AB" },
-	{ 415, 8, "AC" },
-};
-
-static ssize_t msm_get_soc_sku(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	const char *soc_sku_name = NULL;
-	int feature_id, idx;
-	u32 id;
-
-	id = socinfo_get_id();
-	feature_id = qcom_smem_get_feature_id();
-
-	if (feature_id < 0) {
-		dev_err(dev, "Cannot get feature_id\n");
-		return 0;
-	}
-
-	for (idx = 0; idx < ARRAY_SIZE(soc_sku); idx++) {
-		if (soc_sku[idx].id == id &&
-				soc_sku[idx].feature_id == feature_id) {
-			soc_sku_name = soc_sku[idx].sku_name;
-			break;
-		}
-	}
-
-	if (IS_ERR_OR_NULL(soc_sku_name)) {
-		dev_err(dev, "soc_sku_name not found\n");
-		return 0;
-	}
-
-	return scnprintf(buf, PAGE_SIZE, "%s\n", soc_sku_name);
-}
-ATTR_DEFINE(soc_sku);
 
 static struct qcom_socinfo *qsocinfo;
 static struct attribute *msm_custom_socinfo_attrs[35];
@@ -1116,8 +1170,9 @@ static void socinfo_populate_sysfs(struct qcom_socinfo *qcom_socinfo)
 
 	switch (socinfo_format) {
 	case SOCINFO_VERSION(0, 16):
+		msm_custom_socinfo_attrs[i++] = &dev_attr_sku.attr;
+		msm_custom_socinfo_attrs[i++] = &dev_attr_esku.attr;
 	case SOCINFO_VERSION(0, 15):
-		msm_custom_socinfo_attrs[i++] = &dev_attr_soc_sku.attr;
 		msm_custom_socinfo_attrs[i++] = &dev_attr_nmodem_supported.attr;
 	case SOCINFO_VERSION(0, 14):
 		msm_custom_socinfo_attrs[i++] = &dev_attr_num_clusters.attr;
@@ -1388,7 +1443,7 @@ static void socinfo_print(void)
 		break;
 
 	case SOCINFO_VERSION(0, 16):
-		pr_info("v%u.%u, id=%u, ver=%u.%u, raw_id=%u, raw_ver=%u, hw_plat=%u, hw_plat_ver=%u\n accessory_chip=%u, hw_plat_subtype=%u, pmic_model=%u, pmic_die_revision=%u foundry_id=%u serial_number=%u num_pmics=%u chip_family=0x%x raw_device_family=0x%x raw_device_number=0x%x nproduct_id=0x%x num_clusters=0x%x ncluster_array_offset=0x%x num_defective_parts=0x%x ndefective_parts_array_offset=0x%x nmodem_supported=0x%x\n",
+		pr_info("v%u.%u, id=%u, ver=%u.%u, raw_id=%u, raw_ver=%u, hw_plat=%u, hw_plat_ver=%u\n accessory_chip=%u, hw_plat_subtype=%u, pmic_model=%u, pmic_die_revision=%u foundry_id=%u serial_number=%u num_pmics=%u chip_family=0x%x raw_device_family=0x%x raw_device_number=0x%x nproduct_id=0x%x num_clusters=0x%x ncluster_array_offset=0x%x num_defective_parts=0x%x ndefective_parts_array_offset=0x%x nmodem_supported=0x%x sku=%s\n",
 			f_maj, f_min, socinfo->id, v_maj, v_min,
 			socinfo->raw_id, socinfo->raw_ver,
 			socinfo->hw_plat,
@@ -1408,7 +1463,9 @@ static void socinfo_print(void)
 			socinfo->ncluster_array_offset,
 			socinfo->num_defective_parts,
 			socinfo->ndefective_parts_array_offset,
-			socinfo->nmodem_supported);
+			socinfo->nmodem_supported,
+			sku ? sku : "Unknown");
+		break;
 
 	default:
 		pr_err("Unknown format found: v%u.%u\n", f_maj, f_min);
@@ -1727,6 +1784,7 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 	struct qcom_socinfo *qs;
 	struct socinfo *info;
 	size_t item_size;
+	const char *machine, *esku;
 
 	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID,
 			      &item_size);
@@ -1753,6 +1811,14 @@ static int qcom_socinfo_probe(struct platform_device *pdev)
 	qs->attr.soc_id = kasprintf(GFP_KERNEL, "%d", socinfo_get_id());
 	if (offsetof(struct socinfo, serial_num) <= item_size)
 		qs->attr.serial_number = kasprintf(GFP_KERNEL, "%u", socinfo_get_serial_number());
+
+	if (socinfo_format >= SOCINFO_VERSION(0, 16)) {
+		machine = socinfo_machine(&pdev->dev, le32_to_cpu(info->id));
+		esku = socinfo_get_esku_mapping();
+		if (machine && esku)
+			sku = devm_kasprintf(&pdev->dev, GFP_KERNEL, "%s-%u-%s",
+				machine, socinfo_get_nproduct_code(), esku);
+	}
 
 	qsocinfo = qs;
 	init_rwsem(&qs->current_image_rwsem);
