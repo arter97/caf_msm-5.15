@@ -1063,6 +1063,7 @@ config QCOM_VM_ALIVE_LOG_DUMPER
 
 source "drivers/soc/qcom/mem_buf/Kconfig"
 source "drivers/soc/qcom/tmecom/Kconfig"
+source "drivers/soc/qcom/gnsssirf/Kconfig"
 
 config DUMP_XBL_LOG
 	tristate "print xbl log on console from fs"
@@ -1080,5 +1081,13 @@ config QCOM_AOP_SET_DDR
 	  to Alway On processor using QMP transport. Users can echo a frequency
 	  into an exposed sysfs node to send to AOP. The driver expects the Cap
 	  frequency of DDR based on SKU.
+
+config ICNSS2_DEBUG
+	bool "ICNSS2 Platform Driver Debug Support"
+	help
+	  This option is to enable ICNSS2 platform driver debug support which
+	  primarily includes providing additional verbose logs for certain
+	  features, enabling kernel panic for certain cases to aid the
+	  debugging, and enabling any other debug mechanisms.
 
 endmenu

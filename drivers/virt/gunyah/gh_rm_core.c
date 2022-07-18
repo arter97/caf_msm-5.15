@@ -71,6 +71,7 @@ const static struct {
 static struct task_struct *gh_rm_drv_recv_task;
 static struct gh_msgq_desc *gh_rm_msgq_desc;
 static gh_virtio_mmio_cb_t gh_virtio_mmio_fn;
+static gh_wdog_manage_cb_t gh_wdog_manage_fn;
 static gh_vcpu_affinity_set_cb_t gh_vcpu_affinity_set_fn;
 static gh_vcpu_affinity_reset_cb_t gh_vcpu_affinity_reset_fn;
 static gh_vpm_grp_set_cb_t gh_vpm_grp_set_fn;
@@ -601,6 +602,12 @@ static int gh_rm_send_request(u32 message_id,
 	void *send_buff;
 	int i, ret;
 
+	/* Drivers need probe defer
+	 * when do RM call before RM driver initialized
+	 */
+	if (gh_rm_msgq_desc == NULL)
+		return -EPROBE_DEFER;
+
 	num_fragments = (req_buff_size + GH_RM_MAX_MSG_SIZE_BYTES - 1) /
 			GH_RM_MAX_MSG_SIZE_BYTES;
 
@@ -999,6 +1006,10 @@ int gh_rm_populate_hyp_res(gh_vmid_t vmid, const char *vm_name)
 						cap_id, linux_irq, base, size);
 				mutex_unlock(&gh_virtio_mmio_fn_lock);
 				break;
+			case GH_RM_RES_TYPE_WATCHDOG:
+				if (gh_wdog_manage_fn)
+					ret = (*gh_wdog_manage_fn)(vmid, cap_id, true);
+				break;
 			default:
 				pr_err("%s: Unknown resource type: %u\n",
 					__func__, res_entries[i].res_type);
@@ -1080,6 +1091,10 @@ int gh_rm_unpopulate_hyp_res(gh_vmid_t vmid, const char *vm_name)
 			if (gh_vpm_grp_reset_fn)
 				ret = (*gh_vpm_grp_reset_fn)(vmid, &irq);
 			break;
+		case GH_RM_RES_TYPE_WATCHDOG:
+			if (gh_wdog_manage_fn)
+				ret = (*gh_wdog_manage_fn)(vmid, cap_id, false);
+			break;
 		default:
 			pr_err("%s: Unknown resource type: %u\n",
 				__func__, res_entries[i].res_type);
@@ -1145,6 +1160,31 @@ void gh_rm_unset_virtio_mmio_cb(void)
 	mutex_unlock(&gh_virtio_mmio_fn_lock);
 }
 EXPORT_SYMBOL(gh_rm_unset_virtio_mmio_cb);
+
+/**
+ * gh_rm_set_wdog_manage_cb: Set callback that handles wdog resource
+ * @fnptr: Pointer to callback function
+ *
+ * @fnptr callback is invoked providing details of the wdog resource.
+ *
+ * This function returns these values:
+ *	0	-> indicates success
+ *	-EINVAL -> Indicates invalid input argument
+ *	-EBUSY	-> Indicates that a callback is already set
+ */
+int gh_rm_set_wdog_manage_cb(gh_wdog_manage_cb_t fnptr)
+{
+	if (!fnptr)
+		return -EINVAL;
+
+	if (gh_wdog_manage_fn)
+		return -EBUSY;
+
+	gh_wdog_manage_fn = fnptr;
+
+	return 0;
+}
+EXPORT_SYMBOL(gh_rm_set_wdog_manage_cb);
 
 /**
  * gh_rm_set_vcpu_affinity_cb: Set callback that handles vcpu affinity

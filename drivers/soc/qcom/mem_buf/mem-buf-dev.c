@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -9,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/of_reserved_mem.h>
 #include <soc/qcom/secure_buffer.h>
 
 #include <linux/mem-buf.h>
@@ -42,7 +44,7 @@ int mem_buf_hyp_assign_table(struct sg_table *sgt, u32 *src_vmid, int source_nel
 	return ret;
 }
 
-int mem_buf_assign_mem(int op, struct sg_table *sgt,
+int mem_buf_assign_mem(u32 op, struct sg_table *sgt,
 		       struct mem_buf_lend_kernel_arg *arg)
 {
 	int src_vmid[] = {current_vmid};
@@ -101,6 +103,7 @@ static int mem_buf_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	u64 dma_mask = IS_ENABLED(CONFIG_ARM64) ? DMA_BIT_MASK(64) :
 		DMA_BIT_MASK(32);
+	int unused;
 
 	if (of_property_match_string(dev->of_node, "qcom,mem-buf-capabilities",
 				     "supplier") >= 0)
@@ -122,14 +125,26 @@ static int mem_buf_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	if (of_find_property(dev->of_node, "memory-region", &unused)) {
+		ret =  of_reserved_mem_device_init_by_idx(dev, dev->of_node, 0);
+		if (ret) {
+			dev_err(dev, "Failed to get memory-region property %d\n", ret);
+			return ret;
+		}
+	}
+
 	ret = mem_buf_vm_init(dev);
 	if (ret) {
 		dev_err(dev, "mem_buf_vm_init failed %d\n", ret);
-		return ret;
+		goto err_vm_init;
 	}
 
 	mem_buf_dev = dev;
 	return 0;
+
+err_vm_init:
+	of_reserved_mem_device_release(dev);
+	return ret;
 }
 
 static int mem_buf_remove(struct platform_device *pdev)

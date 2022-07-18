@@ -449,6 +449,10 @@ static int adsp_start(struct rproc *rproc)
 		panic("Panicking, auth and reset failed for remoteproc %s\n", rproc->name);
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "exit");
 
+	/* if needed, signal Q6 to continute booting */
+	if (adsp->q6v5.rmb_base)
+		writel_relaxed(1, adsp->q6v5.rmb_base + RMB_BOOT_CONT_REG);
+
 	if (!timeout_disabled) {
 		ret = qcom_q6v5_wait_for_start(&adsp->q6v5, msecs_to_jiffies(5000));
 		if (rproc->recovery_disabled && ret)
@@ -545,6 +549,101 @@ static int adsp_stop(struct rproc *rproc)
 	return ret;
 }
 
+static int adsp_attach(struct rproc *rproc)
+{
+	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
+	const struct firmware *fw;
+	int ret = 0;
+
+	/* try to register fw for dumps; continue if we fail */
+	ret = request_firmware(&fw, rproc->firmware, &rproc->dev);
+	if (ret < 0) {
+		dev_err(adsp->dev, "Failed to request DSP firmware\n");
+		dev_err(adsp->dev, "Dumps will not be available\n");
+		goto begin_attach;
+	}
+
+	ret = qcom_register_dump_segments(rproc, fw);
+	if (ret) {
+		dev_err(adsp->dev, "Failed to register dump segments\n");
+		dev_err(adsp->dev, "Dumps will not be available\n");
+	}
+	release_firmware(fw);
+
+begin_attach:
+	qcom_q6v5_prepare(&adsp->q6v5);
+
+	ret = do_bus_scaling(adsp, true);
+	if (ret < 0)
+		goto disable_irqs;
+
+	ret = adsp_pds_enable(adsp, adsp->active_pds, adsp->active_pd_count);
+	if (ret < 0)
+		goto unscale_bus;
+
+	if (!adsp->q6v5.rmb_base ||
+	    !readl_relaxed(adsp->q6v5.rmb_base + RMB_BOOT_WAIT_REG)) {
+		dev_err(adsp->dev, "Remote proc is not ready to attach\n");
+		adsp_stop(rproc);
+		ret = -EBUSY;
+		goto disable_active_pds;
+	}
+
+	ret = adsp_pds_enable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
+	if (ret < 0)
+		goto disable_active_pds;
+
+	ret = adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
+	if (ret)
+		goto disable_proxy_pds;
+
+	ret = clk_prepare_enable(adsp->xo);
+	if (ret)
+		goto disable_load_state;
+
+	ret = clk_prepare_enable(adsp->aggre2_clk);
+	if (ret)
+		goto disable_xo_clk;
+
+	ret = enable_regulators(adsp);
+	if (ret)
+		goto disable_aggre2_clk;
+
+	/* Signal the Q6 to continue booting */
+	writel_relaxed(1, adsp->q6v5.rmb_base + RMB_BOOT_CONT_REG);
+
+	if (!timeout_disabled) {
+		ret = qcom_q6v5_wait_for_start(&adsp->q6v5, msecs_to_jiffies(5000));
+		if (rproc->recovery_disabled && ret) {
+			panic("Panicking, remoteproc %s failed to bootup.\n", adsp->rproc->name);
+		} else if (ret == -ETIMEDOUT) {
+			dev_err(adsp->dev, "start timed out\n");
+			goto disable_regs;
+		}
+	}
+
+	return ret;
+
+disable_regs:
+	disable_regulators(adsp);
+disable_aggre2_clk:
+	clk_disable_unprepare(adsp->aggre2_clk);
+disable_xo_clk:
+	clk_disable_unprepare(adsp->xo);
+disable_load_state:
+	adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+disable_proxy_pds:
+	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
+disable_active_pds:
+	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
+unscale_bus:
+	do_bus_scaling(adsp, false);
+disable_irqs:
+	qcom_q6v5_unprepare(&adsp->q6v5);
+
+	return ret;
+}
+
 static void *adsp_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem)
 {
 	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
@@ -568,6 +667,7 @@ static unsigned long adsp_panic(struct rproc *rproc)
 }
 
 static const struct rproc_ops adsp_ops = {
+	.attach = adsp_attach,
 	.start = adsp_start,
 	.stop = adsp_stop,
 	.da_to_va = adsp_da_to_va,
@@ -576,6 +676,7 @@ static const struct rproc_ops adsp_ops = {
 };
 
 static const struct rproc_ops adsp_minidump_ops = {
+	.attach = adsp_attach,
 	.start = adsp_start,
 	.stop = adsp_stop,
 	.da_to_va = adsp_da_to_va,
@@ -913,6 +1014,10 @@ static int adsp_probe(struct platform_device *pdev)
 		goto detach_proxy_pds;
 
 	qcom_q6v5_register_ssr_subdev(&adsp->q6v5, &adsp->ssr_subdev.subdev);
+
+	if (adsp->q6v5.rmb_base &&
+			readl_relaxed(adsp->q6v5.rmb_base + RMB_Q6_BOOT_STATUS_REG))
+		rproc->state = RPROC_DETACHED;
 
 	timeout_disabled = qcom_pil_timeouts_disabled();
 	qcom_add_glink_subdev(rproc, &adsp->glink_subdev, desc->ssr_name);
@@ -1258,6 +1363,18 @@ static const struct adsp_data cinder_mpss_resource = {
 	.ssctl_id = 0x12,
 };
 
+static const struct adsp_data khaje_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
+};
+
 static const struct adsp_data slpi_resource_init = {
 		.crash_reason_smem = 424,
 		.firmware_name = "slpi.mdt",
@@ -1400,6 +1517,31 @@ static const struct adsp_data sc8180x_mpss_resource = {
 	.sysmon_name = "modem",
 	.ssctl_id = 0x12,
 };
+
+static const struct adsp_data sdmshrike_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+static const struct adsp_data sdmshrike_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "lpass",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &adsp_resource_init},
@@ -1438,6 +1580,9 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,cinder-modem-pas", .data = &cinder_mpss_resource},
 	{ .compatible = "qcom,khaje-adsp-pas", .data = &khaje_adsp_resource},
 	{ .compatible = "qcom,khaje-cdsp-pas", .data = &khaje_cdsp_resource},
+	{ .compatible = "qcom,khaje-modem-pas", .data = &khaje_mpss_resource},
+	{ .compatible = "qcom,sdmshrike-adsp-pas", .data = &sdmshrike_adsp_resource},
+	{ .compatible = "qcom,sdmshrike-cdsp-pas", .data = &sdmshrike_cdsp_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
