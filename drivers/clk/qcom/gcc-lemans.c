@@ -3666,7 +3666,7 @@ static struct clk_branch gcc_qupv3_wrap1_s3_clk = {
 				&gcc_qupv3_wrap1_s3_clk_src.clkr.hw,
 			},
 			.num_parents = 1,
-			.flags = CLK_SET_RATE_PARENT,
+			.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 			.ops = &clk_branch2_ops,
 		},
 	},
@@ -3981,6 +3981,7 @@ static struct clk_branch gcc_qupv3_wrap_1_m_ahb_clk = {
 		.hw.init = &(const struct clk_init_data){
 			.name = "gcc_qupv3_wrap_1_m_ahb_clk",
 			.ops = &clk_branch2_ops,
+			.flags = CLK_IS_CRITICAL,
 		},
 	},
 };
@@ -3996,6 +3997,7 @@ static struct clk_branch gcc_qupv3_wrap_1_s_ahb_clk = {
 		.hw.init = &(const struct clk_init_data){
 			.name = "gcc_qupv3_wrap_1_s_ahb_clk",
 			.ops = &clk_branch2_ops,
+			.flags = CLK_IS_CRITICAL,
 		},
 	},
 };
