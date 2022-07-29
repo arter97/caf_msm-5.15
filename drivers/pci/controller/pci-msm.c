@@ -1048,6 +1048,7 @@ struct msm_pcie_dev_t {
 	const char *drv_name;
 	bool drv_supported;
 	bool panic_genspeed_mismatch;
+	bool nogdsc_retention;
 
 	DECLARE_KFIFO(aer_fifo, struct aer_err_source, AER_ERROR_SOURCES_MAX);
 
@@ -3467,12 +3468,14 @@ static int msm_pcie_clk_init(struct msm_pcie_dev_t *dev)
 
 	PCIE_DBG(dev, "RC%d: entry\n", dev->rc_idx);
 
-	rc = regulator_enable(dev->gdsc_core);
+	if (!regulator_is_enabled(dev->gdsc_core)) {
+		rc = regulator_enable(dev->gdsc_core);
 
-	if (rc) {
-		PCIE_ERR(dev, "PCIe: fail to enable GDSC-CORE for RC%d (%s)\n",
-			dev->rc_idx, dev->pdev->name);
-		return rc;
+		if (rc) {
+			PCIE_ERR(dev, "PCIe:fail to enable GDSC-CORE for RC%d (%s)\n",
+				dev->rc_idx, dev->pdev->name);
+			return rc;
+		}
 	}
 
 	if (dev->gdsc_phy) {
@@ -3623,7 +3626,8 @@ static void msm_pcie_clk_deinit(struct msm_pcie_dev_t *dev)
 
 	if (dev->gdsc_phy)
 		regulator_disable(dev->gdsc_phy);
-	regulator_disable(dev->gdsc_core);
+	if (!dev->nogdsc_retention)
+		regulator_disable(dev->gdsc_core);
 
 	PCIE_DBG(dev, "RC%d: exit\n", dev->rc_idx);
 }
@@ -7039,6 +7043,11 @@ static int msm_pcie_probe(struct platform_device *pdev)
 
 	INIT_KFIFO(pcie_dev->aer_fifo);
 
+	pcie_dev->nogdsc_retention = of_property_read_bool(of_node,
+					"qcom,nogdsc-retention");
+	PCIE_DBG(pcie_dev, "GDSC retention is %s supported\n",
+		pcie_dev->nogdsc_retention ? "not" : "");
+
 	msm_pcie_sysfs_init(pcie_dev);
 
 	pcie_dev->drv_ready = true;
@@ -7623,7 +7632,8 @@ static int __maybe_unused msm_pcie_pm_suspend_noirq(struct device *dev)
 			clk_set_parent(pcie_dev->pipe_clk_mux, pcie_dev->ref_clk_src);
 
 		/* disable the controller GDSC*/
-		regulator_disable(pcie_dev->gdsc_core);
+		if (!pcie_dev->nogdsc_retention)
+			regulator_disable(pcie_dev->gdsc_core);
 
 		/* Disable the pipe clock*/
 		msm_pcie_pipe_clk_deinit(pcie_dev);
@@ -7657,11 +7667,13 @@ static int __maybe_unused msm_pcie_pm_resume_noirq(struct device *dev)
 		msm_pcie_vreg_init_analog_rails(pcie_dev);
 
 		/* Enable GDSC core */
-		rc = regulator_enable(pcie_dev->gdsc_core);
-		if (rc) {
-			PCIE_ERR(pcie_dev, "PCIe: fail to enable GDSC-CORE for RC%d (%s)\n",
-				pcie_dev->rc_idx, pcie_dev->pdev->name);
-			return rc;
+		if (!regulator_is_enabled(pcie_dev->gdsc_core)) {
+			rc = regulator_enable(pcie_dev->gdsc_core);
+			if (rc) {
+				PCIE_ERR(pcie_dev, "PCIe: fail to enable GDSC-CORE for RC%d (%s)\n",
+					pcie_dev->rc_idx, pcie_dev->pdev->name);
+				return rc;
+			}
 		}
 
 		/* switch pipe clock source after gdsc-core is turned on */
