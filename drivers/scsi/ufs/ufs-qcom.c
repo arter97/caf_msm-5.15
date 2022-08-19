@@ -4499,6 +4499,7 @@ static void ufs_qcom_register_hooks(void)
 				ufs_qcom_hook_check_int_errors, NULL);
 }
 
+#if 0
 #ifdef CONFIG_ARM_QCOM_CPUFREQ_HW
 static int ufs_cpufreq_status(void)
 {
@@ -4520,7 +4521,7 @@ static int ufs_cpufreq_status(void)
 	return 0;
 }
 #endif
-
+#endif
 
 /**
  * ufs_qcom_probe - probe routine of the driver
@@ -4533,7 +4534,7 @@ static int ufs_qcom_probe(struct platform_device *pdev)
 	int err = 0;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
-
+#if 0
 	/**
 	 * CPUFreq driver is needed for performance reasons.
 	 * Assumption - cpufreq gets probed the second time.
@@ -4544,7 +4545,7 @@ static int ufs_qcom_probe(struct platform_device *pdev)
 	err = ufs_cpufreq_status();
 	if (err)
 		return err;
-
+#endif
 	/*
 	 * On qcom platforms, bootdevice is the primary storage
 	 * device. This device can either be eMMC or UFS.
