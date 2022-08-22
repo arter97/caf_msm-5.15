@@ -12,15 +12,6 @@ config ECPRI_DMA
 	  The driver supports client connection and configuration of the
 	  DMA hw block.
 
-config ECPRI_GSI
-	tristate "ECPRI_GSI support"
-	depends on NET
-	help
-	 eCPRI GSI is a programmable direct memory access (GSI) HW block
-	 designed to service memory access for eCPRI complex.
-	 The driver supports client connection and configuration of the
-	 DMA hw block.
-
 config IPA3
 	tristate "IPA3 support"
 	depends on NET
