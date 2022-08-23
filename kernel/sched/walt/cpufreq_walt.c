@@ -188,25 +188,6 @@ static void waltgov_calc_avg_cap(struct waltgov_policy *wg_policy, u64 curr_ws,
 	wg_policy->last_ws = curr_ws;
 }
 
-/*
- * if waltgov is initialized, return the avg_cap seen
- * over the last window. return 0 otherwise.
- */
-unsigned int waltgov_get_avg_cap(unsigned int cpu)
-{
-	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
-
-	/* if the policy is not initialized, or the callback
-	 * is not initialized. callback is initialized on
-	 * start of waltgov, erased on stop of waltgov.
-	 */
-	if (!wg_policy || !wg_cpu->cb.func)
-		return 0;
-
-	return wg_policy->avg_cap;
-}
-
 static void waltgov_fast_switch(struct waltgov_policy *wg_policy, u64 time,
 			      unsigned int next_freq)
 {
@@ -247,7 +228,7 @@ static unsigned int get_next_freq(struct waltgov_policy *wg_policy,
 	unsigned int freq, raw_freq, final_freq;
 	struct waltgov_cpu *wg_driv_cpu = &per_cpu(waltgov_cpu, wg_policy->driving_cpu);
 
-	raw_freq = walt_map_util_freq(util, wg_policy, max, wg_cpu->cpu);
+	raw_freq = walt_map_util_freq(util, wg_policy, max, wg_driv_cpu->cpu);
 	freq = raw_freq;
 
 	if (wg_policy->tunables->adaptive_high_freq) {
@@ -315,7 +296,13 @@ static void waltgov_walt_adjust(struct waltgov_cpu *wg_cpu, unsigned long cpu_ut
 	bool is_migration = wg_cpu->flags & WALT_CPUFREQ_IC_MIGRATION;
 	bool is_rtg_boost = wg_cpu->walt_load.rtgb_active;
 	bool is_hiload;
+	bool is_ed_boost = wg_cpu->walt_load.ed_active;
 	unsigned long pl = wg_cpu->walt_load.pl;
+
+	if (is_ed_boost) {
+		cpu_util = mult_frac(cpu_util, 100 + sysctl_ed_boost_pct, 100);
+		max_and_reason(util, cpu_util, wg_cpu, CPUFREQ_REASON_EARLY_DET);
+	}
 
 	if (is_rtg_boost)
 		max_and_reason(util, wg_policy->rtg_boost_util, wg_cpu, CPUFREQ_REASON_RTG_BOOST);
@@ -335,6 +322,9 @@ static void waltgov_walt_adjust(struct waltgov_cpu *wg_cpu, unsigned long cpu_ut
 			pl = mult_frac(pl, TARGET_LOAD, 100);
 		max_and_reason(util, pl, wg_cpu, CPUFREQ_REASON_PL);
 	}
+
+	if (is_ed_boost)
+		wg_cpu->reasons |= CPUFREQ_REASON_EARLY_DET;
 }
 
 static inline unsigned long target_util(struct waltgov_policy *wg_policy,

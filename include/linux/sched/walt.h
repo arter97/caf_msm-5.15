@@ -93,6 +93,7 @@ struct walt_task_struct {
 	 * 'prev_on_rq' tracks enqueue/dequeue of a task for error conditions
 	 * 0 = nothing, 1 = enqueued, 2 = dequeued
 	 */
+	u32				flags;
 	u64				mark_start;
 	u64				window_start;
 	u32				sum, demand;
@@ -137,7 +138,18 @@ struct walt_task_struct {
 	int64_t				boosted_task_load;
 	u8                              hung_detect_status;
 	int				prev_cpu;
+	int				new_cpu;
 	u8				enqueue_after_migration;
+};
+
+/*
+ * enumeration to set the flags variable
+ * each index below represents an offset into
+ * wts->flags
+ */
+enum walt_flags {
+	WALT_INIT,
+	MAX_WALT_FLAGS
 };
 
 #define wts_to_ts(wts) ({ \

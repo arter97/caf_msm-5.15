@@ -17,6 +17,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 
 #include <linux/soc/qcom/smem.h>
@@ -30,14 +31,8 @@
 #define ACCUMULATED_ADDR	0x18
 #define CLIENT_VOTES_ADDR	0x1c
 
-#define AOSD_LAST_ENTERED_AT_ADDR	0x0
-#define AOSD_LAST_EXITED_AT_ADDR	0x18
-#define AOSD_ACCUMULATED_ADDR		0x30
-#define AOSD_COUNT_ADDR		0x38
-
 #define DDR_STATS_MAGIC_KEY	0xA1157A75
 #define DDR_STATS_MAX_NUM_MODES	0x14
-#define MAX_DRV			18
 #define MAX_MSG_LEN		35
 #define DRV_ABSENT		0xdeaddead
 #define DRV_INVALID		0xffffdead
@@ -76,7 +71,6 @@ struct stats_config {
 	unsigned int ddr_offset_addr;
 	unsigned int num_records;
 	bool appended_stats_avail;
-	bool aosd_hardened;
 };
 
 struct stats_entry {
@@ -88,6 +82,7 @@ struct stats_entry {
 struct stats_prv_data {
 	const struct stats_config *config;
 	void __iomem *reg;
+	u32 drv_max;
 };
 
 struct sleep_stats {
@@ -109,6 +104,7 @@ struct ddr_stats_g_data {
 	void __iomem *ddr_reg;
 	u32 freq_count;
 	u32 entry_count;
+	u32 drv_max;
 	struct mutex ddr_stats_lock;
 	struct mbox_chan *stats_mbox_ch;
 	struct mbox_client stats_mbox_cl;
@@ -117,8 +113,7 @@ struct ddr_stats_g_data {
 struct ddr_stats_g_data *ddr_gdata;
 #endif
 
-bool ddr_freq_update;
-ktime_t send_msg_time;
+static bool ddr_freq_update;
 
 static void print_sleep_stats(struct seq_file *s, struct sleep_stats *stat)
 {
@@ -179,22 +174,6 @@ static int soc_sleep_stats_show(struct seq_file *s, void *d)
 }
 
 DEFINE_SHOW_ATTRIBUTE(soc_sleep_stats);
-
-static int soc_sleep_stats_aosd_show(struct seq_file *s, void *d)
-{
-	void __iomem *reg = s->private;
-	struct sleep_stats stat;
-
-	stat.count = readl_relaxed(reg + AOSD_COUNT_ADDR);
-	stat.last_entered_at = readq(reg + AOSD_LAST_ENTERED_AT_ADDR);
-	stat.last_exited_at = readq(reg + AOSD_LAST_EXITED_AT_ADDR);
-	stat.accumulated = readq(reg + AOSD_ACCUMULATED_ADDR);
-	print_sleep_stats(s, &stat);
-
-	return 0;
-}
-
-DEFINE_SHOW_ATTRIBUTE(soc_sleep_stats_aosd);
 
 static void  print_ddr_stats(struct seq_file *s, int *count,
 			     struct stats_entry *data, u64 accumulated_duration)
@@ -290,6 +269,8 @@ static int ddr_stats_show(struct seq_file *s, void *d)
 DEFINE_SHOW_ATTRIBUTE(ddr_stats);
 
 #if IS_ENABLED(CONFIG_MSM_QMP)
+static ktime_t send_msg_time;
+
 int ddr_stats_freq_sync_send_msg(void)
 {
 	char buf[MAX_MSG_LEN] = {};
@@ -381,7 +362,7 @@ EXPORT_SYMBOL(ddr_stats_get_residency);
 
 int ddr_stats_get_ss_count(void)
 {
-	return ddr_gdata->read_vote_info ? MAX_DRV : -EOPNOTSUPP;
+	return ddr_gdata->read_vote_info ? ddr_gdata->drv_max : -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(ddr_stats_get_ss_count);
 
@@ -391,14 +372,19 @@ int ddr_stats_get_ss_vote_info(int ss_count,
 	char buf[MAX_MSG_LEN] = {};
 	struct qmp_pkt pkt;
 	void __iomem *reg;
-	u32 vote_offset, val[MAX_DRV];
+	u32 vote_offset, *val;
 	int ret, i;
 
-	if (!vote_info || !(ss_count == MAX_DRV) || !ddr_gdata)
+	if (!vote_info || (ddr_gdata->drv_max == -EINVAL) ||
+			!(ss_count == ddr_gdata->drv_max) || !ddr_gdata)
 		return -ENODEV;
 
 	if (!ddr_gdata->read_vote_info)
 		return -EOPNOTSUPP;
+
+	val = kcalloc(ddr_gdata->drv_max, sizeof(u32), GFP_KERNEL);
+	if (!val)
+		return -ENOMEM;
 
 	mutex_lock(&ddr_gdata->ddr_stats_lock);
 	ret = scnprintf(buf, MAX_MSG_LEN, "{class: ddr, res: drvs_ddr_votes}");
@@ -409,6 +395,7 @@ int ddr_stats_get_ss_vote_info(int ss_count,
 	if (ret < 0) {
 		pr_err("Error sending mbox message: %d\n", ret);
 		mutex_unlock(&ddr_gdata->ddr_stats_lock);
+		kfree(val);
 		return ret;
 	}
 
@@ -433,6 +420,8 @@ int ddr_stats_get_ss_vote_info(int ss_count,
 	}
 
 	mutex_unlock(&ddr_gdata->ddr_stats_lock);
+
+	kfree(val);
 	return 0;
 
 }
@@ -442,7 +431,6 @@ EXPORT_SYMBOL(ddr_stats_get_ss_vote_info);
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static struct dentry *create_debugfs_entries(void __iomem *reg,
 					     void __iomem *ddr_reg,
-					     void __iomem *aosd_reg,
 					     struct stats_prv_data *prv_data,
 					     struct device_node *node)
 {
@@ -473,10 +461,6 @@ static struct dentry *create_debugfs_entries(void __iomem *reg,
 				    &prv_data[i],
 				    &soc_sleep_stats_fops);
 	}
-
-	if (prv_data[0].config->aosd_hardened)
-		debugfs_create_file("aosd", 0444,
-				     root, aosd_reg, &soc_sleep_stats_aosd_fops);
 
 #if IS_ENABLED(CONFIG_QCOM_SMEM)
 	n_subsystems = of_property_count_strings(node, "ss-name");
@@ -512,7 +496,7 @@ exit:
 static int soc_sleep_stats_probe(struct platform_device *pdev)
 {
 	struct resource *res;
-	void __iomem *reg_base, *ddr_reg = NULL, *aosd_reg = NULL;
+	void __iomem *reg_base, *ddr_reg = NULL;
 	void __iomem *offset_addr;
 	phys_addr_t stats_base;
 	resource_size_t stats_size;
@@ -521,7 +505,7 @@ static int soc_sleep_stats_probe(struct platform_device *pdev)
 #endif
 	const struct stats_config *config;
 	struct stats_prv_data *prv_data;
-	int i;
+	int i, ret;
 #if IS_ENABLED(CONFIG_MSM_QMP)
 	u32 name;
 	void __iomem *reg;
@@ -570,6 +554,10 @@ static int soc_sleep_stats_probe(struct platform_device *pdev)
 	if (!ddr_reg)
 		return -ENOMEM;
 
+	ret = of_property_read_u32(pdev->dev.of_node, "qcom,drv-max", &prv_data->drv_max);
+	if (ret < 0)
+		prv_data->drv_max = -EINVAL;
+
 #if IS_ENABLED(CONFIG_MSM_QMP)
 	ddr_gdata = devm_kzalloc(&pdev->dev, sizeof(*ddr_gdata), GFP_KERNEL);
 	if (!ddr_gdata)
@@ -606,6 +594,7 @@ static int soc_sleep_stats_probe(struct platform_device *pdev)
 	if (IS_ERR(ddr_gdata->stats_mbox_ch))
 		goto skip_ddr_stats;
 
+	ddr_gdata->drv_max = prv_data->drv_max;
 	ddr_gdata->read_vote_info = true;
 #endif
 
@@ -613,14 +602,8 @@ static int soc_sleep_stats_probe(struct platform_device *pdev)
 							"ddr-freq-update");
 
 skip_ddr_stats:
-	if (config->aosd_hardened) {
-		aosd_reg = devm_platform_get_and_ioremap_resource(pdev, 1, NULL);
-		if (!aosd_reg)
-			return -ENOMEM;
-	}
-
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-	root = create_debugfs_entries(reg_base, ddr_reg, aosd_reg, prv_data,
+	root = create_debugfs_entries(reg_base, ddr_reg, prv_data,
 				      pdev->dev.of_node);
 	platform_set_drvdata(pdev, root);
 #endif
@@ -658,19 +641,10 @@ static const struct stats_config rpmh_data = {
 	.appended_stats_avail = false,
 };
 
-static const struct stats_config rpmh_v2_data = {
-	.offset_addr = 0x4,
-	.ddr_offset_addr = 0x1c,
-	.num_records = 2,
-	.appended_stats_avail = false,
-	.aosd_hardened = true,
-};
-
 static const struct of_device_id soc_sleep_stats_table[] = {
 	{ .compatible = "qcom,rpm-sleep-stats", .data = &rpm_data },
 	{ .compatible = "qcom,rpmh-sleep-stats-legacy", .data = &rpmh_legacy_data },
 	{ .compatible = "qcom,rpmh-sleep-stats", .data = &rpmh_data },
-	{ .compatible = "qcom,rpmh-sleep-stats-v2", .data = &rpmh_v2_data },
 	{ }
 };
 

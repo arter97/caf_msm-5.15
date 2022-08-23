@@ -2036,6 +2036,19 @@ static void ufshcd_parse_pm_levels(struct ufs_hba *hba)
 	host->is_dt_pm_level_read = true;
 }
 
+static void ufs_qcom_override_pa_tx_hsg1_sync_len(struct ufs_hba *hba)
+{
+#define PA_TX_HSG1_SYNC_LENGTH 0x1552
+	int err;
+	int sync_len_val = 0x4A;
+
+	err = ufshcd_dme_peer_set(hba, UIC_ARG_MIB(PA_TX_HSG1_SYNC_LENGTH),
+				  sync_len_val);
+	if (err)
+		ufs_qcom_msg(ERR, hba->dev, "Failed (%d) set PA_TX_HSG1_SYNC_LENGTH(%d)\n",
+			     err, sync_len_val);
+}
+
 static int ufs_qcom_apply_dev_quirks(struct ufs_hba *hba)
 {
 	unsigned long flags;
@@ -2059,6 +2072,9 @@ static int ufs_qcom_apply_dev_quirks(struct ufs_hba *hba)
 
 	if (hba->dev_quirks & UFS_DEVICE_QUIRK_PA_HIBER8TIME)
 		ufs_qcom_override_pa_h8time(hba);
+
+	if (hba->dev_quirks & UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH)
+		ufs_qcom_override_pa_tx_hsg1_sync_len(hba);
 
 	ufshcd_parse_pm_levels(hba);
 
@@ -4085,6 +4101,7 @@ static int ufs_qcom_device_reset(struct ufs_hba *hba)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
 static void ufs_qcom_config_scaling_param(struct ufs_hba *hba,
 					  struct devfreq_dev_profile *p,
 					  void *data)
@@ -4100,10 +4117,18 @@ static void ufs_qcom_config_scaling_param(struct ufs_hba *hba,
 	d->upthreshold = 70;
 	d->downdifferential = 65;
 }
+#else
+static void ufs_qcom_config_scaling_param(struct ufs_hba *hba,
+					  struct devfreq_dev_profile *p,
+					  void *data)
+{
+}
+#endif
 
 static struct ufs_dev_fix ufs_qcom_dev_fixups[] = {
 	UFS_FIX(UFS_VENDOR_SAMSUNG, UFS_ANY_MODEL,
-		UFS_DEVICE_QUIRK_PA_HIBER8TIME),
+		UFS_DEVICE_QUIRK_PA_HIBER8TIME |
+		UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH),
 	UFS_FIX(UFS_VENDOR_MICRON, UFS_ANY_MODEL,
 		UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM),
 	UFS_FIX(UFS_VENDOR_SKHYNIX, UFS_ANY_MODEL,
@@ -4487,7 +4512,7 @@ static int ufs_cpufreq_status(void)
 
 	policy = cpufreq_cpu_get(0);
 	if (!policy) {
-		ufs_qcom_msg(WARN, dev, "cpufreq not probed yet, defer once\n");
+		ufs_qcom_msg(WARN, NULL, "cpufreq not probed yet, defer once\n");
 		return -EPROBE_DEFER;
 	}
 

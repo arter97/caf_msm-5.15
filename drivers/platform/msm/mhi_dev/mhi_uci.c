@@ -1084,17 +1084,16 @@ static int mhi_uci_client_open(struct inode *mhi_inode,
 		return -EINVAL;
 	}
 
+	if (!uci_handle) {
+		uci_log(UCI_DBG_DBG, "No memory, returning failure\n");
+		return -ENOMEM;
+	}
+
 	mutex_lock(&uci_handle->client_lock);
 	uci_log(UCI_DBG_DBG,
 		"Client opened struct device node 0x%x, ref count 0x%x\n",
 		iminor(mhi_inode), atomic_read(&uci_handle->ref_count));
 	if (atomic_add_return(1, &uci_handle->ref_count) == 1) {
-		if (!uci_handle) {
-			atomic_dec(&uci_handle->ref_count);
-			uci_log(UCI_DBG_DBG, "No memory, returning failure\n");
-			mutex_unlock(&uci_handle->client_lock);
-			return -ENOMEM;
-		}
 		uci_handle->uci_ctxt = &uci_ctxt;
 		uci_handle->f_flags = file_handle->f_flags;
 		if (!atomic_read(&uci_handle->mhi_chans_open)) {
@@ -1631,7 +1630,7 @@ void mhi_uci_chan_state_notify(struct mhi_dev *mhi,
 		return;
 	}
 
-	rc = kobject_uevent_env(&mhi->dev->kobj, KOBJ_CHANGE, buf);
+	rc = kobject_uevent_env(&mhi->mhi_hw_ctx->dev->kobj, KOBJ_CHANGE, buf);
 	if (rc)
 		uci_log(UCI_DBG_ERROR,
 				"Sending uevent failed for chan %d\n", ch_id);
