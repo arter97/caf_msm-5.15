@@ -689,6 +689,7 @@ struct mhi_dev_ctx {
 	struct kobj_uevent_env		kobj_env;
 	struct ep_pcie_notify		*notify;
 	struct mhi_dma_ops		mhi_dma_fun_ops;
+	struct ep_pcie_cap		ep_cap;
 };
 
 enum mhi_id {
