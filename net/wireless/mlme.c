@@ -736,23 +736,31 @@ int cfg80211_mlme_mgmt_tx(struct cfg80211_registered_device *rdev,
 	}
 
 	if (!ether_addr_equal(mgmt->sa, wdev_address(wdev))) {
-		/* Allow random TA to be used with Public Action frames if the
-		 * driver has indicated support for this. Otherwise, only allow
-		 * the local address to be used.
-		 */
-		if (!ieee80211_is_action(mgmt->frame_control) ||
-		    mgmt->u.action.category != WLAN_CATEGORY_PUBLIC)
-			return -EINVAL;
-		if (!wdev->connected &&
-		    !wiphy_ext_feature_isset(
-			    &rdev->wiphy,
-			    NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA))
-			return -EINVAL;
-		if (wdev->connected &&
-		    !wiphy_ext_feature_isset(
-			    &rdev->wiphy,
-			    NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA_CONNECTED))
-			return -EINVAL;
+		if (!ieee80211_is_auth(mgmt->frame_control)) {
+			/* Allow random TA to be used with Public Action frames if the
+			 * driver has indicated support for this. Otherwise, only allow
+			 * the local address to be used.
+			 */
+			if (!ieee80211_is_action(mgmt->frame_control) ||
+			    mgmt->u.action.category != WLAN_CATEGORY_PUBLIC)
+				return -EINVAL;
+			if (!wdev->connected &&
+			    !wiphy_ext_feature_isset(&rdev->wiphy,
+				    NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA))
+				return -EINVAL;
+			if (wdev->connected &&
+			    !wiphy_ext_feature_isset(&rdev->wiphy,
+				    NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA_CONNECTED))
+				return -EINVAL;
+		} else {
+			/* Allow random TA to be used with authentication frames if the
+			 * driver has indicated support for this. Otherwise, only allow
+			 * the local address to be used.
+			 */
+			if (!wiphy_ext_feature_isset(&rdev->wiphy,
+						     NL80211_EXT_FEATURE_AUTH_TX_RANDOM_TA))
+				return -EINVAL;
+		}
 	}
 
 	/* Transmit the management frame as requested by user space */
