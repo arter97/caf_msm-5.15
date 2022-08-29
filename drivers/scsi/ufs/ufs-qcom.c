@@ -628,12 +628,6 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 					PHY_MODE_UFS_HS_B : PHY_MODE_UFS_HS_A;
 	int submode = host->limit_phy_submode;
 
-	/* Reset UFS Host Controller and PHY */
-	ret = ufs_qcom_host_reset(hba);
-	if (ret)
-		ufs_qcom_msg(WARN, hba->dev, "%s: host reset returned %d\n",
-				  __func__, ret);
-
 	if (host->hw_ver.major < 0x4)
 		submode = UFS_QCOM_PHY_SUBMODE_NON_G4;
 	phy_set_mode_ext(phy, mode, submode);
@@ -2657,11 +2651,11 @@ ufs_qcom_ioctl(struct scsi_device *dev, unsigned int cmd, void __user *buffer)
 
 	switch (cmd) {
 	case UFS_IOCTL_QUERY:
-		pm_runtime_get_sync(hba->dev);
+		ufshcd_rpm_get_sync(hba);
 		err = ufs_qcom_query_ioctl(hba,
 					   ufshcd_scsi_to_upiu_lun(dev->lun),
 					   buffer);
-		pm_runtime_put_sync(hba->dev);
+		ufshcd_rpm_put_sync(hba);
 		break;
 	default:
 		err = -ENOIOCTLCMD;
@@ -4076,17 +4070,17 @@ static void ufs_qcom_parse_lpm(struct ufs_qcom_host *host)
 static int ufs_qcom_device_reset(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int ret = 0;
+
+	/* Reset UFS Host Controller and PHY */
+	ret = ufs_qcom_host_reset(hba);
+	if (ret)
+		ufs_qcom_msg(WARN, hba->dev, "%s: host reset returned %d\n",
+				 __func__, ret);
 
 	/* reset gpio is optional */
 	if (!host->device_reset)
 		return -EOPNOTSUPP;
-
-	/*
-	 * If Host Tx keeps bursting during and after H/W reset,
-	 * some UFS devices may fail the next following link startup,
-	 * hence disable hba before reset the device.
-	 */
-	ufshcd_hba_stop(hba);
 
 	/*
 	 * The UFS device shall detect reset pulses of 1us, sleep for 10us to

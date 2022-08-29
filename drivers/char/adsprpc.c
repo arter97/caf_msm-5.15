@@ -680,7 +680,7 @@ skip_buf_cache:
 			goto bail;
 		}
 		vmid = fl->apps->channel[cid].vmid;
-		if (vmid) {
+		if ((vmid) && (fl->apps->channel[cid].in_hib == 0)) {
 			int srcVM[2] = {VMID_HLOS, vmid};
 			int hyp_err = 0;
 
@@ -978,7 +978,7 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map, uint32_t flags)
 			sess = fl->sctx;
 
 		vmid = fl->apps->channel[cid].vmid;
-		if (vmid && map->phys) {
+		if (vmid && map->phys && (me->channel[cid].in_hib == 0)) {
 			int hyp_err = 0;
 			int srcVM[2] = {VMID_HLOS, vmid};
 
@@ -1004,7 +1004,7 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map, uint32_t flags)
 }
 
 static int fastrpc_session_alloc(struct fastrpc_channel_ctx *chan, int secure,
-					struct fastrpc_session_ctx **session);
+			int sharedcb, struct fastrpc_session_ctx **session);
 
 static int fastrpc_mmap_create_remote_heap(struct fastrpc_file *fl,
 		struct fastrpc_mmap *map, size_t len, int mflags)
@@ -1161,7 +1161,7 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 		map->secure = (mem_buf_dma_buf_exclusive_owner(map->buf)) ? 0 : 1;
 		if (map->secure) {
 			if (!fl->secsctx)
-				err = fastrpc_session_alloc(chan, 1,
+				err = fastrpc_session_alloc(chan, 1, 0,
 							&fl->secsctx);
 			if (err) {
 				ADSPRPC_ERR(
@@ -1726,7 +1726,11 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 		if (err)
 			goto bail;
 	}
-
+	VERIFY(err, VALID_FASTRPC_CID(cid));
+	if (err) {
+		err = -ECHRNG;
+		goto bail;
+	}
 	chan = &me->channel[cid];
 
 	spin_lock_irqsave(&chan->ctxlock, irq_flags);
@@ -2678,12 +2682,14 @@ static int fastrpc_invoke_send(struct smq_invoke_ctx *ctx,
 			       uint32_t kernel, uint32_t handle)
 {
 	struct smq_msg *msg = &ctx->msg;
+	struct smq_msg msg_temp;
 	struct fastrpc_file *fl = ctx->fl;
 	struct fastrpc_channel_ctx *channel_ctx = NULL;
 	int err = 0, cid = -1;
 	uint32_t sc = ctx->sc;
 	int64_t ns = 0;
 	uint64_t xo_time_in_us = 0;
+	int isasync = (ctx->asyncjob.isasyncjob ? true : false);
 
 	if (!fl) {
 		err = -EBADF;
@@ -2718,6 +2724,15 @@ static int fastrpc_invoke_send(struct smq_invoke_ctx *ctx,
 	mutex_unlock(&channel_ctx->smd_mutex);
 
 	xo_time_in_us = CONVERT_CNT_TO_US(__arch_counter_get_cntvct());
+	if (isasync) {
+		/*
+		 * After message is sent to DSP, async response thread could immediately
+		 * get the response and free context, which will result in a use-after-free
+		 * in this function. So use a local variable for message.
+		 */
+		memcpy(&msg_temp, msg, sizeof(struct smq_msg));
+		msg = &msg_temp;
+	}
 	err = fastrpc_transport_send(cid, (void *)msg, sizeof(*msg), fl->trusted_vm);
 	trace_fastrpc_transport_send(cid, (uint64_t)ctx, msg->invoke.header.ctx,
 		handle, sc, msg->invoke.page.addr, msg->invoke.page.size);
@@ -3944,6 +3959,15 @@ int fastrpc_init_process(struct fastrpc_file *fl,
 		}
 	}
 
+	if (fl->sharedcb == 1) {
+		// Only attach sensors pd use cases can share CB
+		VERIFY(err, init->flags == FASTRPC_INIT_ATTACH_SENSORS);
+		if (err) {
+			err = -EACCES;
+			goto bail;
+		}
+	}
+
 	err = fastrpc_channel_open(fl, init->flags);
 	if (err)
 		goto bail;
@@ -4486,7 +4510,8 @@ static int fastrpc_munmap_on_dsp_rh(struct fastrpc_file *fl, uint64_t phys,
 		if (err)
 			goto bail;
 	} else if (flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
-		if (me->channel[cid].rhvm.vmid) {
+		if ((me->channel[cid].rhvm.vmid)
+				&& (me->channel[cid].in_hib == 0)) {
 			err = hyp_assign_phys(phys,
 					(uint64_t)size,
 					me->channel[cid].rhvm.vmid,
@@ -4949,7 +4974,7 @@ int fastrpc_internal_mmap(struct fastrpc_file *fl,
 static void fastrpc_context_list_dtor(struct fastrpc_file *fl);
 
 static int fastrpc_session_alloc_locked(struct fastrpc_channel_ctx *chan,
-			int secure, struct fastrpc_session_ctx **session)
+		int secure, int sharedcb, struct fastrpc_session_ctx **session)
 {
 	struct fastrpc_apps *me = &gfa;
 	uint64_t idx = 0;
@@ -4958,7 +4983,8 @@ static int fastrpc_session_alloc_locked(struct fastrpc_channel_ctx *chan,
 	if (chan->sesscount) {
 		for (idx = 0; idx < chan->sesscount; ++idx) {
 			if (!chan->session[idx].used &&
-				chan->session[idx].smmu.secure == secure) {
+				chan->session[idx].smmu.secure == secure &&
+				chan->session[idx].smmu.sharedcb == sharedcb) {
 				chan->session[idx].used = 1;
 				break;
 			}
@@ -5141,13 +5167,13 @@ bail:
 }
 
 static int fastrpc_session_alloc(struct fastrpc_channel_ctx *chan, int secure,
-					struct fastrpc_session_ctx **session)
+			int sharedcb, struct fastrpc_session_ctx **session)
 {
 	int err = 0;
 
 	mutex_lock(&chan->smd_mutex);
 	if (!*session)
-		err = fastrpc_session_alloc_locked(chan, secure, session);
+		err = fastrpc_session_alloc_locked(chan, secure, sharedcb, session);
 	mutex_unlock(&chan->smd_mutex);
 	if (err == -EUSERS) {
 		ADSPRPC_WARN(
@@ -5591,6 +5617,7 @@ static int fastrpc_channel_open(struct fastrpc_file *fl, uint32_t flags)
 		me->channel[cid].prevssrcount =
 					me->channel[cid].ssrcount;
 	}
+	me->channel[cid].in_hib = 0;
 	mutex_unlock(&me->channel[cid].smd_mutex);
 
 bail:
@@ -5813,7 +5840,7 @@ int fastrpc_get_info(struct fastrpc_file *fl, uint32_t *info)
 		fl->ssrcount = fl->apps->channel[cid].ssrcount;
 		mutex_lock(&fl->apps->channel[cid].smd_mutex);
 		err = fastrpc_session_alloc_locked(&fl->apps->channel[cid],
-				0, &fl->sctx);
+				0, fl->sharedcb, &fl->sctx);
 		mutex_unlock(&fl->apps->channel[cid].smd_mutex);
 		if (err == -EUSERS) {
 			ADSPRPC_WARN(
@@ -5964,6 +5991,9 @@ int fastrpc_internal_control(struct fastrpc_file *fl,
 		err = fastrpc_manage_poll_mode(fl, cp->lp.enable, cp->lp.latency);
 		if (err)
 			goto bail;
+		break;
+	case FASTRPC_CONTROL_SMMU:
+		fl->sharedcb = cp->smmu.sharedcb;
 		break;
 	default:
 		err = -EBADRQC;
@@ -7138,6 +7168,7 @@ static int fastrpc_cb_probe(struct device *dev)
 			dma_addr_pool[1]);
 
 	if (of_get_property(dev->of_node, "shared-cb", NULL) != NULL) {
+		sess->smmu.sharedcb = 1;
 		err = of_property_read_u32(dev->of_node, "shared-cb",
 				&sharedcb_count);
 		if (err)
@@ -7489,6 +7520,23 @@ static void fastrpc_deinit(void)
 	mutex_destroy(&me->mut_uid);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int fastrpc_restore(struct device *dev)
+{
+	struct fastrpc_apps *me = &gfa;
+	int cid;
+
+	pr_info("adsprpc: restore enter\n");
+	for (cid = 0; cid < NUM_CHANNELS; cid++)
+		me->channel[cid].in_hib = 1;
+	pr_info("adsprpc: restore exit\n");
+	return 0;
+}
+
+static const struct dev_pm_ops fastrpc_pm = {
+	.restore = fastrpc_restore,
+};
+#endif
 static struct platform_driver fastrpc_driver = {
 	.probe = fastrpc_probe,
 	.driver = {
@@ -7580,9 +7628,10 @@ long fastrpc_driver_invoke(struct fastrpc_device *dev, unsigned int invoke_num,
 		spin_unlock(&fl->hlock);
 		spin_unlock_irqrestore(&me->hlock, irq_flags);
 		mutex_lock(&fl->internal_map_mutex);
-
+		mutex_lock(&fl->map_mutex);
 		if (!fastrpc_mmap_find(fl, -1, p.unmap->buf, 0, 0, ADSP_MMAP_DMA_BUFFER, 0, &map)) {
 			/* Un-map DMA buffer on DSP*/
+			mutex_unlock(&fl->map_mutex);
 			VERIFY(err, !(err = fastrpc_munmap_on_dsp(fl, map->raddr,
 				map->phys, map->size, map->flags)));
 			if (err) {
@@ -7591,6 +7640,7 @@ long fastrpc_driver_invoke(struct fastrpc_device *dev, unsigned int invoke_num,
 			}
 			fastrpc_mmap_free(map, 0);
 		}
+		mutex_unlock(&fl->map_mutex);
 		mutex_unlock(&fl->internal_map_mutex);
 		break;
 	default:
@@ -7832,6 +7882,7 @@ static int __init fastrpc_device_init(void)
 		me->jobid[i] = 1;
 		me->channel[i].dev = me->secure_dev;
 		me->channel[i].ssrcount = 0;
+		me->channel[i].in_hib = 0;
 		me->channel[i].prevssrcount = 0;
 		me->channel[i].issubsystemup = 1;
 		me->channel[i].rh_dump_dev = NULL;

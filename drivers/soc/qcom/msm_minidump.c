@@ -113,17 +113,6 @@ struct md_region md_get_region(char *name)
 
 
 	if (is_rm_minidump) {
-		if (!minidump_table)
-			goto out;
-		regno = num_regions;
-		for (i = 0; i < regno; i++) {
-			mdr = &minidump_table->entry[i];
-			if (!strcmp(mdr->name, name)) {
-				tmp = *mdr;
-				goto out;
-			}
-		}
-	} else {
 		if (!minidump_rm_table)
 			goto out;
 		regno = num_regions;
@@ -135,6 +124,17 @@ struct md_region md_get_region(char *name)
 				tmp.phys_addr = phdr->p_vaddr;
 				tmp.virt_addr = phdr->p_paddr;
 				tmp.size = phdr->p_filesz;
+				goto out;
+			}
+		}
+	} else {
+		if (!minidump_table)
+			goto out;
+		regno = num_regions;
+		for (i = 0; i < regno; i++) {
+			mdr = &minidump_table->entry[i];
+			if (!strcmp(mdr->name, name)) {
+				tmp = *mdr;
 				goto out;
 			}
 		}
@@ -681,6 +681,11 @@ int msm_minidump_add_region(const struct md_region *entry)
 		md_add_elf_header(entry);
 		/* Ensure that init completes before register region */
 	} else if (is_rm_minidump && smp_load_acquire(&md_init_done)) {
+		if (md_rm_entry_num(entry) >= 0) {
+			printk_deferred("Entry name already exist\n");
+			ret = -EEXIST;
+			goto out;
+		}
 		ret = md_rm_add_region(entry);
 		if (ret)
 			goto out;
@@ -772,6 +777,7 @@ static int md_remove_ss_toc(const struct md_region *entry)
 
 	minidump_table->md_ss_toc->ss_region_count--;
 	minidump_table->md_ss_toc->md_ss_toc_init = 1;
+	num_regions--;
 
 	return 0;
 }

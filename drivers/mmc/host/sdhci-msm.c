@@ -31,6 +31,7 @@
 #include "cqhci.h"
 #include "../core/core.h"
 #include <linux/qtee_shmbridge.h>
+#include <linux/crypto-qti-common.h>
 
 #define CORE_MCI_VERSION		0x50
 #define CORE_VERSION_MAJOR_SHIFT	28
@@ -2935,7 +2936,7 @@ sdhci_msm_ice_resume(struct sdhci_msm_host *msm_host)
 
 void sdhci_msm_ice_disable(struct sdhci_msm_host *msm_host)
 {
-	return 0;
+	return;
 }
 #endif /* !CONFIG_MMC_CRYPTO */
 

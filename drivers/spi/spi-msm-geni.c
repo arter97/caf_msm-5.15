@@ -111,8 +111,6 @@
 #define PINCTRL_ACTIVE  "active"
 #define PINCTRL_SLEEP   "sleep"
 
-#define DDR_VOTE_FACTOR		2
-
 #define SPI_LOG_DBG(log_ctx, print, dev, x...) do { \
 GENI_SE_DBG(log_ctx, print, dev, x); \
 if (dev) \
@@ -445,10 +443,8 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 	if (mode & SPI_CPOL)
 		cpol |= CPOL;
 
-	if (!spi->slave) {
-		if (mode & SPI_CPHA)
-			cpha |= CPHA;
-	}
+	if (mode & SPI_CPHA)
+		cpha |= CPHA;
 
 	if (spi_slv->mode & SPI_CS_HIGH)
 		demux_output_inv |= BIT(spi_slv->chip_select);
@@ -1081,7 +1077,6 @@ static int spi_geni_prepare_message(struct spi_master *spi,
 {
 	int ret = 0;
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
-	struct geni_se *spi_rsc = &mas->spi_rsc;
 	int count;
 
 	if (mas->shared_ee) {
@@ -1163,21 +1158,6 @@ static int spi_geni_prepare_message(struct spi_master *spi,
 		ret = setup_fifo_params(spi_msg->spi, spi);
 	}
 
-	/* DDR and GENI path vote based on freq, core/core2x - TBD */
-	spi_rsc->icc_paths[GENI_TO_DDR].avg_bw =
-		Bps_to_icc(mas->cur_speed_hz * DDR_VOTE_FACTOR);
-	spi_rsc->icc_paths[CPU_TO_GENI].avg_bw = Bps_to_icc(mas->cur_speed_hz);
-	ret = geni_icc_set_bw(spi_rsc);
-	if (ret) {
-		SPI_LOG_ERR(mas->ipc, true, mas->dev,
-			"%s: icc set bw failed ret:%d\n",  __func__, ret);
-		return ret;
-	}
-	SPI_LOG_DBG(mas->ipc, false, mas->dev,
-		"%s: GENI_TO_CORE:%d CPU_TO_GENI:%d GENI_TO_DDR:%d\n",
-		__func__, spi_rsc->icc_paths[GENI_TO_CORE].avg_bw,
-		spi_rsc->icc_paths[CPU_TO_GENI].avg_bw,
-		spi_rsc->icc_paths[GENI_TO_DDR].avg_bw);
 exit_prepare_message:
 	return ret;
 }
@@ -1597,7 +1577,8 @@ static int setup_fifo_xfer(struct spi_transfer *xfer,
 	 * mode for transfers or select the mode dynamically based on
 	 * size of data.
 	 */
-	mas->cur_xfer_mode = GENI_SE_DMA;
+	if (spi->slave)
+		mas->cur_xfer_mode = GENI_SE_DMA;
 	if (mas->disable_dma || trans_len <= fifo_size)
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	geni_se_select_mode(&mas->spi_rsc, mas->cur_xfer_mode);
@@ -2073,8 +2054,8 @@ static int spi_geni_probe(struct platform_device *pdev)
 		/* set voting values for path: core, config and DDR */
 		spi_rsc = &geni_mas->spi_rsc;
 		ret = geni_se_common_resources_init(spi_rsc,
-			Bps_to_icc(CORE_2X_50_MHZ), GENI_DEFAULT_BW,
-			GENI_DEFAULT_BW);
+			SPI_CORE2X_VOTE, APPS_PROC_TO_QUP_VOTE,
+			(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
 		if (ret) {
 			dev_err(&pdev->dev, "Error geni_se_resources_init\n");
 			goto spi_geni_probe_err;

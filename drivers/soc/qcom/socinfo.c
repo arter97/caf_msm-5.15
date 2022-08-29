@@ -919,10 +919,20 @@ static const struct soc_id soc_id[] = {
 	{ 517, "MONACOP" },
 	{ 518, "KHAJE" },
 	{ 519, "KALAMA" },
+	{ 532, "LEMANSAU_IVI" },
+	{ 533, "LEMANSAU_ADAS_H" },
+	{ 534, "LEMANSAU_IVI_ADAS" },
+	{ 535, "LEMANSAU_ADAS" },
 	{ 536, "KALAMAP" },
 	{ 539, "CINDERRU"},
 	{ 545, "CINDERDU"},
 	{ 570, "SDXBAAGHA"},
+	{ 587, "CINDERDU_1010"},
+	{ 588, "CINDERRU_1032"},
+	{ 589, "CINDERRU_1052"},
+	{ 590, "CINDERRU_1062"},
+	{ 600, "KALAMA_SG"},
+	{ 601, "KALAMAP_SG"},
 };
 
 static struct qcom_socinfo *qsocinfo;
