@@ -1098,9 +1098,16 @@ void fast_smmu_setup_dma_ops(struct device *dev, u64 dma_base, u64 dma_limit)
 }
 EXPORT_SYMBOL(fast_smmu_setup_dma_ops);
 
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
 int __init dma_mapping_fast_init(void)
 {
 	return register_trace_android_rvh_iommu_setup_dma_ops(
 			__fast_smmu_setup_dma_ops, NULL);
 }
+#else
+int __init dma_mapping_fast_init(void)
+{
+	return 0;
+}
+#endif
 
