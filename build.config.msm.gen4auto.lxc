@@ -4,11 +4,6 @@
 . ${ROOT_DIR}/msm-kernel/build.config.aarch64
 
 ################################################################################
-
-unset EXTRA_CONFIGS
-SKIP_UNPACKING_RAMDISK=1
-VENDOR_RAMDISK_BINARY=${ROOT_DIR}/prebuilts/qcom_boot_artifacts/cinder/cinder-initrd.gz
-
 ## Variant setup
 MSM_ARCH=gen4auto
 VARIANTS=(perf_defconfig debug_defconfig)
