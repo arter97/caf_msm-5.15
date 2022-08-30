@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _UAPI_MSM_RMNET_H_
@@ -72,7 +73,8 @@
 #define RMNET_IOCTL_SET_MTU                    0x0020   /* Set v4/v6 MTU   */
 #define RMNET_IOCTL_GET_EPID_LL                0x0021   /* Get LL ep ID    */
 #define RMNET_IOCTL_GET_EP_PAIR_LL             0x0022   /* LL ep pair      */
-
+#define RMNET_IOCTL_DEL_MUX_CHANNEL            0x0023   /* Del MUX ID      */
+#define RMNET_IOCTL_DEL_IFACE_MUX_CHANNEL      0x0024   /* Del IFACE MUX ID */
 /**
  * RMNET_IOCTL_EXTENDED_V2 ioctl types.
  * Should be sent through "extended_ioctl_type" variable.
