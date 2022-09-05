@@ -493,13 +493,11 @@ EXPORT_SYMBOL(geni_se_config_packing);
 
 static void geni_se_clks_off(struct geni_se *se)
 {
-#if 0
 	struct geni_wrapper *wrapper = se->wrapper;
 
 	clk_disable_unprepare(se->clk);
 	clk_bulk_disable_unprepare(ARRAY_SIZE(wrapper->ahb_clks),
 						wrapper->ahb_clks);
-#endif
 }
 
 /**
@@ -527,8 +525,7 @@ EXPORT_SYMBOL(geni_se_resources_off);
 
 static int geni_se_clks_on(struct geni_se *se)
 {
-	int ret = 0;
-#if 0
+	int ret;
 	struct geni_wrapper *wrapper = se->wrapper;
 
 	ret = clk_bulk_prepare_enable(ARRAY_SIZE(wrapper->ahb_clks),
@@ -540,7 +537,6 @@ static int geni_se_clks_on(struct geni_se *se)
 	if (ret)
 		clk_bulk_disable_unprepare(ARRAY_SIZE(wrapper->ahb_clks),
 							wrapper->ahb_clks);
-#endif
 	return ret;
 }
 
@@ -880,7 +876,7 @@ static int geni_se_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct geni_wrapper *wrapper;
-//	int ret;
+	int ret;
 
 	wrapper = devm_kzalloc(dev, sizeof(*wrapper), GFP_KERNEL);
 	if (!wrapper)
@@ -891,7 +887,7 @@ static int geni_se_probe(struct platform_device *pdev)
 	wrapper->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(wrapper->base))
 		return PTR_ERR(wrapper->base);
-#if 0
+
 	if (!has_acpi_companion(&pdev->dev)) {
 		wrapper->ahb_clks[0].id = "m-ahb";
 		wrapper->ahb_clks[1].id = "s-ahb";
@@ -901,7 +897,6 @@ static int geni_se_probe(struct platform_device *pdev)
 			return ret;
 		}
 	}
-#endif
 
 	dev_set_drvdata(dev, wrapper);
 	dev_dbg(dev, "GENI SE Driver probed\n");

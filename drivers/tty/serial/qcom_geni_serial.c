@@ -1383,14 +1383,12 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 	uport->dev = &pdev->dev;
 	port->se.dev = &pdev->dev;
 	port->se.wrapper = dev_get_drvdata(pdev->dev.parent);
-#if 0
 	port->se.clk = devm_clk_get(&pdev->dev, "se");
 	if (IS_ERR(port->se.clk)) {
 		ret = PTR_ERR(port->se.clk);
 		dev_err(&pdev->dev, "Err getting SE Core clk %d\n", ret);
 		return ret;
 	}
-#endif
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1407,7 +1405,7 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 		if (!port->rx_fifo)
 			return -ENOMEM;
 	}
-#if 0
+
 	ret = geni_icc_get(&port->se, NULL);
 	if (ret)
 		return ret;
@@ -1418,7 +1416,6 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 	ret = geni_icc_set_bw(&port->se);
 	if (ret)
 		return ret;
-#endif
 
 	port->name = devm_kasprintf(uport->dev, GFP_KERNEL,
 			"qcom_geni_serial_%s%d",
@@ -1441,7 +1438,6 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 	if (of_property_read_bool(pdev->dev.of_node, "cts-rts-swap"))
 		port->cts_rts_swap = true;
 
-#if 0
 	ret = devm_pm_opp_set_clkname(&pdev->dev, "se");
 	if (ret)
 		return ret;
@@ -1451,7 +1447,7 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "invalid OPP table in device tree\n");
 		return ret;
 	}
-#endif
+
 	port->private_data.drv = drv;
 	uport->private_data = &port->private_data;
 	platform_set_drvdata(pdev, port);
