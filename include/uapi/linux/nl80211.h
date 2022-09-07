@@ -2742,6 +2742,8 @@ enum nl80211_commands {
  * @NL80211_ATTR_MLO_SUPPORT: Flag attribute to indicate user space supports MLO
  *	connection. Used with %NL80211_CMD_CONNECT. If this attribute is not
  *	included in NL80211_CMD_CONNECT drivers must not perform MLO connection.
+ * @NL80211_ATTR_TD_BITMAP: Transition Disable bitmap, for subsequent
+ *	(re)associations.
  *
  * @NL80211_ATTR_MLD_MAC: MLD MAC address.
  * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
@@ -3276,8 +3278,8 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_TX_HW_TIMESTAMP,
 	NL80211_ATTR_RX_HW_TIMESTAMP,
+	NL80211_ATTR_TD_BITMAP,
 
-	NL80211_ATTR_RESERVED_DO_NOT_USE_10 = 321,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_11 = 322,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_12 = 323,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_13 = 324,
