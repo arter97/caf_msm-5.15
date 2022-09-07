@@ -130,32 +130,31 @@ EXPORT_SYMBOL(ep_pcie_get_linkstatus);
 
 int ep_pcie_config_outbound_iatu(struct ep_pcie_hw *phandle,
 				struct ep_pcie_iatu entries[],
-				u32 num_entries,
-				u32 vf_id)
+				u32 num_entries)
 {
 	if (WARN_ON(!phandle))
 		return -EINVAL;
 
-	return phandle->config_outbound_iatu(entries, num_entries, vf_id);
+	return phandle->config_outbound_iatu(entries, num_entries);
 }
 EXPORT_SYMBOL(ep_pcie_config_outbound_iatu);
 
 int ep_pcie_get_msi_config(struct ep_pcie_hw *phandle,
-				struct ep_pcie_msi_config *cfg, u32 vf_id)
+				struct ep_pcie_msi_config *cfg)
 {
 	if (WARN_ON(!phandle))
 		return -EINVAL;
 
-	return phandle->get_msi_config(cfg, vf_id);
+	return phandle->get_msi_config(cfg);
 }
 EXPORT_SYMBOL(ep_pcie_get_msi_config);
 
-int ep_pcie_trigger_msi(struct ep_pcie_hw *phandle, u32 idx, u32 vf_id)
+int ep_pcie_trigger_msi(struct ep_pcie_hw *phandle, u32 idx)
 {
 	if (WARN_ON(!phandle))
 		return -EINVAL;
 
-	return phandle->trigger_msi(idx, vf_id);
+	return phandle->trigger_msi(idx);
 }
 EXPORT_SYMBOL(ep_pcie_trigger_msi);
 
@@ -171,13 +170,12 @@ EXPORT_SYMBOL(ep_pcie_wakeup_host);
 
 int ep_pcie_config_db_routing(struct ep_pcie_hw *phandle,
 				struct ep_pcie_db_config chdb_cfg,
-				struct ep_pcie_db_config erdb_cfg,
-				u32 vf_id)
+				struct ep_pcie_db_config erdb_cfg)
 {
 	if (WARN_ON(!phandle))
 		return -EINVAL;
 
-	return phandle->config_db_routing(chdb_cfg, erdb_cfg, vf_id);
+	return phandle->config_db_routing(chdb_cfg, erdb_cfg);
 }
 EXPORT_SYMBOL(ep_pcie_config_db_routing);
 
