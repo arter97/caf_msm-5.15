@@ -144,5 +144,6 @@ struct i2c_slave {
 	int			irq;
 	struct icc_path		*icc_path;
 	unsigned int		bw;
+	wait_queue_head_t	readq;
 };
 #endif /* _I2C_SLAVE_H_ */

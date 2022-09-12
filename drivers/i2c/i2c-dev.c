@@ -612,6 +612,21 @@ static int i2cdev_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static __poll_t i2cdev_poll(struct file *file, struct poll_table_struct *wait)
+{
+	__poll_t (*poll_func)(struct file *file, struct poll_table_struct *wait);
+	struct i2c_client *client = file->private_data;
+	int ret;
+
+	poll_func = client->adapter->algo->poll;
+	if (poll_func)
+		ret = poll_func(file, wait);
+	else
+		ret = -EPERM;
+
+	return ret;
+}
+
 static int i2cdev_release(struct inode *inode, struct file *file)
 {
 	struct i2c_client *client = file->private_data;
@@ -631,6 +646,7 @@ static const struct file_operations i2cdev_fops = {
 	.unlocked_ioctl	= i2cdev_ioctl,
 	.compat_ioctl	= compat_i2cdev_ioctl,
 	.open		= i2cdev_open,
+	.poll		= i2cdev_poll,
 	.release	= i2cdev_release,
 };
 

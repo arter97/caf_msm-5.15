@@ -103,6 +103,31 @@ static void dump_register(struct i2c_slave *i2c_slave)
 }
 
 /**
+ * i2c_slave_poll: poll() syscall for I2C slave.
+ * @file: Pointer to the file structure.
+ * @wait: Pointer to Poll table.
+ *
+ * This function is used to poll on the I2C slave device
+ * when userspace client do a poll() system call.
+ *
+ * Return: POLLIN if RX data available else 0.
+ */
+static __poll_t i2c_slave_poll(struct file *file, struct poll_table_struct *wait)
+{
+	struct i2c_client *client = file->private_data;
+	struct i2c_slave *i2c_slave = i2c_get_adapdata(client->adapter);
+	__poll_t mask = 0;
+
+	poll_wait(file, &i2c_slave->readq, wait);
+	if (i2c_slave->rx_count > 0) {
+		I2C_SLAVE_DBG(i2c_slave->ipcl, false, i2c_slave->dev,
+			      "RX data available\n");
+		mask |= POLLIN;
+	}
+	return mask;
+}
+
+/**
  * read_tx_fifo_byte_count: To read TX FIFO count.
  * @i2c_slave: Pointer to Main Structure.
  *
@@ -195,6 +220,8 @@ static void i2c_slave_read_fifo(struct i2c_slave *i2c_slave)
 			i2c_slave->rx_count++;
 		}
 	}
+	/* wake up queue for available RX data */
+	wake_up_interruptible(&i2c_slave->readq);
 }
 
 /**
@@ -315,6 +342,7 @@ static irqreturn_t i2c_slave_irq(int irq, void *dev)
 	if (irq_stat & (1 << STOP_DETECTED)) {
 		I2C_SLAVE_DBG(i2c_slave->ipcl, false, i2c_slave->dev, "%s\n",
 			      irq_log[STOP_DETECTED]);
+		i2c_slave_read_fifo(i2c_slave);
 		i2c_slave_clear_irq(i2c_slave, STOP_DETECTED);
 	}
 
@@ -342,7 +370,6 @@ static irqreturn_t i2c_slave_irq(int irq, void *dev)
 	if (irq_stat & (1 << RX_DATA_AVAIL)) {
 		I2C_SLAVE_DBG(i2c_slave->ipcl, false, i2c_slave->dev, "%s\n",
 			      irq_log[RX_DATA_AVAIL]);
-		i2c_slave_read_fifo(i2c_slave);
 		i2c_slave_clear_irq(i2c_slave, RX_DATA_AVAIL);
 	}
 
@@ -655,6 +682,7 @@ static u32 i2c_slave_func(struct i2c_adapter *adap)
 static const struct i2c_algorithm i2c_slave_algo = {
 	.smbus_xfer	= i2c_slave_xfer,
 	.functionality	= i2c_slave_func,
+	.poll           = i2c_slave_poll,
 };
 
 /**
@@ -762,6 +790,7 @@ static int i2c_slave_probe(struct platform_device *pdev)
 		goto err_adap;
 	}
 
+	init_waitqueue_head(&i2c_slave->readq);
 	I2C_SLAVE_DBG(i2c_slave->ipcl, true, i2c_slave->dev,
 		      "I2C Slave probed\n");
 	return 0;

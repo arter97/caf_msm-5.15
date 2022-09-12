@@ -553,7 +553,7 @@ struct i2c_algorithm {
 
 	/* To determine what the adapter supports */
 	u32 (*functionality)(struct i2c_adapter *adap);
-
+	__poll_t (*poll)(struct file *file, struct poll_table_struct *wait);
 #if IS_ENABLED(CONFIG_I2C_SLAVE)
 	int (*reg_slave)(struct i2c_client *client);
 	int (*unreg_slave)(struct i2c_client *client);
