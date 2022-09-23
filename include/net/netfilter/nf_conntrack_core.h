@@ -83,4 +83,11 @@ void nf_conntrack_lock(spinlock_t *lock);
 
 extern spinlock_t nf_conntrack_expect_lock;
 
+#ifdef CONFIG_NF_CONNTRACK_SIP_SEGMENTATION
+struct sip_list {
+	struct nf_queue_entry *entry;
+	struct list_head list;
+};
+#endif
+
 #endif /* _NF_CONNTRACK_CORE_H */
