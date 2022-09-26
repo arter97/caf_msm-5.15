@@ -464,7 +464,7 @@ static void update_task_cpu_cycles(struct task_struct *p, int cpu,
 
 static inline bool is_ed_enabled(void)
 {
-	return (walt_rotation_enabled || (boost_policy != SCHED_BOOST_NONE));
+	return (boost_policy != SCHED_BOOST_NONE);
 }
 
 static inline bool is_ed_task(struct task_struct *p, u64 wallclock)
@@ -659,6 +659,7 @@ __cpu_util_freq_walt(int cpu, struct walt_cpu_load *walt_load, unsigned int *rea
 		walt_load->pl = pl;
 		walt_load->ws = walt_load_reported_window;
 		walt_load->rtgb_active = rtgb_active;
+		walt_load->big_task_rotation = walt_rotation_enabled;
 		if (wrq->ed_task)
 			walt_load->ed_active = true;
 		else
@@ -3759,7 +3760,7 @@ static void update_cpu_capacity_helper(int cpu)
 	rq->cpu_capacity_orig = min(fmax_capacity, thermal_cap);
 
 	if (old != rq->cpu_capacity_orig)
-		trace_update_cpu_capacity(cpu, 0, 0);
+		trace_update_cpu_capacity(cpu, fmax_capacity, rq->cpu_capacity_orig);
 }
 
 /*
@@ -4083,6 +4084,7 @@ static void walt_cpu_frequency_limits(void *unused, struct cpufreq_policy *polic
 		return;
 
 	cpu_cluster(policy->cpu)->max_freq = policy->max;
+	update_cpu_capacity_helper(policy->cpu);
 }
 
 static void android_rvh_sched_cpu_starting(void *unused, int cpu)

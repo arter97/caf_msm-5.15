@@ -1104,8 +1104,11 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 			if ((geni_ios & 0x3) != 0x3) { //SCL:b'1, SDA:b'0
 				I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state\n", __func__);
-					gi2c->prev_cancel_pending = true;
-					goto geni_i2c_gsi_cancel_pending;
+					/* doing pending cancel only rtl based SE's */
+					if (gi2c->is_i2c_rtl_based) {
+						gi2c->prev_cancel_pending = true;
+						goto geni_i2c_gsi_cancel_pending;
+					}
 			}
 		}
 geni_i2c_err_prep_sg:
@@ -1342,8 +1345,11 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 				I2C_LOG_DBG(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state: 0x%x\n",
 					__func__, geni_ios);
-				gi2c->prev_cancel_pending = true;
-				goto geni_i2c_txn_ret;
+				/* doing pending cancel only rtl based SE's */
+				if (gi2c->is_i2c_rtl_based) {
+					gi2c->prev_cancel_pending = true;
+					goto geni_i2c_txn_ret;
+				}
 			}
 		}
 
@@ -1544,8 +1550,8 @@ static int geni_i2c_probe(struct platform_device *pdev)
 			gi2c->i2c_rsc.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
 		} else {
 			ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
-					GENI_DEFAULT_BW, GENI_DEFAULT_BW,
-					Bps_to_icc(gi2c->clk_freq_out));
+					I2C_CORE2X_VOTE, APPS_PROC_TO_QUP_VOTE,
+					(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
 			if (ret) {
 				dev_err(&pdev->dev, "%s: Error - resources_init ret:%d\n",
 							__func__, ret);
@@ -1626,6 +1632,15 @@ static int geni_i2c_resume_early(struct device *device)
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
 
 	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__, true);
+	return 0;
+}
+
+static int geni_i2c_hib_resume_noirq(struct device *device)
+{
+	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
+
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s\n", __func__);
+	gi2c->se_mode = UNINITIALIZED;
 	return 0;
 }
 
@@ -1796,6 +1811,9 @@ static const struct dev_pm_ops geni_i2c_pm_ops = {
 	.resume_early		= geni_i2c_resume_early,
 	.runtime_suspend	= geni_i2c_runtime_suspend,
 	.runtime_resume		= geni_i2c_runtime_resume,
+	.freeze                 = geni_i2c_suspend_late,
+	.restore                = geni_i2c_hib_resume_noirq,
+	.thaw			= geni_i2c_hib_resume_noirq,
 };
 
 static const struct of_device_id geni_i2c_dt_match[] = {
