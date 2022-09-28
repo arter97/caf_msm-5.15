@@ -81,6 +81,7 @@ const char *socinfo_get_id_string(void);
 int socinfo_get_feature_code(void);
 int socinfo_get_pcode(void);
 char *socinfo_get_partinfo_details(unsigned int part_id);
+int socinfo_get_noem_variant(void);
 #else
 static inline uint32_t socinfo_get_id(void)
 {
@@ -107,6 +108,10 @@ int socinfo_get_pcode(void)
 const char *socinfo_get_partinfo_details(unsigned int part_id)
 {
 	return NULL;
+}
+int socinfo_get_noem_variant(void)
+{
+	return -EINVAL;
 }
 #endif /* CONFIG_QCOM_SOCINFO */
 
