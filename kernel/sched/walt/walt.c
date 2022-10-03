@@ -464,7 +464,7 @@ static void update_task_cpu_cycles(struct task_struct *p, int cpu,
 
 static inline bool is_ed_enabled(void)
 {
-	return (walt_rotation_enabled || (boost_policy != SCHED_BOOST_NONE));
+	return (boost_policy != SCHED_BOOST_NONE);
 }
 
 static inline bool is_ed_task(struct task_struct *p, u64 wallclock)
@@ -509,6 +509,13 @@ static void walt_update_task_ravg(struct task_struct *p, struct rq *rq, int even
  * Return total number of tasks "eligible" to run on higher capacity cpus
  */
 unsigned int walt_big_tasks(int cpu)
+{
+	struct walt_rq *wrq = (struct walt_rq *) cpu_rq(cpu)->android_vendor_data1;
+
+	return wrq->walt_stats.nr_big_tasks + wrq->walt_stats.nr_32bit_big_tasks;
+}
+
+unsigned int walt_big_64bit_tasks(int cpu)
 {
 	struct walt_rq *wrq = (struct walt_rq *) cpu_rq(cpu)->android_vendor_data1;
 
@@ -652,6 +659,7 @@ __cpu_util_freq_walt(int cpu, struct walt_cpu_load *walt_load, unsigned int *rea
 		walt_load->pl = pl;
 		walt_load->ws = walt_load_reported_window;
 		walt_load->rtgb_active = rtgb_active;
+		walt_load->big_task_rotation = walt_rotation_enabled;
 		if (wrq->ed_task)
 			walt_load->ed_active = true;
 		else
@@ -3752,7 +3760,7 @@ static void update_cpu_capacity_helper(int cpu)
 	rq->cpu_capacity_orig = min(fmax_capacity, thermal_cap);
 
 	if (old != rq->cpu_capacity_orig)
-		trace_update_cpu_capacity(cpu, 0, 0);
+		trace_update_cpu_capacity(cpu, fmax_capacity, rq->cpu_capacity_orig);
 }
 
 /*
@@ -3932,6 +3940,7 @@ static void walt_sched_init_rq(struct rq *rq)
 	wrq->prev_window_size = sched_ravg_window;
 	wrq->window_start = 0;
 	wrq->walt_stats.nr_big_tasks = 0;
+	wrq->walt_stats.nr_32bit_big_tasks = 0;
 	wrq->walt_flags = 0;
 	wrq->avg_irqload = 0;
 	wrq->prev_irq_time = 0;
@@ -4005,13 +4014,44 @@ walt_dec_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
 				      -(s64)wts->pred_demand_scaled);
 }
 
+static void adjust_misfit_task_accounting(struct walt_rq *wrq, struct task_struct *p, int adj)
+{
+	while (adj) {
+		if (adj > 0) {
+			if (!is_compat_thread(task_thread_info(p)))
+				wrq->walt_stats.nr_big_tasks++;
+			else
+				wrq->walt_stats.nr_32bit_big_tasks++;
+			adj--;
+		} else if (adj < 0) {
+			if (!is_compat_thread(task_thread_info(p))) {
+				if (wrq->walt_stats.nr_big_tasks == 0 &&
+				    wrq->walt_stats.nr_32bit_big_tasks > 0)
+					wrq->walt_stats.nr_32bit_big_tasks--;
+				else
+					wrq->walt_stats.nr_big_tasks--;
+			} else {
+				if (wrq->walt_stats.nr_32bit_big_tasks == 0 &&
+				    wrq->walt_stats.nr_big_tasks > 0)
+					wrq->walt_stats.nr_big_tasks--;
+				else
+					wrq->walt_stats.nr_32bit_big_tasks--;
+			}
+			adj++;
+		}
+	}
+
+	BUG_ON(wrq->walt_stats.nr_big_tasks < 0);
+	BUG_ON(wrq->walt_stats.nr_32bit_big_tasks < 0);
+}
+
 static void inc_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
 	struct walt_rq *wrq = (struct walt_rq *) rq->android_vendor_data1;
 	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;
 
 	if (wts->misfit)
-		wrq->walt_stats.nr_big_tasks++;
+		adjust_misfit_task_accounting(wrq, p, 1);
 
 	wts->rtg_high_prio = task_rtg_high_prio(p);
 	if (wts->rtg_high_prio)
@@ -4024,12 +4064,10 @@ static void dec_rq_walt_stats(struct rq *rq, struct task_struct *p)
 	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;
 
 	if (wts->misfit)
-		wrq->walt_stats.nr_big_tasks--;
+		adjust_misfit_task_accounting(wrq, p, -1);
 
 	if (wts->rtg_high_prio)
 		wrq->walt_stats.nr_rtg_high_prio_tasks--;
-
-	BUG_ON(wrq->walt_stats.nr_big_tasks < 0);
 }
 
 static void android_rvh_wake_up_new_task(void *unused, struct task_struct *new)
@@ -4046,6 +4084,7 @@ static void walt_cpu_frequency_limits(void *unused, struct cpufreq_policy *polic
 		return;
 
 	cpu_cluster(policy->cpu)->max_freq = policy->max;
+	update_cpu_capacity_helper(policy->cpu);
 }
 
 static void android_rvh_sched_cpu_starting(void *unused, int cpu)
@@ -4146,12 +4185,16 @@ static void android_rvh_enqueue_task(void *unused, struct rq *rq, struct task_st
 {
 	u64 wallclock;
 	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;
+	struct walt_rq *wrq = (struct walt_rq *) rq->android_vendor_data1;
 	bool double_enqueue = false;
 
 	if (unlikely(walt_disabled))
 		return;
 
 	lockdep_assert_held(&rq->__lock);
+
+	if (!is_per_cpu_kthread(p))
+		wrq->enqueue_counter++;
 
 	if (p->cpu != cpu_of(rq))
 		WALT_BUG(WALT_BUG_UPSTREAM, p, "enqueuing on rq %d when task->cpu is %d\n",
@@ -4191,6 +4234,10 @@ static void android_rvh_enqueue_task(void *unused, struct rq *rq, struct task_st
 
 	if (!double_enqueue)
 		walt_inc_cumulative_runnable_avg(rq, p);
+
+	if ((flags & ENQUEUE_WAKEUP) && do_pl_notif(rq))
+		waltgov_run_callback(rq, WALT_CPUFREQ_PL);
+
 	trace_sched_enq_deq_task(p, 1, cpumask_bits(p->cpus_ptr)[0], is_mvp(wts));
 }
 
@@ -4276,8 +4323,8 @@ static void android_rvh_update_misfit_status(void *unused, struct task_struct *p
 	if (change) {
 		sched_update_nr_prod(rq->cpu, 0);
 		wts->misfit = misfit;
-		wrq->walt_stats.nr_big_tasks += change;
-		BUG_ON(wrq->walt_stats.nr_big_tasks < 0);
+
+		adjust_misfit_task_accounting(wrq, p, change);
 	}
 }
 
@@ -4307,20 +4354,6 @@ static void android_rvh_try_to_wake_up(void *unused, struct task_struct *p)
 	if (update_preferred_cluster(grp, p, old_load, false))
 		set_preferred_cluster(grp);
 	rcu_read_unlock();
-}
-
-static void android_rvh_try_to_wake_up_success(void *unused, struct task_struct *p)
-{
-	unsigned long flags;
-	int cpu = p->cpu;
-
-	if (unlikely(walt_disabled))
-		return;
-
-	raw_spin_lock_irqsave(&cpu_rq(cpu)->__lock, flags);
-	if (do_pl_notif(cpu_rq(cpu)))
-		waltgov_run_callback(cpu_rq(cpu), WALT_CPUFREQ_PL);
-	raw_spin_unlock_irqrestore(&cpu_rq(cpu)->__lock, flags);
 }
 
 static u64 tick_sched_clock;
@@ -4494,7 +4527,6 @@ static void register_walt_hooks(void)
 	register_trace_android_rvh_after_enqueue_task(android_rvh_enqueue_task, NULL);
 	register_trace_android_rvh_after_dequeue_task(android_rvh_dequeue_task, NULL);
 	register_trace_android_rvh_try_to_wake_up(android_rvh_try_to_wake_up, NULL);
-	register_trace_android_rvh_try_to_wake_up_success(android_rvh_try_to_wake_up_success, NULL);
 	register_trace_android_rvh_tick_entry(android_rvh_tick_entry, NULL);
 	register_trace_android_vh_scheduler_tick(android_vh_scheduler_tick, NULL);
 	register_trace_android_rvh_schedule(android_rvh_schedule, NULL);

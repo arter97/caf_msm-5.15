@@ -35,6 +35,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/kfifo.h>
+#include <linux/clk/qcom.h>
 
 #include "../pci.h"
 
@@ -303,7 +304,6 @@
 		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
 	pr_err("%s: " fmt, __func__, arg);  \
 	} while (0)
-
 
 enum msm_pcie_res {
 	MSM_PCIE_RES_PARF,
@@ -2943,6 +2943,28 @@ static bool msm_pcie_check_ltssm_state(struct msm_pcie_dev_t *dev, u32 state)
 	return false;
 }
 
+void msm_pcie_clk_dump(struct msm_pcie_dev_t *pcie_dev)
+{
+	struct msm_pcie_clk_info_t *clk_info;
+	int i;
+
+	PCIE_ERR(pcie_dev,
+		 "PCIe: RC%d: Dump PCIe clocks\n",
+		 pcie_dev->rc_idx);
+
+	clk_info = pcie_dev->clk;
+	for (i = 0; i < pcie_dev->num_clk; i++, clk_info++) {
+		if (clk_info->hdl)
+			qcom_clk_dump(clk_info->hdl, NULL, 0);
+	}
+
+	clk_info = pcie_dev->pipe_clk;
+	for (i = 0; i < pcie_dev->num_pipe_clk; i++, clk_info++) {
+		if (clk_info->hdl)
+			qcom_clk_dump(clk_info->hdl, NULL, 0);
+	}
+}
+
 /**
  * msm_pcie_iatu_config - configure outbound address translation region
  * @dev: root commpex
@@ -4409,7 +4431,7 @@ static int msm_pcie_get_resources(struct msm_pcie_dev_t *dev,
 		return ret;
 
 	dev->icc_path = of_icc_get(&pdev->dev, "icc_path");
-	if (IS_ERR_OR_NULL(dev->icc_path)) {
+	if (IS_ERR(dev->icc_path)) {
 		ret = dev->icc_path ? PTR_ERR(dev->icc_path) : -EINVAL;
 
 		PCIE_ERR(dev, "PCIe: RC%d: failed to get ICC path: %d\n",
@@ -4750,6 +4772,9 @@ static int msm_pcie_enable(struct msm_pcie_dev_t *dev)
 			goto link_fail;
 	}
 
+	/* Disable override for fal10_veto logic to de-assert Qactive signal */
+	msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, BIT(0), 0);
+
 	/**
 	 * configure LANE_SKEW_OFF BIT-5 and PARF_CFG_BITS_3 BIT-8 to support
 	 * dynamic link width upscaling.
@@ -4876,6 +4901,10 @@ static void msm_pcie_disable(struct msm_pcie_dev_t *dev)
 
 	msm_pcie_write_mask(dev->parf + PCIE20_PARF_PHY_CTRL, 0,
 				BIT(0));
+
+	/* Enable override for fal10_veto logic to assert Qactive signal.*/
+	msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(0));
+
 	msm_pcie_clk_deinit(dev);
 	msm_pcie_vreg_deinit(dev);
 	msm_pcie_pipe_clk_deinit(dev);
@@ -7165,6 +7194,7 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 			PCIE_ERR(pcie_dev,
 				"PCIe: RC%d: dump PCIe registers\n",
 				pcie_dev->rc_idx);
+			msm_pcie_clk_dump(pcie_dev);
 			pcie_parf_dump(pcie_dev);
 			pcie_dm_core_dump(pcie_dev);
 			pcie_phy_dump(pcie_dev);

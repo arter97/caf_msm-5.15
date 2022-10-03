@@ -39,6 +39,18 @@ config QPNP_SMB5
 	  To compile this driver as a module, choose M here: the
 	  module will be called qpnp-smb5-main.
 
+config QPNP_SMBLITE
+        tristate "SMBLITE Battery Charger"
+        depends on MFD_SPMI_PMIC
+        help
+          Say Y to enable support for the SMBLITE charging peripheral.
+          The QPNP SMBLITE charger driver supports the charger peripheral
+          present in the chip.
+          The power supply framework is used to communicate battery and
+          usb properties to userspace and other driver consumers such
+          as fuel gauge and USB.
+          VBUS regulator is registered for supporting OTG.
+
 config SMB1398_CHARGER
 	tristate "SMB1398 power supply framework based driver"
 	depends on MFD_I2C_PMIC && IIO
@@ -62,5 +74,15 @@ config SMB1355_SLAVE_CHARGER
 	  The driver reports the charger status via the power supply framework.
 	  A charger status change triggers an IRQ via the device STAT pin.
 
+config SMB23X_CHARGER
+	tristate "SMB23X Battery Charger"
+	depends on I2C
+	help
+	  Say Y to include support for SMB23X Battery Charger.
+	  SMB23X is a single path linear charger capable of charging
+	  the battery with 1Amps of current.
+	  The driver supports charger enable/disable.
+	  The driver reports the charger status via the power supply framework.
+	  A charger status change triggers an IRQ via the device STAT pin.
 endif
 

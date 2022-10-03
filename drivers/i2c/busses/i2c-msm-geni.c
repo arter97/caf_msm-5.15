@@ -25,6 +25,7 @@
 #include <linux/ioctl.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
+#include <soc/qcom/boot_stats.h>
 
 #define SE_I2C_TX_TRANS_LEN		(0x26C)
 #define SE_I2C_RX_TRANS_LEN		(0x270)
@@ -176,6 +177,7 @@ struct geni_i2c_dev {
 	bool gpi_reset;
 	bool is_i2c_hub;
 	bool prev_cancel_pending; //Halt cancel till IOS in good state
+	bool is_i2c_rtl_based; /* doing pending cancel only for rtl based SE's */
 };
 
 static struct geni_i2c_dev *gi2c_dev_dbg[MAX_SE];
@@ -363,6 +365,10 @@ static int do_pending_cancel(struct geni_i2c_dev *gi2c)
 {
 	int timeout = 0;
 	u32 geni_ios = 0;
+
+	/* doing pending cancel only rtl based SE's */
+	if (!gi2c->is_i2c_rtl_based)
+		return 0;
 
 	geni_ios = geni_read_reg(gi2c->base, SE_GENI_IOS);
 	if ((geni_ios & 0x3) != 0x3) {
@@ -1099,8 +1105,11 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 			if ((geni_ios & 0x3) != 0x3) { //SCL:b'1, SDA:b'0
 				I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state\n", __func__);
-					gi2c->prev_cancel_pending = true;
-					goto geni_i2c_gsi_cancel_pending;
+					/* doing pending cancel only rtl based SE's */
+					if (gi2c->is_i2c_rtl_based) {
+						gi2c->prev_cancel_pending = true;
+						goto geni_i2c_gsi_cancel_pending;
+					}
 			}
 		}
 geni_i2c_err_prep_sg:
@@ -1174,8 +1183,11 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 	// WAR : Complete previous pending cancel cmd
 	if (gi2c->prev_cancel_pending) {
 		ret = do_pending_cancel(gi2c);
-		if (ret)
+		if (ret) {
+			pm_runtime_mark_last_busy(gi2c->dev);
+			pm_runtime_put_autosuspend(gi2c->dev);
 			return ret; //Don't perform xfer is cancel failed
+		}
 	}
 
 	geni_ios = geni_read_reg(gi2c->base, SE_GENI_IOS);
@@ -1334,8 +1346,11 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 				I2C_LOG_DBG(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state: 0x%x\n",
 					__func__, geni_ios);
-				gi2c->prev_cancel_pending = true;
-				goto geni_i2c_txn_ret;
+				/* doing pending cancel only rtl based SE's */
+				if (gi2c->is_i2c_rtl_based) {
+					gi2c->prev_cancel_pending = true;
+					goto geni_i2c_txn_ret;
+				}
 			}
 		}
 
@@ -1431,6 +1446,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 	struct device *dev = &pdev->dev;
+	char boot_marker[40];
 
 	gi2c = devm_kzalloc(&pdev->dev, sizeof(*gi2c), GFP_KERNEL);
 	if (!gi2c)
@@ -1441,6 +1457,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		gi2c_dev_dbg[arr_idx++] = gi2c;
 
 	gi2c->dev = dev;
+
+	snprintf(boot_marker, sizeof(boot_marker),
+				"M - DRIVER GENI_I2C Init");
+	place_marker(boot_marker);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1477,6 +1497,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		dev_err(gi2c->dev, "Invalid clk frequency %d KHz: %d\n",
 				gi2c->clk_freq_out, ret);
 		return ret;
+	}
+
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,rtl_se")) {
+		gi2c->is_i2c_rtl_based  = true;
+		dev_info(&pdev->dev, "%s: RTL based SE\n", __func__);
 	}
 
 	/*
@@ -1531,8 +1556,8 @@ static int geni_i2c_probe(struct platform_device *pdev)
 			gi2c->i2c_rsc.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
 		} else {
 			ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
-					GENI_DEFAULT_BW, GENI_DEFAULT_BW,
-					Bps_to_icc(gi2c->clk_freq_out));
+					I2C_CORE2X_VOTE, APPS_PROC_TO_QUP_VOTE,
+					(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
 			if (ret) {
 				dev_err(&pdev->dev, "%s: Error - resources_init ret:%d\n",
 							__func__, ret);
@@ -1587,6 +1612,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	snprintf(boot_marker, sizeof(boot_marker),
+				"M - DRIVER GENI_I2C_%d Ready", gi2c->adap.nr);
+	place_marker(boot_marker);
+
 	dev_info(gi2c->dev, "I2C probed\n");
 	return 0;
 }
@@ -1613,6 +1642,15 @@ static int geni_i2c_resume_early(struct device *device)
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
 
 	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__, true);
+	return 0;
+}
+
+static int geni_i2c_hib_resume_noirq(struct device *device)
+{
+	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
+
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s\n", __func__);
+	gi2c->se_mode = UNINITIALIZED;
 	return 0;
 }
 
@@ -1783,6 +1821,9 @@ static const struct dev_pm_ops geni_i2c_pm_ops = {
 	.resume_early		= geni_i2c_resume_early,
 	.runtime_suspend	= geni_i2c_runtime_suspend,
 	.runtime_resume		= geni_i2c_runtime_resume,
+	.freeze                 = geni_i2c_suspend_late,
+	.restore                = geni_i2c_hib_resume_noirq,
+	.thaw			= geni_i2c_hib_resume_noirq,
 };
 
 static const struct of_device_id geni_i2c_dt_match[] = {

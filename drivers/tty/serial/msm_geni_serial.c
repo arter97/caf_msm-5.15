@@ -32,6 +32,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/dma-mapping.h>
 #include <uapi/linux/msm_geni_serial.h>
+#include <soc/qcom/boot_stats.h>
 
 static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_MSM_GENI_CONSOLE_DEFAULT_ENABLED);
 
@@ -113,7 +114,8 @@ static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_MSM_GENI_CONSOLE_DEFAULT_ENAB
 #define STALE_TIMEOUT		(16)
 #define STALE_COUNT		(DEFAULT_BITS_PER_CHAR * STALE_TIMEOUT)
 #define SEC_TO_USEC		(1000000)
-#define STALE_DELAY		(10000) //10msec
+#define SYSTEM_DELAY		(500) /* 500 usec */
+#define STALE_DELAY_MAX		(10000) /* 10 msec */
 #define DEFAULT_BITS_PER_CHAR	(10)
 #define GENI_UART_NR_PORTS	(6)
 #define GENI_UART_CONS_PORTS	(1)
@@ -881,6 +883,9 @@ static int vote_clock_on(struct uart_port *uport)
 	int usage_count;
 	int ret = 0;
 
+	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
+		     "Enter %s:%s ioctl_count:%d\n",
+		     __func__, current->comm, port->ioctl_count);
 	ret = msm_geni_serial_power_on(uport);
 	if (ret) {
 		dev_err(uport->dev, "Failed to vote clock on\n");
@@ -889,9 +894,9 @@ static int vote_clock_on(struct uart_port *uport)
 	port->ioctl_count++;
 	usage_count = atomic_read(&uport->dev->power.usage_count);
 	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
-		"%s :%s ioctl:%d usage_count:%d edge-Count:%d\n",
-		__func__, current->comm, port->ioctl_count,
-		usage_count, port->edge_count);
+		     "Exit %s:%s ioctl_count:%d usage_count:%d edge_count:%d\n",
+		     __func__, current->comm, port->ioctl_count, usage_count,
+		     port->edge_count);
 	return 0;
 }
 
@@ -901,6 +906,9 @@ static int vote_clock_off(struct uart_port *uport)
 	int usage_count;
 	int ret = 0;
 
+	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
+		     "Enter %s:%s ioctl_count:%d\n",
+		     __func__, current->comm, port->ioctl_count);
 	if (!pm_runtime_enabled(uport->dev)) {
 		dev_err(uport->dev, "RPM not available.Can't enable clocks\n");
 		return -EPERM;
@@ -921,8 +929,10 @@ static int vote_clock_off(struct uart_port *uport)
 	port->ioctl_count--;
 	msm_geni_serial_power_off(uport);
 	usage_count = atomic_read(&uport->dev->power.usage_count);
-	UART_LOG_DBG(port->ipc_log_pwr, uport->dev, "%s:%s ioctl:%d usage_count:%d\n",
-		__func__, current->comm, port->ioctl_count, usage_count);
+	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
+		     "Exit %s:%s ioctl_count:%d usage_count:%d edge_count:%d\n",
+		     __func__, current->comm, port->ioctl_count, usage_count,
+		     port->edge_count);
 	return 0;
 };
 
@@ -933,6 +943,8 @@ static int msm_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd,
 	int ret = -ENOIOCTLCMD;
 	enum uart_error_code uart_error;
 
+	UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+		     "%s:%s cmd 0x%x\n", __func__, current->comm, cmd);
 	if (port->pm_auto_suspend_disable)
 		return ret;
 
@@ -2363,7 +2375,7 @@ static int stop_rx_sequencer(struct uart_port *uport)
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 	unsigned long flags = 0;
 	bool is_rx_active;
-	u32 dma_rx_status, s_irq_status;
+	u32 dma_rx_status, s_irq_status, stale_delay;
 	int usage_count;
 
 	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s %d\n", __func__, true);
@@ -2402,12 +2414,21 @@ static int stop_rx_sequencer(struct uart_port *uport)
 
 	if (!uart_console(uport)) {
 		/*
-		 * Wait for the stale timeout around 10msec to happen
-		 * if there is any data pending in the rx fifo.
+		 * Wait for the stale timeout to happen if there is any data
+		 * pending in the rx fifo.
+		 * Have a safety factor of 2 to include the interrupt and
+		 * system latencies, add 500usec delay for interrupt latency
+		 * or system delay.
 		 * This will help to handle incoming rx data in stop_rx_sequencer
 		 * for interrupt latency or system delay cases.
 		 */
-		udelay(STALE_DELAY);
+		stale_delay = (STALE_COUNT * SEC_TO_USEC) / port->cur_baud;
+		stale_delay = (2 * stale_delay) + SYSTEM_DELAY;
+		if (stale_delay > STALE_DELAY_MAX)
+			stale_delay = STALE_DELAY_MAX;
+		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+			     "stale_delay = %d usecs\n", stale_delay);
+		udelay(stale_delay);
 
 		dma_rx_status = geni_read_reg(uport->membase,
 						SE_DMA_RX_IRQ_STAT);
@@ -4329,6 +4350,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	struct uart_driver *drv;
 	const struct of_device_id *id;
 	bool is_console = false;
+	char boot_marker[40];
 
 	id = of_match_device(msm_geni_device_tbl, &pdev->dev);
 	if (!id) {
@@ -4355,6 +4377,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 		line = pdev->id;
 	}
 
+	if (!(drv->cons)) {
+		snprintf(boot_marker, sizeof(boot_marker),
+			 "M - DRIVER GENI_HS_UART_%d Init", line);
+		place_marker(boot_marker);
+	}
 	is_console = (drv->cons ? true : false);
 	dev_port = get_port_from_line(line, is_console);
 	dev_port->is_console = is_console;
@@ -4468,6 +4495,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "Failed to register uart_port: %d\n", ret);
 
+	if (!is_console) {
+		snprintf(boot_marker, sizeof(boot_marker),
+			 "M - DRIVER GENI_HS_UART_%d Ready", line);
+		place_marker(boot_marker);
+	}
 exit_geni_serial_probe:
 	UART_LOG_DBG(dev_port->ipc_log_misc, &pdev->dev, "%s: ret:%d\n",
 		__func__, ret);
@@ -4723,6 +4755,33 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 	}
 	return 0;
 }
+
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
+	struct uart_port *uport = &port->uport;
+
+	if (uart_console(uport)) {
+		uart_resume_port((struct uart_driver *)uport->private_data,
+									uport);
+		/*
+		 * For hibernation usecase clients for
+		 * console UART won't call port setup during restore.
+		 * Hence call port setup for console uart.
+		 */
+		msm_geni_serial_port_setup(uport);
+	} else {
+		/*
+		 * Peripheral register settings are lost during hibernation.
+		 * Update setup flag such that port setup happens again
+		 * during next session. Clients of HS-UART will close and
+		 * open the port during hibernation.
+		 */
+		port->port_setup = false;
+	}
+	return 0;
+}
 #else
 static int msm_geni_serial_runtime_suspend(struct device *dev)
 {
@@ -4743,6 +4802,11 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 {
 	return 0;
 }
+
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
+{
+	return 0;
+}
 #endif
 
 static const struct dev_pm_ops msm_geni_serial_pm_ops = {
@@ -4750,6 +4814,9 @@ static const struct dev_pm_ops msm_geni_serial_pm_ops = {
 	.runtime_resume = msm_geni_serial_runtime_resume,
 	.suspend = msm_geni_serial_sys_suspend,
 	.resume = msm_geni_serial_sys_resume,
+	.freeze = msm_geni_serial_sys_suspend,
+	.restore = msm_geni_serial_sys_hib_resume,
+	.thaw = msm_geni_serial_sys_hib_resume,
 };
 
 static struct platform_driver msm_geni_serial_platform_driver = {

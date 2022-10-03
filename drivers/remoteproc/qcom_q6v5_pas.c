@@ -30,8 +30,6 @@
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <soc/qcom/secure_buffer.h>
-
-#define CREATE_TRACE_POINTS
 #include <trace/events/rproc_qcom.h>
 
 #include "qcom_common.h"
@@ -62,6 +60,7 @@ struct adsp_data {
 	bool has_aggre2_clk;
 	bool auto_boot;
 	bool dma_phys_below_32b;
+	bool needs_dsm_mem_setup;
 
 	char **active_pd_names;
 	char **proxy_pd_names;
@@ -598,11 +597,8 @@ begin_attach:
 	if (ret < 0)
 		goto unscale_bus;
 
-	if (!adsp->q6v5.rmb_base ||
-	    !readl_relaxed(adsp->q6v5.rmb_base + RMB_BOOT_WAIT_REG)) {
-		dev_err(adsp->dev, "Remote proc is not ready to attach\n");
-		adsp_stop(rproc);
-		ret = -EBUSY;
+	if (!adsp->q6v5.rmb_base) {
+		dev_err(adsp->dev, "Remote proc cannot be late attached\n");
 		goto disable_active_pds;
 	}
 
@@ -669,7 +665,8 @@ unscale_bus:
 disable_irqs:
 	qcom_q6v5_unprepare(&adsp->q6v5);
 
-	return ret;
+	/* attempt to normally boot rproc if we can't late attach */
+	return adsp_start(rproc);
 }
 
 static void *adsp_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem)
@@ -992,7 +989,8 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret < 0 && ret != -EINVAL)
 		return ret;
 
-	if (!mpss_dsm_mem_setup && !strcmp(fw_name, "modem.mdt")) {
+	if (desc->needs_dsm_mem_setup && !mpss_dsm_mem_setup &&
+			!strcmp(fw_name, "modem.mdt")) {
 		ret = setup_mpss_dsm_mem(pdev);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to setup mpss dsm mem\n");
@@ -1412,6 +1410,7 @@ static const struct adsp_data kalama_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
+	.needs_dsm_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
@@ -1613,6 +1612,35 @@ static const struct adsp_data sdmshrike_cdsp_resource = {
 	.ssctl_id = 0x17,
 };
 
+static const struct adsp_data scuba_auto_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x12,
+};
+static const struct adsp_data scuba_auto_lpass_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.free_after_auth_reset = true,
+	.minidump_id = 5,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &adsp_resource_init},
@@ -1654,6 +1682,8 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,khaje-modem-pas", .data = &khaje_mpss_resource},
 	{ .compatible = "qcom,sdmshrike-adsp-pas", .data = &sdmshrike_adsp_resource},
 	{ .compatible = "qcom,sdmshrike-cdsp-pas", .data = &sdmshrike_cdsp_resource},
+	{ .compatible = "qcom,scuba_auto-modem-pas", .data = &scuba_auto_mpss_resource},
+	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
