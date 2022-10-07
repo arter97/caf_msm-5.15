@@ -287,6 +287,15 @@ config ARCH_SDXPINN
 	  wish to build a kernel that runs on this chipset or if you
 	  are unsure, say 'N' here.
 
+config ARCH_SA525
+	bool "Enable Support for Qualcomm Technologies, Inc. SA525"
+	depends on ARCH_QCOM
+	help
+	  This enables support for the Qualcomm Technologies, Inc.
+	  SA525 chipset. Say 'Y' for SA525 chipset. If you do not
+	  wish to build a kernel that runs on this chipset or if you
+	  are unsure, say 'N' here.
+
 config ARCH_SA8155
         bool "Enable Support for Qualcomm Technologies, Inc. SA8155"
 	depends on ARCH_QCOM
