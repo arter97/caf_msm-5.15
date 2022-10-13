@@ -32,6 +32,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/dma-mapping.h>
 #include <uapi/linux/msm_geni_serial.h>
+#include <soc/qcom/boot_stats.h>
 
 static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_MSM_GENI_CONSOLE_DEFAULT_ENABLED);
 
@@ -564,7 +565,7 @@ int msm_geni_serial_resources_off(struct msm_geni_serial_port *port)
 static void msm_geni_update_uart_error_code(struct msm_geni_serial_port *port,
 		enum uart_error_code uart_error_code)
 {
-	if (!port->is_console && !port->uart_error) {
+	if (!port->is_console) {
 		port->uart_error = uart_error_code;
 		UART_LOG_DBG(port->ipc_log_misc, port->uport.dev,
 				"%s uart_error_code %d", __func__, port->uart_error);
@@ -2034,6 +2035,9 @@ static int msm_geni_serial_prep_dma_tx(struct uart_port *uport)
 							SE_GENI_STATUS));
 				msm_geni_update_uart_error_code(msm_port, UART_ERROR_TX_ABORT_FAIL);
 				geni_se_dump_dbg_regs(uport);
+			} else {
+				/* Reset the CANCEL error code if abort is success */
+				msm_geni_update_uart_error_code(msm_port, UART_ERROR_DEFAULT);
 			}
 			msm_geni_serial_allow_rx(msm_port);
 			geni_write_reg(FORCE_DEFAULT, uport->membase,
@@ -2057,6 +2061,10 @@ static int msm_geni_serial_prep_dma_tx(struct uart_port *uport)
 					msm_geni_update_uart_error_code(msm_port,
 						UART_ERROR_TX_FSM_RESET_FAIL);
 					geni_se_dump_dbg_regs(uport);
+				} else {
+					/* Reset Cancel/Abort error code if FSM reset is success */
+					msm_geni_update_uart_error_code(msm_port,
+									UART_ERROR_DEFAULT);
 				}
 			}
 
@@ -2139,6 +2147,10 @@ static void msm_geni_serial_start_tx(struct uart_port *uport)
 	return;
 check_flow_ctrl:
 	geni_ios = geni_read_reg(uport->membase, SE_GENI_IOS);
+	/* check if SOC RFR is high and set the error code */
+	if (geni_ios & IO2_DATA_IN)
+		msm_geni_update_uart_error_code(msm_port,
+						SOC_ERROR_START_TX_IOS_SOC_RFR_HIGH);
 	if (++ios_log_limit % 5 == 0) {
 		UART_LOG_DBG(msm_port->ipc_log_misc, uport->dev, "%s: ios: 0x%x\n",
 						__func__, geni_ios);
@@ -2219,8 +2231,13 @@ static void stop_tx_sequencer(struct uart_port *uport)
 							 is_irq_masked);
 			if (timeout) {
 				UART_LOG_DBG(port->ipc_log_misc, uport->dev,
-				"%s: tx fsm reset failed\n", __func__);
-				msm_geni_update_uart_error_code(port, UART_ERROR_TX_FSM_RESET_FAIL);
+					     "%s: tx fsm reset failed\n", __func__);
+				msm_geni_update_uart_error_code(port,
+								UART_ERROR_TX_FSM_RESET_FAIL);
+			} else {
+				/* Reset Cancel/Abort error code if FSM reset is success */
+				msm_geni_update_uart_error_code(port,
+								UART_ERROR_DEFAULT);
 			}
 		}
 
@@ -2530,6 +2547,9 @@ static int stop_rx_sequencer(struct uart_port *uport)
 			msm_geni_update_uart_error_code(port,
 							UART_ERROR_RX_ABORT_FAIL);
 			geni_se_dump_dbg_regs(uport);
+		} else {
+			/* Reset the CANCEL error code if abort is success */
+			msm_geni_update_uart_error_code(port, UART_ERROR_DEFAULT);
 		}
 		msm_geni_serial_allow_rx(port);
 		geni_write_reg(FORCE_DEFAULT, uport->membase,
@@ -2548,6 +2568,9 @@ static int stop_rx_sequencer(struct uart_port *uport)
 				"%s: rx fsm reset failed\n", __func__);
 				msm_geni_update_uart_error_code(port, UART_ERROR_RX_FSM_RESET_FAIL);
 				geni_se_dump_dbg_regs(uport);
+			} else {
+				/* Reset the CANCEL error code if abort is success */
+				msm_geni_update_uart_error_code(port, UART_ERROR_DEFAULT);
 			}
 		}
 	}
@@ -2929,6 +2952,7 @@ static bool handle_rx_fifo_xfer(u32 s_irq_status, struct uart_port *uport,
 
 static bool handle_tx_dma_xfer(u32 m_irq_status, struct uart_port *uport)
 {
+	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 	bool ret = false;
 	u32 dma_tx_status = geni_read_reg(uport->membase,
 							SE_DMA_TX_IRQ_STAT);
@@ -2940,8 +2964,14 @@ static bool handle_tx_dma_xfer(u32 m_irq_status, struct uart_port *uport)
 		if (dma_tx_status & (TX_RESET_DONE | TX_GENI_CANCEL_IRQ))
 			return true;
 
-		if (dma_tx_status & TX_DMA_DONE)
+		if (dma_tx_status & TX_DMA_DONE) {
 			msm_geni_serial_handle_dma_tx(uport);
+
+			if (msm_port->uart_error == SOC_ERROR_START_TX_IOS_SOC_RFR_HIGH) {
+				/* Reset SOC_RFR_HIGH error code if DMA TX is success */
+				msm_geni_update_uart_error_code(msm_port, UART_ERROR_DEFAULT);
+			}
+		}
 	}
 
 	if (m_irq_status & (M_CMD_CANCEL_EN | M_CMD_ABORT_EN))
@@ -3072,12 +3102,8 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 		goto exit_geni_serial_isr;
 	}
 
-	if (m_irq_status & (M_IO_DATA_ASSERT_EN | M_IO_DATA_DEASSERT_EN)) {
+	if (m_irq_status & (M_IO_DATA_ASSERT_EN | M_IO_DATA_DEASSERT_EN))
 		uport->icount.cts++;
-		IPC_LOG_MSG(msm_port->ipc_log_misc,
-			"%s. cts counter:%d\n", __func__,
-				uport->icount.cts);
-	}
 
 	if (s_irq_status & S_RX_FIFO_WR_ERR_EN) {
 		uport->icount.overrun++;
@@ -4050,9 +4076,30 @@ static const struct of_device_id msm_geni_device_tbl[] = {
 static void msm_geni_serial_init_gsi(struct uart_port *uport)
 {
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
+	int ret;
 
+	ret = geni_icc_enable(&msm_port->se);
+	if (ret) {
+		UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
+			     "%s: Error %d geni_icc_enable failed\n", __func__, ret);
+		return;
+	}
+
+	ret = geni_icc_set_bw(&msm_port->se);
+	if (ret) {
+		UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
+			     "%s: Error %d ICC BW voting failed\n", __func__, ret);
+		return;
+	}
 	msm_port->gsi_mode = geni_read_reg(uport->membase,
 					   GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+	ret = geni_icc_disable(&msm_port->se);
+	if (ret) {
+		UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
+			"%s: Error %d geni_icc_disable failed\n", __func__, ret);
+		return;
+	}
+
 	dev_info(uport->dev, "gsi_mode:%d\n", msm_port->gsi_mode);
 	if (msm_port->gsi_mode) {
 		msm_port->gsi = devm_kzalloc(uport->dev, sizeof(*msm_port->gsi),
@@ -4088,8 +4135,17 @@ static int msm_geni_serial_get_ver_info(struct uart_port *uport)
 				"%s: Error %d geni_icc_enable failed\n", __func__, ret);
 			return ret;
 		}
+
+		ret = geni_icc_set_bw(&msm_port->se);
+		if (ret) {
+			UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
+				"%s: Error %d ICC BW voting failed\n", __func__, ret);
+			return ret;
+		}
+
 		geni_se_common_clks_on(msm_port->serial_rsc.se_clk,
 			msm_port->serial_rsc.m_ahb_clk, msm_port->serial_rsc.s_ahb_clk);
+
 		msm_geni_enable_disable_se_clk(uport, true);
 	}
 
@@ -4349,6 +4405,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	struct uart_driver *drv;
 	const struct of_device_id *id;
 	bool is_console = false;
+	char boot_marker[40];
 
 	id = of_match_device(msm_geni_device_tbl, &pdev->dev);
 	if (!id) {
@@ -4375,6 +4432,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 		line = pdev->id;
 	}
 
+	if (!(drv->cons)) {
+		snprintf(boot_marker, sizeof(boot_marker),
+			 "M - DRIVER GENI_HS_UART_%d Init", line);
+		place_marker(boot_marker);
+	}
 	is_console = (drv->cons ? true : false);
 	dev_port = get_port_from_line(line, is_console);
 	dev_port->is_console = is_console;
@@ -4488,6 +4550,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "Failed to register uart_port: %d\n", ret);
 
+	if (!is_console) {
+		snprintf(boot_marker, sizeof(boot_marker),
+			 "M - DRIVER GENI_HS_UART_%d Ready", line);
+		place_marker(boot_marker);
+	}
 exit_geni_serial_probe:
 	UART_LOG_DBG(dev_port->ipc_log_misc, &pdev->dev, "%s: ret:%d\n",
 		__func__, ret);
