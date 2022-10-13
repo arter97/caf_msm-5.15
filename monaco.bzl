@@ -122,6 +122,7 @@ def define_monaco():
         "drivers/soc/qcom/power_state.ko",
         "drivers/soc/qcom/qcom_aoss.ko",
         "drivers/soc/qcom/qcom_cpu_vendor_hooks.ko",
+        "drivers/soc/qcom/qcom_hib.ko",
         "drivers/soc/qcom/qcom_logbuf_vh.ko",
         "drivers/soc/qcom/qcom_ramdump.ko",
         "drivers/soc/qcom/qcom_soc_wdt.ko",

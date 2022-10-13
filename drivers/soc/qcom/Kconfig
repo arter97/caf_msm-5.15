@@ -873,4 +873,12 @@ config DEEPSLEEP
 	  except for memory, so that exit from this state can happen in shorter
 	  duration.
 
+config QCOM_S2D_VENDOR_HOOK
+	tristate "Vendor hook module to route flow of the core Kernel"
+	help
+	  This options enable vendor hook callbacks for bootloader based
+	  hibernation. Callbacks implemented here are called from the
+          core kernel and help to do bootloader hibernation specific job.
+	  Enable this if bootloader hibernation is enabled.
+
 endmenu
