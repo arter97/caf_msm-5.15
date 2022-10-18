@@ -4166,8 +4166,8 @@ static void mhi_dev_enable(struct work_struct *work)
 	if (mhi->ctrl_info != MHI_STATE_CONNECTED)
 		mhi_update_state_info(mhi, MHI_STATE_CONFIGURED);
 
-	/*Enable MHI dev network stack Interface*/
-	rc = mhi_dev_net_interface_init();
+	/* Enable MHI dev network stack Interface */
+	rc = mhi_dev_net_interface_init(mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
 	if (rc)
 		mhi_log(MHI_MSG_ERROR,
 				"Failed to initialize mhi_dev_net iface\n");
