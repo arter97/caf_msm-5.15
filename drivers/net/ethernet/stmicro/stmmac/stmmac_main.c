@@ -3342,7 +3342,7 @@ static void stmmac_mtl_configuration(struct stmmac_priv *priv)
 
 static void stmmac_safety_feat_configuration(struct stmmac_priv *priv)
 {
-	if (priv->dma_cap.asp) {
+	if (priv->plat->safety_feature && priv->dma_cap.asp) {
 		netdev_info(priv->dev, "Enabling Safety Features\n");
 		stmmac_safety_feat_config(priv, priv->ioaddr, priv->dma_cap.asp,
 					  priv->plat->safety_feat_cfg);
@@ -5857,7 +5857,7 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 		}
 
 		/* PCS link status */
-		if (priv->hw->pcs) {
+		if (priv->hw->pcs && (priv->hw->pcs != STMMAC_PCS_SGMII)) {
 			if (priv->xstats.pcs_link)
 				netif_carrier_on(priv->dev);
 			else

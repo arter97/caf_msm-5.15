@@ -30,6 +30,7 @@
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
 #include "stmmac_ptp.h"
+#include "dwmac-qcom-serdes.h"
 
 #define RGMII_IO_MACRO_DEBUG1		0x20
 #define EMAC_SYSTEM_LOW_POWER_DEBUG	0x28
@@ -926,13 +927,48 @@ static int ethqos_configure(struct qcom_ethqos *ethqos)
 	return 0;
 }
 
+int ethqos_configureSGMII(struct qcom_ethqos *ethqos)
+{
+
+	u32 value = 0;
+
+	value = readl(ethqos->ioaddr + MAC_CTRL_REG);
+	switch (ethqos->speed) {
+		case SPEED_1000:
+		value &= ~BIT(15);
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, BIT(16), BIT(16), RGMII_IO_MACRO_CONFIG2);
+	break;
+
+	case SPEED_100:
+		value |= BIT(15) | BIT(14);
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+	break;
+	case SPEED_10:
+		value |= BIT(15);
+		value &= ~BIT(14);
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+	break;
+	}
+
+	return value;
+
+}
+
 static void ethqos_fix_mac_speed(void *priv, unsigned int speed)
 {
 	struct qcom_ethqos *ethqos = priv;
+	struct stmmac_priv *stmpriv = qcom_ethqos_get_priv(ethqos);
+	int ret = -1;
 
 	ethqos->speed = speed;
+
+	if(stmpriv->plat->interface == PHY_INTERFACE_MODE_SGMII)
+		ret = ethqos_configureSGMII(ethqos);
+	else{
 	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, speed);
 	ethqos_configure(ethqos);
+	}
 }
 
 static int ethqos_mdio_read(struct stmmac_priv  *priv, int phyaddr, int phyreg)
@@ -1677,23 +1713,15 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		return PTR_ERR(plat_dat);
 	}
 
+	ethqos->ioaddr = (&stmmac_res)->addr;
+
 	ethqos->rgmii_base = devm_platform_ioremap_resource_byname(pdev, "rgmii");
 	if (IS_ERR(ethqos->rgmii_base)) {
 		ret = PTR_ERR(ethqos->rgmii_base);
 		goto err_mem;
 	}
 
-	ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
-	if (IS_ERR(ethqos->rgmii_clk)) {
-		ret = PTR_ERR(ethqos->rgmii_clk);
-		goto err_mem;
-	}
-
 	ethqos->por = of_device_get_match_data(&pdev->dev);
-
-	ret = clk_prepare_enable(ethqos->rgmii_clk);
-	if (ret)
-		goto err_mem;
 
 	/*Initialize Early ethernet to false*/
 	ethqos->early_eth_enabled = false;
@@ -1712,7 +1740,22 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	ethqos->speed = SPEED_10;
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+	if(plat_dat->interface == PHY_INTERFACE_MODE_SGMII) {
+		configure_serdes_dt(ethqos);
+		qcom_ethqos_serdes_init(ethqos, ethqos->speed);
+	}
+	else {
+		ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
+		if (IS_ERR(ethqos->rgmii_clk)) {
+			ret = PTR_ERR(ethqos->rgmii_clk);
+			goto err_mem;
+		}
+		ret = clk_prepare_enable(ethqos->rgmii_clk);
+		if (ret)
+			goto err_mem;
+		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+	}
+
 	ethqos_set_func_clk_en(ethqos);
 
 	plat_dat->bsp_priv = ethqos;
@@ -1733,6 +1776,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;
 	plat_dat->request_phy_wol = qcom_ethqos_request_phy_wol;
 	plat_dat->init_pps = ethqos_init_pps;
+	plat_dat->safety_feature = of_property_read_bool(np, "snps,safety_feature");
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,arm-smmu")) {
 		emac_emb_smmu_ctx.pdev_master = pdev;
