@@ -273,6 +273,17 @@ struct qcom_ethqos {
 	struct clk *phyaux_clk;
 	struct clk *sgmiref_clk;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	/* Clocks required for SGMII and USXGMII interfaces */
+	struct clk *clk_eee;
+	struct clk *sgmii_rx_clk;
+	struct clk *sgmii_tx_clk;
+	struct clk *pcs_rx_clk;
+	struct clk *pcs_tx_clk;
+	struct clk *xgxs_rx_clk;
+	struct clk *xgxs_tx_clk;
+#endif
+
 	unsigned int speed;
 	unsigned int vote_idx;
 
