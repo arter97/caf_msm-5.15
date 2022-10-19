@@ -282,8 +282,6 @@ struct socinfo {
 	__le32  pcode;
 	__le32  npartnamemap_offset;
 	__le32  nnum_partname_mapping;
-	/* Version 17 */
-	__le32 noem_variant_id;
 } *socinfo;
 
 #define PART_NAME_MAX		32
@@ -312,7 +310,6 @@ struct socinfo_params {
 	u32 num_defective_parts;
 	u32 ndefective_parts_array_offset;
 	u32 nmodem_supported;
-	u32 noem_variant_id;
 };
 
 struct smem_image_version {
@@ -530,15 +527,6 @@ static uint32_t socinfo_get_pcode_id(void)
 		return SOCINFO_PCODE_UNKNOWN;
 
 	return pcode;
-}
-
-/* Version 17 */
-static uint32_t socinfo_get_noem_variant_id(void)
-{
-	return socinfo ?
-		(socinfo_format >= SOCINFO_VERSION(0, 17) ?
-		 le32_to_cpu(socinfo->noem_variant_id) : 0)
-		: 0;
 }
 
 /* Version 2 */
@@ -806,17 +794,6 @@ msm_get_feature_code(struct device *dev,
 	return sysfs_emit(buf, "%s\n", feature_code ? feature_code : "Unknown");
 }
 ATTR_DEFINE(feature_code);
-
-/* Version 17 */
-static ssize_t
-msm_get_noem_variant_id(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
-{
-	return scnprintf(buf, PAGE_SIZE, "0x%x\n",
-			socinfo_get_noem_variant_id());
-}
-ATTR_DEFINE(noem_variant_id);
 
 struct qcom_socinfo {
 	struct soc_device *soc_dev;
@@ -1229,8 +1206,6 @@ static void socinfo_populate_sysfs(struct qcom_socinfo *qcom_socinfo)
 	int i = 0;
 
 	switch (socinfo_format) {
-	case SOCINFO_VERSION(0, 17):
-		msm_custom_socinfo_attrs[i++] = &dev_attr_noem_variant_id.attr;
 	case SOCINFO_VERSION(0, 16):
 		msm_custom_socinfo_attrs[i++] = &dev_attr_sku.attr;
 		msm_custom_socinfo_attrs[i++] = &dev_attr_feature_code.attr;
@@ -1532,43 +1507,6 @@ static void socinfo_print(void)
 			sku ? sku : "Unknown");
 		break;
 
-	case SOCINFO_VERSION(0, 17):
-		pr_info("v%u.%u, id=%u, ver=%u.%u, raw_id=%u, raw_ver=%u, " \
-				"hw_plat=%u, hw_plat_ver=%u\n accessory_chip=%u, " \
-				"hw_plat_subtype=%u, pmic_model=%u, " \
-				"pmic_die_revision=%u, foundry_id=%u, " \
-				"serial_number=%u, num_pmics=%u, chip_family=0x%x, " \
-				"raw_device_family=0x%x, raw_device_number=0x%x, " \
-				"nproduct_id=0x%x, num_clusters=0x%x, " \
-				"ncluster_array_offset=0x%x, num_defective_parts=0x%x, " \
-				"ndefective_parts_array_offset=0x%x, nmodem_supported=0x%x, " \
-				"feature_code=0x%x, pcode=0x%x, sku=%s, noem_variant_id=0%x\n",
-			f_maj, f_min, socinfo->id, v_maj, v_min,
-			socinfo->raw_id, socinfo->raw_ver,
-			socinfo->hw_plat,
-			socinfo->plat_ver,
-			socinfo->accessory_chip,
-			socinfo->hw_plat_subtype,
-			socinfo->pmic_model,
-			socinfo->pmic_die_rev,
-			socinfo->foundry_id,
-			socinfo->serial_num,
-			socinfo->num_pmics,
-			socinfo->chip_family,
-			socinfo->raw_device_family,
-			socinfo->raw_device_num,
-			socinfo->nproduct_id,
-			socinfo->num_clusters,
-			socinfo->ncluster_array_offset,
-			socinfo->num_defective_parts,
-			socinfo->ndefective_parts_array_offset,
-			socinfo->nmodem_supported,
-			socinfo->feature_code,
-			socinfo->pcode,
-			sku ? sku : "Unknown",
-			socinfo->noem_variant_id);
-		break;
-
 	default:
 		pr_err("Unknown format found: v%u.%u\n", f_maj, f_min);
 		break;
@@ -1637,17 +1575,6 @@ char *socinfo_get_partinfo_details(unsigned int part_id)
 	return partinfo[part_id].part_name;
 }
 EXPORT_SYMBOL(socinfo_get_partinfo_details);
-
-int socinfo_get_noem_variant(void)
-{
-	if (socinfo_format < SOCINFO_VERSION(0, 17)) {
-		pr_warn("socinfo: noem_variant is not supported by bootloaders\n");
-		return -EINVAL;
-	}
-
-	return socinfo_get_noem_variant_id();
-}
-EXPORT_SYMBOL(socinfo_get_noem_variant);
 
 void socinfo_enumerate_partinfo_details(void)
 {
