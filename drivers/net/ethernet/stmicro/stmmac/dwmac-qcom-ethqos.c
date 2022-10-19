@@ -2231,6 +2231,133 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 	}
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	struct plat_stmmacenet_data *plat = priv->plat;
+
+	clk_disable_unprepare(ethqos->sgmii_rx_clk);
+	clk_disable_unprepare(ethqos->sgmii_tx_clk);
+
+	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
+		clk_disable_unprepare(ethqos->xgxs_rx_clk);
+		clk_disable_unprepare(ethqos->xgxs_tx_clk);
+	} else if (plat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		clk_disable_unprepare(ethqos->pcs_rx_clk);
+		clk_disable_unprepare(ethqos->pcs_tx_clk);
+	}
+}
+
+static int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int interface)
+{
+	int ret = 0;
+	struct platform_device *pdev = ethqos->pdev;
+
+	/* Clocks needed for both SGMII and USXGMII interfaces*/
+	ethqos->clk_eee = devm_clk_get_optional(&pdev->dev, "eee");
+	if (IS_ERR(ethqos->clk_eee)) {
+		dev_warn(&pdev->dev, "Cannot get eee clock\n");
+		ret = PTR_ERR(ethqos->clk_eee);
+		ethqos->clk_eee = NULL;
+		goto err_clk;
+	} else {
+		clk_prepare_enable(ethqos->clk_eee);
+		if (ret)
+			goto err_clk;
+	}
+
+	ethqos->sgmii_rx_clk = devm_clk_get_optional(&pdev->dev, "sgmii_rx");
+	if (IS_ERR(ethqos->sgmii_rx_clk)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_rx clock\n");
+		ret = PTR_ERR(ethqos->sgmii_rx_clk);
+		ethqos->sgmii_rx_clk = NULL;
+		goto err_clk;
+	} else {
+		ret = clk_prepare_enable(ethqos->sgmii_rx_clk);
+		if (ret)
+			goto err_clk;
+	}
+
+	ethqos->sgmii_tx_clk = devm_clk_get_optional(&pdev->dev, "sgmii_tx");
+	if (IS_ERR(ethqos->sgmii_tx_clk)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_tx clock\n");
+		ret = PTR_ERR(ethqos->sgmii_tx_clk);
+		ethqos->sgmii_tx_clk = NULL;
+		goto err_clk;
+	} else {
+		ret = clk_prepare_enable(ethqos->sgmii_tx_clk);
+		if (ret)
+			goto err_clk;
+	}
+
+	if (interface == PHY_INTERFACE_MODE_SGMII) {
+		/*Clocks specific to SGMII interface */
+		ethqos->xgxs_rx_clk = devm_clk_get_optional(&pdev->dev, "xgxs_rx");
+		if (IS_ERR(ethqos->xgxs_rx_clk)) {
+			dev_warn(&pdev->dev, "Cannot get xgxs_rx clock\n");
+			ret = PTR_ERR(ethqos->xgxs_rx_clk);
+			ethqos->xgxs_rx_clk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_prepare_enable(ethqos->xgxs_rx_clk);
+			if (ret)
+				goto err_clk;
+		}
+
+		ethqos->xgxs_tx_clk = devm_clk_get_optional(&pdev->dev, "xgxs_tx");
+		if (IS_ERR(ethqos->xgxs_tx_clk)) {
+			dev_warn(&pdev->dev, "Cannot get xgxs_tx clock\n");
+			ret = PTR_ERR(ethqos->xgxs_tx_clk);
+			ethqos->xgxs_tx_clk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_prepare_enable(ethqos->xgxs_tx_clk);
+			if (ret)
+				goto err_clk;
+		}
+	} else if (interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		/*Clocks specific to USXGMII interface */
+		ethqos->pcs_rx_clk = devm_clk_get_optional(&pdev->dev, "pcs_rx");
+		if (IS_ERR(ethqos->pcs_rx_clk)) {
+			dev_warn(&pdev->dev, "Cannot get pcs_rx clock\n");
+			ret = PTR_ERR(ethqos->pcs_rx_clk);
+			ethqos->pcs_rx_clk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_prepare_enable(ethqos->pcs_rx_clk);
+			if (ret)
+				goto err_clk;
+		}
+
+		ethqos->pcs_tx_clk = devm_clk_get_optional(&pdev->dev, "pcs_tx");
+		if (IS_ERR(ethqos->pcs_tx_clk)) {
+			dev_warn(&pdev->dev, "Cannot get pcs_tx clock\n");
+			ret = PTR_ERR(ethqos->pcs_tx_clk);
+			ethqos->pcs_tx_clk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_prepare_enable(ethqos->pcs_tx_clk);
+			if (ret)
+				goto err_clk;
+		}
+	}
+
+err_clk:
+	return ret;
+}
+
+#else
+static inline void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
+{
+}
+
+static inline int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int interface)
+{
+	return 0;
+}
+#endif
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -2312,17 +2439,27 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
-	ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
-	if (IS_ERR(ethqos->rgmii_clk)) {
-		ret = PTR_ERR(ethqos->rgmii_clk);
-		goto err_mem;
+	if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
+		if (IS_ERR(ethqos->rgmii_clk)) {
+			ret = PTR_ERR(ethqos->rgmii_clk);
+			goto err_mem;
+		}
+
+		ethqos->por = of_device_get_match_data(&pdev->dev);
+
+		ret = clk_prepare_enable(ethqos->rgmii_clk);
+		if (ret)
+			goto err_mem;
+	} else if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
+		   plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_enable_sgmii_usxgmii_clks(ethqos, plat_dat->interface);
+		if (ret)
+			goto err_mem;
 	}
-
-	ethqos->por = of_device_get_match_data(&pdev->dev);
-
-	ret = clk_prepare_enable(ethqos->rgmii_clk);
-	if (ret)
-		goto err_mem;
 
 	/* Read mac address from fuse register */
 	read_mac_addr_from_fuse_reg(np);
@@ -2484,7 +2621,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	return ret;
 
 err_clk:
-	clk_disable_unprepare(ethqos->rgmii_clk);
+	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII)
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+
+	if (ethqos->rgmii_clk)
+		clk_disable_unprepare(ethqos->rgmii_clk);
 
 err_mem:
 	stmmac_remove_config_dt(pdev, plat_dat);
@@ -2510,7 +2652,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	priv = qcom_ethqos_get_priv(ethqos);
 
 	ret = stmmac_pltfr_remove(pdev);
-	clk_disable_unprepare(ethqos->rgmii_clk);
+
+	if (ethqos->rgmii_clk)
+		clk_disable_unprepare(ethqos->rgmii_clk);
 
 	icc_put(ethqos->axi_icc_path);
 
