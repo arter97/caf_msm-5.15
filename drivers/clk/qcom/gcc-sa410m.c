@@ -206,14 +206,17 @@ static struct clk_alpha_pll gpll7 = {
 
 static const struct alpha_pll_config gpll8_config = {
 	.l = 0x1A,
-	.cal_l = 0x1A,
 	.alpha = 0xAAAAAAAA,
 	.alpha_hi = 0xA,
 	.config_ctl_val = 0x4001055B,
 	.test_ctl_val = 0x00000000,
 	.test_ctl_hi_val = 0x00000001,
-	.user_ctl_val = 0x00000000,
+	.user_ctl_val = 0x01200001,
 	.user_ctl_hi_val = 0x00000004,
+	.vco_val = 0x2 << 20,
+	.vco_mask = GENMASK(21, 20),
+	.main_output_mask = BIT(0),
+	.alpha_en_mask = BIT(24),
 };
 
 static struct clk_alpha_pll gpll8 = {
@@ -1928,6 +1931,7 @@ static const struct qcom_reset_map gcc_sa410m_resets[] = {
 	[GCC_USB3UNIPHY_PHY_MP0_BCR] = { 0x1b02c },
 	[GCC_USB3UNIPHY_PHY_MP1_BCR] = { 0x1b030 },
 	[GCC_USB_PHY_CFG_AHB2PHY_BCR] = { 0x1d000 },
+	[GCC_QUSB2PHY_PRIM_BCR] = { 0x1C000 },
 };
 
 static const struct clk_rcg_dfs_data gcc_dfs_clocks[] = {
