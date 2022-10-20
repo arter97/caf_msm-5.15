@@ -3152,6 +3152,8 @@ enum ipacm_per_client_device_type {
 	IPACM_CLIENT_DEVICE_TYPE_WLAN = 1,
 	IPACM_CLIENT_DEVICE_TYPE_ETH = 2,
 	IPACM_CLIENT_DEVICE_TYPE_ODU = 3,
+#define DUAL_NIC_OFFLOAD
+	IPACM_CLIENT_DEVICE_TYPE_ETH1 = 4,
 	IPACM_CLIENT_DEVICE_MAX
 };
 
@@ -3317,6 +3319,7 @@ struct ipa_ioc_pdn_config {
 	union {
 		struct ipa_pdn_ip_collision_cfg {
 			__u32 pdn_ip_addr;
+			__u16 vlan_id;
 		} collison_cfg;
 
 		struct ipa_pdn_ip_passthrough_cfg {
