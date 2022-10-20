@@ -26,6 +26,11 @@ static DEFINE_MUTEX(probe_list_lock);
 
 static int probe_count;
 
+static const struct clk_bulk_data bus_clocks[] = {
+	{ .id = "bus" },
+	{ .id = "bus_a" },
+};
+
 static struct qcom_icc_node apps_proc = {
 	.name = "apps_proc",
 	.id = MASTER_AMPSS_M0,
@@ -184,9 +189,10 @@ static struct qcom_icc_node qhm_tic = {
 	.mas_rpm_id = -1,
 	.slv_rpm_id = -1,
 	.num_links = 7,
-	.links = { SLAVE_APPSS, SNOC_CNOC_SLV, SLAVE_OCIMEM,
-		   SLAVE_PIMEM, SNOC_BIMC_SLV,
-		   SLAVE_QDSS_STM, SLAVE_PCIE_0 },
+	.links = { SLAVE_APPSS, SNOC_CNOC_SLV,
+		   SLAVE_OCIMEM, SLAVE_PIMEM,
+		   SNOC_BIMC_SLV, SLAVE_QDSS_STM,
+		   SLAVE_PCIE_0 },
 };
 
 static struct qcom_icc_node qnm_anoc_snoc = {
@@ -197,9 +203,10 @@ static struct qcom_icc_node qnm_anoc_snoc = {
 	.mas_rpm_id = ICBID_MASTER_A0NOC_SNOC,
 	.slv_rpm_id = -1,
 	.num_links = 7,
-	.links = { SLAVE_APPSS, SNOC_CNOC_SLV, SLAVE_OCIMEM,
-		   SLAVE_PIMEM, SNOC_BIMC_SLV,
-		   SLAVE_QDSS_STM, SLAVE_PCIE_0 },
+	.links = { SLAVE_APPSS, SNOC_CNOC_SLV,
+		   SLAVE_OCIMEM, SLAVE_PIMEM,
+		   SNOC_BIMC_SLV, SLAVE_QDSS_STM,
+		   SLAVE_PCIE_0 },
 };
 
 static struct qcom_icc_node qxm_bimc_pcie_snoc = {
@@ -221,8 +228,9 @@ static struct qcom_icc_node qxm_bimc_snoc = {
 	.mas_rpm_id = ICBID_MASTER_BIMC_SNOC,
 	.slv_rpm_id = -1,
 	.num_links = 5,
-	.links = { SLAVE_APPSS, SNOC_CNOC_SLV, SLAVE_OCIMEM,
-		   SLAVE_PIMEM, SLAVE_QDSS_STM },
+	.links = { SLAVE_APPSS, SNOC_CNOC_SLV,
+		   SLAVE_OCIMEM, SLAVE_PIMEM,
+		   SLAVE_QDSS_STM },
 };
 
 static struct qcom_icc_node qxm_pimem = {
@@ -891,6 +899,7 @@ static struct qcom_icc_node qxs_snoc_bimc = {
 	.mas_rpm_id = -1,
 	.slv_rpm_id = ICBID_SLAVE_SNOC_BIMC,
 	.num_links = 1,
+	.links = { SNOC_BIMC_MAS },
 };
 
 static struct qcom_icc_node srvc_snoc = {
@@ -1085,21 +1094,6 @@ qcom_icc_map(struct platform_device *pdev, const struct qcom_icc_desc *desc)
 	return devm_regmap_init_mmio(dev, base, &icc_regmap_config);
 }
 
-static int qcom_icc_rpm_stub_set(struct icc_node *src, struct icc_node *dst)
-{
-	return 0;
-}
-
-static void qcom_icc_stub_pre_aggregate(struct icc_node *node)
-{
-}
-
-static int qcom_icc_stub_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,
-		u32 peak_bw, u32 *agg_avg, u32 *agg_peak)
-{
-	return 0;
-}
-
 static int qnoc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1128,14 +1122,29 @@ static int qnoc_probe(struct platform_device *pdev)
 	if (!data)
 		return -ENOMEM;
 
+	qp->bus_clks = devm_kmemdup(dev, bus_clocks, sizeof(bus_clocks),
+				    GFP_KERNEL);
+	if (!qp->bus_clks)
+		return -ENOMEM;
+
+	qp->num_clks = ARRAY_SIZE(bus_clocks);
+	ret = devm_clk_bulk_get(dev, qp->num_clks, qp->bus_clks);
+	if (ret)
+		return ret;
+
+	ret = clk_bulk_prepare_enable(qp->num_clks, qp->bus_clks);
+	if (ret)
+		return ret;
+
+	qp->num_qos_clks = devm_clk_bulk_get_all(dev, &qp->qos_clks);
+	if (qp->num_qos_clks < 0)
+		return qp->num_qos_clks;
+
 	provider = &qp->provider;
 	provider->dev = dev;
-	provider->set = qcom_icc_rpm_stub_set;
-	provider->pre_aggregate = qcom_icc_stub_pre_aggregate;
-	provider->aggregate = qcom_icc_stub_aggregate;
-//	provider->set = qcom_icc_rpm_set;
-//	provider->pre_aggregate = qcom_icc_rpm_pre_aggregate;
-//	provider->aggregate = qcom_icc_rpm_aggregate;
+	provider->set = qcom_icc_rpm_set;
+	provider->pre_aggregate = qcom_icc_rpm_pre_aggregate;
+	provider->aggregate = qcom_icc_rpm_aggregate;
 	provider->xlate = of_icc_xlate_onecell;
 	INIT_LIST_HEAD(&provider->nodes);
 	provider->data = data;
@@ -1155,6 +1164,7 @@ static int qnoc_probe(struct platform_device *pdev)
 	ret = icc_provider_add(provider);
 	if (ret) {
 		dev_err(dev, "error adding interconnect provider: %d\n", ret);
+		clk_bulk_disable_unprepare(qp->num_clks, qp->bus_clks);
 		return ret;
 	}
 
@@ -1198,6 +1208,7 @@ err:
 		icc_node_destroy(node->id);
 	}
 
+	clk_bulk_disable_unprepare(qp->num_clks, qp->bus_clks);
 	icc_provider_del(provider);
 	return ret;
 }
@@ -1213,6 +1224,7 @@ static int qnoc_remove(struct platform_device *pdev)
 		icc_node_destroy(n->id);
 	}
 
+	clk_bulk_disable_unprepare(qp->num_clks, qp->bus_clks);
 
 	return icc_provider_del(provider);
 }

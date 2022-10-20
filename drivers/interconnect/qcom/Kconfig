@@ -275,6 +275,9 @@ config INTERCONNECT_QCOM_BENGAL
 config INTERCONNECT_QCOM_SA410M
 	tristate "SA410M interconnect driver"
 	depends on INTERCONNECT_QCOM
+	depends on MSM_RPM_SMD
+	select INTERCONNECT_QCOM_RPM
+	select INTERCONNECT_QCOM_QOS_RPM
 	help
 	  This is a driver for the Qualcomm Technologies, Inc. Network-on-Chip
 	  on sa410m-based platforms. The interconnect provider collects and
