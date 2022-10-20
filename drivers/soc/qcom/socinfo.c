@@ -939,6 +939,7 @@ static const struct soc_id soc_id[] = {
 	{ 539, "CINDERRU"},
 	{ 545, "CINDERDU"},
 	{ 556, "SDXPINN"},
+	{ 560, "SA410M"},
 	{ 580, "SDXPINNM"},
 	{ 570, "SDXBAAGHA"},
 	{ 587, "CINDERDU_1010"},
