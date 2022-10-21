@@ -148,7 +148,7 @@ static int smi230_acc_i2c_probe(struct i2c_client *client,
 
 	if ((smi230_i2c_adapter != NULL) &&
 			(smi230_i2c_adapter == client->adapter)) {
-		PINFO("%s i2c adapter is at %x", SENSOR_ACC_NAME, (unsigned int)client->adapter);
+		PINFO("%s i2c adapter is at %x", SENSOR_ACC_NAME, client->adapter);
 	}
 	else {
 		PERR("%s i2c driver is not initialized yet before ACC driver!", SENSOR_GYRO_NAME);
@@ -214,7 +214,7 @@ static int smi230_gyro_i2c_probe(struct i2c_client *client,
 
 	if (smi230_i2c_adapter == NULL) {
 		smi230_i2c_adapter = client->adapter;
-		PINFO("%s i2c adapter is at %x", SENSOR_GYRO_NAME, (unsigned int)client->adapter);
+		PINFO("%s i2c adapter is at %x", SENSOR_GYRO_NAME, client->adapter);
 	}
 	else {
 		PERR("%s i2c driver should be initialized first!", SENSOR_GYRO_NAME);
