@@ -141,7 +141,16 @@ extern void qcom_scm_set_download_mode(enum qcom_download_mode mode, phys_addr_t
 extern int qcom_scm_get_download_mode(unsigned int *mode, phys_addr_t tcsr_boot_misc);
 extern int qcom_scm_config_cpu_errata(void);
 
-extern int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata);
+struct qcom_scm_pas_metadata {
+	void *ptr;
+	dma_addr_t phys;
+	ssize_t size;
+};
+
+extern int qcom_scm_pas_init_image(u32 peripheral, const void *metadata,
+				   size_t size,
+				   struct qcom_scm_pas_metadata *ctx);
+void qcom_scm_pas_metadata_release(struct qcom_scm_pas_metadata *ctx);
 extern int qcom_scm_pas_mem_setup(u32 peripheral, phys_addr_t addr,
 				  phys_addr_t size);
 extern int qcom_scm_pas_auth_and_reset(u32 peripheral);

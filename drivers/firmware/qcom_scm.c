@@ -590,10 +590,17 @@ EXPORT_SYMBOL(qcom_scm_config_cpu_errata);
  * @metadata:	pointer to memory containing ELF header, program header table
  *		and optional blob of data used for authenticating the metadata
  *		and the rest of the firmware
+ * @size:	size of the metadata
+ * @ctx:	optional metadata context
  *
- * Returns 0 on success.
+ * Return: 0 on success.
+ *
+ * Upon successful return, the PAS metadata context (@ctx) will be used to
+ * track the metadata allocation, this needs to be released by invoking
+ * qcom_scm_pas_metadata_release() by the caller.
  */
-int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata)
+int qcom_scm_pas_init_image(u32 peripheral, const void *metadata, size_t size,
+			    struct qcom_scm_pas_metadata *ctx)
 {
 	int ret;
 	struct qcom_scm_desc desc = {
@@ -607,7 +614,7 @@ int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata)
 
 	ret = qcom_scm_clk_enable();
 	if (ret)
-		return ret;
+		goto out;
 
 	desc.args[1] = metadata;
 
@@ -615,9 +622,35 @@ int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata)
 
 	qcom_scm_clk_disable();
 
+out:
+	if (ret < 0 || !ctx) {
+		dma_free_coherent(__scm->dev, size, mdata_buf, mdata_phys);
+	} else if (ctx) {
+		ctx->ptr = mdata_buf;
+		ctx->phys = mdata_phys;
+		ctx->size = size;
+	}
+
 	return ret ? : res.result[0];
 }
 EXPORT_SYMBOL(qcom_scm_pas_init_image);
+
+/**
+ * qcom_scm_pas_metadata_release() - release metadata context
+ * @ctx:	metadata context
+ */
+void qcom_scm_pas_metadata_release(struct qcom_scm_pas_metadata *ctx)
+{
+	if (!ctx->ptr)
+		return;
+
+	dma_free_coherent(__scm->dev, ctx->size, ctx->ptr, ctx->phys);
+
+	ctx->ptr = NULL;
+	ctx->phys = 0;
+	ctx->size = 0;
+}
+EXPORT_SYMBOL(qcom_scm_pas_metadata_release);
 
 /**
  * qcom_scm_pas_mem_setup() - Prepare the memory related to a given peripheral
