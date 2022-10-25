@@ -87,6 +87,12 @@ static struct ep_pcie_clk_info_t
 	{NULL, "pcie_pipe_clk_mux", 0, false},
 	{NULL, "pcie_pipe_clk_ext_src", 0, false},
 	{NULL, "pcie_0_ref_clk_src", 0, false},
+	{NULL, "snoc_pcie_sf_south_qx_clk", 0, false},
+	{NULL, "snoc_pcie_sf_center_qx_clk", 0, false},
+	{NULL, "snoc_cnoc_pcie_qx_clk", 0, false},
+	{NULL, "snoc_cnoc_gemnoc_pcie_south_qx_clk", 0, false},
+	{NULL, "snoc_cnoc_gemnoc_pcie_qx_clk", 0, false},
+	{NULL, "gemnoc_pcie_qx_clk", 0, false},
 };
 
 static struct ep_pcie_clk_info_t
@@ -607,6 +613,9 @@ static void ep_pcie_pipe_clk_deinit(struct ep_pcie_dev_t *dev)
 	int i;
 
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
+
+	if (dev->rumi)
+		return;
 
 	for (i = 0; i < EP_PCIE_MAX_PIPE_CLK; i++)
 		if (dev->pipeclk[i].hdl)

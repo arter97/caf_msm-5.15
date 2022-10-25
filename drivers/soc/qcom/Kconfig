@@ -83,6 +83,7 @@ config QCOM_CPR
 config QCOM_CPUSS_SLEEP_STATS
 	tristate "Qualcomm Technologies, Inc. (QTI) CPUSS sleep stats driver"
 	depends on DEBUG_FS
+	depends on QCOM_SCM
 	help
 	  Qualcomm Technologies, Inc. (QTI) CPUSS sleep stats driver to get
 	  hardware LPM counts and residency for particular core/cluster
@@ -98,6 +99,16 @@ config SHOW_SUSPEND_EPOCH
           the device is in suspend state. These values can be used to
           synchronize various subsystem timestamps and have an unique
           timestamp to correlate between various subsystems.
+
+config QCOM_CRM
+	tristate "Qualcomm Technologies, Inc. (QTI) CRM driver"
+	depends on QCOM_RPMH && (ARCH_QCOM || COMPILE_TEST)
+	help
+	  Support for communication with the hardened-CRM blocks in
+	  Qualcomm Technologies, Inc. (QTI) SoCs. CRM provides interface to
+	  vote desired power state of resources local to a subsystem. A set
+	  of hardware components aggregate requests for these resources and
+	  help apply the aggregated power state on the resource.
 
 config QCOM_GENI_SE
 	tristate "QCOM GENI Serial Engine Driver"
@@ -240,6 +251,7 @@ config QCOM_QMI_HELPERS
 	tristate
 	depends on NET
 
+source "drivers/soc/qcom/hab/Kconfig"
 source "drivers/soc/qcom/memshare/Kconfig"
 
 config QCOM_QFPROM_SYS
@@ -519,6 +531,15 @@ config QCOM_SOCINFO
 	help
 	 Say yes here to support the Qualcomm socinfo driver, providing
 	 information about the SoC to user space.
+
+config QCOM_SOCINFO_DT
+	tristate "Qualcomm Technologies, Inc. DT based socinfo driver"
+	select SOC_BUS
+	help
+	Say yes here to support the Qualcomm Technologies, Inc. device tree
+	 based socinfo driver, providing information about the SoC to
+	 user space. The driver gets the soc information from device tree.
+	 If unsure, say no.
 
 source "drivers/soc/qcom/dcvs/Kconfig"
 
