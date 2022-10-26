@@ -36,12 +36,20 @@ function move_signing_keys() {
 
 function build_defconfig_fragments() {
 	if [[ "${VARIANT}" =~ ^(perf_defconfig|debug_defconfig)$ ]]; then
+		if [ "${MSM_ARCH}" = sdxbaagha ]; then
+			config_128m=${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}-128m.config
+			[ -e "${config_128m}" ] && apply_defconfig_fragment ${config_128m} vendor/${MSM_ARCH}_defconfig
+		fi
 		apply_defconfig_fragment ${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}.config vendor/${MSM_ARCH}_defconfig
 
 		if [ "${VARIANT}" = perf_defconfig ]; then
 			return
 		fi
 
+		if [ "${MSM_ARCH}" = sdxbaagha ]; then
+			config_128m_debug=${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}-128m_debug.config
+			[ -e "${config_128m_debug}" ] && apply_defconfig_fragment ${config_128m_debug} vendor/${MSM_ARCH}_defconfig
+		fi
 		apply_defconfig_fragment ${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}_debug.config vendor/${MSM_ARCH}-debug_defconfig
 	else
 		echo "Variant '${VARIANT}' unsupported by mdm"
