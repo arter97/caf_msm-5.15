@@ -201,7 +201,7 @@ static void *alloc_coherent(struct mhi_dev *mhi, size_t size, dma_addr_t *phys, 
 
 static inline struct mhi_dev *mhi_get_dev_ctx(struct mhi_dev_ctx *mhi_hw_ctx, enum mhi_id id)
 {
-	return mhi_hw_ctx->mhi_dev[id];
+	return mhi_hw_ctx ? mhi_hw_ctx->mhi_dev[id] : NULL;
 }
 
 /*
@@ -4155,8 +4155,8 @@ int mhi_register_state_cb(void (*mhi_state_cb)
 	/* TODO: FR for supporting s/w channels in VF */
 	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
 
-	if (WARN_ON(!mhi))
-		return -ENXIO;
+	if (!mhi)
+		return -EPROBE_DEFER;
 
 	if (channel >= MHI_MAX_SOFTWARE_CHANNELS) {
 		mhi_log(MHI_MSG_ERROR, "Invalid channel :%d\n", channel);
