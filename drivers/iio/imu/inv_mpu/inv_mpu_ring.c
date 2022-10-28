@@ -309,10 +309,79 @@ void inv_convert_and_push_8bytes(struct iio_dev *indio_dev, u16 hdr,
 
 	inv_push_8bytes_buffer(indio_dev, hdr, t, out);
 }
+#ifdef CONFIG_ENABLE_IAM_ACC_GYRO_BUFFERING
+static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
+						s16 x, s16 y, s16 z)
+{
+	if (false == st->acc_buffer_inv_samples)
+		return;
+
+	mutex_lock(&st->acc_sensor_buff);
+	st->timestamp = t;
+	if (ktime_to_timespec64(st->timestamp).tv_sec
+			<  st->max_buffer_time) {
+		if (st->acc_bufsample_cnt < INV_ACC_MAXSAMPLE) {
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[0] = x;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[1] = y;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[2] = z;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->tsec =
+				ktime_to_timespec64(st->timestamp).tv_sec;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->tnsec =
+				ktime_to_timespec64(st->timestamp).tv_nsec;
+			st->acc_bufsample_cnt++;
+		}
+	} else {
+		dev_info(st->dev, "End of ACC buffering %d\n",
+					st->acc_bufsample_cnt);
+		st->acc_buffer_inv_samples = false;
+	}
+	mutex_unlock(&st->acc_sensor_buff);
+}
+
+static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
+						s16 x, s16 y, s16 z)
+{
+	if (false == st->gyro_buffer_inv_samples)
+		return;
+	mutex_lock(&st->gyro_sensor_buff);
+	st->timestamp = t;
+	if (ktime_to_timespec64(st->timestamp).tv_sec
+			<  st->max_buffer_time) {
+		if (st->gyro_bufsample_cnt < INV_GYRO_MAXSAMPLE) {
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[0] = x;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[1] = y;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[2] = z;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tsec =
+				ktime_to_timespec64(st->timestamp).tv_sec;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tnsec =
+				ktime_to_timespec64(st->timestamp).tv_nsec;
+			st->gyro_bufsample_cnt++;
+		}
+	} else {
+		dev_info(st->dev, "End of GYRO buffering %d\n",
+					st->gyro_bufsample_cnt);
+		st->gyro_buffer_inv_samples = false;
+	}
+	mutex_unlock(&st->gyro_sensor_buff);
+}
+#else
+static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
+						s16 x, s16 y, s16 z)
+{
+}
+static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
+						s16 x, s16 y, s16 z)
+{
+}
+#endif
 
 static int inv_push_special_8bytes_buffer(struct iio_dev *indio_dev,
 					  u16 hdr, u64 t, s16 *d)
 {
+	struct inv_mpu_state *st = iio_priv(indio_dev);
 	u8 buf[IIO_BUFFER_BYTES];
 	int j;
 
@@ -320,6 +389,7 @@ static int inv_push_special_8bytes_buffer(struct iio_dev *indio_dev,
 	memcpy(&buf[2], &d[0], sizeof(d[0]));
 	for (j = 0; j < 2; j++)
 		memcpy(&buf[4 + j * 2], &d[j + 1], sizeof(d[j]));
+	store_gyro_boot_sample(st, t, d[0], d[1], d[2]);
 	iio_push_to_buffers(indio_dev, buf);
 	inv_push_timestamp(indio_dev, t);
 
@@ -397,6 +467,7 @@ int inv_push_8bytes_buffer(struct iio_dev *indio_dev, u16 sensor, u64 t, s16 *d)
 				for (j = 0; j < 2; j++)
 					memcpy(&buf[4 + j * 2], &d[j + 1],
 					       sizeof(d[j]));
+				store_acc_boot_sample(st, t, d[0], d[1], d[2]);
 
 				iio_push_to_buffers(indio_dev, buf);
 				inv_push_timestamp(indio_dev, t);

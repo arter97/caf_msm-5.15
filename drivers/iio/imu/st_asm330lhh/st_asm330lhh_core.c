@@ -645,9 +645,6 @@ static int st_asm330lhh_write_raw(struct iio_dev *iio_dev,
 	struct st_asm330lhh_sensor *sensor = iio_priv(iio_dev);
 	int err;
 
-	if (asm330_check_acc_gyro_early_buff_enable_flag(sensor))
-		return 0;
-
 	switch (mask) {
 	case IIO_CHAN_INFO_SCALE:
 		err = iio_device_claim_direct_mode(iio_dev);

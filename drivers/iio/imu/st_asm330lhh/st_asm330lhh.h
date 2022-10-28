@@ -461,8 +461,6 @@ int __st_asm330lhh_set_sensor_batching_odr(struct st_asm330lhh_sensor *sensor,
 int st_asm330lhh_update_batching(struct iio_dev *iio_dev, bool enable);
 int st_asm330lhh_reset_hwts(struct st_asm330lhh_hw *hw);
 int st_asm330lhh_update_fifo(struct iio_dev *iio_dev, bool enable);
-int asm330_check_acc_gyro_early_buff_enable_flag(
-		struct st_asm330lhh_sensor *sensor);
 int asm330_check_sensor_enable_flag(
 		struct st_asm330lhh_sensor *sensor, bool enable);
 void st_asm330lhh_set_cpu_idle_state(bool value);
