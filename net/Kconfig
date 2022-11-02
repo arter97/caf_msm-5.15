@@ -455,4 +455,15 @@ config ETHTOOL_NETLINK
 	  netlink. It provides better extensibility and some new features,
 	  e.g. notification messages.
 
+#Shortcut-forwarding-engine
+config ENABLE_SFE
+	bool "Enable Shortcut-forwarding-engine"
+
+	help
+	  ENABLE_SFE enables software acceleration on the target.
+          The change supports Shortcut forwarding engine feature.
+	  Includes following changes, Add support to packet threshold events.
+	  Changes to support Shortcut Forward Engine.
+	  Add bridge API to access the bridge slave port.
+
 endif   # if NET
