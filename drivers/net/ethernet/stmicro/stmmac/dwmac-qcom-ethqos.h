@@ -15,6 +15,7 @@
 
 #include <linux/uaccess.h>
 #include <linux/ipc_logging.h>
+#include <linux/interconnect.h>
 
 #define QCOM_ETH_QOS_MAC_ADDR_LEN
 #define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
@@ -140,6 +141,9 @@ do {\
 #define VOTE_IDX_10MBPS 1
 #define VOTE_IDX_100MBPS 2
 #define VOTE_IDX_1000MBPS 3
+#define VOTE_IDX_2500MBPS 4
+#define VOTE_IDX_5000MBPS 5
+#define VOTE_IDX_10000MBPS 6
 
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
@@ -172,6 +176,88 @@ struct ethqos_emac_por {
 struct ethqos_emac_driver_data {
 	struct ethqos_emac_por *por;
 	unsigned int num_por;
+};
+
+struct emac_icc_data {
+	const char *name;
+	u32 average_bandwidth;
+	u32 peak_bandwidth;
+};
+
+static struct emac_icc_data emac_axi_icc_data[] = {
+	{
+		.name = "SPEED_0Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 0,
+	},
+	{
+		.name = "SPEED_10Mbps",
+		.average_bandwidth = 2500,
+		.peak_bandwidth = 2500,
+	},
+	{
+		.name = "SPEED_100Mbps",
+		.average_bandwidth = 25000,
+		.peak_bandwidth = 25000,
+	},
+	{
+		.name = "SPEED_1Gbps",
+		.average_bandwidth = 250000,
+		.peak_bandwidth = 250000,
+	},
+	{
+		.name = "SPEED_2.5Gbps",
+		.average_bandwidth = 625000,
+		.peak_bandwidth = 625000,
+	},
+	{
+		.name = "SPEED_5Gbps",
+		.average_bandwidth = 1250000,
+		.peak_bandwidth = 1250000,
+	},
+	{
+		.name = "SPEED_10Gbps",
+		.average_bandwidth = 2500000,
+		.peak_bandwidth = 2500000,
+	},
+};
+
+static struct emac_icc_data emac_apb_icc_data[] = {
+	{
+		.name = "SPEED_0Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 0,
+	},
+	{
+		.name = "SPEED_10Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 2500,
+	},
+	{
+		.name = "SPEED_100Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 25000,
+	},
+	{
+		.name = "SPEED_1Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 250000,
+	},
+	{
+		.name = "SPEED_2.5Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 625000,
+	},
+	{
+		.name = "SPEED_5Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 1250000,
+	},
+	{
+		.name = "SPEED_10Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 2500000,
+	},
 };
 
 struct qcom_ethqos {
@@ -213,7 +299,10 @@ struct qcom_ethqos {
 	dev_t avb_class_b_dev_t;
 	struct cdev *avb_class_b_cdev;
 	struct class *avb_class_b_class;
-
+	struct icc_path *axi_icc_path;
+	struct emac_icc_data *emac_axi_icc;
+	struct icc_path *apb_icc_path;
+	struct emac_icc_data *emac_apb_icc;
 	unsigned long avb_class_a_intr_cnt;
 	unsigned long avb_class_b_intr_cnt;
 

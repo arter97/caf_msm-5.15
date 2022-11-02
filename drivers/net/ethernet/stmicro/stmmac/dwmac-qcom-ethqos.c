@@ -609,39 +609,89 @@ static void rgmii_dump(void *priv)
 #define RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ	  (5 * 1000 * 1000UL)
 
 static void
-ethqos_update_rgmii_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
-				    unsigned int speed)
+ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
+			      unsigned int speed, int interface)
 {
-	switch (speed) {
-	case SPEED_1000:
-		ethqos->rgmii_clk_rate =  RGMII_1000_NOM_CLK_FREQ;
-		break;
+	int ret = 0;
 
-	case SPEED_100:
-		ethqos->rgmii_clk_rate =  RGMII_ID_MODE_100_LOW_SVS_CLK_FREQ;
-		break;
+	if (interface == PHY_INTERFACE_MODE_RGMII ||
+	    interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		switch (speed) {
+		case SPEED_1000:
+			ethqos->rgmii_clk_rate =  RGMII_1000_NOM_CLK_FREQ;
+			break;
 
-	case SPEED_10:
-		ethqos->rgmii_clk_rate =  RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ;
-		break;
+		case SPEED_100:
+			ethqos->rgmii_clk_rate =  RGMII_ID_MODE_100_LOW_SVS_CLK_FREQ;
+			break;
+
+		case SPEED_10:
+			ethqos->rgmii_clk_rate =  RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ;
+			break;
+
+		case 0:
+			break;
+
+		default:
+			dev_err(&ethqos->pdev->dev,
+				"Invalid speed %d\n", ethqos->speed);
+			return;
+		}
+		clk_set_rate(ethqos->rgmii_clk, ethqos->rgmii_clk_rate);
 	}
 
 	switch (speed) {
+	case SPEED_10000:
+		ethqos->vote_idx = VOTE_IDX_10000MBPS;
+		break;
+
+	case SPEED_5000:
+		ethqos->vote_idx = VOTE_IDX_5000MBPS;
+		break;
+
+	case SPEED_2500:
+		ethqos->vote_idx = VOTE_IDX_2500MBPS;
+		break;
+
 	case SPEED_1000:
 		ethqos->vote_idx = VOTE_IDX_1000MBPS;
 		break;
+
 	case SPEED_100:
 		ethqos->vote_idx = VOTE_IDX_100MBPS;
 		break;
+
 	case SPEED_10:
 		ethqos->vote_idx = VOTE_IDX_10MBPS;
 		break;
+
 	case 0:
 		ethqos->vote_idx = VOTE_IDX_0MBPS;
-		ethqos->rgmii_clk_rate = 0;
 		break;
+
+	default:
+		dev_err(&ethqos->pdev->dev,
+			"Invalid speed %d\n", ethqos->speed);
+		return;
 	}
-	clk_set_rate(ethqos->rgmii_clk, ethqos->rgmii_clk_rate);
+
+	if (ethqos->axi_icc_path && ethqos->emac_axi_icc) {
+		ret = icc_set_bw(ethqos->axi_icc_path,
+				 ethqos->emac_axi_icc[ethqos->vote_idx].average_bandwidth,
+				 ethqos->emac_axi_icc[ethqos->vote_idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("Interconnect set BW failed for Emac->Axi path\n");
+	}
+
+	if (ethqos->apb_icc_path && ethqos->emac_apb_icc) {
+		ret = icc_set_bw(ethqos->apb_icc_path,
+				 ethqos->emac_apb_icc[ethqos->vote_idx].average_bandwidth,
+				 ethqos->emac_apb_icc[ethqos->vote_idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("Interconnect set BW failed for Emac->Apb path\n");
+	}
 }
 
 static void ethqos_set_func_clk_en(struct qcom_ethqos *ethqos)
@@ -1404,13 +1454,14 @@ static int ethqos_configure_mac_v4(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
-static void ethqos_fix_mac_speed(void *priv, unsigned int speed)
+static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
 {
-	struct qcom_ethqos *ethqos = priv;
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 	int ret = 0;
 
 	ethqos->speed = speed;
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, speed);
+	ethqos_update_clk_and_bus_cfg(ethqos, speed, priv->plat->interface);
 
 	if (ethqos->emac_ver == EMAC_HW_v3_0_0_RG)
 		ret = ethqos_configure_mac_v3(ethqos);
@@ -1677,7 +1728,7 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 
 	ethqos->clks_suspended = 1;
 
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, 0);
+	ethqos_update_clk_and_bus_cfg(ethqos, 0, priv->plat->interface);
 
 	if (ethqos->phy_wol_supported) {
 		if (priv->plat->stmmac_clk)
@@ -1733,9 +1784,9 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 		clk_prepare_enable(ethqos->rgmii_clk);
 
 	if (qcom_ethqos_is_phy_link_up(ethqos))
-		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, ethqos->speed);
+		ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
 	else
-		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+		ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, priv->plat->interface);
 
 	ethqos->clks_suspended = 0;
 
@@ -2281,8 +2332,24 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		ETHQOSINFO("Early ethernet is enabled\n");
 	}
 
+	ethqos->axi_icc_path = of_icc_get(&pdev->dev, "axi_icc_path");
+	if (!ethqos->axi_icc_path || IS_ERR(ethqos->axi_icc_path)) {
+		ETHQOSERR("Interconnect not found for Emac->Axi path\n");
+		ethqos->emac_axi_icc = NULL;
+	} else {
+		ethqos->emac_axi_icc = emac_axi_icc_data;
+	}
+
+	ethqos->apb_icc_path = of_icc_get(&pdev->dev, "apb_icc_path");
+	if (!ethqos->apb_icc_path || IS_ERR(ethqos->apb_icc_path)) {
+		ETHQOSERR("Interconnect not found for Emac->Apb path\n");
+		ethqos->emac_apb_icc = NULL;
+	} else {
+		ethqos->emac_apb_icc = emac_apb_icc_data;
+	}
+
 	ethqos->speed = SPEED_10;
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+	ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, plat_dat->interface);
 	ethqos_set_func_clk_en(ethqos);
 
 	plat_dat->bsp_priv = ethqos;
@@ -2429,8 +2496,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	ret = stmmac_pltfr_remove(pdev);
 	clk_disable_unprepare(ethqos->rgmii_clk);
 
+	icc_put(ethqos->axi_icc_path);
+
+	icc_put(ethqos->apb_icc_path);
+
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
+
 	priv->phy_irq_enabled = false;
 
 	if (priv->plat->phy_intr_en_extn_stm)
@@ -2607,7 +2679,7 @@ static int qcom_ethqos_hib_restore(struct device *dev)
 	if (ret)
 		return ret;
 
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, ethqos->speed);
+	ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
 
 	ethqos_set_func_clk_en(ethqos);
 
