@@ -26,7 +26,7 @@ static struct measure_clk_data debug_mux_priv = {
 };
 
 static const char *const apcs_debug_mux_parent_names[] = {
-	"measure_only_pwrcl_clk",
+	"pwrcl_clk",
 };
 
 static int apcs_debug_mux_sels[] = {
@@ -123,7 +123,7 @@ static const char *const gcc_debug_mux_parent_names[] = {
 };
 
 static int gcc_debug_mux_sels[] = {
-	0xAB,		/* apcs_debug_mux */
+	0x175,		/* apcs_debug_mux */
 	0x12D,		/* gcc_ahb2phy_csi_clk */
 	0x12E,		/* gcc_ahb2phy_usb_clk */
 	0x140,		/* gcc_boot_rom_ahb_clk */
@@ -307,16 +307,16 @@ static struct clk_dummy measure_only_snoc_clk = {
 	},
 };
 
-static struct clk_dummy measure_only_pwrcl_clk = {
+static struct clk_dummy pwrcl_clk = {
 	.rrate = 1000,
 	.hw.init = &(struct clk_init_data){
-		.name = "measure_only_pwrcl_clk",
+		.name = "pwrcl_clk",
 		.ops = &clk_dummy_ops,
 	},
 };
 
 static struct clk_hw *debugcc_sa410m_hws[] = {
-	&measure_only_pwrcl_clk.hw,
+	&pwrcl_clk.hw,
 	&measure_only_cnoc_clk.hw,
 	&measure_only_gcc_sys_noc_cpuss_ahb_clk.hw,
 	&measure_only_hwkm_ahb_clk.hw,
