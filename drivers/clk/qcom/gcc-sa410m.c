@@ -1079,21 +1079,6 @@ static struct clk_branch gcc_cfg_noc_usb3_prim_axi_clk = {
 	},
 };
 
-static struct clk_branch gcc_cpuss_gnoc_clk = {
-	.halt_reg = 0x2b004,
-	.halt_check = BRANCH_HALT_VOTED,
-	.hwcg_reg = 0x2b004,
-	.hwcg_bit = 1,
-	.clkr = {
-		.enable_reg = 0x79004,
-		.enable_mask = BIT(22),
-		.hw.init = &(const struct clk_init_data){
-			.name = "gcc_cpuss_gnoc_clk",
-			.ops = &clk_branch2_ops,
-		},
-	},
-};
-
 static struct clk_branch gcc_disp_throttle_core_clk = {
 	.halt_reg = 0x17064,
 	.halt_check = BRANCH_HALT_VOTED,
@@ -1828,7 +1813,6 @@ static struct clk_regmap *gcc_sa410m_clocks[] = {
 	[GCC_CFG_NOC_USB3_PRIM_AXI_CLK] = &gcc_cfg_noc_usb3_prim_axi_clk.clkr,
 	[GCC_CPUSS_AHB_CLK_SRC] = &gcc_cpuss_ahb_clk_src.clkr,
 	[GCC_CPUSS_AHB_POSTDIV_CLK_SRC] = &gcc_cpuss_ahb_postdiv_clk_src.clkr,
-	[GCC_CPUSS_GNOC_CLK] = &gcc_cpuss_gnoc_clk.clkr,
 	[GCC_DISP_THROTTLE_CORE_CLK] = &gcc_disp_throttle_core_clk.clkr,
 	[GCC_EMAC0_AXI_CLK] = &gcc_emac0_axi_clk.clkr,
 	[GCC_EMAC0_PHY_AUX_CLK] = &gcc_emac0_phy_aux_clk.clkr,
@@ -1988,9 +1972,11 @@ static int gcc_sa410m_probe(struct platform_device *pdev)
 	 * Keep clocks always enabled:
 	 *	gcc_gpu_iref_en
 	 *	gcc_sys_noc_cpuss_ahb_clk
+	 *	gcc_cpuss_gnoc_clk
 	 */
 	regmap_update_bits(regmap, 0x36100, BIT(0), BIT(0));
 	regmap_update_bits(regmap, 0x79004, BIT(0), BIT(0));
+	regmap_update_bits(regmap, 0x79004, BIT(22), BIT(22));
 
 	ret = qcom_cc_really_probe(pdev, &gcc_sa410m_desc, regmap);
 	if (ret) {
