@@ -451,7 +451,8 @@ enum sdxpinn_functions {
 	msm_mux_sec_mi2s_data1,
 	msm_mux_sec_mi2s_sck,
 	msm_mux_sec_mi2s_ws,
-	msm_mux_sgmii_phy,
+	msm_mux_sgmii_phy_intr0_n,
+	msm_mux_sgmii_phy_intr1_n,
 	msm_mux_spmi_coex_clk,
 	msm_mux_spmi_coex_data,
 	msm_mux_spmi_vgi,
@@ -988,8 +989,11 @@ static const char *const sec_mi2s_sck_groups[] = {
 static const char *const sec_mi2s_ws_groups[] = {
 	"gpio20",
 };
-static const char *const sgmii_phy_groups[] = {
-	"gpio97", "gpio109",
+static const char *const sgmii_phy_intr0_n_groups[] = {
+	"gpio97",
+};
+static const char *const sgmii_phy_intr1_n_groups[] = {
+	"gpio109",
 };
 static const char *const spmi_coex_clk_groups[] = {
 	"gpio49",
@@ -1223,7 +1227,8 @@ static const struct msm_function sdxpinn_functions[] = {
 	FUNCTION(sec_mi2s_data1),
 	FUNCTION(sec_mi2s_sck),
 	FUNCTION(sec_mi2s_ws),
-	FUNCTION(sgmii_phy),
+	FUNCTION(sgmii_phy_intr0_n),
+	FUNCTION(sgmii_phy_intr1_n),
 	FUNCTION(spmi_coex_clk),
 	FUNCTION(spmi_coex_data),
 	FUNCTION(spmi_vgi),
@@ -1442,7 +1447,7 @@ static const struct msm_pingroup sdxpinn_groups[] = {
 			NA, 0x96008, 8),
 	[96] =
 		PINGROUP(96, qdss_gpio4, NA, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
-	[97] = PINGROUP(97, sgmii_phy, NA, qdss_gpio5, NA, NA, NA, NA, NA, NA,
+	[97] = PINGROUP(97, sgmii_phy_intr0_n, NA, qdss_gpio5, NA, NA, NA, NA, NA, NA,
 			NA, 0x96008, 9),
 	[98] = PINGROUP(98, tri_mi2s_ws, ebi2_lcd_te, NA, NA, NA, NA, NA, NA,
 			NA, NA, 0x96008, 10),
@@ -1465,7 +1470,7 @@ static const struct msm_pingroup sdxpinn_groups[] = {
 			 0x96008, 16),
 	[108] =
 		PINGROUP(108, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, 0x96008, 17),
-	[109] = PINGROUP(109, sgmii_phy, NA, NA, NA, NA, NA, NA, NA, NA, NA,
+	[109] = PINGROUP(109, sgmii_phy_intr1_n, NA, NA, NA, NA, NA, NA, NA, NA, NA,
 			 0x96008, 18),
 	[110] = PINGROUP(110, qup_se5_l0, qdss_gpio6, NA, NA, NA, NA, NA, NA,
 			 NA, NA, 0, -1),
@@ -1587,4 +1592,5 @@ module_exit(sdxpinn_pinctrl_exit);
 MODULE_DESCRIPTION("QTI sdxpinn pinctrl driver");
 MODULE_LICENSE("GPL v2");
 MODULE_DEVICE_TABLE(of, sdxpinn_pinctrl_of_match);
+
 
