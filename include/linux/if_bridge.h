@@ -68,6 +68,11 @@ void brioctl_set(int (*hook)(struct net *net, struct net_bridge *br,
 int br_ioctl_call(struct net *net, struct net_bridge *br, unsigned int cmd,
 		  struct ifreq *ifr, void __user *uarg);
 
+#ifdef CONFIG_ENABLE_SFE
+extern struct net_device *br_port_dev_get(struct net_device *dev,
+						unsigned char *addr);
+#endif
+
 #if IS_ENABLED(CONFIG_BRIDGE) && IS_ENABLED(CONFIG_BRIDGE_IGMP_SNOOPING)
 int br_multicast_list_adjacent(struct net_device *dev,
 			       struct list_head *br_ip_list);
