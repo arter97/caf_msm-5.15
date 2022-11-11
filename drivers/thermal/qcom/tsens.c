@@ -970,7 +970,7 @@ static int tsens_get_trend(void *data, int trip, enum thermal_trend *trend)
 	if (priv->ops->get_trend)
 		return priv->ops->get_trend(s, trend);
 
-	return -ENOTSUPP;
+	return qti_tz_get_trend(s->tzd, trip, trend);
 }
 
 static int tsens_tz_change_mode(void *data, enum thermal_device_mode mode)
