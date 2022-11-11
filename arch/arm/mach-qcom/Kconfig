@@ -48,5 +48,5 @@ config ARCH_SDXBAAGHA
 	select COMMON_CLK
 	select COMMON_CLK_QCOM
 	select QCOM_GDSC
-
+	select GENERIC_CLOCKEVENTS_BROADCAST
 endif
