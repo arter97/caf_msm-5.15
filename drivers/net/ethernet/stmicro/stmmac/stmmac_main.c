@@ -3447,11 +3447,11 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 		netdev_warn(priv->dev, "PTP not supported by HW\n");
 	else if (ret)
 		netdev_warn(priv->dev, "PTP init failed\n");
-	else if (ptp_register)
+	else if (ptp_register) {
 		stmmac_ptp_register(priv);
-	else
 		clk_set_rate(priv->plat->clk_ptp_ref,
 					 priv->plat->clk_ptp_rate);
+	}
 
 	ret = priv->plat->init_pps(priv);
 
@@ -3926,6 +3926,9 @@ static int stmmac_open(struct net_device *dev)
 		phylink_speed_up(priv->phylink);
 	}
 
+	if (!priv->phy_irq_enabled)
+		priv->plat->phy_irq_enable(priv);
+
 	ret = stmmac_request_irq(dev);
 	if (ret)
 		goto irq_error;
@@ -3981,6 +3984,9 @@ static int stmmac_release(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 chan;
+
+	if (priv->phy_irq_enabled)
+		priv->plat->phy_irq_disable(priv);
 
 	netif_tx_disable(dev);
 
@@ -6949,6 +6955,10 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
 	if (ret)
 		return ret;
 
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_4K)
+	priv->ptpaddr = priv->ioaddr + XGMAC_TIMESTAMP_BASE_ADDR;
+#endif
+
 	/* Get the HW capability (new GMAC newer than 3.50a) */
 	priv->hw_cap_support = stmmac_get_hw_features(priv);
 	if (priv->hw_cap_support) {
@@ -7347,8 +7357,11 @@ int stmmac_dvr_probe(struct device *device,
 	ndev->features |= ndev->hw_features | NETIF_F_HIGHDMA;
 	ndev->watchdog_timeo = msecs_to_jiffies(watchdog);
 #ifdef STMMAC_VLAN_TAG_USED
+	ndev->vlan_features |= ndev->hw_features;
 	/* Both mac100 and gmac support receive VLAN tag detection */
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX;
+	priv->dma_cap.vlhash = 0;
+	priv->dma_cap.vlins = 0;
 	if (priv->dma_cap.vlhash) {
 		ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 		ndev->features |= NETIF_F_HW_VLAN_STAG_FILTER;

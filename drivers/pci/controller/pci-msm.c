@@ -4431,7 +4431,7 @@ static int msm_pcie_get_resources(struct msm_pcie_dev_t *dev,
 		return ret;
 
 	dev->icc_path = of_icc_get(&pdev->dev, "icc_path");
-	if (IS_ERR_OR_NULL(dev->icc_path)) {
+	if (IS_ERR(dev->icc_path)) {
 		ret = dev->icc_path ? PTR_ERR(dev->icc_path) : -EINVAL;
 
 		PCIE_ERR(dev, "PCIe: RC%d: failed to get ICC path: %d\n",
@@ -4772,6 +4772,9 @@ static int msm_pcie_enable(struct msm_pcie_dev_t *dev)
 			goto link_fail;
 	}
 
+	/* Disable override for fal10_veto logic to de-assert Qactive signal */
+	msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, BIT(0), 0);
+
 	/**
 	 * configure LANE_SKEW_OFF BIT-5 and PARF_CFG_BITS_3 BIT-8 to support
 	 * dynamic link width upscaling.
@@ -4898,6 +4901,10 @@ static void msm_pcie_disable(struct msm_pcie_dev_t *dev)
 
 	msm_pcie_write_mask(dev->parf + PCIE20_PARF_PHY_CTRL, 0,
 				BIT(0));
+
+	/* Enable override for fal10_veto logic to assert Qactive signal.*/
+	msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(0));
+
 	msm_pcie_clk_deinit(dev);
 	msm_pcie_vreg_deinit(dev);
 	msm_pcie_pipe_clk_deinit(dev);
@@ -5794,7 +5801,6 @@ static irqreturn_t handle_wake_irq(int irq, void *data)
 
 		if (dev->drv_supported && !dev->suspending &&
 		    dev->link_status == MSM_PCIE_LINK_ENABLED) {
-			msm_pcie_clk_dump(dev);
 			pcie_phy_dump(dev);
 			pcie_parf_dump(dev);
 			pcie_dm_core_dump(dev);
@@ -5870,7 +5876,6 @@ static void msm_pcie_handle_linkdown(struct msm_pcie_dev_t *dev)
 		PCIE_DUMP(dev,
 			"PCIe:Linkdown IRQ for RC%d Dumping PCIe registers\n",
 			dev->rc_idx);
-		msm_pcie_clk_dump(dev);
 		pcie_phy_dump(dev);
 		pcie_parf_dump(dev);
 		pcie_dm_core_dump(dev);

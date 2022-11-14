@@ -143,6 +143,7 @@ struct event_list {
 };
 static void *slate_com_drv;
 static uint32_t g_slav_status_reg;
+static uint32_t g_slave_status_auto_clear_reg;
 static bool is_hibernate;
 
 /* SLATECOM client callbacks set-up */
@@ -171,7 +172,7 @@ static ktime_t sleep_time_start;
 
 static DECLARE_COMPLETION(slate_resume_wait);
 static int slatecom_reg_write_cmd(void *handle, uint8_t reg_start_addr,
-					uint8_t num_regs, void *write_buf);
+		uint8_t num_regs, void *write_buf, bool flag);
 
 static int slatecom_reg_read_internal(void *handle, uint8_t reg_start_addr,
 	uint32_t num_regs, void *read_buf);
@@ -243,6 +244,11 @@ int slatecom_set_spi_state(enum slatecom_spi_state state)
 			SLATECOM_INFO("Waiting to set state busy....\n");
 			msleep(100);
 		}
+		/* After PIL seq, clear preceding state. As rmproc
+		 * reloaded, it is unaware of previous context.
+		 */
+		atomic_set(&ok_to_sleep, 0);
+		atomic_set(&slate_is_runtime_suspend, 0);
 	}
 	spi_state = state;
 	SLATECOM_INFO("state = %d\n", state);
@@ -309,7 +315,7 @@ static int read_slate_locl(enum slatecom_req_type req_type,
 }
 
 static int slatecom_transfer(void *handle, uint8_t *tx_buf,
-	uint8_t *rx_buf, uint32_t txn_len, uint32_t freq)
+	uint8_t *rx_buf, uint32_t txn_len, uint32_t freq, bool flag)
 {
 	struct spi_transfer *tx_xfer;
 	struct slate_spi_priv *slate_spi;
@@ -337,12 +343,18 @@ static int slatecom_transfer(void *handle, uint8_t *tx_buf,
 	tx_xfer = &slate_spi->xfer1;
 	spi = slate_spi->spi;
 
+	mutex_lock(&slate_spi->xfer_mutex);
+
 	if (!atomic_read(&slate_is_spi_active)) {
 		SLATECOM_ERR("slatecom is inactive\n");
+		mutex_unlock(&slate_spi->xfer_mutex);
 		return -ECANCELED;
 	}
+	if (flag) {
+		SLATECOM_ERR("OK_TO_SLEEP Flag is set\n");
+		atomic_set(&slate_is_spi_active, 0);
+	}
 
-	mutex_lock(&slate_spi->xfer_mutex);
 	slate_spi_reinit_xfer(tx_xfer);
 	tx_xfer->tx_buf = tx_buf;
 	if (rx_buf)
@@ -592,16 +604,17 @@ static void slate_irq_tasklet_hndlr_l(void)
 
 	if (slav_status_auto_clear_reg & SLATE_PAUSE_REQ) {
 		cmnd_reg |= SLATE_PAUSE_OK;
-		ret = slatecom_reg_write_cmd(&clnt_handle, SLATE_CMND_REG, 1, &cmnd_reg);
+		ret = slatecom_reg_write_cmd(&clnt_handle,
+				SLATE_CMND_REG, 1, &cmnd_reg, false);
 		if (ret == 0) {
 			spi_state = SLATECOM_SPI_PAUSE;
-			pr_debug("SPI is in Pause State\n");
+			SLATECOM_INFO("SPI is in Pause State\n");
 		}
 	}
 
 	if (slav_status_auto_clear_reg & SLATE_RESUME_IND) {
 		spi_state = SLATECOM_SPI_FREE;
-		pr_debug("Apps to resume operation\n");
+		SLATECOM_INFO("Apps to resume operation\n");
 	}
 
 	/* Check if there are any status updates */
@@ -609,6 +622,7 @@ static void slate_irq_tasklet_hndlr_l(void)
 		SLATECOM_INFO("SLAVE_STATUS_READY = 0x%08X, OK_TO_SLEEP_CLEARED = 0x%08X\n",
 				(slave_status_reg & SLAVE_STATUS_READY),
 				(OK_TO_SLEEP_CLEARED & slav_status_auto_clear_reg));
+		g_slave_status_auto_clear_reg = slav_status_auto_clear_reg;
 		atomic_set(&ok_to_sleep, 0);
 		atomic_set(&slate_is_spi_active, 1);
 		complete(&slate_resume_wait);
@@ -635,7 +649,7 @@ static void wakeup_ahb_read(void *handle)
 	memcpy(tx_ahb_buf, &cmnd, sizeof(cmnd));
 	memcpy(tx_ahb_buf+sizeof(cmnd), &ahb_addr, sizeof(ahb_addr));
 
-	ret = slatecom_transfer(handle, tx_ahb_buf, rx_ahb_buf, txn_len, SPI_FREQ_1MHZ);
+	ret = slatecom_transfer(handle, tx_ahb_buf, rx_ahb_buf, txn_len, SPI_FREQ_1MHZ, false);
 	if (ret)
 		pr_err("slatecom_transfer fail with error %d\n", ret);
 }
@@ -690,7 +704,7 @@ static int is_slate_resume(void *handle, uint32_t *slav_status_reg,
 
 	cmnd |= reg_start_addr;
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
-	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ, false);
 
 	if (!ret) {
 		memcpy(read_buf, rx_buf+SLATE_SPI_READ_LEN, size);
@@ -788,6 +802,7 @@ complete:
 	atomic_set(&slate_is_spi_active, 1);
 
 unlock:
+	g_slave_status_auto_clear_reg = 0;
 	mutex_unlock(&slate_resume_mutex);
 	return 0;
 }
@@ -856,7 +871,7 @@ int slatecom_ahb_read(void *handle, uint32_t ahb_start_addr,
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 	memcpy(tx_buf+sizeof(cmnd), &ahb_addr, sizeof(ahb_addr));
 
-	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ, false);
 
 	if (!ret)
 		memcpy(read_buf, rx_buf+SLATE_SPI_AHB_READ_CMD_LEN, size);
@@ -922,7 +937,7 @@ int slatecom_ahb_write_bytes(void *handle, uint32_t ahb_start_addr,
 		memcpy(tx_buf+sizeof(cmnd), &ahb_addr, sizeof(ahb_addr));
 		memcpy(tx_buf+SLATE_SPI_AHB_CMD_LEN, write_buf, curr_num_bytes);
 
-		ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ);
+		ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ, false);
 		if (ret) {
 			SLATECOM_ERR("slatecom_transfer fail with error %d\n", ret);
 			goto error;
@@ -988,7 +1003,7 @@ int slatecom_ahb_write(void *handle, uint32_t ahb_start_addr,
 		memcpy(tx_buf+sizeof(cmnd), &ahb_addr, sizeof(ahb_addr));
 		memcpy(tx_buf+SLATE_SPI_AHB_CMD_LEN, write_buf, curr_num_bytes);
 
-		ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ);
+		ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ, false);
 		if (ret) {
 			SLATECOM_ERR("slatecom_transfer fail with error %d\n", ret);
 			goto error;
@@ -1047,7 +1062,7 @@ int slatecom_fifo_write(void *handle, uint32_t num_words,
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 	memcpy(tx_buf+sizeof(cmnd), write_buf, size);
 
-	ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ, false);
 	kfree(tx_buf);
 
 error_ret:
@@ -1104,7 +1119,7 @@ int slatecom_fifo_read(void *handle, uint32_t num_words,
 	cmnd |= SLATE_SPI_FIFO_READ_CMD;
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 
-	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ, false);
 
 	if (!ret)
 		memcpy(read_buf, rx_buf+SLATE_SPI_READ_LEN, size);
@@ -1120,7 +1135,7 @@ error_ret:
 EXPORT_SYMBOL(slatecom_fifo_read);
 
 static int slatecom_reg_write_cmd(void *handle, uint8_t reg_start_addr,
-	uint8_t num_regs, void *write_buf)
+	uint8_t num_regs, void *write_buf, bool flag)
 {
 	uint32_t txn_len;
 	uint8_t *tx_buf;
@@ -1158,7 +1173,7 @@ static int slatecom_reg_write_cmd(void *handle, uint8_t reg_start_addr,
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 	memcpy(tx_buf+sizeof(cmnd), write_buf, size);
 
-	ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, NULL, txn_len, SPI_FREQ_40MHZ, flag);
 	kfree(tx_buf);
 	return ret;
 }
@@ -1173,7 +1188,7 @@ int slatecom_reg_write(void *handle, uint8_t reg_start_addr,
 	mutex_lock(&slate_task_mutex);
 
 	ret = slatecom_reg_write_cmd(handle, reg_start_addr,
-					num_regs, write_buf);
+					num_regs, write_buf, false);
 
 	pm_runtime_mark_last_busy(&spi->dev);
 	pm_runtime_put_sync_autosuspend(&spi->dev);
@@ -1225,7 +1240,7 @@ static int slatecom_reg_read_internal(void *handle, uint8_t reg_start_addr,
 	cmnd |= reg_start_addr;
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 
-	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ, false);
 
 	if (!ret)
 		memcpy(read_buf, rx_buf+SLATE_SPI_READ_LEN, size);
@@ -1283,7 +1298,7 @@ int slatecom_reg_read(void *handle, uint8_t reg_start_addr,
 	cmnd |= reg_start_addr;
 	memcpy(tx_buf, &cmnd, sizeof(cmnd));
 
-	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ);
+	ret = slatecom_transfer(handle, tx_buf, rx_buf, txn_len, SPI_FREQ_40MHZ, false);
 
 	if (!ret)
 		memcpy(read_buf, rx_buf+SLATE_SPI_READ_LEN, size);
@@ -1379,6 +1394,8 @@ static irqreturn_t slate_irq_tasklet_hndlr(int irq, void *device)
 	uint32_t slav_status_reg = 0;
 	uint32_t slav_status_auto_clear_reg = 0;
 	struct slate_context clnt_handle;
+	uint32_t cmnd_reg = 0;
+	int ret = 0;
 
 	clnt_handle.slate_spi = slate_spi;
 
@@ -1403,6 +1420,20 @@ static irqreturn_t slate_irq_tasklet_hndlr(int irq, void *device)
 				atomic_set(&slate_is_spi_active, 1);
 				atomic_set(&slate_is_runtime_suspend, 0);
 			}
+
+		}
+		if (slav_status_auto_clear_reg & SLATE_PAUSE_REQ) {
+			cmnd_reg |= SLATE_PAUSE_OK;
+			ret = slatecom_reg_write_cmd(&clnt_handle,
+					SLATE_CMND_REG, 1, &cmnd_reg, false);
+			if (ret == 0) {
+				spi_state = SLATECOM_SPI_PAUSE;
+				SLATECOM_INFO("SPI is in Pause State\n");
+			}
+		}
+		if (slav_status_auto_clear_reg & SLATE_RESUME_IND) {
+			spi_state = SLATECOM_SPI_FREE;
+			SLATECOM_INFO("Apps to resume operation\n");
 		}
 		atomic_set(&slate_spi->irq_lock, 0);
 	} else if (list_empty(&cb_head)) {
@@ -1584,6 +1615,7 @@ static int slatecom_pm_prepare(struct device *dev)
 	struct slate_spi_priv *slate_spi = spi_get_drvdata(s_dev);
 	int ret = 0;
 
+	g_slave_status_auto_clear_reg = 0;
 	clnt_handle.slate_spi = slate_spi;
 
 	if (!(g_slav_status_reg & BIT(31))) {
@@ -1593,6 +1625,7 @@ static int slatecom_pm_prepare(struct device *dev)
 
 	if (is_hibernate)
 		cmnd_reg |= SLATE_OK_SLP_S2D;
+
 	else if (pm_suspend_via_firmware())
 		cmnd_reg |= SLATE_OK_SLP_S2R;
 	else
@@ -1602,7 +1635,7 @@ static int slatecom_pm_prepare(struct device *dev)
 			: SLATECOM_INFO("spi is already active, skip get_sync...\n");
 
 	atomic_set(&ok_to_sleep, 1);
-	ret = slatecom_reg_write_cmd(&clnt_handle, SLATE_CMND_REG, 1, &cmnd_reg);
+	ret = slatecom_reg_write_cmd(&clnt_handle, SLATE_CMND_REG, 1, &cmnd_reg, true);
 	if (ret < 0)
 		atomic_set(&ok_to_sleep, 0);
 
@@ -1636,7 +1669,16 @@ static int slatecom_pm_suspend(struct device *dev)
 		return 0;
 	}
 
-	atomic_set(&slate_is_spi_active, 0);
+	if ((g_slave_status_auto_clear_reg & OK_TO_SLEEP_CLEARED) &&
+			(g_slav_status_reg & SLAVE_STATUS_READY)) {
+		SLATECOM_ERR("Slate is in active, Abort Suspend\n");
+		atomic_set(&slate_is_runtime_suspend, 0);
+		atomic_set(&state, SLATECOM_STATE_ACTIVE);
+		atomic_set(&slate_is_spi_active, 1);
+		g_slave_status_auto_clear_reg = 0;
+		return -ECANCELED;
+	}
+
 	atomic_set(&state, SLATECOM_STATE_SUSPEND);
 	atomic_set(&slate_is_runtime_suspend, 0);
 
@@ -1645,7 +1687,7 @@ static int slatecom_pm_suspend(struct device *dev)
 		IRQF_TRIGGER_RISING | IRQF_ONESHOT, "qcom-slate_spi", slate_spi);
 
 	SLATECOM_ERR("suspended\n");
-	return 0;
+	return (atomic_read(&slate_is_spi_active)) ? -ECANCELED : 0;
 }
 
 static int slatecom_pm_resume(struct device *dev)
@@ -1669,21 +1711,23 @@ static int slatecom_pm_resume(struct device *dev)
 	}
 
 	if (atomic_read(&slate_is_spi_active)) {
-		SLATECOM_INFO("Slatecom is in resume state\n");
+		SLATECOM_INFO("Slatecom in resume state\n");
 		return 0;
+	} else {
+		if (!(g_slav_status_reg & BIT(31))) {
+			SLATECOM_ERR("Slate boot is not complete, skip SPI resume\n");
+			return 0;
+		}
+		mutex_lock(&slate_task_mutex);
+		clnt_handle.slate_spi = spi;
+		atomic_set(&slate_is_spi_active, 1);
+		atomic_set(&slate_is_runtime_suspend, 0);
+		ret = slatecom_resume_l(&clnt_handle);
+		SLATECOM_ERR("Slatecom resumed with : %d\n", ret);
+		mutex_unlock(&slate_task_mutex);
+
+		return ret;
 	}
-	if (!(g_slav_status_reg & BIT(31))) {
-		SLATECOM_ERR("Slate boot is not complete, skip SPI resume\n");
-		return 0;
-	}
-	mutex_lock(&slate_task_mutex);
-	clnt_handle.slate_spi = spi;
-	atomic_set(&slate_is_spi_active, 1);
-	atomic_set(&slate_is_runtime_suspend, 0);
-	ret = slatecom_resume_l(&clnt_handle);
-	SLATECOM_ERR("Slatecom resumed with : %d\n", ret);
-	mutex_unlock(&slate_task_mutex);
-	return ret;
 }
 
 static void slatecom_pm_complete(struct device *dev)
@@ -1715,7 +1759,8 @@ static int slatecom_pm_runtime_suspend(struct device *dev)
 
 	cmnd_reg |= SLATE_OK_SLP_SIF;
 	atomic_set(&ok_to_sleep, 1);
-	ret = slatecom_reg_write_cmd(&clnt_handle, SLATE_CMND_REG, 1, &cmnd_reg);
+	ret = slatecom_reg_write_cmd(&clnt_handle,
+			SLATE_CMND_REG, 1, &cmnd_reg, false);
 	sleep_time_start = ktime_get();
 	if (ret == 0) {
 		atomic_set(&state, SLATECOM_STATE_RUNTIME_SUSPEND);

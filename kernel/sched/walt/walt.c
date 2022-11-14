@@ -14,8 +14,10 @@
 #include <linux/qcom-cpufreq-hw.h>
 #include <linux/cpumask.h>
 #include <linux/arch_topology.h>
+#include <linux/cpu.h>
 
 #include <trace/hooks/sched.h>
+#include <trace/hooks/cgroup.h>
 #include <trace/hooks/cpufreq.h>
 #include <trace/hooks/topology.h>
 #include <trace/events/power.h>
@@ -464,7 +466,7 @@ static void update_task_cpu_cycles(struct task_struct *p, int cpu,
 
 static inline bool is_ed_enabled(void)
 {
-	return (walt_rotation_enabled || (boost_policy != SCHED_BOOST_NONE));
+	return (boost_policy != SCHED_BOOST_NONE);
 }
 
 static inline bool is_ed_task(struct task_struct *p, u64 wallclock)
@@ -659,6 +661,7 @@ __cpu_util_freq_walt(int cpu, struct walt_cpu_load *walt_load, unsigned int *rea
 		walt_load->pl = pl;
 		walt_load->ws = walt_load_reported_window;
 		walt_load->rtgb_active = rtgb_active;
+		walt_load->big_task_rotation = walt_rotation_enabled;
 		if (wrq->ed_task)
 			walt_load->ed_active = true;
 		else
@@ -3759,7 +3762,7 @@ static void update_cpu_capacity_helper(int cpu)
 	rq->cpu_capacity_orig = min(fmax_capacity, thermal_cap);
 
 	if (old != rq->cpu_capacity_orig)
-		trace_update_cpu_capacity(cpu, 0, 0);
+		trace_update_cpu_capacity(cpu, fmax_capacity, rq->cpu_capacity_orig);
 }
 
 /*
@@ -3813,11 +3816,6 @@ static void walt_irq_work(struct irq_work *irq_work)
 		else
 			raw_spin_lock_nested(&cpu_rq(cpu)->__lock, level);
 		level++;
-	}
-
-	if (!is_migration) {
-		for_each_cpu(cpu, &lock_cpus)
-			update_cpu_capacity_helper(cpu);
 	}
 
 	__walt_irq_work_locked(is_migration, &lock_cpus);
@@ -4083,6 +4081,7 @@ static void walt_cpu_frequency_limits(void *unused, struct cpufreq_policy *polic
 		return;
 
 	cpu_cluster(policy->cpu)->max_freq = policy->max;
+	update_cpu_capacity_helper(policy->cpu);
 }
 
 static void android_rvh_sched_cpu_starting(void *unused, int cpu)
@@ -4494,6 +4493,46 @@ static void android_rvh_build_perf_domains(void *unused, bool *eas_check)
 	*eas_check = true;
 }
 
+static void android_rvh_update_thermal_stats(void *unused, int cpu)
+{
+	if (unlikely(walt_disabled))
+		return;
+	update_cpu_capacity_helper(cpu);
+}
+
+static DECLARE_COMPLETION(rebuild_domains_completion);
+static void rebuild_sd_workfn(struct work_struct *work);
+static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
+
+/** rebuild_sd_workfn
+ *
+ * rebuild the sched domains (and therefore the perf
+ * domains). It is absolutely necessary that the
+ * em_pds are created for each cpu device before
+ * proceeding, and this must complete for walt to
+ * function properly.
+ */
+static void rebuild_sd_workfn(struct work_struct *work)
+{
+	int cpu;
+	struct device *cpu_dev;
+
+	for_each_possible_cpu(cpu) {
+		cpu_dev = get_cpu_device(cpu);
+		if (cpu_dev->em_pd)
+			continue;
+
+		WARN_ONCE(true, "must wait for perf domains to be created");
+		schedule_work(&rebuild_sd_work);
+
+		/* do not rebuild domains yet, and do not complete this action */
+		return;
+	}
+
+	rebuild_sched_domains();
+	complete(&rebuild_domains_completion);
+}
+
 static void walt_do_sched_yield(void *unused, struct rq *rq)
 {
 	struct task_struct *curr = rq->curr;
@@ -4539,6 +4578,7 @@ static void register_walt_hooks(void)
 	register_trace_android_rvh_build_perf_domains(android_rvh_build_perf_domains, NULL);
 	register_trace_cpu_frequency_limits(walt_cpu_frequency_limits, NULL);
 	register_trace_android_rvh_do_sched_yield(walt_do_sched_yield, NULL);
+	register_trace_android_rvh_update_thermal_stats(android_rvh_update_thermal_stats, NULL);
 }
 
 atomic64_t walt_irq_work_lastq_ws;
@@ -4606,6 +4646,7 @@ static void walt_init(struct work_struct *work)
 {
 	struct ctl_table_header *hdr;
 	static atomic_t already_inited = ATOMIC_INIT(0);
+	struct root_domain *rd = cpu_rq(cpumask_first(cpu_active_mask))->rd;
 	int i;
 
 	might_sleep();
@@ -4628,7 +4669,30 @@ static void walt_init(struct work_struct *work)
 	walt_cfs_init();
 	walt_halt_init();
 	wait_for_completion_interruptible(&tick_sched_clock_completion);
+
+	if (!rcu_dereference(rd->pd)) {
+		/*
+		 * perf domains not properly configured.  this is a must as
+		 * create_util_to_cost depends on rd->pd being properly
+		 * initialized.
+		 */
+		schedule_work(&rebuild_sd_work);
+		wait_for_completion_interruptible(&rebuild_domains_completion);
+	}
+
 	stop_machine(walt_init_stop_handler, NULL, NULL);
+
+	/*
+	 * validate root-domain perf-domain is configured properly
+	 * to work with an asymmetrical soc. This is necessary
+	 * for load balance and task placement to work properly.
+	 * see walt_find_energy_efficient_cpu(), and
+	 * create_util_to_cost().
+	 */
+	if (!rcu_dereference(rd->pd) && num_sched_clusters > 1)
+		WALT_BUG(WALT_BUG_WALT, NULL,
+			 "root domain's perf-domain values not initialized rd->pd=%d.",
+			 rd->pd);
 
 	hdr = register_sysctl_table(walt_base_table);
 	kmemleak_not_leak(hdr);

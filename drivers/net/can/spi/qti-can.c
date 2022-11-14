@@ -75,8 +75,8 @@ struct qti_can {
 	u32 rem_all_buffering_timeout_ms;
 	u32 can_fw_cmd_timeout_ms;
 	s64 time_diff;
-	struct notifier_block qti_can_pm_nb;
 	bool active_low;
+	bool univ_acc_filter_flag;
 };
 
 struct qti_can_netdev_privdata {
@@ -967,30 +967,6 @@ static int qti_can_query_firmware_version(struct qti_can *priv_data)
 	return ret;
 }
 
-static int qti_can_notify_power_events(struct qti_can *priv_data, u8 event_type)
-{
-	char *tx_buf, *rx_buf;
-	int ret;
-	struct spi_mosi *req;
-
-	mutex_lock(&priv_data->spi_lock);
-	tx_buf = priv_data->tx_buf;
-	rx_buf = priv_data->rx_buf;
-	memset(tx_buf, 0, XFER_BUFFER_SIZE);
-	memset(rx_buf, 0, XFER_BUFFER_SIZE);
-	priv_data->xfer_length = XFER_BUFFER_SIZE;
-
-	req = (struct spi_mosi *)tx_buf;
-	req->cmd = event_type;
-	req->len = 0;
-	req->seq = atomic_inc_return(&priv_data->msg_seq);
-
-	ret = qti_can_do_spi_transaction(priv_data);
-	mutex_unlock(&priv_data->spi_lock);
-
-	return ret;
-}
-
 static int qti_can_set_bitrate(struct net_device *netdev)
 {
 	char *tx_buf, *rx_buf;
@@ -1387,6 +1363,8 @@ static int qti_can_frame_filter(struct net_device *netdev,
 	add_filter->mid = filter_request->mid;
 	add_filter->mask = filter_request->mask;
 
+	if (filter_request->mid == 0)
+		priv_data->univ_acc_filter_flag = true;
 	ret = qti_can_do_spi_transaction(priv_data);
 	kfree(filter_request);
 	mutex_unlock(&priv_data->spi_lock);
@@ -1753,27 +1731,6 @@ static const struct of_device_id qti_can_match_table[] = {
 	{ }
 };
 
-static int qti_can_prepare(struct device *dev);
-static int qti_can_resume(struct device *dev);
-
-static int suspend_resume_notifier(struct notifier_block *nb,
-				   unsigned long event, void *unused)
-{
-	struct qti_can *priv_data =
-		container_of(nb, struct qti_can, qti_can_pm_nb);
-
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		qti_can_prepare(&priv_data->spidev->dev);
-		break;
-	case PM_POST_SUSPEND:
-		qti_can_resume(&priv_data->spidev->dev);
-		break;
-	}
-
-	return NOTIFY_DONE;
-}
-
 static int qti_can_probe(struct spi_device *spi)
 {
 	int err, retry = 0, query_err = -1, i;
@@ -1915,10 +1872,6 @@ static int qti_can_probe(struct spi_device *spi)
 	}
 	dev_dbg(dev, "Request irq %d ret %d\n", spi->irq, err);
 
-	priv_data->qti_can_pm_nb.notifier_call = suspend_resume_notifier;
-
-	err = register_pm_notifier(&priv_data->qti_can_pm_nb);
-
 	if (err)
 		dev_info(&priv_data->spidev->dev, "register_pm_notifier_error\n");
 
@@ -1966,57 +1919,136 @@ static int qti_can_remove(struct spi_device *spi)
 	return 0;
 }
 
-static int qti_can_prepare(struct device *dev)
+static int qti_can_add_filter(struct device *dev, struct can_filter_req *filter_request)
 {
+	char *tx_buf, *rx_buf;
+	int ret;
+	struct spi_mosi *req;
+	struct can_filter_req *add_filter;
+
 	struct spi_device *spi = to_spi_device(dev);
 	struct qti_can *priv_data = NULL;
-	u8 power_event = CMD_SUSPEND_EVENT;
+
+	if (spi)
+		priv_data = spi_get_drvdata(spi);
+
+	mutex_lock(&priv_data->spi_lock);
+	tx_buf = priv_data->tx_buf;
+	rx_buf = priv_data->rx_buf;
+	memset(tx_buf, 0, XFER_BUFFER_SIZE);
+	memset(rx_buf, 0, XFER_BUFFER_SIZE);
+	priv_data->xfer_length = XFER_BUFFER_SIZE;
+
+	req = (struct spi_mosi *)tx_buf;
+
+	req->len = sizeof(struct can_filter_req);
+	req->seq = atomic_inc_return(&priv_data->msg_seq);
+
+	add_filter = (struct can_filter_req *)req->data;
+	add_filter->can_if = filter_request->can_if;
+	add_filter->mid = filter_request->mid;
+	add_filter->mask = filter_request->mask;
+
+	ret = qti_can_do_spi_transaction(priv_data);
+
+	mutex_unlock(&priv_data->spi_lock);
+	return ret;
+}
+
+#ifdef CONFIG_PM
+
+static int qti_can_freeze(struct device *dev)
+{
 	int ret = 0;
 
-	if (spi) {
-		priv_data = spi_get_drvdata(spi);
-		enable_irq_wake(spi->irq);
-	} else {
-		ret = -1;
-	}
+	/* To disable checksum validation for qti-can probe response in restore */
+	checksum_enable = 0;
+	return ret;
+}
 
-	if (priv_data && !(ret < 0))
-		ret = qti_can_notify_power_events(priv_data, power_event);
+static int qti_can_thaw(struct device *dev)
+{
+	int ret = 0;
 
 	return ret;
 }
 
-static int qti_can_resume(struct device *dev)
+static int qti_can_restore(struct device *dev)
 {
+	int err, retry = 0, query_err = -1, ret = 0, i;
+	struct can_filter_req *filter_request;
 	struct spi_device *spi = to_spi_device(dev);
 	struct qti_can *priv_data = NULL;
-	int ret = 0;
-	u8 power_event = CMD_RESUME_EVENT;
 
 	if (spi) {
 		priv_data = spi_get_drvdata(spi);
 		disable_irq_wake(spi->irq);
-
-		if (priv_data)
-			qti_can_rx_message(priv_data);
-		else
-			ret = -1;
-
 	} else {
 		ret = -1;
 	}
 
-	if (priv_data && !(ret < 0))
-		ret = qti_can_notify_power_events(priv_data, power_event);
+	while ((query_err != 0) && (retry < QTI_CAN_FW_QUERY_RETRY_COUNT)) {
+		dev_dbg(dev, "Trying to query fw version %d\n", retry);
+		query_err = qti_can_query_firmware_version(priv_data);
+		priv_data->assembly_buffer_size = 0;
+		retry++;
+	}
+	dev_info(dev, "Retry count for fw version query is %d\n", retry);
+	if (query_err) {
+		dev_err(&priv_data->spidev->dev, "QTI CAN probe failed\n");
+		err = -ENODEV;
+		goto free_irq;
+	}
+	return 0;
 
-	return ret;
+	if (priv_data->univ_acc_filter_flag) {
+		filter_request = kzalloc(sizeof(*filter_request), GFP_KERNEL);
+		if (!filter_request)
+			return -ENOMEM;
+
+		filter_request->can_if = 0;
+		filter_request->mid = 0;
+		filter_request->mask = 0x40000000;
+		qti_can_add_filter(dev, filter_request);
+
+		dev_info(dev, "universal acceptance filter added!\n", retry);
+
+		priv_data->univ_acc_filter_flag = false;
+		kfree(filter_request);
+	}
+
+free_irq:
+	free_irq(spi->irq, priv_data);
+/* unregister_candev */
+	for (i = 0; i < priv_data->max_can_channels; i++)
+		unregister_candev(priv_data->netdev[i]);
+/* cleanup_candev */
+	if (priv_data) {
+		for (i = 0; i < priv_data->max_can_channels; i++) {
+			if (priv_data->netdev[i])
+				free_candev(priv_data->netdev[i]);
+		}
+		if (priv_data->tx_wq)
+			destroy_workqueue(priv_data->tx_wq);
+	}
+	return err;
 }
+
+static const struct dev_pm_ops qti_can_dev_pm_ops = {
+	.freeze	= qti_can_freeze,
+	.thaw	= qti_can_thaw,
+	.restore = qti_can_restore
+};
+#endif
 
 static struct spi_driver qti_can_driver = {
 	.driver = {
 		.name = "qti-can",
 		.of_match_table = qti_can_match_table,
 		.owner = THIS_MODULE,
+#ifdef CONFIG_PM
+		.pm = &qti_can_dev_pm_ops,
+#endif
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = qti_can_probe,

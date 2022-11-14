@@ -30,7 +30,6 @@
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
 #include "stmmac_ptp.h"
-#include "dwmac-qcom-serdes.h"
 
 #define RGMII_IO_MACRO_DEBUG1		0x20
 #define EMAC_SYSTEM_LOW_POWER_DEBUG	0x28
@@ -927,48 +926,13 @@ static int ethqos_configure(struct qcom_ethqos *ethqos)
 	return 0;
 }
 
-int ethqos_configureSGMII(struct qcom_ethqos *ethqos)
-{
-
-	u32 value = 0;
-
-	value = readl(ethqos->ioaddr + MAC_CTRL_REG);
-	switch (ethqos->speed) {
-		case SPEED_1000:
-		value &= ~BIT(15);
-		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
-		rgmii_updatel(ethqos, BIT(16), BIT(16), RGMII_IO_MACRO_CONFIG2);
-	break;
-
-	case SPEED_100:
-		value |= BIT(15) | BIT(14);
-		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
-	break;
-	case SPEED_10:
-		value |= BIT(15);
-		value &= ~BIT(14);
-		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
-	break;
-	}
-
-	return value;
-
-}
-
 static void ethqos_fix_mac_speed(void *priv, unsigned int speed)
 {
 	struct qcom_ethqos *ethqos = priv;
-	struct stmmac_priv *stmpriv = qcom_ethqos_get_priv(ethqos);
-	int ret = -1;
 
 	ethqos->speed = speed;
-
-	if(stmpriv->plat->interface == PHY_INTERFACE_MODE_SGMII)
-		ret = ethqos_configureSGMII(ethqos);
-	else{
 	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, speed);
 	ethqos_configure(ethqos);
-	}
 }
 
 static int ethqos_mdio_read(struct stmmac_priv  *priv, int phyaddr, int phyreg)
@@ -1096,6 +1060,30 @@ static irqreturn_t ETHQOS_PHY_ISR(int irq, void *dev_data)
 	return IRQ_HANDLED;
 }
 
+static void ethqos_phy_irq_enable(void *priv_n)
+{
+	struct stmmac_priv *priv = priv_n;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	if (ethqos->phy_intr) {
+		ETHQOSINFO("enabling irq = %d\n", priv->phy_irq_enabled);
+		enable_irq(ethqos->phy_intr);
+		priv->phy_irq_enabled = true;
+	}
+}
+
+static void ethqos_phy_irq_disable(void *priv_n)
+{
+	struct stmmac_priv *priv = priv_n;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	if (ethqos->phy_intr) {
+		ETHQOSINFO("disabling irq = %d\n", priv->phy_irq_enabled);
+		disable_irq(ethqos->phy_intr);
+		priv->phy_irq_enabled = false;
+	}
+}
+
 static int ethqos_phy_intr_enable(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
@@ -1112,6 +1100,7 @@ static int ethqos_phy_intr_enable(struct qcom_ethqos *ethqos)
 		return ret;
 	}
 	priv->plat->phy_intr_en_extn_stm = true;
+	priv->phy_irq_enabled = true;
 	return ret;
 }
 
@@ -1242,9 +1231,6 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_prepare_enable(priv->plat->pclk);
 
-	if (priv->plat->clk_ptp_ref)
-		clk_prepare_enable(priv->plat->clk_ptp_ref);
-
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
 
@@ -1265,57 +1251,42 @@ static void qcom_ethqos_request_phy_wol(void *plat_n)
 {
 	struct plat_stmmacenet_data *plat = plat_n;
 	struct qcom_ethqos *ethqos;
-	struct platform_device *pdev;
-	struct net_device *ndev;
+	struct stmmac_priv *priv;
+	int ret = 0;
 
 	if (!plat)
 		return;
 
 	ethqos = plat->bsp_priv;
+	priv = qcom_ethqos_get_priv(ethqos);
 
-	pdev = ethqos->pdev;
-	ndev = platform_get_drvdata(pdev);
+	if (!priv || !priv->en_wol)
+		return;
 
-	ethqos->phy_wol_supported = 0;
-	ethqos->phy_wol_wolopts = 0;
 	/* Check if phydev is valid*/
 	/* Check and enable Wake-on-LAN functionality in PHY*/
-
-	if (ndev->phydev) {
+	if (priv->phydev) {
 		struct ethtool_wolinfo wol = {.cmd = ETHTOOL_GWOL};
+		phy_ethtool_get_wol(priv->phydev, &wol);
 
-		wol.supported = 0;
-		wol.wolopts = 0;
-		ETHQOSINFO("phydev addr: 0x%pK\n", ndev->phydev);
-		phy_ethtool_get_wol(ndev->phydev, &wol);
-		ethqos->phy_wol_supported = wol.supported;
-		ETHQOSINFO("Get WoL[0x%x] in %s\n", wol.supported,
-			   ndev->phydev->drv->name);
+		wol.cmd = ETHTOOL_SWOL;
+		wol.wolopts = wol.supported;
+		ret = phy_ethtool_set_wol(priv->phydev, &wol);
 
-	/* Try to enable supported Wake-on-LAN features in PHY*/
-		if (wol.supported) {
-			device_set_wakeup_capable(&ethqos->pdev->dev, 1);
+		if (ret) {
+			ETHQOSERR("set wol in PHY failed\n");
+			return;
+		}
 
-			wol.cmd = ETHTOOL_SWOL;
-			wol.wolopts = wol.supported;
+		if (ret == EOPNOTSUPP) {
+			ETHQOSERR("WOL not supported\n");
+			return;
+		}
 
-			if (!phy_ethtool_set_wol(ndev->phydev, &wol)) {
-				ethqos->phy_wol_wolopts = wol.wolopts;
+		device_set_wakeup_capable(priv->device, 1);
 
 				enable_irq_wake(ethqos->phy_intr);
 				device_set_wakeup_enable(&ethqos->pdev->dev, 1);
-
-				ETHQOSINFO("Enabled WoL[0x%x] in %s\n",
-					   wol.wolopts,
-					   ndev->phydev->drv->name);
-			} else {
-				ETHQOSINFO("Disabled WoL[0x%x] in %s\n",
-					   wol.wolopts,
-					   ndev->phydev->drv->name);
-			}
-		} else {
-			ETHQOSINFO("WoL Not Supported\n");
-		}
 	}
 }
 
@@ -1466,7 +1437,7 @@ static ssize_t read_phy_reg_dump(struct file *file, char __user *user_buf,
 					 "\n************* PHY Reg dump *************\n");
 
 	for (i = 0; i < 32; i++) {
-		phydata = ethqos_mdio_read(priv, priv->plat->phy_addr, i);
+		phydata = priv->mii->read(priv->mii, priv->plat->phy_addr, i);
 		len += scnprintf(buf + len, buf_len - len,
 					 "MII Register (%#x) = %#x\n",
 					 i, phydata);
@@ -1657,6 +1628,49 @@ fail:
 	return -ENOMEM;
 }
 
+static void read_mac_addr_from_fuse_reg(struct device_node *np)
+{
+	int ret, i, count, x;
+	u32 mac_efuse_prop, efuse_size = 8;
+	unsigned long mac_addr;
+
+	/* If the property doesn't exist or empty return */
+	count = of_property_count_u32_elems(np, "mac-efuse-addr");
+	if (!count || count < 0)
+		return;
+
+	/* Loop over all addresses given until we get valid address */
+	for (x = 0; x < count; x++) {
+		void __iomem *mac_efuse_addr;
+
+		ret = of_property_read_u32_index(np, "mac-efuse-addr",
+						 x, &mac_efuse_prop);
+		if (!ret) {
+			mac_efuse_addr = ioremap(mac_efuse_prop, efuse_size);
+			if (!mac_efuse_addr)
+				continue;
+
+			mac_addr = readq(mac_efuse_addr);
+			ETHQOSINFO("Mac address read: %llx\n", mac_addr);
+
+			/* create byte array out of value read from efuse */
+			for (i = 0; i < ETH_ALEN ; i++) {
+				pparams.mac_addr[ETH_ALEN - 1 - i] =
+					mac_addr & 0xff;
+				mac_addr = mac_addr >> 8;
+			}
+
+			iounmap(mac_efuse_addr);
+
+			/* if valid address is found set cookie & return */
+			pparams.is_valid_mac_addr =
+				is_valid_ether_addr(pparams.mac_addr);
+			if (pparams.is_valid_mac_addr)
+				return;
+		}
+	}
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1713,15 +1727,26 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		return PTR_ERR(plat_dat);
 	}
 
-	ethqos->ioaddr = (&stmmac_res)->addr;
-
 	ethqos->rgmii_base = devm_platform_ioremap_resource_byname(pdev, "rgmii");
 	if (IS_ERR(ethqos->rgmii_base)) {
 		ret = PTR_ERR(ethqos->rgmii_base);
 		goto err_mem;
 	}
 
+	ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
+	if (IS_ERR(ethqos->rgmii_clk)) {
+		ret = PTR_ERR(ethqos->rgmii_clk);
+		goto err_mem;
+	}
+
 	ethqos->por = of_device_get_match_data(&pdev->dev);
+
+	ret = clk_prepare_enable(ethqos->rgmii_clk);
+	if (ret)
+		goto err_mem;
+
+	/* Read mac address from fuse register */
+	read_mac_addr_from_fuse_reg(np);
 
 	/*Initialize Early ethernet to false*/
 	ethqos->early_eth_enabled = false;
@@ -1740,22 +1765,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	ethqos->speed = SPEED_10;
-	if(plat_dat->interface == PHY_INTERFACE_MODE_SGMII) {
-		configure_serdes_dt(ethqos);
-		qcom_ethqos_serdes_init(ethqos, ethqos->speed);
-	}
-	else {
-		ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
-		if (IS_ERR(ethqos->rgmii_clk)) {
-			ret = PTR_ERR(ethqos->rgmii_clk);
-			goto err_mem;
-		}
-		ret = clk_prepare_enable(ethqos->rgmii_clk);
-		if (ret)
-			goto err_mem;
-		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
-	}
-
+	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
 	ethqos_set_func_clk_en(ethqos);
 
 	plat_dat->bsp_priv = ethqos;
@@ -1763,7 +1773,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->dump_debug_regs = rgmii_dump;
 	plat_dat->tx_select_queue = dwmac_qcom_select_queue;
 	plat_dat->get_plat_tx_coal_frames =  dwmac_qcom_get_plat_tx_coal_frames;
-	plat_dat->has_gmac4 = 1;
 	/* Set mdio phy addr probe capability to c22 .
 	 * If c22_c45 is set then multiple phy is getting detected.
 	 */
@@ -1771,12 +1780,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->has_c22_mdio_probe_capability = 1;
 	else
 		plat_dat->has_c22_mdio_probe_capability = 0;
-	plat_dat->pmt = 1;
 	plat_dat->tso_en = of_property_read_bool(np, "snps,tso");
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;
 	plat_dat->request_phy_wol = qcom_ethqos_request_phy_wol;
 	plat_dat->init_pps = ethqos_init_pps;
-	plat_dat->safety_feature = of_property_read_bool(np, "snps,safety_feature");
+	plat_dat->phy_irq_enable = ethqos_phy_irq_enable;
+	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,arm-smmu")) {
 		emac_emb_smmu_ctx.pdev_master = pdev;
@@ -1845,6 +1854,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 						 AVB_CLASS_B_POLL_DEV_NODE);
 	}
 
+	/* Read en_wol from device tree */
+	priv->en_wol = of_property_read_bool(np, "enable-wol");
+
 	if (ethqos->early_eth_enabled) {
 		/* Initialize work*/
 		INIT_WORK(&ethqos->early_eth,
@@ -1897,6 +1909,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
+	priv->phy_irq_enabled = false;
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
@@ -1967,9 +1980,204 @@ static int qcom_ethqos_resume(struct device *dev)
 	return ret;
 }
 
+static int qcom_ethqos_enable_clks(struct qcom_ethqos *ethqos, struct device *dev)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	int ret = 0;
+
+	/* clock setup */
+	priv->plat->stmmac_clk = devm_clk_get(dev,
+					      STMMAC_RESOURCE_NAME);
+	if (IS_ERR(priv->plat->stmmac_clk)) {
+		dev_warn(dev, "stmmac_clk clock failed\n");
+		ret = PTR_ERR(priv->plat->stmmac_clk);
+		priv->plat->stmmac_clk = NULL;
+	} else {
+		ret = clk_prepare_enable(priv->plat->stmmac_clk);
+		if (ret)
+			ETHQOSINFO("stmmac_clk clk failed\n");
+	}
+
+	priv->plat->pclk = devm_clk_get(dev, "pclk");
+	if (IS_ERR(priv->plat->pclk)) {
+		dev_warn(dev, "pclk clock failed\n");
+		ret = PTR_ERR(priv->plat->pclk);
+		priv->plat->pclk = NULL;
+		goto error_pclk_get;
+	} else {
+		ret = clk_prepare_enable(priv->plat->pclk);
+		if (ret) {
+			ETHQOSINFO("pclk clk failed\n");
+			goto error_pclk_get;
+		}
+	}
+
+	ethqos->rgmii_clk = devm_clk_get(dev, "rgmii");
+	if (IS_ERR(ethqos->rgmii_clk)) {
+		dev_warn(dev, "rgmii clock failed\n");
+		ret = PTR_ERR(ethqos->rgmii_clk);
+		goto error_rgmii_get;
+	} else {
+		ret = clk_prepare_enable(ethqos->rgmii_clk);
+		if (ret) {
+			ETHQOSINFO("rgmmi clk failed\n");
+			goto error_rgmii_get;
+		}
+	}
+	return 0;
+
+error_rgmii_get:
+	clk_disable_unprepare(priv->plat->pclk);
+error_pclk_get:
+	clk_disable_unprepare(priv->plat->stmmac_clk);
+	return ret;
+}
+
+static void qcom_ethqos_disable_clks(struct qcom_ethqos *ethqos, struct device *dev)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ETHQOSINFO("Enter\n");
+
+	if (priv->plat->stmmac_clk)
+		clk_disable_unprepare(priv->plat->stmmac_clk);
+
+	if (priv->plat->pclk)
+		clk_disable_unprepare(priv->plat->pclk);
+
+	if (ethqos->rgmii_clk)
+		clk_disable_unprepare(ethqos->rgmii_clk);
+
+	ETHQOSINFO("Exit\n");
+}
+
+static int qcom_ethqos_hib_restore(struct device *dev)
+{
+	struct qcom_ethqos *ethqos;
+	struct stmmac_priv *priv;
+	struct net_device *ndev = NULL;
+	int ret = 0;
+
+	if (of_device_is_compatible(dev->of_node, "qcom,emac-smmu-embedded"))
+		return 0;
+
+	ETHQOSINFO(" start\n");
+	ethqos = get_stmmac_bsp_priv(dev);
+	if (!ethqos)
+		return -ENODEV;
+
+	ndev = dev_get_drvdata(dev);
+
+	if (!ndev)
+		return -EINVAL;
+
+	priv = netdev_priv(ndev);
+
+	ret = ethqos_init_reqgulators(ethqos);
+	if (ret)
+		return ret;
+
+	ret = ethqos_init_gpio(ethqos);
+	if (ret)
+		return ret;
+
+	ret = qcom_ethqos_enable_clks(ethqos, dev);
+	if (ret)
+		return ret;
+
+	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, ethqos->speed);
+
+	ethqos_set_func_clk_en(ethqos);
+
+#ifdef DWC_ETH_QOS_CONFIG_PTP
+	if (priv->plat->clk_ptp_ref) {
+		ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
+		if (ret < 0)
+			netdev_warn(priv->dev, "failed to enable PTP reference clock: %d\n", ret);
+	}
+	ret = stmmac_init_ptp(priv);
+	if (ret == -EOPNOTSUPP) {
+		netdev_warn(priv->dev, "PTP not supported by HW\n");
+	} else if (ret) {
+		netdev_warn(priv->dev, "PTP init failed\n");
+	} else {
+		clk_set_rate(priv->plat->clk_ptp_ref,
+			     priv->plat->clk_ptp_rate);
+	}
+
+	ret = priv->plat->init_pps(priv);
+#endif /* end of DWC_ETH_QOS_CONFIG_PTP */
+
+	/* issue software reset to device */
+	ret = stmmac_reset(priv, priv->ioaddr);
+	if (ret) {
+		dev_err(priv->device, "Failed to reset\n");
+		return ret;
+	}
+
+	if (!netif_running(ndev)) {
+		rtnl_lock();
+		dev_open(ndev, NULL);
+		rtnl_unlock();
+		ETHQOSINFO("calling open\n");
+	}
+
+	ETHQOSINFO("end\n");
+
+	return ret;
+}
+
+static int qcom_ethqos_hib_freeze(struct device *dev)
+{
+	struct qcom_ethqos *ethqos;
+	struct stmmac_priv *priv;
+	int ret = 0;
+	struct net_device *ndev = NULL;
+
+	if (of_device_is_compatible(dev->of_node, "qcom,emac-smmu-embedded"))
+		return 0;
+
+	ethqos = get_stmmac_bsp_priv(dev);
+	if (!ethqos)
+		return -ENODEV;
+
+	ndev = dev_get_drvdata(dev);
+
+	if (!ndev)
+		return -EINVAL;
+
+	priv = netdev_priv(ndev);
+
+	ETHQOSINFO("start\n");
+
+	if (netif_running(ndev)) {
+		rtnl_lock();
+		dev_close(ndev);
+		rtnl_unlock();
+		ETHQOSINFO("calling netdev off\n");
+	}
+
+#ifdef DWC_ETH_QOS_CONFIG_PTP
+	stmmac_release_ptp(priv);
+#endif /* end of DWC_ETH_QOS_CONFIG_PTP */
+
+	qcom_ethqos_disable_clks(ethqos, dev);
+
+	ethqos_disable_regulators(ethqos);
+
+	ethqos_free_gpios(ethqos);
+
+	ETHQOSINFO("end\n");
+
+	return ret;
+}
+
 MODULE_DEVICE_TABLE(of, qcom_ethqos_match);
 
 static const struct dev_pm_ops qcom_ethqos_pm_ops = {
+	.freeze = qcom_ethqos_hib_freeze,
+	.restore = qcom_ethqos_hib_restore,
+	.thaw = qcom_ethqos_hib_restore,
 	.suspend = qcom_ethqos_suspend,
 	.resume = qcom_ethqos_resume,
 };

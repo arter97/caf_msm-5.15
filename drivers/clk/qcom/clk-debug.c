@@ -445,6 +445,9 @@ static int clk_debug_measure_get(void *data, u64 *val)
 	int ret = 0;
 	u32 regval;
 
+	if (!measure)
+		return -EINVAL;
+
 	ret = clk_runtime_get_debug_mux(meas);
 	if (ret)
 		return ret;
@@ -966,9 +969,7 @@ static void clk_debug_suspend_trace_probe(void *unused,
 {
 	if (start && val > 0 && !strcmp("machine_suspend", action)) {
 		pr_info("Enabled Clocks:\n");
-		mutex_lock(&clk_debug_lock);
 		clock_debug_print_enabled_clocks(NULL);
-		mutex_unlock(&clk_debug_lock);
 	}
 }
 

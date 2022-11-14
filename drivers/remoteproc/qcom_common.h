@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __RPROC_QCOM_COMMON_H__
 #define __RPROC_QCOM_COMMON_H__
@@ -51,6 +52,7 @@ struct qcom_ssr_subsystem;
 
 struct qcom_rproc_ssr {
 	struct rproc_subdev subdev;
+	bool is_notified;
 	enum qcom_ssr_notify_type notification;
 	struct timer_list timer;
 	struct qcom_ssr_subsystem *info;
@@ -61,7 +63,8 @@ extern bool qcom_device_shutdown_in_progress;
 typedef void (*rproc_dumpfn_t)(struct rproc *rproc, struct rproc_dump_segment *segment,
 			       void *dest, size_t offset, size_t size);
 
-void qcom_minidump(struct rproc *rproc, unsigned int minidump_id, rproc_dumpfn_t dumpfn);
+void qcom_minidump(struct rproc *rproc, struct device *md_dev,
+			unsigned int minidump_id, rproc_dumpfn_t dumpfn);
 
 void qcom_add_glink_subdev(struct rproc *rproc, struct qcom_rproc_glink *glink,
 			   const char *ssr_name);
@@ -85,7 +88,14 @@ void qcom_remove_sysmon_subdev(struct qcom_sysmon *sysmon);
 bool qcom_sysmon_shutdown_acked(struct qcom_sysmon *sysmon);
 uint32_t qcom_sysmon_get_txn_id(struct qcom_sysmon *sysmon);
 int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len);
+void qcom_sysmon_register_ssr_subdev(struct qcom_sysmon *sysmon,
+				struct rproc_subdev *ssr_subdev);
 #else
+static inline void qcom_sysmon_register_ssr_subdev(struct qcom_sysmon *sysmon,
+				struct rproc_subdev *ssr_subdev)
+{
+}
+
 static inline struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 							 const char *name,
 							 int ssctl_instance)
@@ -107,7 +117,8 @@ static inline uint32_t qcom_sysmon_get_txn_id(struct qcom_sysmon *sysmon)
 	return 0;
 }
 
-int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len)
+static inline int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon,
+					char *buf, size_t len)
 {
 	return -ENODEV;
 }

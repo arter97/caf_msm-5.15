@@ -25,6 +25,7 @@
 #include <linux/ioctl.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
+#include <soc/qcom/boot_stats.h>
 
 #define SE_I2C_TX_TRANS_LEN		(0x26C)
 #define SE_I2C_RX_TRANS_LEN		(0x270)
@@ -1104,8 +1105,11 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 			if ((geni_ios & 0x3) != 0x3) { //SCL:b'1, SDA:b'0
 				I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state\n", __func__);
-					gi2c->prev_cancel_pending = true;
-					goto geni_i2c_gsi_cancel_pending;
+					/* doing pending cancel only rtl based SE's */
+					if (gi2c->is_i2c_rtl_based) {
+						gi2c->prev_cancel_pending = true;
+						goto geni_i2c_gsi_cancel_pending;
+					}
 			}
 		}
 geni_i2c_err_prep_sg:
@@ -1342,8 +1346,11 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 				I2C_LOG_DBG(gi2c->ipcl, true, gi2c->dev,
 					"%s: IO lines not in good state: 0x%x\n",
 					__func__, geni_ios);
-				gi2c->prev_cancel_pending = true;
-				goto geni_i2c_txn_ret;
+				/* doing pending cancel only rtl based SE's */
+				if (gi2c->is_i2c_rtl_based) {
+					gi2c->prev_cancel_pending = true;
+					goto geni_i2c_txn_ret;
+				}
 			}
 		}
 
@@ -1400,6 +1407,126 @@ geni_i2c_txn_ret:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_I2C_SLAVE_QCOM)
+/**
+ * i2c_slave_xfer: SMbus transfer function.
+ * @adap: I2C driver adapter.
+ * @addr: Slave address.
+ * @flags: i2c client flag.
+ * @read_write: Read/Write flag.
+ * @command: SMbus command code.
+ * @xfer_type: read/write transfer type.
+ * @data: Pointer to client data.
+ *
+ * This function will transfer SMbus command using
+ * geni i2c transfer function.
+ *
+ * Return: 0 for success, Negative number for error condition.
+ */
+static int geni_i2c_smbus_xfer(struct i2c_adapter *adap, u16 addr,
+			       unsigned short flags, char read_write,
+			       u8 command, int xfer_type, union i2c_smbus_data *data)
+{
+	struct geni_i2c_dev *gi2c = i2c_get_adapdata(adap);
+	struct i2c_msg msgs;
+	u8 buf[I2C_SMBUS_BLOCK_MAX];
+	int ret = 0, i;
+
+	msgs.addr = addr;
+	msgs.buf = buf;
+	msgs.flags = read_write;
+
+	if (read_write == I2C_SMBUS_READ) {
+		switch (xfer_type) {
+		case I2C_SMBUS_BYTE_DATA:
+			msgs.len = I2C_SMBUS_BYTE;
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c read byte failed ret:%d\n", ret);
+				return ret;
+			}
+			data->byte = buf[0];
+			break;
+
+		case I2C_SMBUS_WORD_DATA:
+			msgs.len = I2C_SMBUS_BYTE_DATA;
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c read word failed ret:%d\n", ret);
+				return ret;
+			}
+			data->word = (buf[0] | (buf[1] << 8));
+			break;
+
+		case I2C_SMBUS_BLOCK_DATA:
+			msgs.len = I2C_SMBUS_BLOCK_MAX;
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c read block failed ret:%d\n", ret);
+				return ret;
+			}
+			data->block[0] = msgs.len;
+			for (i = 0; i < msgs.len; i++)
+				data->block[i + 1] = buf[i];
+			break;
+
+		default:
+			I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev, "Invalid xfer type\n");
+			return -EINVAL;
+		}
+	} else if (read_write == I2C_SMBUS_WRITE) {
+		switch (xfer_type) {
+		case I2C_SMBUS_BYTE_DATA:
+			msgs.len = I2C_SMBUS_BYTE;
+			buf[0] = data->byte;
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c write byte failed ret:%d\n", ret);
+				return ret;
+			}
+			break;
+
+		case I2C_SMBUS_WORD_DATA:
+			msgs.len = I2C_SMBUS_BYTE_DATA;
+			buf[0] = (uint8_t)(data->word & 0xFF);
+			buf[1] = (uint8_t)(data->word >> 8);
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c write word failed ret:%d\n", ret);
+				return ret;
+			}
+			break;
+
+		case I2C_SMBUS_BLOCK_DATA:
+			if (data->block[0] > I2C_SMBUS_BLOCK_MAX)
+				data->block[0] = I2C_SMBUS_BLOCK_MAX;
+
+			for (i = 0; i < data->block[0]; i++)
+				buf[i] = data->block[i + 1];
+
+			msgs.len = data->block[0];
+			ret = geni_i2c_xfer(adap, &msgs, 1);
+			if (ret < 0) {
+				I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+					    "i2c write block failed ret:%d\n", ret);
+				return ret;
+			}
+			break;
+
+		default:
+			I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev, "Invalid xfer type\n");
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+#endif
+
 static u32 geni_i2c_func(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
@@ -1408,6 +1535,9 @@ static u32 geni_i2c_func(struct i2c_adapter *adap)
 static const struct i2c_algorithm geni_i2c_algo = {
 	.master_xfer	= geni_i2c_xfer,
 	.functionality	= geni_i2c_func,
+#if IS_ENABLED(CONFIG_I2C_SLAVE_QCOM)
+	.smbus_xfer	= geni_i2c_smbus_xfer,
+#endif
 };
 
 #if I2C_HUB_DEF
@@ -1439,6 +1569,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 	struct device *dev = &pdev->dev;
+	char boot_marker[40];
 
 	gi2c = devm_kzalloc(&pdev->dev, sizeof(*gi2c), GFP_KERNEL);
 	if (!gi2c)
@@ -1449,6 +1580,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		gi2c_dev_dbg[arr_idx++] = gi2c;
 
 	gi2c->dev = dev;
+
+	snprintf(boot_marker, sizeof(boot_marker),
+				"M - DRIVER GENI_I2C Init");
+	place_marker(boot_marker);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1545,7 +1680,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		} else {
 			ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
 					GENI_DEFAULT_BW, GENI_DEFAULT_BW,
-					Bps_to_icc(gi2c->clk_freq_out));
+					(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
 			if (ret) {
 				dev_err(&pdev->dev, "%s: Error - resources_init ret:%d\n",
 							__func__, ret);
@@ -1600,6 +1735,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	snprintf(boot_marker, sizeof(boot_marker),
+				"M - DRIVER GENI_I2C_%d Ready", gi2c->adap.nr);
+	place_marker(boot_marker);
+
 	dev_info(gi2c->dev, "I2C probed\n");
 	return 0;
 }
@@ -1626,6 +1765,15 @@ static int geni_i2c_resume_early(struct device *device)
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
 
 	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__, true);
+	return 0;
+}
+
+static int geni_i2c_hib_resume_noirq(struct device *device)
+{
+	struct geni_i2c_dev *gi2c = dev_get_drvdata(device);
+
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s\n", __func__);
+	gi2c->se_mode = UNINITIALIZED;
 	return 0;
 }
 
@@ -1796,6 +1944,9 @@ static const struct dev_pm_ops geni_i2c_pm_ops = {
 	.resume_early		= geni_i2c_resume_early,
 	.runtime_suspend	= geni_i2c_runtime_suspend,
 	.runtime_resume		= geni_i2c_runtime_resume,
+	.freeze                 = geni_i2c_suspend_late,
+	.restore                = geni_i2c_hib_resume_noirq,
+	.thaw			= geni_i2c_hib_resume_noirq,
 };
 
 static const struct of_device_id geni_i2c_dt_match[] = {

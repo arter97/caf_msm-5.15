@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitops.h>
@@ -1146,6 +1147,7 @@ static const struct adc5_data adc5_data_pmic5_lite = {
 	/* On PMI632, IBAT LSB = 5A/32767 */
 	.full_scale_code_cur = 5000,
 	.adc_chans = adc5_chans_pmic,
+	.info = &adc5_info,
 	.decimation = (unsigned int []) {250, 420, 840},
 	.hw_settle_1 = (unsigned int []) {15, 100, 200, 300, 400, 500, 600, 700,
 					800, 900, 1, 2, 4, 6, 8, 10},
@@ -1296,6 +1298,8 @@ static int adc5_probe(struct platform_device *pdev)
 			return -ENODEV;
 		}
 	}
+
+	platform_set_drvdata(pdev, adc);
 
 	init_completion(&adc->complete);
 	mutex_init(&adc->lock);

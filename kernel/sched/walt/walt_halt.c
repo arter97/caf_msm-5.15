@@ -306,8 +306,7 @@ static int halt_cpus(struct cpumask *cpus)
 	cpumask_or(&drain_data.cpus_to_drain, &drain_data.cpus_to_drain, cpus);
 	raw_spin_unlock_irqrestore(&walt_drain_pending_lock, flags);
 
-	if (!IS_ERR(walt_drain_thread))
-		wake_up_process(walt_drain_thread);
+	wake_up_process(walt_drain_thread);
 
 out:
 	trace_halt_cpus(cpus, start_time, 1, ret);
@@ -409,6 +408,8 @@ unlock:
 
 int walt_pause_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
+	if (walt_disabled)
+		return -EAGAIN;
 	return walt_halt_cpus(cpus, reason);
 }
 EXPORT_SYMBOL(walt_pause_cpus);
@@ -443,6 +444,8 @@ int walt_start_cpus(struct cpumask *cpus, enum pause_reason reason)
 
 int walt_resume_cpus(struct cpumask *cpus, enum pause_reason reason)
 {
+	if (walt_disabled)
+		return -EAGAIN;
 	return walt_start_cpus(cpus, reason);
 }
 EXPORT_SYMBOL(walt_resume_cpus);
@@ -500,17 +503,18 @@ unlock:
 	rcu_read_unlock();
 }
 
-static void android_rvh_set_cpus_allowed_ptr_locked(void *unused,
-						    const struct cpumask *cpu_valid_mask,
-						    const struct cpumask *new_mask,
-						    unsigned int *dest_cpu)
+static void android_rvh_set_cpus_allowed_by_task(void *unused,
+						 const struct cpumask *cpu_valid_mask,
+						 const struct cpumask *new_mask,
+						 struct task_struct *p,
+						 unsigned int *dest_cpu)
 {
 	cpumask_t allowed_cpus;
 
 	if (unlikely(walt_disabled))
 		return;
 
-	if (cpu_halted(*dest_cpu)) {
+	if (cpu_halted(*dest_cpu) && !p->migration_disabled) {
 		/* remove halted cpus from the valid mask, and store locally */
 		cpumask_andnot(&allowed_cpus, cpu_valid_mask, cpu_halt_mask);
 		*dest_cpu = cpumask_any_and_distribute(&allowed_cpus, new_mask);
@@ -573,8 +577,8 @@ void walt_halt_init(void)
 	sched_setscheduler_nocheck(walt_drain_thread, SCHED_FIFO, &param);
 
 	register_trace_android_rvh_get_nohz_timer_target(android_rvh_get_nohz_timer_target, NULL);
-	register_trace_android_rvh_set_cpus_allowed_ptr_locked(
-						android_rvh_set_cpus_allowed_ptr_locked, NULL);
+	register_trace_android_rvh_set_cpus_allowed_by_task(
+						android_rvh_set_cpus_allowed_by_task, NULL);
 	register_trace_android_rvh_rto_next_cpu(android_rvh_rto_next_cpu, NULL);
 	register_trace_android_rvh_is_cpu_allowed(android_rvh_is_cpu_allowed, NULL);
 

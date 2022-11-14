@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -31,7 +31,7 @@ static struct qcom_icc_qosbox qxm_qup3_qos = {
 	.offsets = { 0x11000 },
 	.config = &(struct qos_config) {
 		.prio = 2,
-		.urg_fwd = 0,
+		.urg_fwd = 1,
 	},
 };
 
@@ -346,7 +346,7 @@ static struct qcom_icc_qosbox qxm_ipa_qos = {
 	.offsets = { 0x11000 },
 	.config = &(struct qos_config) {
 		.prio = 2,
-		.urg_fwd = 0,
+		.urg_fwd = 1,
 	},
 };
 

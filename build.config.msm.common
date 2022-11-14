@@ -225,7 +225,9 @@ function prepare_system_dlkm() {
 }
 append_cmd DIST_CMDS 'prepare_system_dlkm'
 
-KERNEL_BINARY=Image
+if [ -z "${KERNEL_BINARY}" ]; then
+  KERNEL_BINARY=Image
+fi
 
 ################################################################################
 ## DT Overlay
@@ -267,6 +269,14 @@ if [ -n "${EXTRA_CONFIGS}" ]; then
   do
     . ${extra_config}
   done
+fi
+
+## Generate extra_cmdline for vendor
+function generate_extra_cmdline() {
+  echo "$VENDOR_EXTRA_CMDLINE" > "${DIST_DIR}/extra_cmdline"
+}
+if [ -n "${VENDOR_EXTRA_CMDLINE}" ]; then
+  append_cmd DIST_CMDS 'generate_extra_cmdline'
 fi
 
 ################################################################################
