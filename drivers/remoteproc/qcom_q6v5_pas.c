@@ -1100,6 +1100,7 @@ static int adsp_probe(struct platform_device *pdev)
 		goto detach_proxy_pds;
 	}
 
+	qcom_sysmon_register_ssr_subdev(adsp->sysmon, &adsp->ssr_subdev.subdev);
 	ret = device_create_file(adsp->dev, &dev_attr_txn_id);
 	if (ret)
 		goto remove_subdevs;
@@ -1421,7 +1422,9 @@ static const struct adsp_data kalama_mpss_resource = {
 static const struct adsp_data cinder_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
+	.dtb_firmware_name = "modem_dtb.mdt",
 	.pas_id = 4,
+	.dtb_pas_id = 0x26,
 	.free_after_auth_reset = true,
 	.minidump_id = 3,
 	.uses_elf64 = true,
@@ -1431,6 +1434,7 @@ static const struct adsp_data cinder_mpss_resource = {
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
 	.ssctl_id = 0x12,
+	.dma_phys_below_32b = true,
 };
 
 static const struct adsp_data khaje_mpss_resource = {
@@ -1614,18 +1618,42 @@ static const struct adsp_data sdmshrike_cdsp_resource = {
 
 static const struct adsp_data scuba_auto_mpss_resource = {
 	.crash_reason_smem = 421,
+        .firmware_name = "modem.mdt",
+        .pas_id = 4,
+        .free_after_auth_reset = true,
+        .minidump_id = 3,
+        .uses_elf64 = true,
+        .has_aggre2_clk = false,
+        .auto_boot = false,
+        .ssr_name = "mpss",
+        .sysmon_name = "modem",
+        .qmp_name = "modem",
+        .ssctl_id = 0x12,
+};
+
+static const struct adsp_data monaco_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.minidump_id = 5,
+	.uses_elf64 = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+static const struct adsp_data monaco_modem_resource = {
+	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
 	.pas_id = 4,
 	.free_after_auth_reset = true,
 	.minidump_id = 3,
 	.uses_elf64 = true,
-	.has_aggre2_clk = false,
-	.auto_boot = false,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
-	.qmp_name = "modem",
 	.ssctl_id = 0x12,
 };
+
 static const struct adsp_data scuba_auto_lpass_resource = {
 	.crash_reason_smem = 423,
 	.firmware_name = "adsp.mdt",
@@ -1640,6 +1668,7 @@ static const struct adsp_data scuba_auto_lpass_resource = {
 	.qmp_name = "adsp",
 	.ssctl_id = 0x14,
 };
+
 
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
@@ -1684,6 +1713,8 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,sdmshrike-cdsp-pas", .data = &sdmshrike_cdsp_resource},
 	{ .compatible = "qcom,scuba_auto-modem-pas", .data = &scuba_auto_mpss_resource},
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
+	{ .compatible = "qcom,monaco-adsp-pas", .data = &monaco_adsp_resource},
+	{ .compatible = "qcom,monaco-modem-pas", .data = &monaco_modem_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);

@@ -120,7 +120,7 @@ static bool ddr_freq_update;
 static struct stats_prv_data *gdata;
 static u64 deep_sleep_last_exited_time;
 
-uint64_t get_sleep_exit_time(void)
+uint64_t get_aosd_sleep_exit_time(void)
 {
 	int i;
 	uint32_t offset;
@@ -132,21 +132,19 @@ uint64_t get_sleep_exit_time(void)
 	struct stats_prv_data *drv = gdata;
 	void __iomem *reg;
 
-	if (!drv) {
-		pr_err("ERROR could not get rpm data memory\n");
-		return -ENOMEM;
-	}
-
-	reg = drv->reg;
-
 	for (i = 0; i < drv->config->num_records; i++) {
+		offset = STAT_TYPE_ADDR + (i * sizeof(struct sleep_stats));
 
-		offset = offsetof(struct sleep_stats, stat_type);
-		s_type = readl_relaxed(reg + offset);
+		if (drv[i].config->appended_stats_avail)
+			offset += i * sizeof(struct appended_stats);
+
+		reg = drv[i].reg + offset;
+
+		s_type = readl_relaxed(reg);
 		memcpy(stat_type, &s_type, sizeof(u32));
+		strim(stat_type);
 
 		if (!memcmp((const void *)stat_type, (const void *)"aosd", 4)) {
-
 			count = readl_relaxed(reg + COUNT_ADDR);
 
 			if (saved_deep_sleep_count == count)
@@ -158,16 +156,12 @@ uint64_t get_sleep_exit_time(void)
 			}
 			break;
 
-		} else {
-			reg += sizeof(struct sleep_stats);
-			if (drv->config->appended_stats_avail)
-				reg += sizeof(struct appended_stats);
 		}
 	}
 
 	return deep_sleep_last_exited_time;
 }
-EXPORT_SYMBOL(get_sleep_exit_time);
+EXPORT_SYMBOL(get_aosd_sleep_exit_time);
 #endif
 
 static void print_sleep_stats(struct seq_file *s, struct sleep_stats *stat)

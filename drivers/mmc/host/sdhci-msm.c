@@ -2478,7 +2478,7 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_host *msm_host,
 	/* Disable always_on regulator during reboot/shutdown */
 	if (mmc->card &&
 		mmc->card->ext_csd.power_off_notification == EXT_CSD_NO_POWER_NOTIFICATION)
-		vreg_table[1]->is_always_on = false;
+		return ret;
 
 	if (!enable && !(mmc->caps & MMC_CAP_NONREMOVABLE)) {
 
@@ -3482,8 +3482,8 @@ static void sdhci_msm_registers_restore(struct sdhci_host *host)
 			host->ioaddr + msm_offset->core_pwrctl_mask);
 
 	if (cq_host)
-		cqhci_writel(cq_host, msm_host->cqe_regs.cqe_vendor_cfg1,
-				CQHCI_VENDOR_CFG1);
+		cqhci_writel(cq_host, msm_host->cqe_regs.cqe_vendor_cfg1 &
+				~CMDQ_SEND_STATUS_TRIGGER, CQHCI_VENDOR_CFG1);
 
 	if ((ios.timing == MMC_TIMING_UHS_SDR50 &&
 		host->flags & SDHCI_SDR50_NEEDS_TUNING) ||

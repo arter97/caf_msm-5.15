@@ -20,6 +20,7 @@
 #include <linux/suspend.h>
 #include <linux/uaccess.h>
 #include <soc/qcom/boot_stats.h>
+#include <soc/qcom/soc_sleep_stats.h>
 #include <linux/hashtable.h>
 
 #define MARKER_STRING_WIDTH 40
@@ -81,7 +82,7 @@ static void measure_wake_up_time(void)
 	char wakeup_marker[50] = {0,};
 
 	current_time = arch_timer_read_counter();
-	deep_sleep_exit_time = get_sleep_exit_time();
+	deep_sleep_exit_time = get_aosd_sleep_exit_time();
 
 	if (deep_sleep_exit_time) {
 		wake_up_time = get_time_in_msec(current_time - deep_sleep_exit_time);
@@ -95,9 +96,6 @@ static void measure_wake_up_time(void)
 	} else
 		destroy_marker("M - STR Wakeup");
 }
-#else
-static void measure_wake_up_time(void) {}
-#endif
 
 /**
  * boot_kpi_pm_notifier() - PM notifier callback function.
@@ -119,6 +117,7 @@ static int boot_kpi_pm_notifier(struct notifier_block *nb,
 static struct notifier_block boot_kpi_pm_nb = {
 	.notifier_call = boot_kpi_pm_notifier,
 };
+#endif
 
 unsigned long long msm_timer_get_sclk_ticks(void)
 {
@@ -433,9 +432,11 @@ static int init_bootkpi(void)
 	INIT_LIST_HEAD(&boot_marker_list.list);
 	spin_lock_init(&boot_marker_list.slock);
 
+#if IS_ENABLED(CONFIG_QCOM_SOC_SLEEP_STATS)
 	ret = register_pm_notifier(&boot_kpi_pm_nb);
 	if (ret)
 		pr_err("boot_marker: power state notif error\n");
+#endif
 
 	return 0;
 }
