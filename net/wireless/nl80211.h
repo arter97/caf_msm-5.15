@@ -86,9 +86,16 @@ void nl80211_send_roamed(struct cfg80211_registered_device *rdev,
 			 struct cfg80211_roam_info *info, gfp_t gfp);
 void nl80211_send_port_authorized(struct cfg80211_registered_device *rdev,
 				  struct net_device *netdev, const u8 *bssid);
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
 			       struct net_device *netdev, u16 reason,
 			       const u8 *ie, size_t ie_len, bool from_ap);
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
+			       struct net_device *netdev, u16 reason,
+			       const u8 *ie, size_t ie_len, bool from_ap,
+			       int link_id);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 void
 nl80211_michael_mic_failure(struct cfg80211_registered_device *rdev,
