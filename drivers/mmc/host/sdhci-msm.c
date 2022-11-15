@@ -30,6 +30,8 @@
 #include <linux/ipc_logging.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 
+#include <trace/hooks/mmc.h>
+
 #include "sdhci-pltfm.h"
 #include "cqhci.h"
 #include "../core/core.h"
@@ -2478,7 +2480,7 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_host *msm_host,
 	/* Disable always_on regulator during reboot/shutdown */
 	if (mmc->card &&
 		mmc->card->ext_csd.power_off_notification == EXT_CSD_NO_POWER_NOTIFICATION)
-		vreg_table[1]->is_always_on = false;
+		return ret;
 
 	if (!enable && !(mmc->caps & MMC_CAP_NONREMOVABLE)) {
 
@@ -4916,6 +4918,11 @@ static int sdhci_qcom_read_boot_config(struct platform_device *pdev)
 	return is_bootdevice_sdhci;
 }
 
+static void sdhci_msm_set_sdio_pm_flag(void *unused, struct mmc_host *host)
+{
+	host->pm_flags &= ~MMC_PM_WAKE_SDIO_IRQ;
+}
+
 static int sdhci_msm_probe(struct platform_device *pdev)
 {
 	struct sdhci_host *host;
@@ -5280,6 +5287,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+
+	if (msm_host->mmc->card && mmc_card_sdio(msm_host->mmc->card))
+		register_trace_android_vh_mmc_sdio_pm_flag_set(sdhci_msm_set_sdio_pm_flag, NULL);
 
 	return 0;
 

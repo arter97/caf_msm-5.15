@@ -243,6 +243,7 @@ struct adc5_chip {
 	struct adc5_base_data		*base;
 	u16				debug_base;
 	unsigned int			num_sdams;
+	unsigned int                    num_interrupts;
 	unsigned int			nchannels;
 	struct adc5_channel_prop	*chan_props;
 	struct iio_chan_spec		*iio_chans;
@@ -315,12 +316,12 @@ static int adc5_decimation_from_dt(u32 value,
 }
 
 static int adc5_gen3_read_voltage_data(struct adc5_chip *adc, u16 *data,
-				struct adc5_channel_prop *prop)
+				u8 sdam_index)
 {
 	int ret;
 	u8 rslt[2];
 
-	ret = adc5_read(adc, prop->sdam_index, ADC5_GEN3_CH0_DATA0, rslt, 2);
+	ret = adc5_read(adc, sdam_index, ADC5_GEN3_CH0_DATA0, rslt, 2);
 	if (ret < 0)
 		return ret;
 
@@ -404,18 +405,26 @@ static int adc5_gen3_configure(struct adc5_chip *adc,
 #define ADC5_GEN3_HS_DELAY_MAX_US		110
 #define ADC5_GEN3_HS_RETRY_COUNT		150
 
-static int adc5_gen3_poll_wait_hs(struct adc5_chip *adc, struct adc5_channel_prop *prop)
+static int adc5_gen3_poll_wait_hs(struct adc5_chip *adc,
+				unsigned int sdam_index)
 {
 	int ret, count;
-	u8 status = 0;
+	u8 status = 0, conv_req = ADC5_GEN3_CONV_REQ_REQ;
 
 	for (count = 0; count < ADC5_GEN3_HS_RETRY_COUNT; count++) {
-		ret = adc5_read(adc, prop->sdam_index, ADC5_GEN3_HS, &status, 1);
+		ret = adc5_read(adc, sdam_index, ADC5_GEN3_HS, &status, 1);
 		if (ret < 0)
 			return ret;
 
-		if (status == ADC5_GEN3_HS_READY)
-			break;
+		if (status == ADC5_GEN3_HS_READY) {
+			ret = adc5_read(adc, sdam_index, ADC5_GEN3_CONV_REQ,
+					&conv_req, 1);
+			if (ret < 0)
+				return ret;
+
+			if (!conv_req)
+				break;
+		}
 
 		usleep_range(ADC5_GEN3_HS_DELAY_MIN_US,
 			ADC5_GEN3_HS_DELAY_MAX_US);
@@ -438,10 +447,14 @@ static int adc5_gen3_do_conversion(struct adc5_chip *adc,
 	int ret;
 	unsigned long rc;
 	unsigned int time_pending_ms;
-	u8 val;
+	u8 val, sdam_index = prop->sdam_index;
+
+	/* Reserve channel 0 of first SDAM for immediate conversions */
+	if (prop->adc_tm)
+		sdam_index = 0;
 
 	mutex_lock(&adc->lock);
-	ret = adc5_gen3_poll_wait_hs(adc, prop);
+	ret = adc5_gen3_poll_wait_hs(adc, 0);
 	if (ret < 0)
 		goto unlock;
 
@@ -465,23 +478,23 @@ static int adc5_gen3_do_conversion(struct adc5_chip *adc,
 	pr_debug("ADC channel %s EOC took %u ms\n", prop->datasheet_name,
 		ADC5_GEN3_CONV_TIMEOUT_MS - time_pending_ms);
 
-	ret = adc5_gen3_read_voltage_data(adc, data_volt, prop);
+	ret = adc5_gen3_read_voltage_data(adc, data_volt, sdam_index);
 	if (ret < 0)
 		goto unlock;
 
 	val = BIT(0);
-	ret = adc5_write(adc, prop->sdam_index, ADC5_GEN3_EOC_CLR, &val, 1);
+	ret = adc5_write(adc, sdam_index, ADC5_GEN3_EOC_CLR, &val, 1);
 	if (ret < 0)
 		goto unlock;
 
 	/* To indicate conversion request is only to clear a status */
 	val = 0;
-	ret = adc5_write(adc, prop->sdam_index, ADC5_GEN3_PERPH_CH, &val, 1);
+	ret = adc5_write(adc, sdam_index, ADC5_GEN3_PERPH_CH, &val, 1);
 	if (ret < 0)
 		goto unlock;
 
 	val = ADC5_GEN3_CONV_REQ_REQ;
-	ret = adc5_write(adc, prop->sdam_index, ADC5_GEN3_CONV_REQ, &val, 1);
+	ret = adc5_write(adc, sdam_index, ADC5_GEN3_CONV_REQ, &val, 1);
 
 unlock:
 	mutex_unlock(&adc->lock);
@@ -525,7 +538,7 @@ static int get_sdam_from_irq(struct adc5_chip *adc, int irq)
 {
 	int i;
 
-	for (i = 0; i < adc->num_sdams; i++) {
+	for (i = 0; i < adc->num_interrupts; i++) {
 		if (adc->base[i].irq == irq)
 			return i;
 	}
@@ -817,7 +830,7 @@ static int adc_tm5_gen3_configure(struct adc5_channel_prop *prop)
 	u32 mask = 0;
 	struct adc5_chip *adc = prop->chip;
 
-	ret = adc5_gen3_poll_wait_hs(adc, prop);
+	ret = adc5_gen3_poll_wait_hs(adc, prop->sdam_index);
 	if (ret < 0)
 		return ret;
 
@@ -1667,6 +1680,10 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 
 	adc->num_sdams = ret;
 
+	adc->num_interrupts = of_property_count_strings(node, "interrupt-names");
+	if (adc->num_interrupts < 0)
+		adc->num_interrupts = 0;
+
 	adc->base = devm_kcalloc(adc->dev, adc->num_sdams, sizeof(*adc->base), GFP_KERNEL);
 	if (!adc->base)
 		return -ENOMEM;
@@ -1677,7 +1694,9 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 			return ret;
 
 		adc->base[i].base_addr = reg;
+	}
 
+	for (i = 0; i < adc->num_interrupts; i++) {
 		scnprintf(buf, sizeof(buf), "adc-sdam%d", i);
 		ret = of_irq_get_byname(node, buf);
 		if (ret < 0) {
@@ -1707,7 +1726,7 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	for (i = 0; i < adc->num_sdams; i++) {
+	for (i = 0; i < adc->num_interrupts; i++) {
 		ret = devm_request_irq(dev, adc->base[i].irq, adc5_gen3_isr,
 					0, adc->base[i].irq_name, adc);
 		if (ret < 0)
@@ -1793,7 +1812,7 @@ static int adc5_gen3_freeze(struct device *dev)
 
 	mutex_lock(&adc->lock);
 
-	for (i = 0; i < adc->num_sdams; i++)
+	for (i = 0; i < adc->num_interrupts; i++)
 		devm_free_irq(dev, adc->base[i].irq, adc);
 
 	mutex_unlock(&adc->lock);
@@ -1807,7 +1826,7 @@ static int adc5_gen3_restore(struct device *dev)
 	int i = 0;
 	int ret = 0;
 
-	for (i = 0; i < adc->num_sdams; i++) {
+	for (i = 0; i < adc->num_interrupts; i++) {
 		ret = devm_request_irq(dev, adc->base[i].irq, adc5_gen3_isr,
 				0, adc->base[i].irq_name, adc);
 		if (ret < 0)

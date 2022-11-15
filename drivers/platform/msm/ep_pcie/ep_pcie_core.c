@@ -729,6 +729,20 @@ static void ep_pcie_config_mmio(struct ep_pcie_dev_t *dev)
 	dev->config_mmio_init = true;
 }
 
+static int ep_pcie_sriov_init(struct ep_pcie_dev_t *dev)
+{
+	void __iomem *dbi = ep_pcie_dev.dm_core;
+	u32 reg;
+
+	ep_pcie_dev.sriov_cap = ep_pcie_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+	if (ep_pcie_dev.sriov_cap) {
+		reg = readl_relaxed
+			(dbi + ep_pcie_dev.sriov_cap + PCIE20_TOTAL_VFS_INITIAL_VFS_REG);
+		ep_pcie_dev.num_vfs = (reg & 0xFFFF0000) >> 16;
+	}
+	return 0;
+}
+
 static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 {
 	uint32_t val = 0, num_vf = 0, i;
@@ -1042,6 +1056,8 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 								BIT(0), 0);
 	}
 
+	ep_pcie_sriov_init(dev);
+
 	if (!configured) {
 		ep_pcie_config_mmio(dev);
 		ep_pcie_config_inbound_iatu(dev, PCIE_PHYSICAL_DEVICE);
@@ -1063,7 +1079,6 @@ static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, u32 vf_id)
 {
 	struct resource *mmio = dev->res[EP_PCIE_RES_MMIO].resource;
 	u32 lower, limit, bar, size, vf_num;
-	int pos;
 
 	lower = mmio->start;
 	limit = mmio->end;
@@ -1087,8 +1102,7 @@ static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, u32 vf_id)
 		lower = (lower + (vf_id * size));
 		limit = lower + size;
 		vf_num = vf_id - 1;
-		pos = ep_pcie_find_capability(dev, PCI_EXT_CAP_ID_SRIOV);
-		bar = readl_relaxed(dev->dm_core + pos + PCIE20_SRIOV_BAR(0));
+		bar = readl_relaxed(dev->dm_core + ep_pcie_dev.sriov_cap + PCIE20_SRIOV_BAR(0));
 		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(vf_num), lower);
 		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_VFn_UPPER(vf_num), 0);
 
@@ -2152,7 +2166,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			dev->rev);
 		ret = EP_PCIE_ERROR;
 		ep_pcie_reg_dump(dev, BIT(EP_PCIE_RES_PHY), false);
-		goto link_fail;
+		goto link_fail_pipe_clk_deinit;
 	} else {
 		EP_PCIE_INFO(dev, "PCIe V%d: PCIe  PHY is ready\n", dev->rev);
 	}
@@ -2187,12 +2201,12 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 				"PCIe V%d: Perst asserted No. %ld while waiting for link to be up\n",
 				dev->rev, dev->perst_ast_in_enum_counter);
 		ret = EP_PCIE_ERROR;
-		goto link_fail;
+		goto link_fail_pipe_clk_deinit;
 	} else if (retries == LINK_UP_CHECK_MAX_COUNT) {
 		EP_PCIE_ERR(dev, "PCIe V%d: link initialization failed\n",
 			dev->rev);
 		ret = EP_PCIE_ERROR;
-		goto link_fail;
+		goto link_fail_pipe_clk_deinit;
 	} else {
 		dev->link_status = EP_PCIE_LINK_UP;
 		dev->l23_ready = false;
@@ -2264,15 +2278,15 @@ checkbme:
 	dev->suspending = false;
 	goto out;
 
+link_fail_pipe_clk_deinit:
+	if (!ep_pcie_debug_keep_resource)
+		ep_pcie_pipe_clk_deinit(dev);
 link_fail:
 	dev->power_on = false;
 	if (dev->phy_rev >= 3)
 		ep_pcie_write_mask(dev->parf + PCIE20_PARF_LTSSM, BIT(8), 0);
 	else
 		ep_pcie_write_mask(dev->elbi + PCIE20_ELBI_SYS_CTRL, BIT(0), 0);
-
-	if (!ep_pcie_debug_keep_resource)
-		ep_pcie_pipe_clk_deinit(dev);
 pipe_clk_fail:
 	if (!ep_pcie_debug_keep_resource)
 		ep_pcie_clk_deinit(dev);
@@ -3584,6 +3598,32 @@ static struct notifier_block ep_pcie_core_panic_notifier = {
 	.notifier_call	= ep_pcie_core_panic_reboot_callback,
 };
 
+static int ep_pcie_core_get_cap(struct ep_pcie_cap *ep_cap)
+{
+	u32 ctrl_reg;
+	void __iomem *dbi = ep_pcie_dev.dm_core;
+
+	if (ep_pcie_dev.link_status == EP_PCIE_LINK_DISABLED) {
+		EP_PCIE_ERR(&ep_pcie_dev,
+			"PCIe V%d: PCIe link is currently disabled\n",
+			ep_pcie_dev.rev);
+		return EP_PCIE_ERROR;
+	}
+
+	if (ep_pcie_dev.msix_cap) {
+		ctrl_reg = readl_relaxed(dbi + ep_pcie_dev.msix_cap);
+		if (ctrl_reg & BIT(31))
+			ep_cap->msix_enabled = true;
+	}
+
+	if (ep_pcie_dev.sriov_cap) {
+		ep_cap->sriov_enabled = true;
+		ep_cap->num_vfs = ep_pcie_dev.num_vfs;
+	}
+
+	return 0;
+}
+
 struct ep_pcie_hw hw_drv = {
 	.register_event	= ep_pcie_core_register_event,
 	.deregister_event = ep_pcie_core_deregister_event,
@@ -3597,6 +3637,7 @@ struct ep_pcie_hw hw_drv = {
 	.disable_endpoint = ep_pcie_core_disable_endpoint,
 	.mask_irq_event = ep_pcie_core_mask_irq_event,
 	.configure_inactivity_timer = ep_pcie_core_config_inact_timer,
+	.get_capability = ep_pcie_core_get_cap,
 };
 
 static int ep_pcie_probe(struct platform_device *pdev)
