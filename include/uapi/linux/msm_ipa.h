@@ -973,7 +973,7 @@ enum ipa_done_restore_event {
 };
 
 enum ipa_ext_route_evt {
-	IPA_SET_EXT_ROUTER_MODE_EVENT = IPA_MACSEC_EVENT_MAX,
+	IPA_SET_EXT_ROUTER_MODE_EVENT = IPA_DONE_RESTORE_EVENT_MAX,
 	IPA_SET_EXT_ROUTER_MODE_EVENT_MAX
 #define IPA_SET_EXT_ROUTER_MODE_EVENT_MAX IPA_SET_EXT_ROUTER_MODE_EVENT_MAX
 };
@@ -2862,6 +2862,8 @@ enum ipa_wlan_hdr_attrib_type {
 	WLAN_HDR_ATTRIB_TA_PEER_ID
 };
 
+#define WLAN_HDR_ATTRIB_TA_PEER_ID WLAN_HDR_ATTRIB_TA_PEER_ID
+
 /**
  * struct ipa_wlan_hdr_attrib_val - header attribute value
  * @attrib_type: type of attribute
@@ -3250,11 +3252,13 @@ enum ipa_vlan_ifaces {
 	IPA_VLAN_IF_ETH0,
 	IPA_VLAN_IF_ETH1,
 	IPA_VLAN_IF_RNDIS,
-	IPA_VLAN_IF_ECM
+	IPA_VLAN_IF_ECM,
+	IPA_VLAN_IF_WLAN
 };
 
 #define IPA_VLAN_IF_EMAC IPA_VLAN_IF_ETH
-#define IPA_VLAN_IF_MAX (IPA_VLAN_IF_ECM + 1)
+#define IPA_VLAN_IF_WLAN IPA_VLAN_IF_WLAN
+#define IPA_VLAN_IF_MAX (IPA_VLAN_IF_WLAN + 1)
 
 /**
  * struct ipa_get_vlan_mode - get vlan mode of a Lan interface

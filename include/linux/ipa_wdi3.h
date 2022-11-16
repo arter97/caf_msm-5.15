@@ -130,7 +130,7 @@ struct ipa_wdi_hdr_info {
  */
 struct ipa_wdi_reg_intf_in_params {
 	const char *netdev_name;
-	struct ipa_wdi_hdr_info hdr_info[IPA_IP_MAX];
+	struct ipa_wdi_hdr_info hdr_info[IPA_IP_MAX_WLAN];
 	enum ipa_client_type alt_dst_pipe;
 	u8 is_meta_data_valid;
 	u32 meta_data;
@@ -607,6 +607,7 @@ int ipa_wdi_bw_monitor(struct ipa_wdi_bw_info *info);
  *
  */
 int ipa_wdi_sw_stats(struct ipa_wdi_tx_info *info);
+int ipa_get_wdi_version(void);
 
 #else /* IS_ENABLED(CONFIG_IPA3) */
 
