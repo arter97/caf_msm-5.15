@@ -285,10 +285,14 @@ struct ipa_ep_cfg_hdr_ext {
  *		This parameter is valid for Mode=DMA and not valid for
  *		Mode=Basic
  *		Valid for Input Pipes only (IPA Consumer)
+ * @drbip_en: config DRBIP accelerator 1 enable, 0 disabled
+ * @bearer_ctx_en: config bearer_ctx 1 enable, 0 disabled
  */
 struct ipa_ep_cfg_mode {
 	enum ipa_mode_type mode;
 	enum ipa_client_type dst;
+	bool drbip_en;
+	bool bearer_ctx_en;
 };
 
 /**
