@@ -1460,6 +1460,21 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.ssctl_id = 0x12,
 };
 
+static const struct adsp_data sdxbaagha_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x12,
+};
+
 static const struct adsp_data slpi_resource_init = {
 		.crash_reason_smem = 424,
 		.firmware_name = "slpi.mdt",
@@ -1700,6 +1715,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,scuba_auto-modem-pas", .data = &scuba_auto_mpss_resource},
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ .compatible = "qcom,sdxpinn-modem-pas", .data = &sdxpinn_mpss_resource},
+	{ .compatible = "qcom,sdxbaagha-modem-pas", .data = &sdxbaagha_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
