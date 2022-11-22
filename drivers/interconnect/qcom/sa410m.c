@@ -1143,6 +1143,7 @@ static int qnoc_probe(struct platform_device *pdev)
 	provider = &qp->provider;
 	provider->dev = dev;
 	provider->set = qcom_icc_rpm_set;
+	provider->get_bw = qcom_icc_get_bw_stub;
 	provider->pre_aggregate = qcom_icc_rpm_pre_aggregate;
 	provider->aggregate = qcom_icc_rpm_aggregate;
 	provider->xlate = of_icc_xlate_onecell;
