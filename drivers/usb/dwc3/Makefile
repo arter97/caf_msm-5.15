@@ -56,6 +56,6 @@ obj-$(CONFIG_USB_DWC3_IMX8MP)		+= dwc3-imx8mp.o
 obj-$(CONFIG_USB_DWC3_XILINX)		+= dwc3-xilinx.o
 obj-$(CONFIG_USB_DWC3_MSM)		+= dwc3-msm.o
 dwc3-msm-y				:= dwc3-msm-core.o debug_ipc.o
-ifneq ($(CONFIG_ARM64),)
+ifeq ($(CONFIG_ARM64)$(CONFIG_ARM),y)
 dwc3-msm-y				+= dwc3-msm-ops.o
 endif
