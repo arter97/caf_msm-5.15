@@ -47,4 +47,15 @@ struct tmc_usb_data {
 extern int tmc_usb_enable(struct tmc_usb_data *usb_data);
 extern void tmc_usb_disable(struct tmc_usb_data *usb_data);
 
+static inline int tmc_usb_qdss_alloc_req(struct usb_qdss_ch *ch, int n_write)
+{
+
+#if IS_ENABLED(CONFIG_USB_F_QDSS)
+	return usb_qdss_alloc_req(ch, n_write);
+#else
+	return usb_qdss_alloc_req(ch, n_write, 0);
+#endif
+
+}
+
 #endif
