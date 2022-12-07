@@ -263,11 +263,16 @@ static struct emac_icc_data emac_apb_icc_data[] = {
 struct qcom_ethqos {
 	struct platform_device *pdev;
 	void __iomem *rgmii_base;
+	void __iomem *sgmii_base;
+	void __iomem *ioaddr;
 
 	struct msm_bus_scale_pdata *bus_scale_vec;
 	u32 bus_hdl;
 	unsigned int rgmii_clk_rate;
 	struct clk *rgmii_clk;
+	struct clk *phyaux_clk;
+	struct clk *sgmiref_clk;
+
 	unsigned int speed;
 	unsigned int vote_idx;
 
@@ -324,6 +329,7 @@ struct qcom_ethqos {
 	/* Key Performance Indicators */
 	bool print_kpi;
 	struct dentry *debugfs_dir;
+	int curr_serdes_speed;
 };
 
 struct pps_cfg {
