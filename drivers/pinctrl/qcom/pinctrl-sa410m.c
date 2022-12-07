@@ -1964,13 +1964,13 @@ static const struct msm_pingroup sa410m_groups[] = {
 			 NA, NA, NA, 0, -1),
 	[139] = PINGROUP1(139, emac0_ptp_pps, emac0_ptp_pps, emac0_ptp_pps,
 			 emac0_ptp_pps, NA, NA, NA, NA, NA, 0, -1),
-	[140] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x399a000, 15, 0),
-	[141] = SDC_QDSD_PINGROUP(sdc1_clk, 0x399a000, 13, 6),
-	[142] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x399a000, 11, 3),
-	[143] = SDC_QDSD_PINGROUP(sdc1_data, 0x399a000, 9, 0),
-	[144] = SDC_QDSD_PINGROUP(sdc2_clk, 0x186000, 14, 6),
-	[145] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x186000, 11, 3),
-	[146] = SDC_QDSD_PINGROUP(sdc2_data, 0x186000, 9, 0),
+	[140] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x84000, 15, 0),
+	[141] = SDC_QDSD_PINGROUP(sdc1_clk, 0x84000, 13, 6),
+	[142] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x84000, 11, 3),
+	[143] = SDC_QDSD_PINGROUP(sdc1_data, 0x84000, 9, 0),
+	[144] = SDC_QDSD_PINGROUP(sdc2_clk, 0x86000, 14, 6),
+	[145] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x86000, 11, 3),
+	[146] = SDC_QDSD_PINGROUP(sdc2_data, 0x86000, 9, 0),
 };
 static struct pinctrl_qup sa410m_qup_regs[] = {
 };
