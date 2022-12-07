@@ -4054,6 +4054,9 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 		if (ret)
 			dev_err(mdwc->dev, "%s:core_reset deassert failed\n",
 					__func__);
+
+		/* HW requires a short delay for reset to take place properly */
+		usleep_range(1000, 1200);
 	}
 
 	ret = dwc3_clk_enable_disable(mdwc, true, mdwc->lpm_flags & MDWC3_POWER_COLLAPSE);
