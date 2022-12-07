@@ -557,7 +557,7 @@ static arm_lpae_iopte arm_lpae_prot_to_pte(struct arm_lpae_io_pgtable *data,
 	arm_lpae_iopte pte;
 
 	if (data->iop.fmt == QCOM_ARM_64_LPAE_S1 ||
-	    data->iop.fmt == ARM_32_LPAE_S1) {
+	    data->iop.fmt == QCOM_ARM_32_LPAE_S1) {
 		pte = ARM_LPAE_PTE_nG;
 		if (!(prot & IOMMU_WRITE) && (prot & IOMMU_READ))
 			pte |= ARM_LPAE_PTE_AP_RDONLY;
@@ -1566,6 +1566,7 @@ static int __init arm_lpae_run_tests(struct io_pgtable_cfg *cfg)
 {
 	static const enum io_pgtable_fmt fmts[] __initconst = {
 		QCOM_ARM_64_LPAE_S1,
+		QCOM_ARM_32_LPAE_S1,
 		ARM_64_LPAE_S2,
 	};
 
