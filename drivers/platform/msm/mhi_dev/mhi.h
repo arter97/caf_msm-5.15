@@ -645,7 +645,8 @@ struct mhi_dev {
 
 	struct mhi_dev_ctx		*mhi_hw_ctx;
 	struct mhi_sm_dev		*mhi_sm_ctx;
-	int				vf_id;
+	/* MHI VF number */
+	uint32_t			vf_id;
 
 	int (*device_to_host)(uint64_t dst_pa, void *src, uint32_t len,
 				struct mhi_dev *mhi, struct mhi_req *req);
@@ -689,6 +690,7 @@ struct mhi_dev_ctx {
 	struct kobj_uevent_env		kobj_env;
 	struct ep_pcie_notify		*notify;
 	struct mhi_dma_ops		mhi_dma_fun_ops;
+	struct ep_pcie_cap		ep_cap;
 };
 
 enum mhi_id {
@@ -1177,9 +1179,11 @@ int mhi_uci_init(void);
  * mhi_dev_net_interface_init() - Initializes the mhi device network interface
  *		which exposes the virtual network interface (mhi_dev_net0).
  *		data packets will transfer between MHI host interface (mhi_swip)
- *		and mhi_dev_net interface using software path
+ *		and mhi_dev_net interface using software path.
+ * @vf_id       MHI instance (physical or virtual) id.
+ * @num_vfs     Total number of vutual MHI instances supported on this target.
  */
-int mhi_dev_net_interface_init(void);
+int mhi_dev_net_interface_init(u32 vf_id, u32 num_vfs);
 
 void mhi_dev_notify_a7_event(struct mhi_dev *mhi);
 

@@ -1528,6 +1528,7 @@ void mhi_dev_sm_pcie_handler(struct ep_pcie_notify *notify)
 	}
 
 	dstate_change_evt->event = event;
+	dstate_change_evt->mhi_sm_ctx = mhi_sm_ctx;
 	INIT_WORK(&dstate_change_evt->work, mhi_sm_pcie_event_manager);
 	queue_work(mhi_sm_ctx->mhi_sm_wq, &dstate_change_evt->work);
 	atomic_inc(&mhi_sm_ctx->pending_pcie_events);
@@ -1571,6 +1572,7 @@ int mhi_dev_sm_syserr(void)
 }
 EXPORT_SYMBOL(mhi_dev_sm_syserr);
 
+#ifdef CONFIG_DEBUG_FS
 static ssize_t mhi_sm_debugfs_read(struct file *file, char __user *ubuf,
 				size_t count, loff_t *ppos)
 {
@@ -1686,3 +1688,4 @@ static ssize_t mhi_sm_debugfs_write(struct file *file,
 
 	return count;
 }
+#endif

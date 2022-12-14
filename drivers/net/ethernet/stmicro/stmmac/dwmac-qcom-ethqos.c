@@ -38,9 +38,15 @@
 #define RGMII_CONFIG_FUNC_CLK_EN		BIT(30)
 #define RGMII_CONFIG_POS_NEG_DATA_SEL		BIT(23)
 #define RGMII_CONFIG_GPIO_CFG_RX_INT		GENMASK(21, 20)
-#define RGMII_CONFIG_GPIO_CFG_TX_INT		GENMASK(19, 17)
-#define RGMII_CONFIG_MAX_SPD_PRG_9		GENMASK(16, 8)
-#define RGMII_CONFIG_MAX_SPD_PRG_2		GENMASK(7, 6)
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_VER4)
+	#define RGMII_CONFIG_GPIO_CFG_TX_INT		GENMASK(21, 19)
+	#define RGMII_CONFIG_MAX_SPD_PRG_9		GENMASK(18, 10)
+	#define RGMII_CONFIG_MAX_SPD_PRG_2		GENMASK(9, 6)
+#else
+	#define RGMII_CONFIG_GPIO_CFG_TX_INT		GENMASK(19, 17)
+	#define RGMII_CONFIG_MAX_SPD_PRG_9		GENMASK(16, 8)
+	#define RGMII_CONFIG_MAX_SPD_PRG_2		GENMASK(7, 6)
+#endif
 #define RGMII_CONFIG_INTF_SEL			GENMASK(5, 4)
 #define RGMII_CONFIG_BYPASS_TX_ID_EN		BIT(3)
 #define RGMII_CONFIG_LOOPBACK_EN		BIT(2)
@@ -90,13 +96,39 @@
 #define SDC4_STATUS_DLL_LOCK			BIT(7)
 
 /* RGMII_IO_MACRO_CONFIG2 fields */
-#define RGMII_CONFIG2_RSVD_CONFIG15		GENMASK(31, 17)
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_VER4)
+	#define RGMII_CONFIG2_RSVD_CONFIG15		GENMASK(31, 24)
+#else
+	#define RGMII_CONFIG2_RSVD_CONFIG15		GENMASK(31, 17)
+#endif
+#define RGMII_CONFIG2_MODE_EN_VIA_GMII        BIT(21)
+#define RGMII_CONFIG2_MAX_SPD_PRG_3		GENMASK(20, 17)
 #define RGMII_CONFIG2_RGMII_CLK_SEL_CFG		BIT(16)
 #define RGMII_CONFIG2_TX_TO_RX_LOOPBACK_EN	BIT(13)
 #define RGMII_CONFIG2_CLK_DIVIDE_SEL		BIT(12)
 #define RGMII_CONFIG2_RX_PROG_SWAP		BIT(7)
 #define RGMII_CONFIG2_DATA_DIVIDE_CLK_SEL	BIT(6)
 #define RGMII_CONFIG2_TX_CLK_PHASE_SHIFT_EN	BIT(5)
+
+/* EMAC_WRAPPER_SGMII_PHY_CNTRL0 fields */
+#define SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL		GENMASK(6, 5)
+
+/* EMAC_WRAPPER_SGMII_PHY_CNTRL1 fields */
+#define SGMII_PHY_CNTRL1_RGMII_SGMII_CLK_MUX_SEL		BIT(0)
+#define SGMII_PHY_CNTRL1_USXGMII_GMII_MASTER_CLK_MUX_SEL		BIT(4)
+#define SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN		BIT(3)
+
+/* EMAC_WRAPPER_USXGMII_MUX_SEL fields */
+#define USXGMII_CLK_BLK_GMII_CLK_BLK_SEL		BIT(1)
+#define USXGMII_CLK_BLK_CLK_EN		BIT(0)
+
+/* RGMII_IO_MACRO_SCRATCH_2 fields */
+#define RGMII_SCRATCH2_MAX_SPD_PRG_4		GENMASK(5, 2)
+#define RGMII_SCRATCH2_MAX_SPD_PRG_5		GENMASK(9, 6)
+#define RGMII_SCRATCH2_MAX_SPD_PRG_6		GENMASK(13, 10)
+
+/*RGMIII_IO_MACRO_BYPASS fields */
+#define RGMII_BYPASS_EN		BIT(0)
 
 #define EMAC_I0_EMAC_CORE_HW_VERSION_RGOFFADDR 0x00000070
 #define EMAC_HW_v2_3_2_RG 0x20030002
@@ -577,39 +609,89 @@ static void rgmii_dump(void *priv)
 #define RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ	  (5 * 1000 * 1000UL)
 
 static void
-ethqos_update_rgmii_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
-				    unsigned int speed)
+ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
+			      unsigned int speed, int interface)
 {
-	switch (speed) {
-	case SPEED_1000:
-		ethqos->rgmii_clk_rate =  RGMII_1000_NOM_CLK_FREQ;
-		break;
+	int ret = 0;
 
-	case SPEED_100:
-		ethqos->rgmii_clk_rate =  RGMII_ID_MODE_100_LOW_SVS_CLK_FREQ;
-		break;
+	if (interface == PHY_INTERFACE_MODE_RGMII ||
+	    interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		switch (speed) {
+		case SPEED_1000:
+			ethqos->rgmii_clk_rate =  RGMII_1000_NOM_CLK_FREQ;
+			break;
 
-	case SPEED_10:
-		ethqos->rgmii_clk_rate =  RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ;
-		break;
+		case SPEED_100:
+			ethqos->rgmii_clk_rate =  RGMII_ID_MODE_100_LOW_SVS_CLK_FREQ;
+			break;
+
+		case SPEED_10:
+			ethqos->rgmii_clk_rate =  RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ;
+			break;
+
+		case 0:
+			break;
+
+		default:
+			dev_err(&ethqos->pdev->dev,
+				"Invalid speed %d\n", ethqos->speed);
+			return;
+		}
+		clk_set_rate(ethqos->rgmii_clk, ethqos->rgmii_clk_rate);
 	}
 
 	switch (speed) {
+	case SPEED_10000:
+		ethqos->vote_idx = VOTE_IDX_10000MBPS;
+		break;
+
+	case SPEED_5000:
+		ethqos->vote_idx = VOTE_IDX_5000MBPS;
+		break;
+
+	case SPEED_2500:
+		ethqos->vote_idx = VOTE_IDX_2500MBPS;
+		break;
+
 	case SPEED_1000:
 		ethqos->vote_idx = VOTE_IDX_1000MBPS;
 		break;
+
 	case SPEED_100:
 		ethqos->vote_idx = VOTE_IDX_100MBPS;
 		break;
+
 	case SPEED_10:
 		ethqos->vote_idx = VOTE_IDX_10MBPS;
 		break;
+
 	case 0:
 		ethqos->vote_idx = VOTE_IDX_0MBPS;
-		ethqos->rgmii_clk_rate = 0;
 		break;
+
+	default:
+		dev_err(&ethqos->pdev->dev,
+			"Invalid speed %d\n", ethqos->speed);
+		return;
 	}
-	clk_set_rate(ethqos->rgmii_clk, ethqos->rgmii_clk_rate);
+
+	if (ethqos->axi_icc_path && ethqos->emac_axi_icc) {
+		ret = icc_set_bw(ethqos->axi_icc_path,
+				 ethqos->emac_axi_icc[ethqos->vote_idx].average_bandwidth,
+				 ethqos->emac_axi_icc[ethqos->vote_idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("Interconnect set BW failed for Emac->Axi path\n");
+	}
+
+	if (ethqos->apb_icc_path && ethqos->emac_apb_icc) {
+		ret = icc_set_bw(ethqos->apb_icc_path,
+				 ethqos->emac_apb_icc[ethqos->vote_idx].average_bandwidth,
+				 ethqos->emac_apb_icc[ethqos->vote_idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("Interconnect set BW failed for Emac->Apb path\n");
+	}
 }
 
 static void ethqos_set_func_clk_en(struct qcom_ethqos *ethqos)
@@ -1178,17 +1260,216 @@ static int ethqos_configure_mac_v3(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
-static void ethqos_fix_mac_speed(void *priv, unsigned int speed)
+static int ethqos_configure_rgmii_v4(struct qcom_ethqos *ethqos)
 {
-	struct qcom_ethqos *ethqos = priv;
+	unsigned int dll_lock;
+	unsigned int i, retry = 1000;
+
+	/* Reset to POR values and enable clk */
+	for (i = 0; i < ethqos->num_por; i++)
+		rgmii_writel(ethqos, ethqos->por[i].value,
+			     ethqos->por[i].offset);
+
+	ethqos_set_func_clk_en(ethqos);
+
+	/* Initialize the DLL first */
+
+	/* Set DLL_RST */
+	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_DLL_RST,
+		      SDCC_DLL_CONFIG_DLL_RST, SDCC_HC_REG_DLL_CONFIG);
+
+	/* Set PDN */
+	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_PDN,
+		      SDCC_DLL_CONFIG_PDN, SDCC_HC_REG_DLL_CONFIG);
+
+	/* Clear DLL_RST */
+	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_DLL_RST, 0,
+		      SDCC_HC_REG_DLL_CONFIG);
+
+	/* Clear PDN */
+	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_PDN, 0,
+		      SDCC_HC_REG_DLL_CONFIG);
+
+	if (ethqos->speed != SPEED_100 && ethqos->speed != SPEED_10) {
+		/* Set DLL_EN */
+		rgmii_updatel(ethqos, SDCC_DLL_CONFIG_DLL_EN,
+			      SDCC_DLL_CONFIG_DLL_EN, SDCC_HC_REG_DLL_CONFIG);
+
+		/* Set CK_OUT_EN */
+		rgmii_updatel(ethqos, SDCC_DLL_CONFIG_CK_OUT_EN,
+			      SDCC_DLL_CONFIG_CK_OUT_EN,
+			      SDCC_HC_REG_DLL_CONFIG);
+
+		/* Set USR_CTL bit 26 with mask of 3 bits */
+		rgmii_updatel(ethqos, GENMASK(26, 24), BIT(26), SDCC_USR_CTL);
+
+		/* wait for DLL LOCK */
+		do {
+			mdelay(1);
+			dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
+			if (dll_lock & SDC4_STATUS_DLL_LOCK)
+				break;
+			retry--;
+		} while (retry > 0);
+
+		if (!retry)
+			dev_err(&ethqos->pdev->dev,
+				"Timeout while waiting for DLL lock\n");
+	}
+
+	if (ethqos->speed == SPEED_1000)
+		ethqos_dll_configure(ethqos);
+
+	ethqos_rgmii_macro_init(ethqos);
+
+	return 0;
+}
+
+static int ethqos_configure_sgmii_v4(struct qcom_ethqos *ethqos)
+{
+	rgmii_updatel(ethqos, RGMII_BYPASS_EN, RGMII_BYPASS_EN, RGMII_IO_MACRO_BYPASS);
+	rgmii_updatel(ethqos, RGMII_CONFIG2_MODE_EN_VIA_GMII, 0, RGMII_IO_MACRO_CONFIG2);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_RGMII_SGMII_CLK_MUX_SEL, 0,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_USXGMII_GMII_MASTER_CLK_MUX_SEL,
+		      SGMII_PHY_CNTRL1_USXGMII_GMII_MASTER_CLK_MUX_SEL,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN, 0,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, USXGMII_CLK_BLK_GMII_CLK_BLK_SEL, 0, EMAC_WRAPPER_USXGMII_MUX_SEL);
+	rgmii_updatel(ethqos, USXGMII_CLK_BLK_CLK_EN, 0, EMAC_WRAPPER_USXGMII_MUX_SEL);
+
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, 0, EMAC_WRAPPER_SGMII_PHY_CNTRL0);
+	rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_2, (BIT(6) | BIT(9)), RGMII_IO_MACRO_CONFIG);
+	rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9, (BIT(10) | BIT(14) | BIT(15)),
+		      RGMII_IO_MACRO_CONFIG);
+	rgmii_updatel(ethqos, RGMII_CONFIG2_MAX_SPD_PRG_3, (BIT(17) | BIT(20)),
+		      RGMII_IO_MACRO_CONFIG2);
+	rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_4, BIT(2), RGMII_IO_MACRO_SCRATCH_2);
+	rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_5, BIT(6) | BIT(7),
+		      RGMII_IO_MACRO_SCRATCH_2);
+	rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_6, 0, RGMII_IO_MACRO_SCRATCH_2);
+	rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+		      RGMII_IO_MACRO_CONFIG2);
+
+	return 0;
+}
+
+static int ethqos_configure_usxgmii_v4(struct qcom_ethqos *ethqos)
+{
+	rgmii_updatel(ethqos, RGMII_CONFIG2_MODE_EN_VIA_GMII, 0, RGMII_IO_MACRO_CONFIG2);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, BIT(5),
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL0);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_RGMII_SGMII_CLK_MUX_SEL, 0,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_USXGMII_GMII_MASTER_CLK_MUX_SEL,
+		      SGMII_PHY_CNTRL1_USXGMII_GMII_MASTER_CLK_MUX_SEL,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN, 0,
+		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	rgmii_updatel(ethqos, USXGMII_CLK_BLK_GMII_CLK_BLK_SEL, 0, EMAC_WRAPPER_USXGMII_MUX_SEL);
+	rgmii_updatel(ethqos, USXGMII_CLK_BLK_CLK_EN, 0, EMAC_WRAPPER_USXGMII_MUX_SEL);
+
+	switch (ethqos->speed) {
+	case SPEED_10000:
+		rgmii_updatel(ethqos, USXGMII_CLK_BLK_GMII_CLK_BLK_SEL,
+			      USXGMII_CLK_BLK_GMII_CLK_BLK_SEL,
+			      EMAC_WRAPPER_USXGMII_MUX_SEL);
+		break;
+
+	case SPEED_5000:
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, 0,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL0);
+		rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_2, (BIT(6) | BIT(7)),
+			      RGMII_IO_MACRO_CONFIG);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_MAX_SPD_PRG_3, (BIT(17) | BIT(18)),
+			      RGMII_IO_MACRO_CONFIG2);
+		break;
+
+	case SPEED_2500:
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, 0,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL0);
+		rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9, (BIT(10) | BIT(11)),
+			      RGMII_IO_MACRO_CONFIG);
+		rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_4, (BIT(2) | BIT(3)),
+			      RGMII_IO_MACRO_SCRATCH_2);
+		rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_5, 0,
+			      RGMII_IO_MACRO_SCRATCH_2);
+		break;
+
+	case SPEED_1000:
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_IO_MACRO_CONFIG2);
+		break;
+
+	case SPEED_100:
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_IO_MACRO_CONFIG2);
+		rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_2, BIT(9),
+			      RGMII_IO_MACRO_CONFIG);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_MAX_SPD_PRG_3, BIT(20),
+			      RGMII_IO_MACRO_CONFIG2);
+		rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_6, BIT(1),
+			      RGMII_IO_MACRO_SCRATCH_2);
+		break;
+
+	case SPEED_10:
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_IO_MACRO_CONFIG2);
+		break;
+
+	default:
+		dev_err(&ethqos->pdev->dev,
+			"Invalid speed %d\n", ethqos->speed);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int ethqos_configure_mac_v4(struct qcom_ethqos *ethqos)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	int ret = 0;
+
+	switch (priv->plat->interface) {
+	case PHY_INTERFACE_MODE_RGMII:
+	case PHY_INTERFACE_MODE_RGMII_ID:
+	case PHY_INTERFACE_MODE_RGMII_RXID:
+	case PHY_INTERFACE_MODE_RGMII_TXID:
+		ret  = ethqos_configure_rgmii_v4(ethqos);
+		break;
+
+	case PHY_INTERFACE_MODE_SGMII:
+		ret = ethqos_configure_sgmii_v4(ethqos);
+		break;
+
+	case PHY_INTERFACE_MODE_USXGMII:
+		ret = ethqos_configure_usxgmii_v4(ethqos);
+		break;
+	}
+
+	return ret;
+}
+
+static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
+{
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 	int ret = 0;
 
 	ethqos->speed = speed;
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, speed);
+	ethqos_update_clk_and_bus_cfg(ethqos, speed, priv->plat->interface);
+
 	if (ethqos->emac_ver == EMAC_HW_v3_0_0_RG)
 		ret = ethqos_configure_mac_v3(ethqos);
+	else if (ethqos->emac_ver == EMAC_HW_v4_0_0)
+		ret = ethqos_configure_mac_v4(ethqos);
 	else
-		ethqos_configure(ethqos);
+		ret = ethqos_configure(ethqos);
+
 	if (ret != 0)
 		ETHQOSERR("HSR configuration has failed\n");
 }
@@ -1447,18 +1728,16 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 
 	ethqos->clks_suspended = 1;
 
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, 0);
+	ethqos_update_clk_and_bus_cfg(ethqos, 0, priv->plat->interface);
 
-	if (ethqos->phy_wol_supported) {
-		if (priv->plat->stmmac_clk)
-			clk_disable_unprepare(priv->plat->stmmac_clk);
+	if (priv->plat->stmmac_clk)
+		clk_disable_unprepare(priv->plat->stmmac_clk);
 
-		if (priv->plat->pclk)
-			clk_disable_unprepare(priv->plat->pclk);
+	if (priv->plat->pclk)
+		clk_disable_unprepare(priv->plat->pclk);
 
-		if (priv->plat->clk_ptp_ref)
-			clk_disable_unprepare(priv->plat->clk_ptp_ref);
-	}
+	if (priv->plat->clk_ptp_ref)
+		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
@@ -1488,24 +1767,19 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 
 	ETHQOSINFO("Enter\n");
 
-	if (ethqos->phy_wol_supported) {
-		if (priv->plat->stmmac_clk)
-			clk_prepare_enable(priv->plat->stmmac_clk);
+	if (priv->plat->stmmac_clk)
+		clk_prepare_enable(priv->plat->stmmac_clk);
 
-		if (priv->plat->pclk)
-			clk_prepare_enable(priv->plat->pclk);
-
-		if (priv->plat->clk_ptp_ref)
-			clk_prepare_enable(priv->plat->clk_ptp_ref);
-	}
+	if (priv->plat->pclk)
+		clk_prepare_enable(priv->plat->pclk);
 
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
 
 	if (qcom_ethqos_is_phy_link_up(ethqos))
-		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, ethqos->speed);
+		ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
 	else
-		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+		ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, priv->plat->interface);
 
 	ethqos->clks_suspended = 0;
 
@@ -2051,8 +2325,24 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		ETHQOSINFO("Early ethernet is enabled\n");
 	}
 
+	ethqos->axi_icc_path = of_icc_get(&pdev->dev, "axi_icc_path");
+	if (!ethqos->axi_icc_path || IS_ERR(ethqos->axi_icc_path)) {
+		ETHQOSERR("Interconnect not found for Emac->Axi path\n");
+		ethqos->emac_axi_icc = NULL;
+	} else {
+		ethqos->emac_axi_icc = emac_axi_icc_data;
+	}
+
+	ethqos->apb_icc_path = of_icc_get(&pdev->dev, "apb_icc_path");
+	if (!ethqos->apb_icc_path || IS_ERR(ethqos->apb_icc_path)) {
+		ETHQOSERR("Interconnect not found for Emac->Apb path\n");
+		ethqos->emac_apb_icc = NULL;
+	} else {
+		ethqos->emac_apb_icc = emac_apb_icc_data;
+	}
+
 	ethqos->speed = SPEED_10;
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
+	ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, plat_dat->interface);
 	ethqos_set_func_clk_en(ethqos);
 
 	plat_dat->bsp_priv = ethqos;
@@ -2199,8 +2489,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	ret = stmmac_pltfr_remove(pdev);
 	clk_disable_unprepare(ethqos->rgmii_clk);
 
+	icc_put(ethqos->axi_icc_path);
+
+	icc_put(ethqos->apb_icc_path);
+
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
+
 	priv->phy_irq_enabled = false;
 
 	if (priv->plat->phy_intr_en_extn_stm)
@@ -2377,7 +2672,7 @@ static int qcom_ethqos_hib_restore(struct device *dev)
 	if (ret)
 		return ret;
 
-	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, ethqos->speed);
+	ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
 
 	ethqos_set_func_clk_en(ethqos);
 
