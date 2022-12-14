@@ -3591,7 +3591,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->mdio_bus_data->has_xpcs = true;
 
 	if (plat_dat->mdio_bus_data->has_xpcs) {
-		ret = ethqos_xpcs_init(plat_dat->phy_interface);
+		ret = ethqos_xpcs_init(ndev);
 		if (ret < 0)
 			goto err_clk;
 	}
@@ -3676,6 +3676,12 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	priv = qcom_ethqos_get_priv(ethqos);
 
+	if (priv->hw->qxpcs) {
+		if (priv->hw->qxpcs->intr_en)
+			free_irq(priv->hw->qxpcs->pcs_intr, priv);
+		qcom_xpcs_destroy(priv->hw->qxpcs);
+	}
+
 	ret = stmmac_pltfr_remove(pdev);
 
 	if (ethqos->rgmii_clk)
@@ -3692,9 +3698,6 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
-
-	if (priv->hw->qxpcs)
-		qcom_xpcs_destroy(priv->hw->qxpcs);
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
