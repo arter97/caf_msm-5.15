@@ -27,8 +27,9 @@
 #include <linux/regulator/consumer.h>
 #include <asm/dma.h>
 #include <linux/dma-mapping.h>
+#include <linux/remoteproc.h>
 #include <linux/remoteproc/qcom_rproc.h>
-
+#include <linux/compat.h>
 #include "slatecom_rpmsg.h"
 
 #define SLATECOM "slate_com_dev"
@@ -128,6 +129,16 @@ struct service_info {
 	struct notifier_block           *nb;
 };
 
+struct ctrl_channel_ops ctrl_ops = {
+	.glink_channel_state = slatecom_intf_notify_glink_channel_state,
+	.rx_msg = slatecom_rx_msg,
+};
+
+struct subsys_state_ops state_ops = {
+	.set_dsp_state = set_slate_dsp_state,
+	.set_bt_state = set_slate_bt_state,
+};
+
 static struct slatedaemon_priv *dev;
 static unsigned int slatereset_gpio;
 static  DEFINE_MUTEX(slate_char_mutex);
@@ -145,20 +156,22 @@ static  struct   slatecom_open_config_type   config_type;
 static DECLARE_COMPLETION(slate_modem_down_wait);
 static DECLARE_COMPLETION(slate_adsp_down_wait);
 static struct srcu_notifier_head slatecom_notifier_chain;
+static struct platform_device *slate_pdev;
+struct kobject *kobj_ref;
 
 static ssize_t slate_bt_state_sysfs_read
-			(struct class *class, struct class_attribute *attr, char *buf)
+			(struct kobject *class, struct kobj_attribute *attr, char *buf)
 {
 	return scnprintf(buf, BUF_SIZE, btss_state);
 }
 
 static ssize_t slate_dsp_state_sysfs_read
-			(struct class *class, struct class_attribute *attr, char *buf)
+			(struct kobject *class, struct kobj_attribute *attr, char *buf)
 {
 	return	scnprintf(buf, BUF_SIZE, dspss_state);
 }
 
-struct class_attribute slatecom_attr[] = {
+struct kobj_attribute slatecom_attr[] = {
 	{
 		.attr = {
 			.name = "slate_bt_state",
@@ -173,9 +186,6 @@ struct class_attribute slatecom_attr[] = {
 		},
 		.show	= slate_dsp_state_sysfs_read,
 	},
-};
-struct class slatecom_intf_class = {
-	.name = "slatecom"
 };
 
 /**
@@ -203,7 +213,6 @@ void slatecom_intf_notify_glink_channel_state(bool state)
 	pr_debug("%s: slate_ctrl channel state: %d\n", __func__, state);
 	dev->slatecom_rpmsg = state;
 }
-EXPORT_SYMBOL(slatecom_intf_notify_glink_channel_state);
 
 void slatecom_rx_msg(void *data, int len)
 {
@@ -214,7 +223,6 @@ void slatecom_rx_msg(void *data, int len)
 	wake_up(&dev->link_state_wait);
 	memcpy(dev->rx_buf, data, len);
 }
-EXPORT_SYMBOL(slatecom_rx_msg);
 
 static int slatecom_tx_msg(struct slatedaemon_priv *dev, void  *msg, size_t len)
 {
@@ -392,6 +400,75 @@ static int slatechar_write_cmd(struct slate_ui_data *fui_obj_msg, unsigned int t
 	return ret;
 }
 
+static int slatecom_fw_load(struct slatedaemon_priv *priv)
+{
+	struct platform_device *pdev = NULL;
+	int ret;
+	const char *firmware_name = NULL;
+	phandle rproc_phandle;
+
+	pdev = slate_pdev;
+
+	if (!pdev) {
+		pr_err("%s: Platform device null\n", __func__);
+		goto fail;
+	}
+
+	if (!pdev->dev.of_node) {
+		pr_err("%s: Device tree information missing\n", __func__);
+		goto fail;
+	}
+
+	ret = of_property_read_string(pdev->dev.of_node,
+		"qcom,firmware-name", &firmware_name);
+	if (ret < 0) {
+		pr_err("can't get fw name.\n");
+		goto fail;
+	}
+
+	if (!priv->pil_h) {
+		if (of_property_read_u32(pdev->dev.of_node, "qcom,rproc-handle",
+					 &rproc_phandle)) {
+			pr_err("error reading rproc phandle\n");
+			goto fail;
+		}
+
+		priv->pil_h = rproc_get_by_phandle(rproc_phandle);
+		if (!priv->pil_h) {
+			pr_err("rproc not found\n");
+			goto fail;
+		}
+	}
+
+	ret = rproc_boot(priv->pil_h);
+	if (ret) {
+		pr_err("%s: rproc boot failed, err: %d\n",
+			__func__, ret);
+		goto fail;
+	}
+
+	pr_err("%s: SLATE image is loaded\n", __func__);
+	return 0;
+
+fail:
+	pr_err("%s: SLATE image loading failed\n", __func__);
+	return -EFAULT;
+}
+
+static void slatecom_fw_unload(struct slatedaemon_priv *priv)
+{
+	if (!priv) {
+		pr_err("%s: handle not found\n", __func__);
+		return;
+	}
+
+	if (priv->pil_h) {
+		pr_err("%s: calling subsystem put\n", __func__);
+		rproc_shutdown(priv->pil_h);
+		priv->pil_h = NULL;
+	}
+}
+
 int slate_soft_reset(void)
 {
 	pr_debug("do SLATE reset using gpio %d\n", slatereset_gpio);
@@ -527,8 +604,8 @@ static long slate_com_ioctl(struct file *filp,
 		return -EINVAL;
 
 	switch (ui_slatecom_cmd) {
-	case REG_READ:
-	case AHB_READ:
+	case SLATECOM_REG_READ:
+	case SLATECOM_AHB_READ:
 		if (copy_from_user(&ui_obj_msg, (void __user *) arg,
 				sizeof(ui_obj_msg))) {
 			pr_err("The copy from user failed\n");
@@ -539,8 +616,8 @@ static long slate_com_ioctl(struct file *filp,
 		if (ret < 0)
 			pr_err("slatechar_read_cmd failed\n");
 		break;
-	case AHB_WRITE:
-	case REG_WRITE:
+	case SLATECOM_AHB_WRITE:
+	case SLATECOM_REG_WRITE:
 		if (copy_from_user(&ui_obj_msg, (void __user *) arg,
 				sizeof(ui_obj_msg))) {
 			pr_err("The copy from user failed\n");
@@ -573,11 +650,18 @@ static long slate_com_ioctl(struct file *filp,
 		slate_app_running = true;
 		ret = 0;
 		break;
-	case SLATE_LOAD:
-		pr_err("cmd SLATE_LOAD depricated\n");
+	case SLATECOM_SLATE_LOAD:
+		ret = 0;
+		if (dev->pil_h) {
+			pr_err("slate is already loaded\n");
+			ret = -EFAULT;
+			break;
+		}
+		ret = slatecom_fw_load(dev);
 		break;
-	case SLATE_UNLOAD:
-		pr_err("cmd SLATE_UNLOAD depricated\n");
+	case SLATECOM_SLATE_UNLOAD:
+		slatecom_fw_unload(dev);
+		ret = 0;
 		break;
 	case DEVICE_STATE_TRANSITION:
 		if (dev->slatecom_current_state != SLATECOM_STATE_GLINK_OPEN) {
@@ -628,6 +712,13 @@ static long slate_com_ioctl(struct file *filp,
 		break;
 	}
 	return ret;
+}
+
+long compat_slate_com_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	unsigned int nr = _IOC_NR(cmd);
+
+	return (long)slate_com_ioctl(file, nr, arg);
 }
 
 static ssize_t slatecom_char_write(struct file *f, const char __user *buf,
@@ -779,6 +870,7 @@ static int slate_daemon_probe(struct platform_device *pdev)
 		return -ENODEV;
 	dev->platform_dev = &pdev->dev;
 	pr_info("%s success\n", __func__);
+	slate_pdev = pdev;
 
 	ssr_register();
 
@@ -805,6 +897,9 @@ static const struct file_operations fops = {
 	.write          = slatecom_char_write,
 	.release        = slatecom_char_close,
 	.unlocked_ioctl = slate_com_ioctl,
+	#ifdef CONFIG_COMPAT
+	.compat_ioctl   = compat_slate_com_ioctl,
+	#endif
 };
 
 /**
@@ -978,7 +1073,6 @@ void set_slate_dsp_state(bool status)
 	}
 	send_uevent(&statee);
 }
-EXPORT_SYMBOL(set_slate_dsp_state);
 
 void set_slate_bt_state(bool status)
 {
@@ -998,7 +1092,6 @@ void set_slate_bt_state(bool status)
 	}
 	send_uevent(&statee);
 }
-EXPORT_SYMBOL(set_slate_bt_state);
 
 void *slatecom_register_notifier(struct notifier_block *nb)
 {
@@ -1123,15 +1216,14 @@ static int __init init_slate_com_dev(void)
 		return PTR_ERR(dev_ret);
 	}
 
-	ret = class_register(&slatecom_intf_class);
-	if (ret < 0) {
-		pr_err("Failed to register slatecom_intf_class rc=%d\n", ret);
-		return ret;
-	}
-
 	for (i = 0; i < SLATECOM_INTF_N_FILES; i++) {
-		if (class_create_file(&slatecom_intf_class, &slatecom_attr[i]))
+		kobj_ref = kobject_create_and_add(slatecom_attr[i].attr.name, kernel_kobj);
+		/*Creating sysfs file for power_state*/
+		if (sysfs_create_file(kobj_ref, &slatecom_attr[i].attr)) {
 			pr_err("%s: failed to create slate-bt/dsp entry\n", __func__);
+			kobject_put(kobj_ref);
+			sysfs_remove_file(kernel_kobj, &slatecom_attr[i].attr);
+		}
 	}
 
 	if (platform_driver_register(&slate_daemon_driver))
@@ -1146,12 +1238,12 @@ static void __exit exit_slate_com_dev(void)
 {
 	int i = 0;
 
+	kobject_put(kobj_ref);
+	for (i = 0; i < SLATECOM_INTF_N_FILES; i++)
+		sysfs_remove_file(kernel_kobj, &slatecom_attr[i].attr);
+
 	device_destroy(slate_class, slate_dev);
 	class_destroy(slate_class);
-	for (i = 0; i < SLATECOM_INTF_N_FILES; i++)
-		class_remove_file(&slatecom_intf_class, &slatecom_attr[i]);
-
-	class_unregister(&slatecom_intf_class);
 	cdev_del(&slate_cdev);
 	unregister_chrdev_region(slate_dev, 1);
 	platform_driver_unregister(&slate_daemon_driver);

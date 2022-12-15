@@ -6,6 +6,7 @@
 
 #define pr_fmt(msg) "slatersb: %s: " msg, __func__
 #include "slatersb.h"
+#include <linux/remoteproc/qcom_rproc.h>
 
 struct slatersb_priv {
 	void *handle;
@@ -43,6 +44,11 @@ struct slatersb_priv {
 
 static void *slatersb_drv;
 static int slatersb_enable(struct slatersb_priv *dev, bool enable);
+
+struct rsb_channel_ops rsb_ops = {
+	.glink_channel_state = slatersb_notify_glink_channel_state,
+	.rx_msg = slatersb_rx_msg,
+};
 
 static void slatersb_slatedown_work(struct work_struct *work)
 {
@@ -143,7 +149,6 @@ void slatersb_notify_glink_channel_state(bool state)
 	pr_debug("%s: RSB-CTRL channel state: %d\n", __func__, state);
 	dev->rsb_rpmsg = state;
 }
-EXPORT_SYMBOL(slatersb_notify_glink_channel_state);
 
 void slatersb_rx_msg(void *data, int len)
 {
@@ -154,7 +159,6 @@ void slatersb_rx_msg(void *data, int len)
 	wake_up(&dev->link_state_wait);
 	memcpy(dev->rx_buf, data, len);
 }
-EXPORT_SYMBOL(slatersb_rx_msg);
 
 static void slatersb_slateup_work(struct work_struct *work)
 {
@@ -209,12 +213,12 @@ static int ssr_slatersb_cb(struct notifier_block *this,
 				struct slatersb_priv, lhndl);
 
 	switch (opcode) {
-	case SUBSYS_BEFORE_SHUTDOWN:
+	case QCOM_SSR_BEFORE_SHUTDOWN:
 		if (dev->slatersb_current_state == SLATERSB_STATE_RSB_ENABLED)
 			dev->pending_enable = true;
 		queue_work(dev->slatersb_wq, &dev->slate_down_work);
 		break;
-	case SUBSYS_AFTER_POWERUP:
+	case QCOM_SSR_AFTER_POWERUP:
 		if (dev->slatersb_current_state == SLATERSB_STATE_INIT)
 			queue_work(dev->slatersb_wq, &dev->slate_up_work);
 		break;
@@ -245,7 +249,7 @@ static int slatersb_ssr_register(struct slatersb_priv *dev)
 
 	nb = &ssr_slate_nb;
 	dev->slate_subsys_handle =
-			subsys_notif_register_notifier(SLATERSB_SLATE_SUBSYS, nb);
+			qcom_register_ssr_notifier(SLATERSB_SLATE_SUBSYS, nb);
 
 	if (!dev->slate_subsys_handle) {
 		dev->slate_subsys_handle = NULL;
