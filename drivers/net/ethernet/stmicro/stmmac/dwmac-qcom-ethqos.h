@@ -282,6 +282,14 @@ struct qcom_ethqos {
 	struct clk *pcs_tx_clk;
 	struct clk *xgxs_rx_clk;
 	struct clk *xgxs_tx_clk;
+	struct clk *sgmii_rx_clk_src;
+	struct clk *sgmii_rclk;
+	struct clk *sgmii_tx_clk_src;
+	struct clk *sgmii_tclk;
+	struct clk *sgmii_mac_rx_clk_src;
+	struct clk *sgmii_mac_rclk;
+	struct clk *sgmii_mac_tx_clk_src;
+	struct clk *sgmii_mac_tclk;
 #endif
 
 	unsigned int speed;
