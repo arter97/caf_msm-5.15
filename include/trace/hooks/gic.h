@@ -7,7 +7,11 @@
 #if !defined(_TRACE_HOOK_GIC_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_GIC_H
 
+#if defined(CONFIG_ARM_GIC) && defined(CONFIG_ANDROID_PARTIAL_VENDOR_HOOKS)
+#include <trace/hooks/vendor_hooks_declare.h>
+#else
 #include <trace/hooks/vendor_hooks.h>
+#endif
 
 #ifdef __GENKSYMS__
 #include <linux/cpumask.h>
