@@ -2523,6 +2523,87 @@ static int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int inte
 			goto err_clk;
 	}
 
+	/* Update mux logic to change the parent clock */
+	ethqos->sgmii_rx_clk_src = devm_clk_get_optional(&pdev->dev, "sgmii_rclk_src");
+	if (IS_ERR(ethqos->sgmii_rx_clk_src)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_rx source clock\n");
+		ret = PTR_ERR(ethqos->sgmii_rx_clk_src);
+		ethqos->sgmii_rx_clk_src = NULL;
+		goto err_clk;
+	} else {
+		ethqos->sgmii_rclk = devm_clk_get_optional(&pdev->dev, "sgmii_rclk");
+		if (IS_ERR(ethqos->sgmii_rclk)) {
+			dev_warn(&pdev->dev, "Cannot get sgmii_rclk\n");
+			ret = PTR_ERR(ethqos->sgmii_rclk);
+			ethqos->sgmii_rclk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_set_parent(ethqos->sgmii_rx_clk_src, ethqos->sgmii_rclk);
+			if (ret)
+				goto err_clk;
+		}
+	}
+
+	ethqos->sgmii_tx_clk_src = devm_clk_get_optional(&pdev->dev, "sgmii_tclk_src");
+	if (IS_ERR(ethqos->sgmii_tx_clk_src)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_tx source clock\n");
+		ret = PTR_ERR(ethqos->sgmii_tx_clk_src);
+		ethqos->sgmii_tx_clk_src = NULL;
+		goto err_clk;
+	} else {
+		ethqos->sgmii_tclk = devm_clk_get_optional(&pdev->dev, "sgmii_tclk");
+		if (IS_ERR(ethqos->sgmii_tclk)) {
+			dev_warn(&pdev->dev, "Cannot get sgmii_tclk\n");
+			ret = PTR_ERR(ethqos->sgmii_tclk);
+			ethqos->sgmii_tclk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_set_parent(ethqos->sgmii_tx_clk_src, ethqos->sgmii_tclk);
+			if (ret)
+				goto err_clk;
+		}
+	}
+
+	ethqos->sgmii_mac_rx_clk_src = devm_clk_get_optional(&pdev->dev, "sgmii_mac_rclk_src");
+	if (IS_ERR(ethqos->sgmii_mac_rx_clk_src)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_mac_rx source clock\n");
+		ret = PTR_ERR(ethqos->sgmii_mac_rx_clk_src);
+		ethqos->sgmii_mac_rx_clk_src = NULL;
+		goto err_clk;
+	} else {
+		ethqos->sgmii_mac_rclk = devm_clk_get_optional(&pdev->dev, "sgmii_mac_rclk");
+		if (IS_ERR(ethqos->sgmii_mac_rclk)) {
+			dev_warn(&pdev->dev, "Cannot get sgmii_mac_rclk\n");
+			ret = PTR_ERR(ethqos->sgmii_mac_rclk);
+			ethqos->sgmii_mac_rclk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_set_parent(ethqos->sgmii_mac_rx_clk_src, ethqos->sgmii_mac_rclk);
+			if (ret)
+				goto err_clk;
+		}
+	}
+
+	ethqos->sgmii_mac_tx_clk_src = devm_clk_get_optional(&pdev->dev, "sgmii_mac_tclk_src");
+	if (IS_ERR(ethqos->sgmii_mac_tx_clk_src)) {
+		dev_warn(&pdev->dev, "Cannot get sgmii_mac_tx source clock\n");
+		ret = PTR_ERR(ethqos->sgmii_mac_tx_clk_src);
+		ethqos->sgmii_mac_tx_clk_src = NULL;
+		goto err_clk;
+	} else {
+		ethqos->sgmii_mac_tclk = devm_clk_get_optional(&pdev->dev, "sgmii_mac_tclk");
+		if (IS_ERR(ethqos->sgmii_mac_tclk)) {
+			dev_warn(&pdev->dev, "Cannot get sgmii_mac_tclk\n");
+			ret = PTR_ERR(ethqos->sgmii_mac_tclk);
+			ethqos->sgmii_mac_tclk = NULL;
+			goto err_clk;
+		} else {
+			ret = clk_set_parent(ethqos->sgmii_mac_tx_clk_src, ethqos->sgmii_mac_tclk);
+			if (ret)
+				goto err_clk;
+		}
+	}
+
 	if (interface == PHY_INTERFACE_MODE_SGMII) {
 		/*Clocks specific to SGMII interface */
 		ethqos->xgxs_rx_clk = devm_clk_get_optional(&pdev->dev, "xgxs_rx");
