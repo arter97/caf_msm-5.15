@@ -571,8 +571,6 @@ void tmc_etr_bam_disable(struct tmc_usb_data *usb_data)
 	bamdata->enable = false;
 }
 
-
-
 void usb_notifier(void *priv, unsigned int event, struct qdss_request *d_req,
 		  struct usb_qdss_ch *ch)
 {
@@ -616,7 +614,7 @@ void usb_notifier(void *priv, unsigned int event, struct qdss_request *d_req,
 			if (ret < 0)
 				return;
 
-			usb_qdss_alloc_req(ch, USB_BUF_NUM);
+			tmc_usb_qdss_alloc_req(ch, USB_BUF_NUM);
 			queue_work(drvdata->byte_cntr->usb_wq, &(drvdata->byte_cntr->read_work));
 		}
 		break;

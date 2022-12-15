@@ -928,12 +928,18 @@ static struct clk_rcg2 gcc_pcie_1_aux_phy_clk_src = {
 	},
 };
 
+static const struct freq_tbl ftbl_gcc_pcie_1_phy_rchng_clk_src[] = {
+	F(19200000, P_BI_TCXO, 1, 0, 0),
+	F(100000000, P_GPLL0_OUT_EVEN, 3, 0, 0),
+	{ }
+};
+
 static struct clk_rcg2 gcc_pcie_1_phy_rchng_clk_src = {
 	.cmd_rcgr = 0x6706c,
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = gcc_parent_map_2,
-	.freq_tbl = ftbl_gcc_eee_emac0_clk_src,
+	.freq_tbl = ftbl_gcc_pcie_1_phy_rchng_clk_src,
 	.enable_safe_config = true,
 	.clkr.hw.init = &(const struct clk_init_data){
 		.name = "gcc_pcie_1_phy_rchng_clk_src",
@@ -976,7 +982,7 @@ static struct clk_rcg2 gcc_pcie_2_phy_rchng_clk_src = {
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = gcc_parent_map_2,
-	.freq_tbl = ftbl_gcc_eee_emac0_clk_src,
+	.freq_tbl = ftbl_gcc_pcie_1_phy_rchng_clk_src,
 	.enable_safe_config = true,
 	.clkr.hw.init = &(const struct clk_init_data){
 		.name = "gcc_pcie_2_phy_rchng_clk_src",
@@ -1018,7 +1024,7 @@ static struct clk_rcg2 gcc_pcie_rchng_phy_clk_src = {
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = gcc_parent_map_2,
-	.freq_tbl = ftbl_gcc_eee_emac0_clk_src,
+	.freq_tbl = ftbl_gcc_pcie_1_phy_rchng_clk_src,
 	.enable_safe_config = true,
 	.clkr.hw.init = &(const struct clk_init_data){
 		.name = "gcc_pcie_rchng_phy_clk_src",
@@ -1927,7 +1933,7 @@ static struct clk_branch gcc_emac1_xgxs_tx_clk = {
 
 static struct clk_branch gcc_emac_0_clkref_en = {
 	.halt_reg = 0x98108,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98108,
 		.enable_mask = BIT(0),
@@ -1940,7 +1946,7 @@ static struct clk_branch gcc_emac_0_clkref_en = {
 
 static struct clk_branch gcc_emac_1_clkref_en = {
 	.halt_reg = 0x98108,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98108,
 		.enable_mask = BIT(0),
@@ -2050,7 +2056,7 @@ static struct clk_branch gcc_mvmss_nts_clk = {
 
 static struct clk_branch gcc_pcie_0_clkref_en = {
 	.halt_reg = 0x98004,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98004,
 		.enable_mask = BIT(0),
@@ -2096,7 +2102,7 @@ static struct clk_branch gcc_pcie_1_cfg_ahb_clk = {
 
 static struct clk_branch gcc_pcie_1_clkref_en = {
 	.halt_reg = 0x98114,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98114,
 		.enable_mask = BIT(0),
@@ -2235,7 +2241,7 @@ static struct clk_branch gcc_pcie_2_cfg_ahb_clk = {
 
 static struct clk_branch gcc_pcie_2_clkref_en = {
 	.halt_reg = 0x98110,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98110,
 		.enable_mask = BIT(0),
@@ -2818,7 +2824,7 @@ static struct clk_branch gcc_sys_noc_mvmss_clk = {
 
 static struct clk_branch gcc_usb2_clkref_en = {
 	.halt_reg = 0x98008,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98008,
 		.enable_mask = BIT(0),
@@ -2944,7 +2950,7 @@ static struct clk_branch gcc_usb3_phy_pipe_clk = {
 
 static struct clk_branch gcc_usb3_prim_clkref_en = {
 	.halt_reg = 0x98000,
-	.halt_check = BRANCH_HALT_DELAY,
+	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
 		.enable_reg = 0x98000,
 		.enable_mask = BIT(0),
@@ -2965,7 +2971,7 @@ static struct clk_branch gcc_usb_phy_cfg_ahb2phy_clk = {
 		.enable_mask = BIT(0),
 		.hw.init = &(const struct clk_init_data){
 			.name = "gcc_usb_phy_cfg_ahb2phy_clk",
-			.ops = &clk_branch2_ops,
+			.ops = &clk_branch2_aon_ops,
 		},
 	},
 };

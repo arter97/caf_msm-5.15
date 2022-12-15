@@ -3,6 +3,7 @@
  * Copyright (C) 2006-2007 Adam Belay <abelay@novell.com>
  * Copyright (C) 2009 Intel Corporation
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cpu.h>
@@ -43,7 +44,9 @@
 
 bool prediction_disabled;
 bool sleep_disabled = true;
+#ifdef CONFIG_SMP
 static bool suspend_in_progress;
+#endif
 static bool traces_registered;
 static struct cluster_governor *cluster_gov_ops;
 
@@ -61,9 +64,10 @@ static bool lpm_disallowed(s64 sleep_ns, int cpu)
 	uint64_t bias_time = 0;
 #endif
 
+#ifdef CONFIG_SMP
 	if (suspend_in_progress)
 		return true;
-
+#endif
 	if (!check_cpu_isactive(cpu))
 		return false;
 
@@ -395,7 +399,7 @@ void update_ipi_history(int cpu)
 
 	history->cpu_idle_resched_ts = now;
 }
-
+#ifdef CONFIG_SMP
 /**
  * lpm_cpu_qos_notify() - It will be called when any new request came on PM QoS.
  *			It wakes up the cpu if it is in idle sleep to honour
@@ -474,6 +478,7 @@ static void ipi_entry(void *ignore, const char *unused)
 	cpu = raw_smp_processor_id();
 	per_cpu(lpm_cpu_data, cpu).ipi_pending = false;
 }
+#endif
 
 /**
  * get_cpus_qos() - Returns the aggrigated PM QoS request.
@@ -482,17 +487,18 @@ static void ipi_entry(void *ignore, const char *unused)
 static inline s64 get_cpus_qos(const struct cpumask *mask)
 {
 	int cpu;
-	s64 n, latency = PM_QOS_CPU_LATENCY_DEFAULT_VALUE * NSEC_PER_USEC;
+	u64 n, latency = PM_QOS_CPU_LATENCY_DEFAULT_VALUE;
 
 	for_each_cpu(cpu, mask) {
 		if (!check_cpu_isactive(cpu))
 			continue;
 		n = cpuidle_governor_latency_req(cpu);
+		do_div(n, NSEC_PER_USEC);
 		if (n < latency)
 			latency = n;
 	}
 
-	return latency;
+	return latency * NSEC_PER_USEC;
 }
 
 /**
@@ -548,7 +554,7 @@ static int lpm_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		      bool *stop_tick)
 {
 	struct lpm_cpu *cpu_gov = this_cpu_ptr(&lpm_cpu_data);
-	s64 latency_req = get_cpus_qos(cpumask_of(dev->cpu));
+	uint64_t latency_req = get_cpus_qos(cpumask_of(dev->cpu));
 	ktime_t delta_tick;
 	u64 reason = 0;
 	uint64_t duration_ns, htime = 0;
@@ -562,6 +568,8 @@ static int lpm_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	cpu_gov->predict_started = false;
 	cpu_gov->now = ktime_get();
 	duration_ns = tick_nohz_get_sleep_length(&delta_tick);
+	histtimer_cancel();
+	biastimer_cancel();
 	update_cpu_history(cpu_gov);
 
 	if (lpm_disallowed(duration_ns, dev->cpu))
@@ -630,7 +638,8 @@ done:
  */
 static void lpm_reflect(struct cpuidle_device *dev, int state)
 {
-
+	histtimer_cancel();
+	biastimer_cancel();
 }
 
 /**
@@ -660,12 +669,7 @@ static void lpm_idle_enter(void *unused, int *state, struct cpuidle_device *dev)
  */
 static void lpm_idle_exit(void *unused, int state, struct cpuidle_device *dev)
 {
-	struct lpm_cpu *cpu_gov = per_cpu_ptr(&lpm_cpu_data, dev->cpu);
 
-	if (cpu_gov->enable) {
-		histtimer_cancel();
-		biastimer_cancel();
-	}
 }
 
 /**
@@ -684,6 +688,7 @@ static int lpm_enable_device(struct cpuidle_driver *drv,
 	hrtimer_init(cpu_histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	hrtimer_init(cpu_biastimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	if (!traces_registered) {
+#ifdef CONFIG_SMP
 		ret = register_trace_ipi_raise(ipi_raise, NULL);
 		if (ret)
 			return ret;
@@ -693,20 +698,24 @@ static int lpm_enable_device(struct cpuidle_driver *drv,
 			unregister_trace_ipi_raise(ipi_raise, NULL);
 			return ret;
 		}
-
+#endif
 		ret = register_trace_prio_android_vh_cpu_idle_enter(
 					lpm_idle_enter, NULL, INT_MIN);
 		if (ret) {
+#ifdef CONFIG_SMP
 			unregister_trace_ipi_raise(ipi_raise, NULL);
 			unregister_trace_ipi_entry(ipi_entry, NULL);
+#endif
 			return ret;
 		}
 
 		ret = register_trace_prio_android_vh_cpu_idle_exit(
 					lpm_idle_exit, NULL, INT_MIN);
 		if (ret) {
+#ifdef CONFIG_SMP
 			unregister_trace_ipi_raise(ipi_raise, NULL);
 			unregister_trace_ipi_entry(ipi_entry, NULL);
+#endif
 			unregister_trace_android_vh_cpu_idle_enter(
 					lpm_idle_enter, NULL);
 			return ret;
@@ -748,8 +757,10 @@ static void lpm_disable_device(struct cpuidle_driver *drv,
 	}
 
 	if (traces_registered) {
+#ifdef CONFIG_SMP
 		unregister_trace_ipi_raise(ipi_raise, NULL);
 		unregister_trace_ipi_entry(ipi_entry, NULL);
+#endif
 		unregister_trace_android_vh_cpu_idle_enter(
 					lpm_idle_enter, NULL);
 		unregister_trace_android_vh_cpu_idle_exit(
@@ -761,6 +772,7 @@ static void lpm_disable_device(struct cpuidle_driver *drv,
 	}
 }
 
+#ifdef CONFIG_SMP
 static void qcom_lpm_suspend_trace(void *unused, const char *action,
 				   int event, bool start)
 {
@@ -781,6 +793,7 @@ static void qcom_lpm_suspend_trace(void *unused, const char *action,
 			wake_up_if_idle(cpu);
 	}
 }
+#endif
 
 static struct cpuidle_governor lpm_governor = {
 	.name =		"qcom-cpu-lpm",
@@ -807,6 +820,7 @@ static int __init qcom_lpm_governor_init(void)
 	if (ret)
 		goto cpuidle_reg_fail;
 
+#ifdef CONFIG_SMP
 	ret = register_trace_suspend_resume(qcom_lpm_suspend_trace, NULL);
 	if (ret)
 		goto cpuidle_reg_fail;
@@ -815,11 +829,13 @@ static int __init qcom_lpm_governor_init(void)
 				lpm_online_cpu, lpm_offline_cpu);
 	if (ret < 0)
 		goto cpuhp_setup_fail;
-
+#endif
 	return 0;
 
+#ifdef CONFIG_SMP
 cpuhp_setup_fail:
 	unregister_trace_suspend_resume(qcom_lpm_suspend_trace, NULL);
+#endif
 cpuidle_reg_fail:
 	qcom_cluster_lpm_governor_deinit();
 cluster_init_fail:

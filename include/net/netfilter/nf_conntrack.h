@@ -121,6 +121,10 @@ struct nf_conn {
 	/* Extensions */
 	struct nf_ct_ext *ext;
 
+#ifdef CONFIG_ENABLE_SFE
+	void *sfe_entry;
+#endif
+
 	/* Storage reserved for other modules, must be the last member */
 	union nf_conntrack_proto proto;
 
@@ -324,6 +328,9 @@ extern struct hlist_nulls_head *nf_conntrack_hash;
 extern unsigned int nf_conntrack_htable_size;
 extern seqcount_spinlock_t nf_conntrack_generation;
 extern unsigned int nf_conntrack_max;
+#ifdef CONFIG_ENABLE_SFE
+extern unsigned int nf_conntrack_pkt_threshold;
+#endif
 
 /* must be called with rcu read lock held */
 static inline void

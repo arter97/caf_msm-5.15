@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, Sony Mobile Communications Inc.
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, 2018-2021 The Linux Foundation. All rights reserved.
  */
 #include <linux/kthread.h>
 #include <linux/module.h>
@@ -20,7 +20,9 @@
 #include <uapi/linux/sched/types.h>
 
 #include "qrtr.h"
-
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+#include "bpf_service.h"
+#endif
 #define QRTR_LOG_PAGE_CNT 4
 #define QRTR_INFO(ctx, x, ...)				\
 	ipc_log_string(ctx, x, ##__VA_ARGS__)
@@ -39,8 +41,6 @@
 /* qrtr socket states */
 #define QRTR_STATE_MULTI	-2
 #define QRTR_STATE_INIT		-1
-
-#define AID_VENDOR_QRTR	KGIDT_INIT(2906)
 
 /**
  * struct qrtr_hdr_v1 - (I|R)PCrouter packet header version 1
@@ -738,6 +738,9 @@ static int qrtr_node_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 			     int type, struct sockaddr_qrtr *from,
 			     struct sockaddr_qrtr *to, unsigned int flags)
 {
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	struct qrtr_ctrl_pkt pkt = {0,};
+#endif
 	struct qrtr_hdr_v1 *hdr;
 	size_t len = skb->len;
 	int rc, confirm_rx;
@@ -780,6 +783,22 @@ static int qrtr_node_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 	hdr->size = cpu_to_le32(len);
 	hdr->confirm_rx = !!confirm_rx;
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	if (type == QRTR_TYPE_NEW_SERVER) {
+		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pkt, sizeof(pkt));
+		/**
+		 * Run qrtr filter to drop the restricted new server message
+		 * that is being transmitted to connected soc
+		 */
+		rc = qrtr_run_bpf_filter(skb, le32_to_cpu(pkt.server.service),
+					 le32_to_cpu(pkt.server.instance),
+					 type, le32_to_cpu(hdr->dst_node_id));
+		if (rc) {
+			kfree_skb(skb);
+			return rc;
+		}
+	}
+#endif
 	qrtr_log_tx_msg(node, hdr, skb);
 	/* word align the data and pad with 0s */
 	if (skb_is_nonlinear(skb))
@@ -1222,6 +1241,10 @@ static void qrtr_node_rx_work(struct kthread_work *work)
 	struct sk_buff *skb;
 	char name[32] = {0,};
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	struct qrtr_ctrl_pkt pkt = {0,};
+	int rc;
+#endif
 	if (unlikely(!node->ilc)) {
 		snprintf(name, sizeof(name), "qrtr_%d", node->nid);
 		node->ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT, name, 0);
@@ -1234,6 +1257,26 @@ static void qrtr_node_rx_work(struct kthread_work *work)
 		if (cb->type != QRTR_TYPE_DATA)
 			qrtr_fwd_ctrl_pkt(node, skb);
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+		if (cb->type == QRTR_TYPE_NEW_SERVER &&
+		    skb->len == sizeof(pkt)) {
+			skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
+
+			/**
+			 * Run qrtr filter to drop the restricted new server
+			 * message that is being transmitted from connected soc
+			 */
+			rc = qrtr_run_bpf_filter
+				(skb,
+				 le32_to_cpu(pkt.server.service),
+				 le32_to_cpu(pkt.server.instance),
+				 cb->type, cb->src_node);
+			if (rc) {
+				kfree_skb(skb);
+				continue;
+			}
+		}
+#endif
 		if (cb->type == QRTR_TYPE_RESUME_TX) {
 			if (cb->dst_node != qrtr_local_nid) {
 				qrtr_fwd_pkt(skb, cb);
@@ -1785,6 +1828,10 @@ static int qrtr_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	u32 type;
 	int rc;
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	struct service_info *info;
+#endif
+
 	if (msg->msg_flags & ~(MSG_DONTWAIT))
 		return -EINVAL;
 
@@ -1872,6 +1919,20 @@ static int qrtr_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 		goto out_node;
 	}
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	/* look up service information from service radix tree */
+	rc = qrtr_service_lookup(addr->sq_node, addr->sq_port, &info);
+	/* run bpf filter only if the sender is a valid qmi client */
+	if (!rc && ipc->us.sq_port != QRTR_PORT_CTRL) {
+		rc = qrtr_run_bpf_filter(skb, info->service_id,
+					 info->instance_id,
+					 QRTR_TYPE_DATA, 0);
+		if (rc) {
+			kfree_skb(skb);
+			goto out_node;
+		}
+	}
+#endif
 	if (ipc->us.sq_port == QRTR_PORT_CTRL ||
 	    addr->sq_port == QRTR_PORT_CTRL) {
 		if (len < 4) {
@@ -1951,6 +2012,11 @@ static int qrtr_recvmsg(struct socket *sock, struct msghdr *msg,
 	struct qrtr_cb *cb;
 	int copied, rc;
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	struct qrtr_sock *ipc = qrtr_sk(sock->sk);
+	struct qrtr_ctrl_pkt pkt = {0,};
+	u32 type;
+#endif
 
 	if (sock_flag(sk, SOCK_ZAPPED))
 		return -EADDRNOTAVAIL;
@@ -1974,6 +2040,41 @@ static int qrtr_recvmsg(struct socket *sock, struct msghdr *msg,
 		goto out;
 	rc = copied;
 
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	if (ipc->us.sq_port == QRTR_PORT_CTRL) {
+		/**
+		 * Load control packet from skb here to know the packet type
+		 * information as packet type on "cb" will be invalid for
+		 * local service.
+		 */
+		skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
+		type = le32_to_cpu(pkt.cmd);
+		/**
+		 * add/remove service information to/from service lookup table
+		 * if the control packet is delivering to QRTR_PORT_CTRL
+		 */
+		if (type == QRTR_TYPE_NEW_SERVER) {
+			/**
+			 * Populate port address on control packet from "cb"
+			 * only for local service because port id will be 0
+			 * while sending NEW_SERVER control packet from local
+			 * service.
+			 */
+			if (le32_to_cpu(pkt.server.node) == qrtr_local_nid)
+				pkt.server.port = cpu_to_le32(cb->src_port);
+			qrtr_service_add(&pkt);
+		} else if (type == QRTR_TYPE_DEL_SERVER) {
+			/* Remove this server from lookup table */
+			qrtr_service_remove(&pkt);
+		} else if (type == QRTR_TYPE_BYE) {
+			/**
+			 * Remove all servers under this node from lookup
+			 * table
+			 */
+			qrtr_service_node_remove(cb->src_node);
+		}
+	}
+#endif
 	if (addr) {
 		/* There is an anonymous 2-byte hole after sq_family,
 		 * make sure to clear it.
@@ -2064,9 +2165,10 @@ static int qrtr_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	struct ifreq ifr;
 	long len = 0;
 	int rc = 0;
-
 	lock_sock(sk);
-
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	int ufd;
+#endif
 	switch (cmd) {
 	case TIOCOUTQ:
 		len = sk->sk_sndbuf - sk_wmem_alloc_get(sk);
@@ -2104,6 +2206,20 @@ static int qrtr_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case SIOCSIFNETMASK:
 		rc = -EINVAL;
 		break;
+#if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
+	case QRTR_ATTACH_BPF:
+		if (copy_from_user(&ufd, argp, sizeof(ufd))) {
+			rc = -EFAULT;
+			break;
+		}
+
+		rc = qrtr_bpf_filter_attach(ufd);
+		break;
+
+	case QRTR_DETTACH_BPF:
+		rc = qrtr_bpf_filter_detach();
+		break;
+#endif
 	default:
 		rc = -ENOIOCTLCMD;
 		break;

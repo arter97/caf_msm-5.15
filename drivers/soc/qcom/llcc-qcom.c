@@ -422,6 +422,14 @@ static const struct llcc_slice_config cinder_data_8ch[] =  {
 	{LLCC_WRTCH,   31, 512,  1, 1,   0x3, 0x0, 0, 0, 0, 0, 1, 0, 0 },
 };
 
+static const struct llcc_slice_config sdxpinn_data[] = {
+	{LLCC_MDMHPGRW,     25,  128, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
+	{LLCC_MDMHW,        26,  128, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
+	{LLCC_MDMVPE,       29,   64, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
+	{LLCC_APTCM,        30,  128, 3, 1,      0x0, 0x3, 1, 0x0, 1, 0, 0, 0},
+	{LLCC_MDMCLAD2,     20,  128, 1, 1,      0x3, 0x0, 0, 0x0, 0, 0, 0, 0},
+};
+
 static const struct qcom_llcc_config diwali_cfg = {
 	.sct_data       = diwali_data,
 	.size           = ARRAY_SIZE(diwali_data),
@@ -484,6 +492,11 @@ static const struct qcom_llcc_config cinder_cfg[] = {
 		.sct_data	= cinder_data_4ch,
 		.size		= ARRAY_SIZE(cinder_data_4ch),
 	},
+};
+
+static const struct qcom_llcc_config sdxpinn_cfg = {
+	.sct_data   = sdxpinn_data,
+	.size       = ARRAY_SIZE(sdxpinn_data),
 };
 
 static struct llcc_drv_data *drv_data = (void *) -EPROBE_DEFER;
@@ -1060,6 +1073,7 @@ static const struct of_device_id qcom_llcc_of_match[] = {
 	{ .compatible = "qcom,diwali-llcc", .data = &diwali_cfg },
 	{ .compatible = "qcom,kalama-llcc", .data = &kalama_cfg },
 	{ .compatible = "qcom,cinder-llcc", .data = &cinder_cfg },
+	{ .compatible = "qcom,sdxpinn-llcc", .data = &sdxpinn_cfg },
 	{ }
 };
 
