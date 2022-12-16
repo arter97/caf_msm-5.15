@@ -29,53 +29,20 @@ do {\
   pr_err(DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args);\
 } while (0)
 
-static bool sgmii_2p5g_on;
-
 static const int xpcs_usxgmii_features[] = {
 	ETHTOOL_LINK_MODE_Pause_BIT,
 	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
 	ETHTOOL_LINK_MODE_Autoneg_BIT,
+	ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_100baseT_Full_BIT,
 	ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
+	ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
+	ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
 	ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT,
 	ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
-	ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
-	__ETHTOOL_LINK_MODE_MASK_NBITS,
-};
-
-static const int xpcs_10gkr_features[] = {
-	ETHTOOL_LINK_MODE_Pause_BIT,
-	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
-	ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
-	__ETHTOOL_LINK_MODE_MASK_NBITS,
-};
-
-static const int xpcs_xlgmii_features[] = {
-	ETHTOOL_LINK_MODE_Pause_BIT,
-	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
-	ETHTOOL_LINK_MODE_25000baseCR_Full_BIT,
-	ETHTOOL_LINK_MODE_25000baseKR_Full_BIT,
-	ETHTOOL_LINK_MODE_25000baseSR_Full_BIT,
-	ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT,
-	ETHTOOL_LINK_MODE_40000baseCR4_Full_BIT,
-	ETHTOOL_LINK_MODE_40000baseSR4_Full_BIT,
-	ETHTOOL_LINK_MODE_40000baseLR4_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseKR_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseSR_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseCR_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT,
-	ETHTOOL_LINK_MODE_50000baseDR_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseKR2_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseSR2_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseCR2_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseLR2_ER2_FR2_Full_BIT,
-	ETHTOOL_LINK_MODE_100000baseDR2_Full_BIT,
+	ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
 	__ETHTOOL_LINK_MODE_MASK_NBITS,
 };
 
@@ -106,14 +73,6 @@ static const phy_interface_t xpcs_usxgmii_interfaces[] = {
 	PHY_INTERFACE_MODE_USXGMII,
 };
 
-static const phy_interface_t xpcs_10gkr_interfaces[] = {
-	PHY_INTERFACE_MODE_10GKR,
-};
-
-static const phy_interface_t xpcs_xlgmii_interfaces[] = {
-	PHY_INTERFACE_MODE_XLGMII,
-};
-
 static const phy_interface_t xpcs_sgmii_interfaces[] = {
 	PHY_INTERFACE_MODE_SGMII,
 };
@@ -125,8 +84,6 @@ static const phy_interface_t xpcs_2500basex_interfaces[] = {
 
 enum {
 	DW_XPCS_USXGMII,
-	DW_XPCS_10GKR,
-	DW_XPCS_XLGMII,
 	DW_XPCS_SGMII,
 	DW_XPCS_2500BASEX,
 	DW_XPCS_INTERFACE_MAX,
@@ -290,7 +247,7 @@ int qcom_xpcs_pcs_loopback(struct dw_xpcs_qcom *xpcs, bool on)
 		goto out;
 
 	if (on) {
-		if (sgmii_2p5g_on) {
+		if (xpcs->sgmii_2p5g_en) {
 			XPCSINFO("Enabling 2.5Gbps-SGMII XPCS loopback\n");
 			pmbl_ctrl = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DEBUG_CTRL);
 			if (pmbl_ctrl < 0)
@@ -301,7 +258,7 @@ int qcom_xpcs_pcs_loopback(struct dw_xpcs_qcom *xpcs, bool on)
 		}
 		ret |= DW_R2TLBE;
 	} else {
-		if (sgmii_2p5g_on) {
+		if (xpcs->sgmii_2p5g_en) {
 			XPCSINFO("Disabling 2.5Gbps-SGMII XPCS loopback\n");
 			pmbl_ctrl = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DEBUG_CTRL);
 			if (pmbl_ctrl < 0)
@@ -331,171 +288,51 @@ int qcom_xpcs_config_eee(struct dw_xpcs_qcom *xpcs, int mult_fact_100ns, int ena
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_config_eee);
 
-static int xpcs_usxgmii_set_speed(struct dw_xpcs_qcom *xpcs)
+/* Cannot sleep in interrupt-context, increase retries and remove usleep call. */
+static int qcom_xpcs_poll_reset_usxgmii(struct dw_xpcs_qcom *xpcs, unsigned int offset,
+					unsigned int field)
 {
-	int intr_stat;
+	unsigned int retries = 1000;
+	int ret;
 
-	intr_stat = qcom_xpcs_read(xpcs, DW_VR_MII_AN_INTR_STS);
-	if (intr_stat < 0)
-		return intr_stat;
-
-	if (intr_stat & DW_VR_MII_USXG_ANSGM_SP_LNKSTS) {
-		int ret, speed;
-
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+	do {
+		ret = qcom_xpcs_read(xpcs, offset);
 		if (ret < 0)
 			return ret;
+	} while (ret & field && --retries);
 
-		if (!(intr_stat & DW_VR_MII_USXG_ANSGM_FD))
-			XPCSERR("WARNING: Duplex mismatch! USXGMII supports full duplex only\n");
-
-		ret &= ~DW_USXGMII_SS_MASK;
-		speed = (intr_stat & DW_VR_MII_USXG_ANSGM_SP) >> DW_VR_MII_USXG_ANSGM_SP_SHIFT;
-
-		switch (speed) {
-		case DW_VR_MII_USXG_ANSGM_SP_10:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
-		case DW_VR_MII_USXG_ANSGM_SP_100:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | DW_GMII_100);
-		case DW_VR_MII_USXG_ANSGM_SP_1000:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | DW_GMII_1000);
-		case DW_VR_MII_USXG_ANSGM_SP_2P5G:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | DW_GMII_2500);
-		case DW_VR_MII_USXG_ANSGM_SP_5G:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | DW_USXGMII_5000);
-		case DW_VR_MII_USXG_ANSGM_SP_10G:
-			return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | DW_USXGMII_10000);
-		default:
-			return -EINVAL;
-		}
-	} else {
-		XPCSERR("USXGMII Link is down, aborting\n");
-		return -ENODEV;
-	}
+	return (ret & field) ? -ETIMEDOUT : 0;
 }
 
-static int xpcs_config_aneg_c37_usxgmii(struct dw_xpcs_qcom *xpcs)
+/* Reset PCS and USXGMII Rate Adaptor Logic*/
+static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	/* Switch to XPCS to BASE-R mode */
-	ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
+	ret = qcom_xpcs_read(xpcs, DW_VR_MII_DIG_CTRL1);
 	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | BIT(1));
-
-	/* Enable USXGMII 10G-SXGMII mode */
-	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
-	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_EN);
-
-	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_KR_CTRL);
-	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_KR_CTRL, ret & ~USXG_MODE_SEL);
-
-	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
-	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | SOFT_RST);
-
-	ret = qcom_xpcs_poll_reset(xpcs, DW_VR_MII_PCS_DIG_CTRL1, SW_RST_BIT_STATUS);
-	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
-	if (ret < 0)
-		goto out;
-
-	ret &= ~(DW_VR_MII_PCS_MODE_MASK | DW_VR_MII_TX_CONFIG_MASK);
-	ret |= (DW_VR_MII_TX_CONFIG_MAC_SIDE <<
-		DW_VR_MII_AN_CTRL_TX_CONFIG_SHIFT &
-		DW_VR_MII_TX_CONFIG_MASK);
-	ret |= DW_FULL_DUPLEX | DW_VR_MII_AN_INTR_EN;
-	ret = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
-
-	ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-	if (ret < 0)
-		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | AN_CL37_EN);
-
-	ret = xpcs_usxgmii_set_speed(xpcs);
-	if (ret < 0) {
-		XPCSERR("Failed to set USXGMII speed\n");
 		return ret;
-	}
 
-	/* Reset USXGMII Rate Adaptor Logic */
+	ret = qcom_xpcs_write(xpcs, DW_VR_MII_DIG_CTRL1, ret | SOFT_RST);
+
+	if (!xpcs->intr_en)
+		ret = qcom_xpcs_poll_reset(xpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
+	else
+		ret = qcom_xpcs_poll_reset_usxgmii(xpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
+
+	if (ret < 0)
+		return ret;
+
 	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
 	if (ret < 0)
-		goto out;
+		return ret;
 
 	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_RST);
-	ret = qcom_xpcs_poll_reset(xpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
-	if (ret < 0) {
-		XPCSERR("Failed to reset USXGMII RAL\n");
-		return ret;
-	}
 
-	return ret;
-out:
-	XPCSERR("Register read failed\n");
-	return ret;
-}
+	if (!xpcs->intr_en)
+		return qcom_xpcs_poll_reset(xpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
 
-static int qcom_xpcs_usxgmii_read_intr_status(struct dw_xpcs_qcom *xpcs)
-{
-	int intr_stat;
-
-	intr_stat = qcom_xpcs_read(xpcs, DW_VR_MII_AN_INTR_STS);
-	if (intr_stat < 0)
-		return intr_stat;
-
-	if (intr_stat & DW_VR_MII_USXG_ANSGM_SP_LNKSTS) {
-		int ret, speed;
-
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~DW_USXGMII_SS_MASK;
-		speed = (intr_stat & DW_VR_MII_USXG_ANSGM_SP) >> DW_VR_MII_USXG_ANSGM_SP_SHIFT;
-
-		switch (speed) {
-		case DW_VR_MII_USXG_ANSGM_SP_10G:
-			ret |= DW_USXGMII_10000;
-			break;
-		case DW_VR_MII_USXG_ANSGM_SP_5G:
-			ret |= DW_USXGMII_5000;
-			break;
-		case DW_VR_MII_USXG_ANSGM_SP_2P5G:
-			ret |= DW_GMII_2500;
-			break;
-		case DW_VR_MII_USXG_ANSGM_SP_1000:
-			ret |= DW_GMII_1000;
-			break;
-		case DW_VR_MII_USXG_ANSGM_SP_100:
-			ret |= DW_GMII_100;
-			break;
-		case DW_VR_MII_USXG_ANSGM_SP_10:
-			ret |= DW_GMII_10;
-			break;
-		default:
-			XPCSERR("Invalid speed mode: %d\n", speed);
-			return -EINVAL;
-		}
-
-		return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
-	} else {
-		XPCSERR("Link is down, aborting\n");
-		return 0;
-	}
+	return qcom_xpcs_poll_reset_usxgmii(xpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
 }
 
 static int qcom_xpcs_sgmii_read_intr_status(struct dw_xpcs_qcom *xpcs)
@@ -507,82 +344,143 @@ static int qcom_xpcs_sgmii_read_intr_status(struct dw_xpcs_qcom *xpcs)
 		return intr_stat;
 
 	if (intr_stat & DW_VR_MII_C37_ANSGM_SP_LNKSTS) {
-		int ret, speed, mii_ctrl;
+		int speed, mmd_ctrl, an_ctrl;
 
-		mii_ctrl = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
-		if (mii_ctrl < 0)
-			return mii_ctrl;
+		an_ctrl = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+		if (an_ctrl < 0)
+			return an_ctrl;
 
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-		if (ret < 0)
-			return ret;
+		mmd_ctrl = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+		if (mmd_ctrl < 0)
+			return mmd_ctrl;
 
 		if (!(intr_stat & DW_VR_MII_AN_STS_C37_ANSGM_FD))
-			ret &= ~DW_FULL_DUPLEX;
+			mmd_ctrl &= ~DW_FULL_DUPLEX;
 		else
-			ret |= DW_FULL_DUPLEX;
+			mmd_ctrl |= DW_FULL_DUPLEX;
 
-		ret &= ~DW_SGMII_SS_MASK;
-		speed = (intr_stat & DW_VR_MII_AN_STS_C37_ANSGM_SP) >> DW_VR_MII_AN_STS_C37_ANSGM_SP_SHIFT;
+		mmd_ctrl &= ~DW_SGMII_SS_MASK;
+		speed = (intr_stat & DW_VR_MII_AN_STS_C37_ANSGM_SP) >>
+					DW_VR_MII_AN_STS_C37_ANSGM_SP_SHIFT;
 
 		switch (speed) {
 		case DW_VR_MII_C37_ANSGM_SP_1000:
-			mii_ctrl |= DW_VR_MII_CTRL;
-			ret |= BMCR_SPEED1000;
-			XPCSINFO("Enabled 1Gbps-SGMII\n");
+			an_ctrl |= DW_VR_MII_CTRL;
+			mmd_ctrl |= DW_GMII_1000;
+			XPCSINFO("1Gbps-SGMII enabled\n");
 			break;
 		case DW_VR_MII_C37_ANSGM_SP_100:
-			mii_ctrl &= ~DW_VR_MII_CTRL;
-			ret |= BMCR_SPEED100;
-			XPCSINFO("Enabled 100Mbps-SGMII\n");
+			an_ctrl &= ~DW_VR_MII_CTRL;
+			mmd_ctrl |= DW_GMII_100;
+			XPCSINFO("100Mbps-SGMII enabled\n");
 			break;
 		case DW_VR_MII_C37_ANSGM_SP_10:
-			mii_ctrl &= ~DW_VR_MII_CTRL;
-			ret |= BMCR_SPEED10;
-			XPCSINFO("Enabled 10Mbps-SGMII\n");
+			an_ctrl &= ~DW_VR_MII_CTRL;
+			XPCSINFO("10Mbps-SGMII enabled\n");
 			break;
 		default:
 			XPCSERR("Invalid speed mode: %d\n", speed);
 			return -EINVAL;
 		}
 
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
-		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, mii_ctrl);
+		mmd_ctrl = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
+		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, an_ctrl);
 	} else {
 		XPCSERR("Link is down, aborting\n");
 		return 0;
 	}
 }
 
-static void qcom_xpcs_handle_an_intr(struct dw_xpcs_qcom *xpcs)
+static int qcom_xpcs_usxgmii_read_intr_status(struct dw_xpcs_qcom *xpcs)
+{
+	int intr_stat;
+
+	intr_stat = qcom_xpcs_read(xpcs, DW_VR_MII_AN_INTR_STS);
+	if (intr_stat < 0)
+		return intr_stat;
+
+	if (intr_stat & DW_VR_MII_USXG_ANSGM_SP_LNKSTS) {
+		int mmd_ctrl, speed;
+
+		mmd_ctrl = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+		if (mmd_ctrl < 0)
+			return mmd_ctrl;
+
+		mmd_ctrl &= ~DW_USXGMII_SS_MASK;
+		speed = (intr_stat & DW_VR_MII_USXG_ANSGM_SP) >> DW_VR_MII_USXG_ANSGM_SP_SHIFT;
+
+		switch (speed) {
+		case DW_VR_MII_USXG_ANSGM_SP_10G:
+			mmd_ctrl |= DW_USXGMII_10000;
+			XPCSINFO("10Gbps-USXGMII enabled\n");
+			break;
+		case DW_VR_MII_USXG_ANSGM_SP_5G:
+			mmd_ctrl |= DW_USXGMII_5000;
+			XPCSINFO("5Gbps-USXGMII enabled\n");
+			break;
+		case DW_VR_MII_USXG_ANSGM_SP_2P5G:
+			mmd_ctrl |= DW_GMII_2500;
+			XPCSINFO("2.5Gbps-USXGMII enabled\n");
+			break;
+		case DW_VR_MII_USXG_ANSGM_SP_1000:
+			mmd_ctrl |= DW_GMII_1000;
+			XPCSINFO("1Gbps-USXGMII enabled\n");
+			break;
+		case DW_VR_MII_USXG_ANSGM_SP_100:
+			mmd_ctrl |= DW_GMII_100;
+			XPCSINFO("100Mbps-USXGMII enabled\n");
+			break;
+		case DW_VR_MII_USXG_ANSGM_SP_10:
+			XPCSINFO("10Mbps-USXGMII enabled\n");
+			break;
+		default:
+			XPCSERR("Invalid speed mode: %d\n", speed);
+			return -EINVAL;
+		}
+
+		mmd_ctrl = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
+
+		mmd_ctrl = qcom_xpcs_reset_usxgmii(xpcs);
+		if (mmd_ctrl < 0)
+			XPCSERR("Failed to reset USXGMII\n");
+
+		return mmd_ctrl;
+	} else {
+		XPCSERR("Link is down, aborting\n");
+		return 0;
+	}
+}
+
+static void qcom_xpcs_handle_an_intr(struct dw_xpcs_qcom *xpcs,
+				     phy_interface_t interface)
 {
 	int ret = 0;
-	const struct xpcs_compat *compat;
 
-	compat = xpcs_find_compat(xpcs->id, PHY_INTERFACE_MODE_SGMII);
-	if (compat) {
-		ret = qcom_xpcs_sgmii_read_intr_status(xpcs);
-		if (ret < 0)
-			goto out;
-
-		XPCSINFO("Finished Autonegotiation for SGMII\n");
-		return;
-	}
-
-	compat = xpcs_find_compat(xpcs->id, PHY_INTERFACE_MODE_USXGMII);
-	if (compat) {
+	switch (interface) {
+	case PHY_INTERFACE_MODE_USXGMII:
 		ret = qcom_xpcs_usxgmii_read_intr_status(xpcs);
 		if (ret < 0)
 			goto out;
 
 		XPCSINFO("Finished Autonegotiation for USXGMII\n");
 		return;
+	case PHY_INTERFACE_MODE_SGMII:
+		ret = qcom_xpcs_sgmii_read_intr_status(xpcs);
+		if (ret < 0)
+			goto out;
+
+		XPCSINFO("Finished Autonegotiation for SGMII\n");
+		return;
+	default:
+		XPCSERR("Invalid MII mode for Autonegotiation\n");
+		goto out;
 	}
+
 out:
 	XPCSERR("Failed to handle Autonegotiation interrupt\n");
 }
 
-int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs)
+int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs, phy_interface_t interface)
 {
 	int ret;
 
@@ -602,7 +500,7 @@ int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs)
 	ret &= ~DW_VR_MII_ANCMPLT_INTR;
 	ret = qcom_xpcs_write(xpcs, DW_VR_MII_AN_INTR_STS, ret);
 
-	qcom_xpcs_handle_an_intr(xpcs);
+	qcom_xpcs_handle_an_intr(xpcs, interface);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_check_aneg_ioc);
@@ -628,7 +526,7 @@ static int xpcs_config_aneg_c37_sgmii_2p5g(struct dw_xpcs_qcom *xpcs)
 	return qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
 }
 
-static int xpcs_config_aneg_c37_sgmii(struct dw_xpcs_qcom *xpcs)
+static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
@@ -662,12 +560,8 @@ static int qcom_xpcs_do_config(struct dw_xpcs_qcom *xpcs, phy_interface_t interf
 		XPCSERR("C73 Autonegotiation is not supported!\n");
 		return -EINVAL;
 	case DW_AN_C37_USXGMII:
-		ret = xpcs_config_aneg_c37_usxgmii(xpcs);
-		if (ret < 0)
-			return ret;
-		break;
 	case DW_AN_C37_SGMII:
-		ret = xpcs_config_aneg_c37_sgmii(xpcs);
+		ret = xpcs_config_aneg_c37(xpcs);
 		if (ret < 0)
 			return ret;
 		break;
@@ -794,9 +688,9 @@ static int qcom_xpcs_unset_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
 	ret &= ~DW_VR_MII_DIG_CTRL1_2G5_EN;
 	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret);
 
-	XPCSINFO("Disabled 2.5Gbps-SGMII\n");
-	sgmii_2p5g_on = false;
+	xpcs->sgmii_2p5g_en = false;
 
+	XPCSINFO("2.5Gbps-SGMII disabled\n");
 	return 0;
 }
 
@@ -822,9 +716,9 @@ static int qcom_xpcs_set_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
 	if (ret < 0)
 		goto out;
 
-	sgmii_2p5g_on = true;
+	xpcs->sgmii_2p5g_en = true;
 
-	XPCSINFO("Enabled 2.5Gbps-SGMII\n");
+	XPCSINFO("2.5Gbps-SGMII enabled\n");
 	return qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_VR_MII_DIG_CTRL1_2G5_EN);
 
 out:
@@ -832,55 +726,100 @@ out:
 	return ret;
 }
 
-void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed)
+void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 {
-	int ret, speed_sel;
+	int mmd_ctrl, an_ctrl;
+
+	an_ctrl = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+	if (an_ctrl < 0)
+		goto out;
+
+	mmd_ctrl = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+	if (mmd_ctrl < 0)
+		goto out;
+
+	mmd_ctrl &= ~DW_SGMII_SS_MASK;
 
 	switch (speed) {
-	case SPEED_10:
-		speed_sel = DW_GMII_10;
+	case SPEED_1000:
+		an_ctrl |= DW_VR_MII_CTRL;
+		mmd_ctrl |= DW_GMII_1000;
+		XPCSINFO("1Gbps-SGMII enabled\n");
 		break;
 	case SPEED_100:
-		speed_sel = DW_GMII_100;
+		an_ctrl &= ~DW_VR_MII_CTRL;
+		mmd_ctrl |= DW_GMII_100;
+		XPCSINFO("100Mbps-SGMII enabled\n");
 		break;
-	case SPEED_1000:
-		speed_sel = DW_GMII_1000;
-		break;
-	case SPEED_2500:
-		speed_sel = DW_GMII_2500;
-		break;
-	case SPEED_5000:
-		speed_sel = DW_USXGMII_5000;
-		break;
-	case SPEED_10000:
-		speed_sel = DW_USXGMII_10000;
+	case SPEED_10:
+		an_ctrl &= ~DW_VR_MII_CTRL;
+		XPCSINFO("10Mbps-SGMII enabled\n");
 		break;
 	default:
+		XPCSERR("Invalid speed mode: %d\n", speed);
 		return;
 	}
 
-	ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-	if (ret < 0)
+	if (duplex == DUPLEX_FULL)
+		mmd_ctrl |= DW_FULL_DUPLEX;
+
+	mmd_ctrl = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
+	an_ctrl = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, an_ctrl);
+
+	return;
+out:
+	XPCSERR("Failed to bring up SGMII link\n");
+}
+
+void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed)
+{
+	int mmd_ctrl;
+
+	mmd_ctrl = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+	if (mmd_ctrl < 0)
 		goto out;
 
-	ret &= ~DW_USXGMII_SS_MASK;
-	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret | speed_sel);
+	mmd_ctrl &= ~DW_USXGMII_SS_MASK;
 
-	/* Reset USXGMII RAL */
-	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
-	if (ret < 0)
+	switch (speed) {
+	case SPEED_10000:
+		mmd_ctrl |= DW_USXGMII_10000;
+		XPCSINFO("10Gbps-USXGMII enabled\n");
+		break;
+	case SPEED_5000:
+		mmd_ctrl |= DW_USXGMII_5000;
+		XPCSINFO("5Gbps-USXGMII enabled\n");
+		break;
+	case SPEED_2500:
+		mmd_ctrl |= DW_GMII_2500;
+		XPCSINFO("2.5Gbps-USXGMII enabled\n");
+		break;
+	case SPEED_1000:
+		mmd_ctrl |= DW_GMII_1000;
+		XPCSINFO("1Gbps-USXGMII enabled\n");
+		break;
+	case SPEED_100:
+		mmd_ctrl |= DW_GMII_100;
+		XPCSINFO("100Mbps-USXGMII enabled\n");
+		break;
+	case SPEED_10:
+		XPCSINFO("10Mbps-USXGMII enabled\n");
+		break;
+	default:
+		XPCSERR("Invalid speed mode selected\n");
+		return;
+	}
+
+	mmd_ctrl = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
+
+	mmd_ctrl = qcom_xpcs_reset_usxgmii(xpcs);
+	if (mmd_ctrl < 0)
 		goto out;
-
-	ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_RST);
-	ret = qcom_xpcs_poll_reset(xpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
-
-	if (ret < 0)
-		XPCSERR("Failed to reset USXGMII RAL\n");
 
 	XPCSINFO("USXGMII link is up from PCS\n");
 	return;
 out:
-	XPCSERR("Register read failed\n");
+	XPCSERR("Failed to bring up USXGMII link\n");
 }
 
 /* Return early if the phylink tries link-up after PCS Autoneg interrupt was
@@ -892,7 +831,7 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 	int ret = 0;
 	struct dw_xpcs_qcom *xpcs = phylink_pcs_to_xpcs(pcs);
 
-	if (interface == PHY_INTERFACE_MODE_SGMII && sgmii_2p5g_on &&
+	if (interface == PHY_INTERFACE_MODE_SGMII && xpcs->sgmii_2p5g_en &&
 	    speed < SPEED_2500) {
 		ret = qcom_xpcs_unset_2p5g_sgmii(xpcs);
 		if (ret)
@@ -901,11 +840,28 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 		ret = qcom_xpcs_set_2p5g_sgmii(xpcs);
 		if (ret)
 			XPCSERR("Failed to enable 2.5Gbps-SGMII mode\n");
-	} else if (interface == PHY_INTERFACE_MODE_USXGMII) {
+	} else if (interface == PHY_INTERFACE_MODE_USXGMII && !xpcs->intr_en) {
 		qcom_xpcs_link_up_usxgmii(xpcs, speed);
+	} else if (interface == PHY_INTERFACE_MODE_SGMII && !xpcs->intr_en) {
+		qcom_xpcs_link_up_sgmii(xpcs, speed, duplex);
 	}
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_link_up);
+
+int qcom_xpcs_intr_enable(struct dw_xpcs_qcom *xpcs)
+{
+	int ret = 0;
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+	if (ret < 0) {
+		XPCSERR("Failed to enable CL37 interrupts\n");
+		return ret;
+	}
+
+	ret |= DW_VR_MII_AN_INTR_EN;
+	return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
+}
+EXPORT_SYMBOL_GPL(qcom_xpcs_intr_enable);
 
 static u32 xpcs_get_id(struct dw_xpcs_qcom *xpcs)
 {
@@ -936,18 +892,6 @@ static const struct xpcs_compat synopsys_xpcs_compat[DW_XPCS_INTERFACE_MAX] = {
 		.interface = xpcs_usxgmii_interfaces,
 		.num_interfaces = ARRAY_SIZE(xpcs_usxgmii_interfaces),
 		.an_mode = DW_AN_C37_USXGMII,
-	},
-	[DW_XPCS_10GKR] = {
-		.supported = xpcs_10gkr_features,
-		.interface = xpcs_10gkr_interfaces,
-		.num_interfaces = ARRAY_SIZE(xpcs_10gkr_interfaces),
-		.an_mode = DW_AN_C73,
-	},
-	[DW_XPCS_XLGMII] = {
-		.supported = xpcs_xlgmii_features,
-		.interface = xpcs_xlgmii_interfaces,
-		.num_interfaces = ARRAY_SIZE(xpcs_xlgmii_interfaces),
-		.an_mode = DW_AN_C73,
 	},
 	[DW_XPCS_SGMII] = {
 		.supported = xpcs_sgmii_features,
@@ -1009,11 +953,15 @@ static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t inte
 			goto out;
 
 		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret | LPM_EN);
-		ret = qcom_xpcs_poll_reset(xpcs, DW_SR_MII_PCS_CTRL1, LPM_EN);
-		if (ret < 0) {
-			XPCSERR("Failed to get XPCS out of reset\n");
-			return -EINVAL;
-		}
+
+		usleep_range(1, 20);
+
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~LPM_EN;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret);
 
 		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
 		if (ret < 0)
@@ -1077,15 +1025,6 @@ struct dw_xpcs_qcom *qcom_xpcs_create(void __iomem *addr, phy_interface_t interf
 		ret = qcom_xpcs_select_mode(xpcs, interface);
 		if (ret < 0)
 			goto out;
-
-#ifndef PCS_POLL
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
-		if (ret < 0)
-			goto out;
-
-		ret |= DW_VR_MII_AN_INTR_EN;
-		ret = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
-#endif
 
 		return xpcs;
 	}
