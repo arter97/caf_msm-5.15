@@ -2017,6 +2017,10 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 						TCSR_PERST_SEPARATION_ENABLE);
 		}
 
+		if (dev->pcie_cesta_clkreq_offset)
+			ep_pcie_write_reg_field(dev->parf,
+						dev->pcie_cesta_clkreq_offset, BIT(0), 0);
+
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
 			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
@@ -3881,6 +3885,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	EP_PCIE_DBG(&ep_pcie_dev,
 		"PCIe V%d: pcie edma is %s enabled\n",
 		ep_pcie_dev.rev, ep_pcie_dev.use_iatu_msi ? "" : "not");
+
+	ret = of_property_read_u32((&pdev->dev)->of_node,
+				"qcom,pcie-cesta-clkreq-offset",
+				&ep_pcie_dev.pcie_cesta_clkreq_offset);
+	if (ret)
+		ep_pcie_dev.pcie_cesta_clkreq_offset = 0;
 
 	memcpy(ep_pcie_dev.vreg, ep_pcie_vreg_info,
 				sizeof(ep_pcie_vreg_info));
