@@ -64,6 +64,8 @@ static struct coresight_device *coresight_get_source(struct list_head *path);
 
 static const struct cti_assoc_op *cti_assoc_ops;
 
+static const struct csr_set_atid_op *csr_set_atid_ops;
+
 void coresight_set_cti_ops(const struct cti_assoc_op *cti_op)
 {
 	cti_assoc_ops = cti_op;
@@ -87,6 +89,18 @@ struct coresight_device *coresight_get_percpu_sink(int cpu)
 	return per_cpu(csdev_sink, cpu);
 }
 EXPORT_SYMBOL_GPL(coresight_get_percpu_sink);
+
+void coresight_set_csr_ops(const struct csr_set_atid_op *csr_op)
+{
+	csr_set_atid_ops = csr_op;
+}
+EXPORT_SYMBOL(coresight_set_csr_ops);
+
+void coresight_remove_csr_ops(void)
+{
+	csr_set_atid_ops = NULL;
+}
+EXPORT_SYMBOL(coresight_remove_csr_ops);
 
 static int coresight_id_match(struct device *dev, void *data)
 {
@@ -550,8 +564,6 @@ static int coresight_set_csr_atid(struct list_head *path,
 	int i, num, ret = 0;
 	struct coresight_device *src_csdev;
 	u32 *atid;
-	const char *csr_name;
-	struct coresight_csr *csr;
 	u32 atid_offset;
 
 	src_csdev = coresight_get_source(path);
@@ -574,20 +586,20 @@ static int coresight_set_csr_atid(struct list_head *path,
 		return ret;
 	}
 
-	ret = of_get_coresight_csr_name(sink_csdev->dev.parent->of_node,
-					&csr_name);
-	csr = coresight_csr_get(csr_name);
-
-	ret = of_coresight_get_csr_atid_offset(sink_csdev, &atid_offset);
-	if (!ret)
-		for (i = 0; i < num; i++) {
-			ret = coresight_csr_set_etr_atid(csr, atid_offset,
-						atid[i], enable);
-			if (ret < 0) {
-				kfree(atid);
-				return ret;
+	if (csr_set_atid_ops) {
+		ret = of_coresight_get_csr_atid_offset(sink_csdev, &atid_offset);
+		if (!ret) {
+			for (i = 0; i < num; i++) {
+				ret = csr_set_atid_ops->set_atid(sink_csdev, atid_offset,
+							atid[i], enable);
+				if (ret < 0) {
+					kfree(atid);
+					return ret;
+				}
 			}
 		}
+	} else
+		ret = -EINVAL;
 
 	kfree(atid);
 	return ret;
