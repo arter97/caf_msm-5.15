@@ -3046,6 +3046,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		return ret;
 	}
 
+	if (priv->plat->rgmii_rst) {
+		reset_control_assert(priv->plat->rgmii_rst);
+		mdelay(100);
+		reset_control_deassert(priv->plat->rgmii_rst);
+	}
+
 	/* DMA Configuration */
 	stmmac_dma_init(priv, priv->ioaddr, priv->plat->dma_cfg, atds);
 

@@ -258,6 +258,8 @@ struct plat_stmmacenet_data {
 	s32 ptp_max_adj;
 	struct reset_control *stmmac_rst;
 	struct reset_control *stmmac_ahb_rst;
+	struct reset_control *rgmii_rst;
+	struct gpio_desc *reset_gpio_aqr;
 	struct stmmac_axi *axi;
 	int has_gmac4;
 	bool has_sun8i;

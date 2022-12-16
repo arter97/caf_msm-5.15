@@ -16,6 +16,7 @@
 #include <linux/of_net.h>
 #include <linux/of_device.h>
 #include <linux/of_mdio.h>
+#include <linux/gpio/consumer.h>
 
 #include "stmmac.h"
 #include "stmmac_platform.h"
@@ -631,6 +632,21 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 	if (IS_ERR(plat->stmmac_ahb_rst)) {
 		ret = plat->stmmac_ahb_rst;
 		goto error_hw_init;
+	}
+
+	plat->rgmii_rst = of_reset_control_get(np, "emac0_rgmii_clk_ares");
+	if (IS_ERR(plat->rgmii_rst)) {
+		ret = plat->rgmii_rst;
+		goto error_hw_init;
+	}
+
+	plat->reset_gpio_aqr = devm_gpiod_get(&pdev->dev,
+					      "snps,phy_aqr_reset",
+					      GPIOD_OUT_LOW);
+
+	if (IS_ERR(plat->reset_gpio_aqr)) {
+		ret = plat->reset_gpio_aqr;
+		plat->reset_gpio_aqr = NULL;
 	}
 
 	return plat;
