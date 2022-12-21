@@ -2,8 +2,10 @@ virtio_mmio.ko
 virtio_blk.ko
 virtio_console.ko
 msm_hab.ko
+qcom_scm_hab.ko
 qcom-scm.ko
 secure_buffer.ko
 mem_buf.ko
 mem_buf_dev.ko
 qcom_dma_heaps.ko
+rename_devices.ko

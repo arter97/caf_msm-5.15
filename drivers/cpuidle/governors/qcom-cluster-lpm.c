@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cpu.h>
@@ -145,7 +146,7 @@ static void cluster_predict(struct lpm_cluster *cluster_gov)
 	 */
 	for (j = 1; j < genpd->state_count; j++) {
 		uint32_t count = 0;
-		u32 residency = genpd->states[j].residency_ns;
+		u64 residency = genpd->states[j].residency_ns;
 
 		avg_residency = 0;
 		for (i = 0; i < MAXSAMPLES; i++) {
@@ -251,7 +252,7 @@ static void cluster_power_down(struct lpm_cluster *cluster_gov)
 {
 	struct generic_pm_domain *genpd = cluster_gov->genpd;
 	int idx = genpd->state_idx;
-	uint32_t residency;
+	uint64_t residency;
 
 	if (idx < 0)
 		return;
@@ -389,14 +390,14 @@ void update_cluster_select(struct lpm_cpu *cpu_gov)
 		if (!cluster_gov->initialized)
 			continue;
 
-		spin_lock(&cluster_gov->lock);
-		cluster_gov->now = cpu_gov->now;
 		genpd = cluster_gov->genpd;
 		if (cpumask_test_cpu(cpu, genpd->cpus)) {
+			spin_lock(&cluster_gov->lock);
+			cluster_gov->now = cpu_gov->now;
 			cluster_gov->cpu_next_wakeup[cpu] = cpu_gov->next_wakeup;
 			update_cluster_next_wakeup(cluster_gov);
+			spin_unlock(&cluster_gov->lock);
 		}
-		spin_unlock(&cluster_gov->lock);
 	}
 }
 

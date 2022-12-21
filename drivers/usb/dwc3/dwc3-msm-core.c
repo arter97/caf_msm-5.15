@@ -3422,6 +3422,13 @@ static void dwc3_dis_sleep_mode(struct dwc3_msm *mdwc)
 	dwc3_msm_write_reg(mdwc->base, DWC3_GUCTL1, reg);
 }
 
+/* Force Gen1 speed on Gen2 controller if required */
+static void dwc3_force_gen1(struct dwc3_msm *mdwc)
+{
+	if (mdwc->force_gen1 && (mdwc->ip == DWC31_IP))
+		dwc3_msm_write_reg_field(mdwc->base, DWC3_LLUCTL, DWC3_LLUCTL_FORCE_GEN1, 1);
+}
+
 static int dwc3_msm_power_collapse_por(struct dwc3_msm *mdwc)
 {
 	struct dwc3 *dwc = NULL;
@@ -3469,9 +3476,8 @@ static int dwc3_msm_power_collapse_por(struct dwc3_msm *mdwc)
 			mdwc3_dis_sending_cm_l1(mdwc);
 	}
 
-	/* Force Gen1 speed on Gen2 controller if required */
-	if (mdwc->force_gen1 && mdwc->ip == DWC31_IP)
-		dwc3_msm_write_reg_field(mdwc->base, DWC3_LLUCTL, DWC3_LLUCTL_FORCE_GEN1, 1);
+	dwc3_force_gen1(mdwc);
+
 	return 0;
 }
 
@@ -5012,6 +5018,42 @@ static ssize_t bus_vote_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(bus_vote);
 
+static ssize_t enable_l1_suspend_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+	struct dwc3	 *dwc = platform_get_drvdata(mdwc->dwc3);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", dwc->gadget->lpm_capable);
+
+}
+
+static ssize_t enable_l1_suspend_store(struct device *dev,
+		struct device_attribute *attr, const char *buf,
+		size_t count)
+{
+	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+	struct dwc3	 *dwc = platform_get_drvdata(mdwc->dwc3);
+	bool		 enable_l1;
+	int		 ret;
+
+	ret = kstrtobool(buf, &enable_l1);
+	if (ret < 0) {
+		dev_err(dwc->dev, "%s: can't get entered value: %d\n",
+							__func__, ret);
+		return ret;
+	}
+
+	dwc->gadget->lpm_capable = enable_l1;
+	dwc->usb2_gadget_lpm_disable = !enable_l1;
+
+	pr_info("dwc3 gadget lpm : %s. Perform a plugout/plugin\n",
+				enable_l1 ? "enabled" : "disabled");
+
+	return count;
+}
+static DEVICE_ATTR_RW(enable_l1_suspend);
+
 static ssize_t dynamic_disable_store(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
@@ -5094,6 +5136,7 @@ static struct attribute *dwc3_msm_attrs[] = {
 	&dev_attr_mode.attr,
 	&dev_attr_speed.attr,
 	&dev_attr_bus_vote.attr,
+	&dev_attr_enable_l1_suspend.attr,
 	&dev_attr_dynamic_disable.attr,
 	&dev_attr_xhci_test.attr,
 	NULL
@@ -5480,6 +5523,8 @@ static int dwc3_msm_core_init(struct dwc3_msm *mdwc)
 	mdwc->xhci_pm_ops = kzalloc(sizeof(struct dev_pm_ops), GFP_ATOMIC);
 	if (!mdwc->xhci_pm_ops)
 		goto free_dwc_pm_ops;
+
+	dwc3_force_gen1(mdwc);
 
 	dwc3_msm_notify_event(dwc, DWC3_GSI_EVT_BUF_ALLOC, 0);
 	pm_runtime_set_autosuspend_delay(dwc->dev, 0);
@@ -5891,8 +5936,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 		dwc3_ext_event_notify(mdwc);
 	}
-
-	dwc3_ext_event_notify(mdwc);
 
 	return 0;
 

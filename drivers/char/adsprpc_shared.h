@@ -491,6 +491,8 @@ enum fastrpc_control_type {
 /* Clean process on DSP */
 	FASTRPC_CONTROL_DSPPROCESS_CLEAN	=	6,
 	FASTRPC_CONTROL_RPC_POLL = 7,
+	FASTRPC_CONTROL_ASYNC_WAKE = 8,
+	FASTRPC_CONTROL_NOTIF_WAKE = 9,
 };
 
 struct fastrpc_ctrl_latency {
@@ -972,6 +974,7 @@ struct fastrpc_mmap {
 	struct timespec64 map_end_time;
 	/* Mapping for fastrpc shell */
 	bool is_filemap;
+	char *servloc_name;			/* Indicate which daemon mapped this */
 };
 
 enum fastrpc_perfkeys {
@@ -1088,6 +1091,10 @@ struct fastrpc_file {
 	spinlock_t dspsignals_lock;
 	struct mutex signal_create_mutex;
 	struct completion shutdown;
+	/* Flag to indicate notif thread exit requested*/
+	bool exit_notif;
+	/* Flag to indicate async thread exit requested*/
+	bool exit_async;
 };
 
 union fastrpc_ioctl_param {

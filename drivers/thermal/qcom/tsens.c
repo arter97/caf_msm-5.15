@@ -19,6 +19,7 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
+#include <linux/thermal_minidump.h>
 #include "tsens.h"
 #include "thermal_zone_internal.h"
 
@@ -631,8 +632,17 @@ get_temp:
 	/* Valid bit is set, OK to read the temperature */
 	*temp = tsens_hw_to_mC(s, temp_idx);
 
+	/* Save temperature data to minidump */
+	if (s->priv->tsens_md != NULL && s->tzd)
+		thermal_minidump_update_data(s->priv->tsens_md,
+			s->tzd->type, temp);
+
 dump_and_exit:
-	TSENS_DBG(priv, "Sensor_id: %d temp: %d", hw_id, *temp);
+	if (s->tzd)
+		TSENS_DBG(priv, "Sensor_id: %d name:%s temp: %d",
+				hw_id, s->tzd->type, *temp);
+	else
+		TSENS_DBG(priv, "Sensor_id: %d temp: %d", hw_id, *temp);
 
 	return 0;
 }
@@ -660,7 +670,11 @@ int get_temp_common(const struct tsens_sensor *s, int *temp)
 
 		*temp = code_to_degc(last_temp, s) * 1000;
 
-		TSENS_DBG(priv, "Sensor_id: %d temp: %d", hw_id, *temp);
+		if (s->tzd)
+			TSENS_DBG(priv, "Sensor_id: %d name:%s temp: %d",
+					hw_id, s->tzd->type, *temp);
+		else
+			TSENS_DBG(priv, "Sensor_id: %d temp: %d", hw_id, *temp);
 
 		return 0;
 	} while (time_before(jiffies, timeout));
@@ -1196,6 +1210,8 @@ static int tsens_probe(struct platform_device *pdev)
 		}
 	}
 
+	priv->tsens_md = thermal_minidump_register(np->name);
+
 	return tsens_register(priv);
 }
 
@@ -1207,6 +1223,8 @@ static int tsens_remove(struct platform_device *pdev)
 	tsens_disable_irq(priv);
 	if (priv->ops->disable)
 		priv->ops->disable(priv);
+
+	thermal_minidump_unregister(priv->tsens_md);
 
 	return 0;
 }
