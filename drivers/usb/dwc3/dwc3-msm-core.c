@@ -367,6 +367,7 @@ enum bus_vote {
 	BUS_VOTE_NONE,
 	BUS_VOTE_NOMINAL,
 	BUS_VOTE_SVS,
+	BUS_VOTE_LSVS,
 	BUS_VOTE_MIN,
 	BUS_VOTE_MAX
 };
@@ -382,6 +383,7 @@ static const struct {
 	[BUS_VOTE_NONE]    = { {0, 0}, {0, 0}, {0, 0} },
 	[BUS_VOTE_NOMINAL] = { {1000000, 1250000}, {0, 2400}, {0, 40000}, },
 	[BUS_VOTE_SVS]     = { {240000, 700000}, {0, 2400}, {0, 40000}, },
+	[BUS_VOTE_LSVS]     = { {120000, 380000}, {0, 2400}, {0, 40000}, },
 	[BUS_VOTE_MIN]     = { {1, 1}, {1, 1}, {1, 1}, },
 };
 
