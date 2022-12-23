@@ -366,9 +366,9 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 		struct gpio_desc *reset_gpio;
 		u32 delays[3] = { 0, 0, 0 };
 
-		reset_gpio = devm_gpiod_get(priv->device,
-					    "snps,reset",
-					    GPIOD_OUT_HIGH);
+		reset_gpio = devm_gpiod_get_optional(priv->device,
+						     "snps,reset",
+						     GPIOD_OUT_HIGH);
 		if (IS_ERR(reset_gpio)) {
 			dev_err(priv->device, "error reset GPIO is %d\n", PTR_ERR(reset_gpio));
 			return PTR_ERR(reset_gpio);

@@ -634,19 +634,26 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		goto error_hw_init;
 	}
 
-	plat->rgmii_rst = of_reset_control_get(np, "emac0_rgmii_clk_ares");
-	if (IS_ERR(plat->rgmii_rst)) {
-		ret = plat->rgmii_rst;
-		goto error_hw_init;
+	if (of_property_read_bool(np, "reset-names")) {
+		plat->rgmii_rst = of_reset_control_get(np, "emac0_rgmii_clk_ares");
+		if (IS_ERR(plat->rgmii_rst)) {
+			ret = plat->rgmii_rst;
+			dev_err(&pdev->dev, "Cannot get emac0_rgmii_clk_ares\n");
+			goto error_hw_init;
+		}
 	}
 
-	plat->reset_gpio_aqr = devm_gpiod_get(&pdev->dev,
-					      "snps,phy_aqr_reset",
-					      GPIOD_OUT_LOW);
+	if (of_property_read_bool(np, "snps,phy_aqr_reset")) {
+		plat->reset_gpio_aqr = devm_gpiod_get(&pdev->dev,
+						      "snps,phy_aqr_reset",
+						      GPIOD_OUT_LOW);
 
-	if (IS_ERR(plat->reset_gpio_aqr)) {
-		ret = plat->reset_gpio_aqr;
-		plat->reset_gpio_aqr = NULL;
+		if (IS_ERR(plat->reset_gpio_aqr)) {
+			ret = plat->reset_gpio_aqr;
+			dev_err(&pdev->dev, "Cannot get snps,phy_aqr_reset\n");
+			plat->reset_gpio_aqr = NULL;
+			goto error_hw_init;
+		}
 	}
 
 	return plat;
