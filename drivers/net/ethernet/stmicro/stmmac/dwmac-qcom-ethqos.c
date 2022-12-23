@@ -733,6 +733,15 @@ static void ethqos_configure_rgmii_per_device(struct qcom_ethqos *ethqos)
 				      BIT(8), RGMII_IO_MACRO_CONFIG);
 			rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9,
 				      (BIT(10) | BIT(11) | BIT(14)), RGMII_IO_MACRO_CONFIG);
+			rgmii_updatel(ethqos, SDCC_DDR_CONFIG_EXT_PRG_RCLK_DLY_EN,
+				      0,
+				      SDCC_HC_REG_DDR_CONFIG);
+			rgmii_updatel(ethqos, SDCC_DDR_CONFIG_EXT_PRG_RCLK_DLY,
+				      0,
+				      SDCC_HC_REG_DDR_CONFIG);
+			rgmii_updatel(ethqos, SDCC_DDR_CONFIG_EXT_PRG_RCLK_DLY_EN,
+				      0,
+				      SDCC_HC_REG_DDR_CONFIG);
 			break;
 		case SPEED_100:
 			rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_RGMII_SGMII_CLK_MUX_SEL,
@@ -766,7 +775,7 @@ static void ethqos_configure_rgmii_per_device(struct qcom_ethqos *ethqos)
 			rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL,
 				      0, EMAC_WRAPPER_SGMII_PHY_CNTRL0);
 			rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9,
-				      RGMII_CONFIG_MAX_SPD_PRG_9, RGMII_IO_MACRO_CONFIG);
+				      BIT(8), RGMII_IO_MACRO_CONFIG);
 			rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_4,
 				      0, RGMII_IO_MACRO_SCRATCH_2);
 			rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_5,
@@ -786,9 +795,24 @@ static void ethqos_set_func_clk_en(struct qcom_ethqos *ethqos)
 {
 	rgmii_updatel(ethqos, RGMII_CONFIG_FUNC_CLK_EN,
 		      RGMII_CONFIG_FUNC_CLK_EN, RGMII_IO_MACRO_CONFIG);
+}
 
-	if (ethqos->emac_ver == EMAC_HW_v4_0_0)
+static void ethqos_set_rgmii_io_macro_init(struct qcom_ethqos *ethqos)
+{
+	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
+		/* DLL bypass mode for 10Mbps and 100Mbps
+		 * 1.   Write 1 to PDN bit of SDCC_HC_REG_DLL_CONFIG register.
+		 * 2.   Write 1 to bypass bit of SDCC_USR_CTL register
+		 * 3.   Default value of this register is 0x00010800
+		 */
+		if (ethqos->speed == SPEED_10 || ethqos->speed == SPEED_100) {
+			rgmii_updatel(ethqos, SDCC_DLL_CONFIG_PDN,
+				      SDCC_DLL_CONFIG_PDN, SDCC_HC_REG_DLL_CONFIG);
+			rgmii_updatel(ethqos, DLL_BYPASS,
+				      DLL_BYPASS, SDCC_USR_CTL);
+		}
 		ethqos_configure_rgmii_per_device(ethqos);
+	}
 }
 
 static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
@@ -1116,9 +1140,10 @@ static int ethqos_rgmii_macro_init(struct qcom_ethqos *ethqos)
 			rgmii_updatel(ethqos,
 				      RGMII_CONFIG2_TX_CLK_PHASE_SHIFT_EN,
 				      0, RGMII_IO_MACRO_CONFIG2);
-		rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9,
-			      BIT(12) | GENMASK(9, 8),
-			      RGMII_IO_MACRO_CONFIG);
+		if (ethqos->emac_ver != EMAC_HW_v4_0_0)
+			rgmii_updatel(ethqos, RGMII_CONFIG_MAX_SPD_PRG_9,
+				      BIT(12) | GENMASK(9, 8),
+				      RGMII_IO_MACRO_CONFIG);
 		rgmii_updatel(ethqos, RGMII_CONFIG2_RSVD_CONFIG15,
 			      0, RGMII_IO_MACRO_CONFIG2);
 		if (ethqos->emac_ver == EMAC_HW_v2_3_2_RG ||
@@ -1493,8 +1518,10 @@ static int ethqos_configure_rgmii_v4(struct qcom_ethqos *ethqos)
 
 	ethqos_set_func_clk_en(ethqos);
 
-	/* Initialize the DLL first */
+	/*Initialize Mux selection for RGMII */
+	ethqos_set_rgmii_io_macro_init(ethqos);
 
+	/* Initialize the DLL first */
 	/* Set DLL_RST */
 	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_DLL_RST,
 		      SDCC_DLL_CONFIG_DLL_RST, SDCC_HC_REG_DLL_CONFIG);
@@ -2724,11 +2751,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos->speed = SPEED_10;
 	ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, plat_dat->interface);
 
+	ethqos_set_func_clk_en(ethqos);
+
+	/*we need to check for RGMII modes because MBB has the same emac version*/
 	if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
-		ethqos_set_func_clk_en(ethqos);
+		ethqos_set_rgmii_io_macro_init(ethqos);
 	}
 	plat_dat->bsp_priv = ethqos;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
