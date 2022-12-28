@@ -6,6 +6,7 @@
 
 #define pr_fmt(msg) "slatersb: %s: " msg, __func__
 #include "slatersb.h"
+#include <linux/remoteproc/qcom_rproc.h>
 
 struct slatersb_priv {
 	void *handle;
@@ -143,7 +144,6 @@ void slatersb_notify_glink_channel_state(bool state)
 	pr_debug("%s: RSB-CTRL channel state: %d\n", __func__, state);
 	dev->rsb_rpmsg = state;
 }
-EXPORT_SYMBOL(slatersb_notify_glink_channel_state);
 
 void slatersb_rx_msg(void *data, int len)
 {
@@ -154,7 +154,6 @@ void slatersb_rx_msg(void *data, int len)
 	wake_up(&dev->link_state_wait);
 	memcpy(dev->rx_buf, data, len);
 }
-EXPORT_SYMBOL(slatersb_rx_msg);
 
 static void slatersb_slateup_work(struct work_struct *work)
 {
@@ -209,12 +208,12 @@ static int ssr_slatersb_cb(struct notifier_block *this,
 				struct slatersb_priv, lhndl);
 
 	switch (opcode) {
-	case SUBSYS_BEFORE_SHUTDOWN:
+	case QCOM_SSR_BEFORE_SHUTDOWN:
 		if (dev->slatersb_current_state == SLATERSB_STATE_RSB_ENABLED)
 			dev->pending_enable = true;
 		queue_work(dev->slatersb_wq, &dev->slate_down_work);
 		break;
-	case SUBSYS_AFTER_POWERUP:
+	case QCOM_SSR_AFTER_POWERUP:
 		if (dev->slatersb_current_state == SLATERSB_STATE_INIT)
 			queue_work(dev->slatersb_wq, &dev->slate_up_work);
 		break;
@@ -245,7 +244,7 @@ static int slatersb_ssr_register(struct slatersb_priv *dev)
 
 	nb = &ssr_slate_nb;
 	dev->slate_subsys_handle =
-			subsys_notif_register_notifier(SLATERSB_SLATE_SUBSYS, nb);
+			qcom_register_ssr_notifier(SLATERSB_SLATE_SUBSYS, nb);
 
 	if (!dev->slate_subsys_handle) {
 		dev->slate_subsys_handle = NULL;
@@ -535,6 +534,8 @@ static int slatersb_init(struct slatersb_priv *dev)
 	INIT_WORK(&dev->rsb_calibration_work, slatersb_calibration);
 	INIT_WORK(&dev->bttn_configr_work, slatersb_buttn_configration);
 
+	slatersb_channel_init(&slatersb_notify_glink_channel_state, &slatersb_rx_msg);
+
 	return 0;
 }
 
@@ -549,7 +550,7 @@ static int slate_rsb_probe(struct platform_device *pdev)
 	if (!dev)
 		return -ENOMEM;
 	/* Add wake lock for PM suspend */
-	wakeup_source_add(&dev->slatersb_ws);
+	wakeup_source_register(&pdev->dev, "slate_rsb");
 	dev->slatersb_current_state = SLATERSB_STATE_UNKNOWN;
 	rc = slatersb_init(dev);
 	if (rc)
@@ -573,7 +574,7 @@ static int slate_rsb_remove(struct platform_device *pdev)
 	struct slatersb_priv *dev = platform_get_drvdata(pdev);
 
 	destroy_workqueue(dev->slatersb_wq);
-	wakeup_source_trash(&dev->slatersb_ws);
+	wakeup_source_unregister(&dev->slatersb_ws);
 	return 0;
 }
 
