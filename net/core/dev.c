@@ -5252,6 +5252,18 @@ int (*athrs_fast_nat_recv)(struct sk_buff *skb) __rcu __read_mostly;
 EXPORT_SYMBOL(athrs_fast_nat_recv);
 #endif
 
+int (*embms_tm_multicast_recv)(struct sk_buff *skb) __rcu __read_mostly;
+EXPORT_SYMBOL(embms_tm_multicast_recv);
+
+void process_embms_receive_skb(struct sk_buff *skb)
+{
+	int (*embms_recv)(struct sk_buff *skb);
+
+	embms_recv = rcu_dereference(embms_tm_multicast_recv);
+	if (embms_recv)
+		embms_recv(skb);
+}
+
 static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
 {
@@ -5342,6 +5354,8 @@ skip_taps:
 	}
 #endif
 	skb_reset_redirect(skb);
+	process_embms_receive_skb(skb);
+
 skip_classify:
 #ifdef CONFIG_ENABLE_GSB
 	gsb_ns_recv = rcu_dereference(gsb_nw_stack_recv);
