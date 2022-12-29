@@ -1009,7 +1009,6 @@ int device_links_check_suppliers(struct device *dev)
 		dev_err_probe(dev, -EPROBE_DEFER, "wait for supplier %pfwP\n",
 			      sup_fw);
 		mutex_unlock(&fwnode_link_lock);
-		dev_err(dev, "UNI %s[%d] Dev %s\n", __func__,__LINE__,dev->kobj.name);
 		return -EPROBE_DEFER;
 	}
 	mutex_unlock(&fwnode_link_lock);
@@ -1020,7 +1019,6 @@ int device_links_check_suppliers(struct device *dev)
 		if (!(link->flags & DL_FLAG_MANAGED))
 			continue;
 
-		dev_err(dev, "UNI %s[%d] Dev %s supplier %s status %d\n", __func__,__LINE__,dev->kobj.name,link->supplier->kobj.name,link->status);
 		if (link->status != DL_STATE_AVAILABLE &&
 		    !(link->flags & DL_FLAG_SYNC_STATE_ONLY)) {
 			device_links_missing_supplier(dev);

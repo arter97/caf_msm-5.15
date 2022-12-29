@@ -556,12 +556,10 @@ static int really_probe(struct device *dev, struct device_driver *drv)
 	}
 
 	ret = device_links_check_suppliers(dev);
-	if (ret) {
-		dev_err(dev, "UNI %s[%d] Driver %s\n", __func__,__LINE__,drv->name);
+	if (ret)
 		return ret;
-	}
 
-	pr_err("UNI bus: '%s': %s: probing driver %s with device %s\n",
+	pr_debug("bus: '%s': %s: probing driver %s with device %s\n",
 		 drv->bus->name, __func__, drv->name, dev_name(dev));
 	if (!list_empty(&dev->devres_head)) {
 		dev_crit(dev, "Resources present before probing\n");

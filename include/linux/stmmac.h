@@ -301,7 +301,6 @@ struct plat_stmmacenet_data {
 	int mac2mac_link;
 	bool early_eth;
 	bool sph_disable;
-	bool safety_feature;
 	void (*phy_irq_enable)(void *priv);
 	void (*phy_irq_disable)(void *priv);
 };
