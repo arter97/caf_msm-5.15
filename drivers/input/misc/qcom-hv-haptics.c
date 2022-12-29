@@ -174,6 +174,7 @@
 
 #define HAP_CFG_ISC_CFG_REG			0x65
 #define ILIM_CC_EN_BIT				BIT(7)
+#define ILIM_CC_EN_BIT_VAL			1
 /* Following bits are only for HAP525_HV */
 #define EN_SC_DET_P_HAP525_HV_BIT		BIT(6)
 #define EN_SC_DET_N_HAP525_HV_BIT		BIT(5)
@@ -4210,13 +4211,6 @@ static int haptics_parse_per_effect_dt(struct haptics_chip *chip,
 	if (!effect)
 		return -EINVAL;
 
-	rc = of_property_read_u32(node, "qcom,effect-id", &effect->id);
-	if (rc < 0) {
-		dev_err(chip->dev, "read qcom,effect-id failed, rc=%d\n",
-				rc);
-		return rc;
-	}
-
 	effect->vmax_mv = config->vmax_mv;
 	rc = of_property_read_u32(node, "qcom,wf-vmax-mv", &tmp);
 	if (rc < 0)
@@ -5000,7 +4994,7 @@ static int haptics_detect_lra_impedance(struct haptics_chip *chip)
 		case HAP520_MV:
 			reg1 = HAP_CFG_ISC_CFG_REG;
 			mask1 = ILIM_CC_EN_BIT;
-			val1 = ILIM_CC_EN_BIT;
+			val1 = !ILIM_CC_EN_BIT_VAL;
 			reg2 = HAP_CFG_ISC_CFG2_REG;
 			mask2 = EN_SC_DET_P_HAP520_MV_BIT |
 				EN_SC_DET_N_HAP520_MV_BIT |
@@ -5047,6 +5041,10 @@ static int haptics_detect_lra_impedance(struct haptics_chip *chip)
 
 	/* Set square drive waveform, 10V Vmax, no HDRM */
 	for (i = 0; i < LRA_CONFIG_REGS; i++) {
+		/* PM5100 has 6V Vmax so update the setting for it */
+		if (chip->hw_type == HAP520_MV && lra_config[i].addr == HAP_CFG_VMAX_REG)
+			lra_config[i].val = 0x78;
+
 		rc = haptics_write(chip, chip->cfg_addr_base,
 				lra_config[i].addr, &lra_config[i].val, 1);
 		if (rc < 0)

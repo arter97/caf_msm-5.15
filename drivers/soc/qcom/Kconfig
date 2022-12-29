@@ -555,6 +555,17 @@ config QTI_RIMPS_LOG
 	  This driver register with IPC_Logging framework, to have dedicated
 	  buffer for rimps hw device.
 
+config SILENT_MODE
+	tristate "Driver support for  Silent mode feature on QCOM Chipsets"
+	depends on PM_SILENT_MODE
+	help
+	  Enables the support for Silent mode for QCOM chipsets. This feature
+	  monitors a chosen external interface, ex: GPIO, when signalled a
+	  state change, will update
+	  /sys/kernel/silent_boot/pm_silentmode_kernel_state and
+	  /sys/kernel/silent_boot/pm_silentmode_hw_state attribute to
+	  indicate the state transition from silent to non-silent.
+
 config QTI_PLH_SCMI_CLIENT
 	tristate "Qualcomm Technologies Inc. SCMI client driver for PLH"
 	depends on MSM_PERFORMANCE && QTI_SCMI_PLH_PROTOCOL
@@ -659,7 +670,17 @@ config QCOM_IRQ_STAT
 
 config QCOM_LOGBUF_VENDOR_HOOKS
 	tristate "QTI Logbuf Vendor Hooks Support"
-	depends on ARCH_QCOM && ANDROID_VENDOR_HOOKS
+	depends on ARCH_QCOM
+	help
+	  This enabled to dump kernel log_buf through
+	  minidump. It can help in debugging issues
+	  which are manifestation of failure during
+	  device running.
+
+config QCOM_LOGBUF_BOOTLOG
+	bool "QTI Boot Log Support"
+	depends on QCOM_LOGBUF_VENDOR_HOOKS
+	default y
 	help
 	  This enables to keep copy of initial log_buf
 	  of minimum 512KB from bootup. It can help in
@@ -1272,6 +1293,24 @@ config ICNSS2_DEBUG
 	  features, enabling kernel panic for certain cases to aid the
 	  debugging, and enabling any other debug mechanisms.
 
+config MSM_POWER_STATE
+	tristate "Power State driver support for Deep Sleep and Hibernate"
+	help
+	  This option enables Power State Driver which is the kernel component
+	  for supporting deep sleep and hibernate. Create a power_state device
+	  node for user space communication. User space client can open device
+	  node for communication required for handling deep sleep and hibernate
+	  modes.
+
+config DEEPSLEEP
+	bool "Deep Sleep or Suspend-to-RAM sleep state"
+	depends on MSM_POWER_STATE
+	help
+	  Set this option to enable Deep Sleep. Deep Sleep is Suspend-to-RAM
+	  sleep state, in which entire system is put in a low-power state,
+	  except for memory, so that exit from this state can happen in shorter
+	  duration.
+
 config RENAME_DEVICES
 	tristate "Rename  block and network device names"
 	depends on VIRTIO_BLK
@@ -1281,5 +1320,13 @@ config RENAME_DEVICES
 	  which is needed during android verified boot process and it
 	  also maps to physical partition names on gvm side which help
 	  identify the block and network devices.
+
+config QCOM_S2D_VENDOR_HOOK
+	tristate "Vendor hook module to route flow of the core Kernel"
+	help
+	  This options enable vendor hook callbacks for bootloader based
+	  hibernation. Callbacks implemented here are called from the
+          core kernel and help to do bootloader hibernation specific job.
+	  Enable this if bootloader hibernation is enabled.
 
 endmenu
