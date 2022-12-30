@@ -436,6 +436,8 @@ struct io_pgtable_ops *qcom_alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 #ifdef CONFIG_IOMMU_IO_PGTABLE_LPAE
 	else if (fmt == QCOM_ARM_64_LPAE_S1)
 		fns = &qcom_io_pgtable_arm_64_lpae_s1_init_fns;
+	else if (fmt == QCOM_ARM_32_LPAE_S1)
+		fns = &qcom_io_pgtable_arm_32_lpae_s1_init_fns;
 #endif
 	else {
 		pr_err("Invalid io-pgtable fmt %u\n", fmt);
@@ -474,6 +476,8 @@ void qcom_free_io_pgtable_ops(struct io_pgtable_ops *ops)
 #ifdef CONFIG_IOMMU_IO_PGTABLE_LPAE
 	else if (fmt == QCOM_ARM_64_LPAE_S1)
 		fns = &qcom_io_pgtable_arm_64_lpae_s1_init_fns;
+	else if (fmt == QCOM_ARM_32_LPAE_S1)
+		fns = &qcom_io_pgtable_arm_32_lpae_s1_init_fns;
 #endif
 	else {
 		pr_err("Invalid io-pgtable fmt %u\n", fmt);
