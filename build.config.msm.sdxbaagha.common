@@ -5,6 +5,7 @@
 
 ################################################################################
 ## Variant setup
+HERMETIC_TOOLCHAIN=0
 VARIANTS=(perf_defconfig debug_defconfig)
 [ -z "${VARIANT}" ] && VARIANT=debug_defconfig
 
