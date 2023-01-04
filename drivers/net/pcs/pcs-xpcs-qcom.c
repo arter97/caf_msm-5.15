@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -1078,12 +1078,14 @@ struct dw_xpcs_qcom *qcom_xpcs_create(void __iomem *addr, phy_interface_t interf
 		if (ret < 0)
 			goto out;
 
+#ifndef PCS_POLL
 		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
 		if (ret < 0)
 			goto out;
 
 		ret |= DW_VR_MII_AN_INTR_EN;
 		ret = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
+#endif
 
 		return xpcs;
 	}

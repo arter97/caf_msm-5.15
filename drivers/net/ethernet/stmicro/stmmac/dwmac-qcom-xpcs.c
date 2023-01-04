@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/pcs-xpcs-qcom.h>
 #include <linux/platform_device.h>
@@ -78,6 +78,7 @@ int ethqos_xpcs_init(phy_interface_t mode)
 	priv->hw->qxpcs = qxpcs;
 	priv->hw->xpcs = NULL;
 
+#ifndef PCS_POLL
 	ret = ethqos_xpcs_intr_config(mode);
 	if (!ret) {
 		ret = ethqos_xpcs_intr_enable();
@@ -89,6 +90,7 @@ int ethqos_xpcs_init(phy_interface_t mode)
 		ETHQOSERR("Failed to configure XPCS interrupt\n");
 		return -ENODEV;
 	}
+#endif
 
 	phylink_set_pcs(priv->phylink, &priv->hw->qxpcs->pcs);
 	ETHQOSINFO("Successfully initialized XPCS\n");
