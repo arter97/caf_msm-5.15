@@ -78,6 +78,7 @@ int ethqos_xpcs_init(phy_interface_t mode)
 	priv->hw->qxpcs = qxpcs;
 	priv->hw->xpcs = NULL;
 
+#ifndef PCS_POLL
 	ret = ethqos_xpcs_intr_config(mode);
 	if (!ret) {
 		ret = ethqos_xpcs_intr_enable();
@@ -89,6 +90,7 @@ int ethqos_xpcs_init(phy_interface_t mode)
 		ETHQOSERR("Failed to configure XPCS interrupt\n");
 		return -ENODEV;
 	}
+#endif
 
 	phylink_set_pcs(priv->phylink, &priv->hw->qxpcs->pcs);
 	ETHQOSINFO("Successfully initialized XPCS\n");
