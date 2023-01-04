@@ -656,6 +656,19 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		}
 	}
 
+	if (of_property_read_bool(np, "snps,phy_ksz_reset")) {
+		plat->reset_gpio_ksz = devm_gpiod_get(&pdev->dev,
+						      "snps,phy_ksz_reset",
+						      GPIOD_OUT_LOW);
+
+		if (IS_ERR(plat->reset_gpio_ksz)) {
+			ret = plat->reset_gpio_ksz;
+			dev_err(&pdev->dev, "Cannot get snps,phy_ksz_reset\n");
+			plat->reset_gpio_ksz = NULL;
+			goto error_hw_init;
+		}
+	}
+
 	return plat;
 
 error_hw_init:
