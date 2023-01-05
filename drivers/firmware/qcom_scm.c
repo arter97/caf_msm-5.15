@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2010,2015,2019,2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)     "qcom-scm: %s: " fmt, __func__
 
@@ -2699,6 +2699,7 @@ static irqreturn_t qcom_scm_irq_handler(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
+#ifndef CONFIG_QCOM_NO_RTIC
 /**
  * scm_mem_protection_init_do() - Makes core kernel bootup milestone call
  *                                to Kernel Protect (KP) in Hypervisor
@@ -2762,6 +2763,7 @@ int  scm_mem_protection_init_do(void)
 
 	return resp;
 }
+#endif
 
 static int qcom_scm_probe(struct platform_device *pdev)
 {

@@ -3,7 +3,7 @@
  * QTI TEE shared memory bridge driver
  *
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -456,8 +456,9 @@ static int qtee_shmbridge_init(struct platform_device *pdev)
 	uint32_t ns_vm_ids_hlos[] = {VMID_HLOS};
 	uint32_t ns_vm_ids_hyp[] = {};
 	uint32_t ns_vm_perms[] = {VM_PERM_R|VM_PERM_W};
+#ifndef CONFIG_QCOM_NO_RTIC
 	int mem_protection_enabled = 0;
-
+#endif
 	support_hyp = of_property_read_bool((&pdev->dev)->of_node,
 			"qcom,support-hypervisor");
 	if (support_hyp)
@@ -545,11 +546,12 @@ static int qtee_shmbridge_init(struct platform_device *pdev)
 
 	pr_debug("qtee shmbridge registered default bridge with size %d bytes\n",
 			default_bridge.size);
-
+#ifndef CONFIG_QCOM_NO_RTIC
 	mem_protection_enabled = scm_mem_protection_init_do();
 	pr_err("MEM protection %s, %d\n",
 			(!mem_protection_enabled ? "Enabled" : "Not enabled"),
 			mem_protection_enabled);
+#endif
 	return 0;
 
 exit_deregister_default_bridge:

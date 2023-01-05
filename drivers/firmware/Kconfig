@@ -216,6 +216,14 @@ config QCOM_SCM_DOWNLOAD_MODE_DEFAULT
 
 	  Say Y here to enable "download mode" by default.
 
+config QCOM_NO_RTIC
+	bool "Disable Qualcomm Technologies, Inc. RTIC feature"
+	depends on QCOM_SCM
+	help
+	  This option disables QCOM Real Time Integrity Check feature. This
+	  will trigger RTIC kernel MP.s (measurement parameters) generation
+	  during the kernel build.
+
 config QCOM_SCM_QCPE
 	bool "Para-Virtualized Secure Channel Manager (SCM) support over QCPE"
 	depends on QCOM_SCM && MSM_HAB
