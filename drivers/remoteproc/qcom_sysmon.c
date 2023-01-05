@@ -298,6 +298,67 @@ static struct qmi_elem_info ssctl_subsys_event_with_tid_resp_ei[] = {
 	{}
 };
 
+struct ssctl_subsys_event_req {
+	u8 subsys_name_len;
+	char subsys_name[SSCTL_SUBSYS_NAME_LENGTH];
+	u32 event;
+	u8 evt_driven_valid;
+	u32 evt_driven;
+};
+
+static struct qmi_elem_info ssctl_subsys_event_req_ei[] = {
+	{
+		.data_type	= QMI_DATA_LEN,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint8_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x01,
+		.offset		= offsetof(struct ssctl_subsys_event_req,
+					   subsys_name_len),
+		.ei_array	= NULL,
+	},
+	{
+		.data_type	= QMI_UNSIGNED_1_BYTE,
+		.elem_len	= SSCTL_SUBSYS_NAME_LENGTH,
+		.elem_size	= sizeof(char),
+		.array_type	= VAR_LEN_ARRAY,
+		.tlv_type	= 0x01,
+		.offset		= offsetof(struct ssctl_subsys_event_req,
+					   subsys_name),
+		.ei_array	= NULL,
+	},
+	{
+		.data_type	= QMI_SIGNED_4_BYTE_ENUM,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x02,
+		.offset		= offsetof(struct ssctl_subsys_event_req,
+					   event),
+		.ei_array	= NULL,
+	},
+	{
+		.data_type	= QMI_OPT_FLAG,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint8_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x10,
+		.offset		= offsetof(struct ssctl_subsys_event_req,
+					   evt_driven_valid),
+		.ei_array	= NULL,
+	},
+	{
+		.data_type	= QMI_SIGNED_4_BYTE_ENUM,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x10,
+		.offset		= offsetof(struct ssctl_subsys_event_req,
+					   evt_driven),
+		.ei_array	= NULL,
+	},
+	{}
+};
 
 static struct qmi_elem_info ssctl_shutdown_ind_ei[] = {
 	{}
@@ -403,7 +464,10 @@ static int ssctl_send_event(struct qcom_sysmon *sysmon,
 		return -EINVAL;
 
 	memset(&resp, 0, sizeof(resp));
-	ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_subsys_event_with_tid_resp_ei, &resp);
+	if (is_old)
+		ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_subsys_event_req_ei, &resp);
+	else
+		ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_subsys_event_with_tid_resp_ei, &resp);
 	if (ret < 0) {
 		dev_err(sysmon->dev, "failed to allocate QMI txn\n");
 		return ret;
@@ -418,8 +482,11 @@ static int ssctl_send_event(struct qcom_sysmon *sysmon,
 	req.transaction_id = sysmon->transaction_id;
 	ssctl_event = is_old ? SSCTL_SUBSYS_EVENT_REQ : SSCTL_SUBSYS_EVENT_WITH_TID_REQ;
 
-
-	ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
+	if (is_old)
+		ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
+			       ssctl_event, 40, ssctl_subsys_event_req_ei, &req);
+	else
+		ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
 			       ssctl_event, 40, ssctl_subsys_event_with_tid_req_ei,
 				   &req);
 	if (ret < 0) {
