@@ -643,7 +643,7 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		}
 	}
 
-	if (of_property_read_bool(np, "snps,phy_aqr_reset")) {
+	if (of_property_read_bool(np, "snps,phy_aqr_reset-gpio")) {
 		plat->reset_gpio_aqr = devm_gpiod_get(&pdev->dev,
 						      "snps,phy_aqr_reset",
 						      GPIOD_OUT_LOW);
@@ -656,7 +656,7 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		}
 	}
 
-	if (of_property_read_bool(np, "snps,phy_ksz_reset")) {
+	if (of_property_read_bool(np, "snps,phy_ksz_reset-gpio")) {
 		plat->reset_gpio_ksz = devm_gpiod_get(&pdev->dev,
 						      "snps,phy_ksz_reset",
 						      GPIOD_OUT_LOW);
