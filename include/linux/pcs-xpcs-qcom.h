@@ -3,7 +3,7 @@
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
  * Synopsys DesignWare XPCS helpers
  */
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #ifndef __LINUX_PCS_XPCS_QCOM_H
 #define __LINUX_PCS_XPCS_QCOM_H
@@ -16,6 +16,9 @@
 #define DW_AN_C37_SGMII			2
 #define DW_2500BASEX			3
 #define DW_AN_C37_USXGMII		4
+
+/* Comment this out if pcs_intr is to be used */
+#define PCS_POLL
 
 struct xpcs_id;
 
