@@ -391,6 +391,12 @@ struct ip_params {
 	unsigned char mac_addr[QCOM_ETH_QOS_MAC_ADDR_LEN];
 };
 
+
+struct mac_params {
+	phy_interface_t eth_intf;
+	bool is_valid_eth_intf;
+};
+
 int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
