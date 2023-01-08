@@ -192,6 +192,9 @@ MODULE_PARM_DESC(eipv6, "ipv6 value from ethernet partition");
 static char *ermac;
 module_param(ermac, charp, 0660);
 MODULE_PARM_DESC(ermac, "mac address from ethernet partition");
+static char *eiface;
+module_param(eiface, charp, 0660);
+MODULE_PARM_DESC(eiface, "Interface type from ethernet partition");
 #endif
 
 inline void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos)
@@ -212,6 +215,7 @@ int stmmac_enable_ipc_low;
 #define MAX_PROC_SIZE 1024
 char tmp_buff[MAX_PROC_SIZE];
 static struct ip_params pparams = {"", "", "", ""};
+static struct mac_params mparams = {0};
 
 static inline unsigned int dwmac_qcom_get_eth_type(unsigned char *buf)
 {
@@ -453,6 +457,29 @@ fail:
 	return 1;
 }
 
+static int set_ethernet_interface(char *eth_intf)
+{
+	mparams.is_valid_eth_intf = false;
+	if (!eth_intf)
+		return 1;
+
+	if (strlen(eth_intf) == 0)
+		return 1;
+
+	ETHQOSDBG("Command Line eth interface: %s\n", eth_intf);
+	if (!strcmp("sgmii", eth_intf)) {
+		mparams.eth_intf = PHY_INTERFACE_MODE_SGMII;
+		mparams.is_valid_eth_intf = true;
+	} else if (!strcmp("usxgmii", eth_intf)) {
+		mparams.eth_intf =  PHY_INTERFACE_MODE_USXGMII;
+		mparams.is_valid_eth_intf = true;
+	} else {
+		ETHQOSERR("Invalid Eth interface programmed: %s\n", eth_intf);
+		return 1;
+	}
+	return 0;
+}
+
 #ifndef MODULE
 static int __init set_early_ethernet_ipv4_static(char *ipv4_addr_in)
 {
@@ -483,6 +510,17 @@ static int __init set_early_ethernet_mac_static(char *mac_addr)
 }
 
 __setup("ermac=", set_early_ethernet_mac_static);
+
+static int __init set_ethernet_interface_static(char *eth_intf)
+{
+	int ret = 1;
+
+	ret = set_ethernet_interface(eth_intf);
+	return ret;
+}
+
+__setup("eiface=", set_ethernet_interface_static);
+
 #endif
 
 static int qcom_ethqos_add_ipaddr(struct ip_params *ip_info,
@@ -2701,6 +2739,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 		if (ermac)
 			ret = set_early_ethernet_mac(ermac);
+
+		if (eiface)
+			ret = set_ethernet_interface(eiface);
 #endif
 
 	ipc_emac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
@@ -2743,6 +2784,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (IS_ERR(plat_dat)) {
 		dev_err(&pdev->dev, "dt configuration failed\n");
 		return PTR_ERR(plat_dat);
+	}
+
+	if (mparams.is_valid_eth_intf) {
+		plat_dat->interface = mparams.eth_intf;
+		plat_dat->phy_interface = mparams.eth_intf;
+		plat_dat->is_valid_eth_intf = mparams.is_valid_eth_intf;
 	}
 
 	ethqos->rgmii_base = devm_platform_ioremap_resource_byname(pdev, "rgmii");
