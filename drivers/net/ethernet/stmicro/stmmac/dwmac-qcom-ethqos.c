@@ -2717,11 +2717,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	int ret;
 	struct net_device *ndev;
 	struct stmmac_priv *priv;
-	struct resource *resource = NULL;
-	u32 tlmm_central_base = 0;
-	void __iomem *vreg_emac_phy_base;
-	void __iomem *vreg_rgmii_base;
-	u32 val = 0;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,emac-smmu-embedded"))
@@ -2765,20 +2760,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos_init_reqgulators(ethqos);
 
 	ethqos_init_gpio(ethqos);
-	/*enable regulator GPIOs as EGPIO's*/
-	if (of_property_read_bool(np, "reg-egpio-enable")) {
-		resource = platform_get_resource_byname(ethqos->pdev,
-							IORESOURCE_MEM, "tlmm-central-base");
-		tlmm_central_base = resource->start;
-		vreg_emac_phy_base = ioremap(tlmm_central_base + EMAC_PHY_REG_OFFSET, 0x4);
-		vreg_rgmii_base = ioremap(tlmm_central_base + RGMII_REG_OFFSET, 0x4);
-		val = ioread32((void __iomem *)vreg_emac_phy_base);
-		val |= EGPIO_ENABLE;
-		iowrite32(val, (void __iomem *)vreg_emac_phy_base);
-		val = ioread32((void __iomem *)vreg_rgmii_base);
-		val |= EGPIO_ENABLE;
-		iowrite32(val, (void __iomem *)vreg_rgmii_base);
-	}
 
 	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
 	if (IS_ERR(plat_dat)) {
