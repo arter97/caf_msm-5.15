@@ -377,6 +377,9 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 		if (priv->plat->reset_gpio_aqr)
 			gpiod_set_value(priv->plat->reset_gpio_aqr, 1);
 
+		if (priv->plat->reset_gpio_ksz)
+			gpiod_set_value(priv->plat->reset_gpio_ksz, 1);
+
 		device_property_read_u32_array(priv->device,
 					       "snps,reset-delays-us",
 					       delays, ARRAY_SIZE(delays));
