@@ -3752,9 +3752,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			ret = set_ethernet_interface(eiface);
 #endif
 
-	ipc_emac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
-						   "emac", 0);
-	if (!ipc_emac_log_ctxt)
+	ipc_stmmac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
+						     "emac", 0);
+	if (!ipc_stmmac_log_ctxt)
 		ETHQOSERR("Error creating logging context for emac\n");
 	else
 		ETHQOSDBG("IPC logging has been enabled for emac\n");
@@ -4506,6 +4506,9 @@ static void __exit qcom_ethqos_exit_module(void)
 	ETHQOSINFO("\n");
 
 	platform_driver_unregister(&qcom_ethqos_driver);
+
+	if (!ipc_stmmac_log_ctxt)
+		ipc_log_context_destroy(ipc_stmmac_log_ctxt);
 
 	if (!ipc_stmmac_log_ctxt_low)
 		ipc_log_context_destroy(ipc_stmmac_log_ctxt_low);

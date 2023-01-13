@@ -199,6 +199,12 @@ struct emac_emb_smmu_cb_ctx {
 	int ret;
 };
 
+enum ch_owner {
+	NOT_USED = 0,
+	USE_IN_STMMAC_SW = 1,
+	USE_IN_OFFLOADER = 2,
+};
+
 struct plat_stmmacenet_data {
 	int bus_id;
 	int phy_addr;
@@ -287,6 +293,8 @@ struct plat_stmmacenet_data {
 	int msi_rx_base_vec;
 	int msi_tx_base_vec;
 	bool use_phy_wol;
+	enum ch_owner tx_dma_ch_owner[MTL_MAX_TX_QUEUES];
+	enum ch_owner rx_dma_ch_owner[MTL_MAX_RX_QUEUES];
 	struct emac_emb_smmu_cb_ctx stmmac_emb_smmu_ctx;
 	bool phy_intr_en_extn_stm;
 	int has_c22_mdio_probe_capability;
