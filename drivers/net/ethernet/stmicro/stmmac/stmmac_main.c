@@ -1277,6 +1277,15 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->boot_kpi = true;
 	}
 #endif
+	/*We need to reset the clks when speed change occurs on remote
+	 *this is because we need to align rgmii clocks with data else
+	 *the data would stall on speed change.
+	 */
+	if (priv->plat->rgmii_rst) {
+		reset_control_assert(priv->plat->rgmii_rst);
+		mdelay(100);
+		reset_control_deassert(priv->plat->rgmii_rst);
+	}
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
