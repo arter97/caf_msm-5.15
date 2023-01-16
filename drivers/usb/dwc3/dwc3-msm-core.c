@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -4059,7 +4059,11 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 					__func__);
 
 		if (mdwc->sleep_clk_bcr) {
-			/* HW requires a short delay for reset to take place properly */
+			/* In case of some targets, sleep_clk for the demets is used
+			 * for USB BCR.
+			 * As sleep clk is a slow clk which runs at 32khz, additional
+			 * delay is required for deassert for the same.
+			 */
 			usleep_range(200, 250);
 		}
 	}
