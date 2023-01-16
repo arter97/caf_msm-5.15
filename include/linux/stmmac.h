@@ -247,6 +247,7 @@ struct plat_stmmacenet_data {
 	int (*crosststamp)(ktime_t *device, struct system_counterval_t *system,
 			   void *ctx);
 	void (*dump_debug_regs)(void *priv);
+	unsigned int (*get_eth_type)(unsigned char *buf);
 	void *bsp_priv;
 	struct clk *stmmac_clk;
 	struct clk *pclk;
@@ -259,7 +260,8 @@ struct plat_stmmacenet_data {
 	struct reset_control *stmmac_rst;
 	struct reset_control *stmmac_ahb_rst;
 	struct reset_control *rgmii_rst;
-	struct gpio_desc *reset_gpio_aqr;
+	struct gpio_desc *reset_phy1_gpio;
+	bool is_valid_eth_intf;
 	struct stmmac_axi *axi;
 	int has_gmac4;
 	bool has_sun8i;

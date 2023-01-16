@@ -643,15 +643,15 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		}
 	}
 
-	if (of_property_read_bool(np, "snps,phy_aqr_reset")) {
-		plat->reset_gpio_aqr = devm_gpiod_get(&pdev->dev,
-						      "snps,phy_aqr_reset",
-						      GPIOD_OUT_LOW);
+	if (of_property_read_bool(np, "snps,phy1_reset-gpio")) {
+		plat->reset_phy1_gpio = devm_gpiod_get(&pdev->dev,
+						       "snps,phy1_reset",
+							GPIOD_OUT_LOW);
 
-		if (IS_ERR(plat->reset_gpio_aqr)) {
-			ret = plat->reset_gpio_aqr;
-			dev_err(&pdev->dev, "Cannot get snps,phy_aqr_reset\n");
-			plat->reset_gpio_aqr = NULL;
+		if (IS_ERR(plat->reset_phy1_gpio)) {
+			ret = plat->reset_phy1_gpio;
+			dev_err(&pdev->dev, "Cannot get snps,phy1_reset-gpio\n");
+			plat->reset_phy1_gpio = NULL;
 			goto error_hw_init;
 		}
 	}

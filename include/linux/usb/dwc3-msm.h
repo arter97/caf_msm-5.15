@@ -331,4 +331,12 @@ static inline void dwc3_msm_kretprobe_exit(void)
 { }
 #endif
 
+#if IS_ENABLED(CONFIG_USB_F_GSI)
+void rmnet_gsi_update_in_buffer_mem_type(struct usb_function *f, bool use_tcm);
+#else
+static inline __maybe_unused void rmnet_gsi_update_in_buffer_mem_type(
+				struct usb_function *f, bool use_tcm)
+{ }
+#endif
+
 #endif /* __LINUX_USB_DWC3_MSM_H */

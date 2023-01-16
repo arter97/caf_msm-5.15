@@ -2895,12 +2895,22 @@ static void ipa_ready_callback(void *user_data)
 	wake_up_interruptible(&gsi->d_port.wait_for_ipa_ready);
 }
 
+void rmnet_gsi_update_in_buffer_mem_type(struct usb_function *f, bool use_tcm)
+{
+	struct f_gsi *gsi = func_to_gsi(f);
+
+	if (gsi && gsi->prot_id == IPA_USB_RMNET)
+		gsi->rmnet_use_tcm_mem = use_tcm;
+}
+EXPORT_SYMBOL(rmnet_gsi_update_in_buffer_mem_type);
+
 static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct usb_composite_dev *cdev = c->cdev;
 	struct gsi_function_bind_info info = {0};
 	struct f_gsi *gsi = func_to_gsi(f);
 	struct rndis_params *params;
+	struct usb_os_desc *descs[1];
 	struct gsi_opts *opts;
 	int status;
 	__u8  class;
@@ -3099,6 +3109,14 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 			f->os_desc_n = 1;
 			f->os_desc_table[0].os_desc = &opts->os_desc;
 			f->os_desc_table[0].if_id = gsi->data_id;
+			opts->os_desc.ext_compat_id = opts->ext_compat_id;
+			descs[0] = &opts->os_desc;
+			snprintf(sub_compatible_id, sizeof(sub_compatible_id),
+					"%u", c->bConfigurationValue);
+			memcpy(descs[0]->ext_compat_id, compatible_id,
+					strlen(compatible_id));
+			memcpy(descs[0]->ext_compat_id + 8, sub_compatible_id,
+					strlen(sub_compatible_id));
 		}
 		break;
 	case IPA_USB_RMNET:
