@@ -19884,7 +19884,9 @@ int cfg80211_external_auth_request(struct net_device *dev,
 	    nla_put(msg, NL80211_ATTR_BSSID, ETH_ALEN, params->bssid) ||
 	    (params->ssid.ssid_len &&
 	     nla_put(msg, NL80211_ATTR_SSID, params->ssid.ssid_len,
-		     params->ssid.ssid)))
+		     params->ssid.ssid)) ||
+	    (!is_zero_ether_addr(params->mld_addr) &&
+	     nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, params->mld_addr)))
 		goto nla_put_failure;
 
 	genlmsg_end(msg, hdr);
