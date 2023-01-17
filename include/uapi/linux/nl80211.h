@@ -2718,6 +2718,9 @@ enum nl80211_commands {
  *	connection. Used with %NL80211_CMD_CONNECT. If this attribute is not
  *	included in NL80211_CMD_CONNECT drivers must not perform MLO connection.
  *
+ * @NL80211_ATTR_MLD_MAC: MLD MAC address.
+ * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
+ *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
@@ -3261,6 +3264,10 @@ enum nl80211_attrs {
 	NL80211_ATTR_RESERVED_DO_NOT_USE_24 = 335,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_25 = 336,
 
+	NL80211_ATTR_EHT_PUNCTURE_BITMAP = 350,
+	NL80211_ATTR_MLD_MAC,
+	NL80211_ATTR_MLD_REFERENCE,
+
 	/* add attributes here, update the policy in nl80211.c */
 
 	__NL80211_ATTR_AFTER_LAST,
@@ -3321,8 +3328,14 @@ enum nl80211_attrs {
  * present in %NL80211_CMD_GET_WIPHY response.
  */
 #define NL80211_MAX_NR_AKM_SUITES		2
+
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 #define NL80211_EHT_MIN_CAPABILITY_LEN          13
 #define NL80211_EHT_MAX_CAPABILITY_LEN          51
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+#define NL80211_EHT_MIN_CAPABILITY_LEN          16
+#define NL80211_EHT_MAX_CAPABILITY_LEN          54
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 #define NL80211_MIN_REMAIN_ON_CHANNEL_TIME	10
 
@@ -6303,6 +6316,9 @@ enum nl80211_feature_flags {
  * @NL80211_EXT_FEATURE_RADAR_BACKGROUND: Device supports background radar/CAC
  *	detection.
  *
+ * @NL80211_EXT_FEATURE_MLO: Driver/Device support Multi-link Operation(MLO)
+ *      feature.
+ *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
  */
@@ -6380,6 +6396,7 @@ enum nl80211_ext_feature_index {
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_8 = 69,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_9 = 70,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_10 = 71,
+	NL80211_EXT_FEATURE_MLO,
 
 	/* add new features before the definition below */
 	NUM_NL80211_EXT_FEATURES,
