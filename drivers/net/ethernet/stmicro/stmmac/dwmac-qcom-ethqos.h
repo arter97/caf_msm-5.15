@@ -84,17 +84,26 @@ do {\
 
 #define RGMII_IO_MACRO_CONFIG		0x0
 #define SDCC_HC_REG_DLL_CONFIG		0x4
+#define SDCC_TEST_CTL			0x8
 #define SDCC_HC_REG_DDR_CONFIG		0xC
 #define SDCC_HC_REG_DLL_CONFIG2		0x10
 #define SDC4_STATUS			0x14
 #define SDCC_USR_CTL			0x18
 #define RGMII_IO_MACRO_CONFIG2		0x1C
+#define EMAC_WRAPPER_SGMII_PHY_CNTRL0		0x170
+#define EMAC_WRAPPER_SGMII_PHY_CNTRL1		0x174
+#define EMAC_WRAPPER_USXGMII_MUX_SEL		0x1D0
+#define RGMII_IO_MACRO_SCRATCH_2		0x44
+#define RGMII_IO_MACRO_BYPASS		 0x16C
 
 #define EMAC_HW_NONE 0
 #define EMAC_HW_v2_1_1 0x20010001
 #define EMAC_HW_v2_1_2 0x20010002
 #define EMAC_HW_v2_3_0 0x20030000
 #define EMAC_HW_v2_3_1 0x20030001
+#define EMAC_HW_v3_0_0_RG 0x30000000
+#define EMAC_HW_v3_1_0 0x30010000
+#define EMAC_HW_v4_0_0 0x40000000
 #define EMAC_HW_vMAX 9
 
 #define ETHQOS_CONFIG_PPSOUT_CMD 44
@@ -203,12 +212,16 @@ struct ethqos_emac_driver_data {
 struct qcom_ethqos {
 	struct platform_device *pdev;
 	void __iomem *rgmii_base;
+	void __iomem *sgmii_base;
 	void __iomem *ioaddr;
 
 	struct msm_bus_scale_pdata *bus_scale_vec;
 	u32 bus_hdl;
 	unsigned int rgmii_clk_rate;
 	struct clk *rgmii_clk;
+	struct clk *phyaux_clk;
+	struct clk *sgmiref_clk;
+
 	unsigned int speed;
 	unsigned int vote_idx;
 
@@ -275,6 +288,7 @@ struct qcom_ethqos {
 	int backup_suspend_speed;
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
+	int curr_serdes_speed;
 };
 
 struct pps_cfg {
