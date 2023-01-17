@@ -57,6 +57,9 @@
 #define NL80211_EDMG_CHANNELS_MIN	1
 #define NL80211_EDMG_CHANNELS_MAX	0x3c /* 0b00111100 */
 
+#define NL80211_MLD_MAX_NUM_LINKS	15 /* Max Num of MLD Links */
+#define NL80211_MLO_INVALID_LINK_ID	-1
+
 /**
  * DOC: Station handling
  *
@@ -2720,6 +2723,9 @@ enum nl80211_commands {
  *
  * @NL80211_ATTR_MLD_MAC: MLD MAC address.
  * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
+ * @NL80211_ATTR_MLD_LINK_IDS: nested attribute to hold MLD link-ids.
+ * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
+ * @NL80211_ATTR_RECONFIG: whether the operation is reconfiguration or not
  *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
@@ -3267,6 +3273,9 @@ enum nl80211_attrs {
 	NL80211_ATTR_EHT_PUNCTURE_BITMAP = 350,
 	NL80211_ATTR_MLD_MAC,
 	NL80211_ATTR_MLD_REFERENCE,
+	NL80211_ATTR_MLD_LINK_IDS,
+	NL80211_ATTR_MLD_LINK_MACS,
+	NL80211_ATTR_RECONFIG,
 
 	/* add attributes here, update the policy in nl80211.c */
 
@@ -6319,6 +6328,9 @@ enum nl80211_feature_flags {
  * @NL80211_EXT_FEATURE_MLO: Driver/Device support Multi-link Operation(MLO)
  *      feature.
  *
+ * @NL80211_EXT_FEATURE_AUTH_TX_RANDOM_TA: Device supports randomized TA
+ *	for authentication frames in @NL80211_CMD_FRAME.
+ *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
  */
@@ -6397,6 +6409,7 @@ enum nl80211_ext_feature_index {
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_9 = 70,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_10 = 71,
 	NL80211_EXT_FEATURE_MLO,
+	NL80211_EXT_FEATURE_AUTH_TX_RANDOM_TA,
 
 	/* add new features before the definition below */
 	NUM_NL80211_EXT_FEATURES,

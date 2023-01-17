@@ -802,6 +802,12 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	[NL80211_ATTR_EHT_PUNCTURE_BITMAP] = { .type = NLA_U32 },
 	[NL80211_ATTR_MLD_MAC] = NLA_POLICY_EXACT_LEN_WARN(ETH_ALEN),
 	[NL80211_ATTR_MLD_REFERENCE] = { .type = NLA_U32 },
+	[NL80211_ATTR_MLD_LINK_MACS] = { .type = NLA_NESTED },
+	[NL80211_ATTR_MLD_LINK_IDS] = { .type = NLA_NESTED },
+	[NL80211_ATTR_RECONFIG] = { .type = NLA_FLAG },
+	[NL80211_ATTR_MLO_LINK_ID] =
+		NLA_POLICY_RANGE(NLA_U8, 0, NL80211_MLD_MAX_NUM_LINKS),
+
 };
 
 /* policy for the key attributes */
@@ -5777,6 +5783,11 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_ap_settings *params;
 	int err;
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+	struct cfg80211_mlo_info *ml_info = NULL;
+	struct nlattr *attr;
+	int i;
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	if (dev->ieee80211_ptr->iftype != NL80211_IFTYPE_AP &&
 	    dev->ieee80211_ptr->iftype != NL80211_IFTYPE_P2P_GO)
@@ -6001,6 +6012,41 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
 			goto out_unlock;
 	}
 
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+	i = 0;
+	ml_info = &params->mlo_info;
+	if (info->attrs[NL80211_ATTR_MLD_LINK_IDS]) {
+		int tmp;
+
+		nla_for_each_nested(attr,
+				    info->attrs[NL80211_ATTR_MLD_LINK_IDS],
+				    tmp) {
+			ml_info->mlo_link_ids[i] = nla_get_u32(attr);
+			i++;
+		}
+		ml_info->num_mlo_links = i;
+	}
+
+	i = 0;
+	if (info->attrs[NL80211_ATTR_MLD_LINK_MACS]) {
+		int tmp;
+
+		err = validate_acl_mac_addrs(info->attrs[NL80211_ATTR_MLD_LINK_MACS]);
+		if (err <= 0)
+			goto out;
+
+		nla_for_each_nested(attr,
+				    info->attrs[NL80211_ATTR_MLD_LINK_MACS],
+				    tmp) {
+			memcpy(ml_info->mlo_mac_addrs[i].addr, nla_data(attr), ETH_ALEN);
+			i++;
+		}
+	}
+
+	params->mlo_info.reconfig =
+		nla_get_flag(info->attrs[NL80211_ATTR_RECONFIG]);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+
 	if (info->attrs[NL80211_ATTR_UNSOL_BCAST_PROBE_RESP]) {
 		err = nl80211_parse_unsol_bcast_probe_resp(
 			rdev, info->attrs[NL80211_ATTR_UNSOL_BCAST_PROBE_RESP],
@@ -6102,7 +6148,7 @@ static int nl80211_stop_ap(struct sk_buff *skb, struct genl_info *info)
 	unsigned int link_id = nl80211_link_id(info->attrs);
 	struct net_device *dev = info->user_ptr[1];
 
-	return cfg80211_stop_ap(rdev, dev, link_id, false);
+	return cfg80211_stop_ap(rdev, dev, link_id, false, info);
 }
 
 static const struct nla_policy sta_flags_policy[NL80211_STA_FLAG_MAX + 1] = {
@@ -17729,9 +17775,16 @@ void nl80211_send_port_authorized(struct cfg80211_registered_device *rdev,
 	nlmsg_free(msg);
 }
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
 			       struct net_device *netdev, u16 reason,
 			       const u8 *ie, size_t ie_len, bool from_ap)
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
+			       struct net_device *netdev, u16 reason,
+			       const u8 *ie, size_t ie_len, bool from_ap,
+			       int link_id)
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 {
 	struct sk_buff *msg;
 	void *hdr;
@@ -17752,6 +17805,10 @@ void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
 	     nla_put_u16(msg, NL80211_ATTR_REASON_CODE, reason)) ||
 	    (from_ap &&
 	     nla_put_flag(msg, NL80211_ATTR_DISCONNECTED_BY_AP)) ||
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+	    (link_id >= 0 && link_id <= NL80211_MLD_MAX_NUM_LINKS &&
+	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) ||
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 	    (ie && nla_put(msg, NL80211_ATTR_IE, ie_len, ie)))
 		goto nla_put_failure;
 
