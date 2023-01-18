@@ -46,9 +46,6 @@ qnoc-bengal.ko
 ns.ko
 nvmem_qfprom.ko
 nvmem_qcom-spmi-sdam.ko
-phy-qcom-ufs.ko
-phy-qcom-ufs-qmp-v4-khaje.ko
-phy-qcom-ufs-qrbtc-sdm845.ko
 pinctrl-msm.ko
 proxy-consumer.ko
 qpnp-power-on.ko
@@ -68,7 +65,6 @@ secure_buffer.ko
 smem.ko
 socinfo.ko
 stub-regulator.ko
-ufs_qcom.ko
 arm_smmu.ko
 mem-offline.ko
 sdhci-msm.ko
@@ -79,7 +75,6 @@ usbpd.ko
 cqhci-crypto-qti.ko
 crypto-qti-tz.ko
 crypto-qti-common.ko
-ufshcd-crypto-qti.ko
 slim-qcom-ngd-ctrl.ko
 bam_dma.ko
 pdr_interface.ko
