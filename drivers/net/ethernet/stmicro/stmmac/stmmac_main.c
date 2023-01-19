@@ -1153,6 +1153,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 				 unsigned int mode, phy_interface_t interface)
 {
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
+	int ret = 0;
+
+	if (priv->hw->qxpcs) {
+		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
+		if (ret < 0)
+			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
+	}
 
 	stmmac_mac_set(priv, priv->ioaddr, false);
 	priv->eee_active = false;
@@ -1173,6 +1180,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	u32 ctrl;
 	int phy_data = 0;
+	int ret = 0;
+
+	if (priv->hw->qxpcs) {
+		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
+		if (ret < 0)
+			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
+	}
 
 	ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
 	ctrl &= ~priv->hw->link.speed_mask;
@@ -1393,7 +1407,7 @@ static int stmmac_init_phy(struct net_device *dev)
 			if (priv->phydev->drv &&
 			    priv->phydev->drv->config_intr &&
 			    !priv->phydev->drv->config_intr(priv->phydev)) {
-				pr_err(" qcom-ethqos: %s config_phy_intr successful aftre connect\n",
+				pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
 				       __func__);
 				priv->plat->request_phy_wol(priv->plat);
 			}
@@ -3911,6 +3925,12 @@ static int stmmac_open(struct net_device *dev)
 				   __func__, ret);
 			goto init_phy_error;
 		}
+	}
+
+	if (priv->hw->qxpcs && !netif_carrier_ok(dev)) {
+		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
+		if (ret < 0)
+			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
 	}
 
 	/* Extra statistics */
