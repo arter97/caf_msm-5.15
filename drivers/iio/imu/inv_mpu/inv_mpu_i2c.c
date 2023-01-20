@@ -714,6 +714,7 @@ static const struct i2c_device_id inv_mpu_id[] = {
 	{"icm40609d", ICM40609D},
 	{"icm43600", ICM43600},
 	{"iim42600", ICM42600},
+	{"icm45600", ICM45600},
 #endif
 	{}
 };
