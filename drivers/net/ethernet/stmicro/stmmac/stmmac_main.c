@@ -37,6 +37,7 @@
 #endif /* CONFIG_DEBUG_FS */
 #include <linux/net_tstamp.h>
 #include <linux/phylink.h>
+#include <linux/pcs-xpcs-qcom.h>
 #include <linux/udp.h>
 #include <linux/bpf_trace.h>
 #include <net/pkt_cls.h>
@@ -521,6 +522,10 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 				xpcs_config_eee(priv->hw->xpcs,
 						priv->plat->mult_fact_100ns,
 						false);
+			if (priv->hw->qxpcs)
+				qcom_xpcs_config_eee(priv->hw->qxpcs,
+						     priv->plat->mult_fact_100ns,
+						     false);
 		}
 		mutex_unlock(&priv->lock);
 		return false;
@@ -534,6 +539,12 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 			xpcs_config_eee(priv->hw->xpcs,
 					priv->plat->mult_fact_100ns,
 					true);
+		if (priv->hw->qxpcs) {
+			priv->plat->mult_fact_100ns = 9;
+			qcom_xpcs_config_eee(priv->hw->qxpcs,
+					     priv->plat->mult_fact_100ns,
+					     true);
+		}
 	}
 
 	if (priv->plat->has_gmac4 && priv->tx_lpi_timer <= STMMAC_ET_MAX) {
@@ -1113,6 +1124,8 @@ static void stmmac_validate(struct phylink_config *config,
 	/* If PCS is supported, check which modes it supports. */
 	if (priv->hw->xpcs)
 		xpcs_validate(priv->hw->xpcs, supported, state);
+	if (priv->hw->qxpcs)
+		qcom_xpcs_validate(priv->hw->qxpcs, supported, state);
 }
 
 static void stmmac_mac_config(struct phylink_config *config, unsigned int mode,
@@ -1264,6 +1277,24 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->boot_kpi = true;
 	}
 #endif
+	/*We need to reset the clks when speed change occurs on remote
+	 *this is because we need to align rgmii clocks with data else
+	 *the data would stall on speed change.
+	 */
+	if (priv->plat->rgmii_rst) {
+		reset_control_assert(priv->plat->rgmii_rst);
+		mdelay(100);
+		reset_control_deassert(priv->plat->rgmii_rst);
+	}
+
+	/*Disable LPI interrupt in the mac and enable it during Power management*/
+	if (priv->lpi_irq < 0 && priv->plat->has_xgmac) {
+		int status = 0;
+
+		status = readl(priv->ioaddr + XGMAC_INT_EN);
+		status &= ~(XGMAC_LPIIS);
+		writel(status, priv->ioaddr + XGMAC_INT_EN);
+	}
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -3046,6 +3077,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		return ret;
 	}
 
+	if (priv->plat->rgmii_rst) {
+		reset_control_assert(priv->plat->rgmii_rst);
+		mdelay(100);
+		reset_control_deassert(priv->plat->rgmii_rst);
+	}
+
 	/* DMA Configuration */
 	stmmac_dma_init(priv, priv->ioaddr, priv->plat->dma_cfg, atds);
 
@@ -3863,8 +3900,10 @@ static int stmmac_open(struct net_device *dev)
 	if (!priv->plat->mac2mac_en &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
-	    (!priv->hw->xpcs ||
-	     xpcs_get_an_mode(priv->hw->xpcs, mode) != DW_AN_C73)) {
+	    ((!priv->hw->xpcs ||
+	     xpcs_get_an_mode(priv->hw->xpcs, mode) != DW_AN_C73) &&
+	    (!priv->hw->qxpcs ||
+	     qcom_xpcs_get_an_mode(priv->hw->qxpcs, mode) != DW_AN_C73))) {
 		ret = stmmac_init_phy(dev);
 		if (ret) {
 			netdev_err(priv->dev,
@@ -5294,6 +5333,47 @@ read_again:
 	return failure ? limit : (int)count;
 }
 
+static u16 csum(u16 old_csum)
+{
+	u16 new_checksum = 0;
+
+	new_checksum = ~(~old_csum + (-8) + 0);
+	return new_checksum;
+}
+
+void swap_ip_port(struct sk_buff *skb, unsigned int eth_type)
+{
+	__be32 temp_addr;
+	unsigned char *buf = skb->data;
+	struct icmphdr *icmp_hdr;
+	unsigned char eth_temp[ETH_ALEN] = {};
+	struct ethhdr *eth = (struct ethhdr *)(buf);
+	struct iphdr *ip_header;
+
+	if (eth_type == ETH_P_IP) {
+		ip_header = (struct iphdr *)(buf + sizeof(struct ethhdr));
+		if (ip_header->protocol == IPPROTO_UDP ||
+		    ip_header->protocol ==  IPPROTO_ICMP) {
+			//swap mac address
+			memcpy(eth_temp, eth->h_dest, ETH_ALEN);
+			memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+			memcpy(eth->h_source, eth_temp, ETH_ALEN);
+			//swap ip address
+			temp_addr = ip_header->daddr;
+			ip_header->daddr = ip_header->saddr;
+			ip_header->saddr = temp_addr;
+
+			icmp_hdr = (struct icmphdr *)(buf
+					+ sizeof(struct ethhdr)
+					+ sizeof(struct iphdr));
+			if (icmp_hdr->type == ICMP_ECHO) {
+				icmp_hdr->type = ICMP_ECHOREPLY;
+				icmp_hdr->checksum = csum(icmp_hdr->checksum);
+			}
+		}
+	}
+}
+
 /**
  * stmmac_rx - manage the receive process
  * @priv: driver private structure
@@ -5315,6 +5395,7 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit, u32 queue)
 	struct xdp_buff xdp;
 	int xdp_status = 0;
 	int buf_sz;
+	unsigned int eth_type;
 
 	dma_dir = page_pool_get_dma_dir(rx_q->page_pool);
 	buf_sz = DIV_ROUND_UP(priv->dma_buf_sz, PAGE_SIZE) * PAGE_SIZE;
@@ -5526,6 +5607,12 @@ read_again:
 			page_pool_release_page(rx_q->page_pool, buf->sec_page);
 			buf->sec_page = NULL;
 		}
+
+		eth_type = priv->plat->get_eth_type(skb->data);
+
+		if (priv->current_loopback > 0 &&
+		    eth_type == ETH_P_IP)
+			swap_ip_port(skb, eth_type);
 
 drain_data:
 		if (likely(status & rx_not_ls))
@@ -6970,6 +7057,10 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
 	ret = stmmac_hwif_init(priv);
 	if (ret)
 		return ret;
+
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_4K)
+	priv->ptpaddr = priv->ioaddr + XGMAC_TIMESTAMP_BASE_ADDR;
+#endif
 
 	/* Get the HW capability (new GMAC newer than 3.50a) */
 	priv->hw_cap_support = stmmac_get_hw_features(priv);

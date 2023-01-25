@@ -57,6 +57,8 @@ enum {
 		.mux_bit = 2,			\
 		.pull_bit = 0,			\
 		.drv_bit = 6,			\
+		.egpio_enable = 12,             \
+		.egpio_present = 11,            \
 		.oe_bit = 9,			\
 		.in_bit = 0,			\
 		.out_bit = 1,			\
@@ -99,6 +101,8 @@ enum {
 		.mux_bit = 2,			\
 		.pull_bit = 0,			\
 		.drv_bit = 6,			\
+		.egpio_enable = 12,             \
+		.egpio_present = 11,            \
 		.oe_bit = 9,			\
 		.in_bit = 0,			\
 		.out_bit = 1,			\
@@ -1964,15 +1968,27 @@ static const struct msm_pingroup sa410m_groups[] = {
 			 NA, NA, NA, 0, -1),
 	[139] = PINGROUP1(139, emac0_ptp_pps, emac0_ptp_pps, emac0_ptp_pps,
 			 emac0_ptp_pps, NA, NA, NA, NA, NA, 0, -1),
-	[140] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x399a000, 15, 0),
-	[141] = SDC_QDSD_PINGROUP(sdc1_clk, 0x399a000, 13, 6),
-	[142] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x399a000, 11, 3),
-	[143] = SDC_QDSD_PINGROUP(sdc1_data, 0x399a000, 9, 0),
-	[144] = SDC_QDSD_PINGROUP(sdc2_clk, 0x186000, 14, 6),
-	[145] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x186000, 11, 3),
-	[146] = SDC_QDSD_PINGROUP(sdc2_data, 0x186000, 9, 0),
+	[140] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x84000, 15, 0),
+	[141] = SDC_QDSD_PINGROUP(sdc1_clk, 0x84000, 13, 6),
+	[142] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x84000, 11, 3),
+	[143] = SDC_QDSD_PINGROUP(sdc1_data, 0x84000, 9, 0),
+	[144] = SDC_QDSD_PINGROUP(sdc2_clk, 0x86000, 14, 6),
+	[145] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x86000, 11, 3),
+	[146] = SDC_QDSD_PINGROUP(sdc2_data, 0x86000, 9, 0),
 };
 static struct pinctrl_qup sa410m_qup_regs[] = {
+};
+
+static const struct msm_gpio_wakeirq_map sa410m_mpm_map[] = {
+	{ 0, 84 }, { 3, 75 }, { 4, 16 }, { 5, 39 }, { 6, 59 }, { 8, 63 }, { 9, 46 },
+	{ 10, 30 }, { 11, 17 }, { 13, 18 }, { 14, 51 }, { 15, 78 }, { 17, 20 }, { 22, 79 },
+	{ 23, 32 }, { 24, 6 }, { 26, 80 }, { 27, 73 }, { 30, 81 }, { 31, 27 }, { 32, 54 },
+	{ 33, 55 }, { 36, 58 }, { 39, 28 }, { 42, 52 }, { 46, 29 }, { 47, 53 }, { 52, 56 },
+	{ 62, 60 }, { 63, 61 }, { 64, 62 }, { 69, 33 }, { 70, 34 }, { 71, 82 }, { 72, 72 },
+	{ 75, 35 }, { 79, 36 }, { 80, 21 }, { 88, 57 }, { 89, 45 }, { 94, 47 }, { 95, 48 },
+	{ 96, 49 }, { 97, 50 }, { 98, 41 }, { 99, 64 }, { 101, 13 }, { 102, 65 }, { 103, 66 },
+	{ 104, 67 }, { 105, 69 }, { 106, 14 }, { 107, 7 }, { 108, 40 }, { 109, 37 }, { 110, 76 },
+	{ 112, 25 }, { 113, 26 }, { 116, 44 }, { 124, 9 }, { 126, 11 }, { 137, 31 }, { 138, 77 },
 };
 
 static const struct msm_pinctrl_soc_data sa410m_pinctrl = {
@@ -1987,6 +2003,8 @@ static const struct msm_pinctrl_soc_data sa410m_pinctrl = {
 	.ntiles = ARRAY_SIZE(sa410m_tiles),
 	.qup_regs = sa410m_qup_regs,
 	.nqup_regs = ARRAY_SIZE(sa410m_qup_regs),
+	.wakeirq_map = sa410m_mpm_map,
+	.nwakeirq_map = ARRAY_SIZE(sa410m_mpm_map),
 };
 
 static int sa410m_pinctrl_probe(struct platform_device *pdev)

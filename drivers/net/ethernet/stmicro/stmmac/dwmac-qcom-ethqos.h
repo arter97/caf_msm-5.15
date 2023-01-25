@@ -15,6 +15,7 @@
 
 #include <linux/uaccess.h>
 #include <linux/ipc_logging.h>
+#include <linux/interconnect.h>
 
 #define QCOM_ETH_QOS_MAC_ADDR_LEN
 #define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
@@ -90,6 +91,11 @@ do {\
 #define SDC4_STATUS			0x14
 #define SDCC_USR_CTL			0x18
 #define RGMII_IO_MACRO_CONFIG2		0x1C
+#define EMAC_WRAPPER_SGMII_PHY_CNTRL0		0x170
+#define EMAC_WRAPPER_SGMII_PHY_CNTRL1		0x174
+#define EMAC_WRAPPER_USXGMII_MUX_SEL		0x1D0
+#define RGMII_IO_MACRO_SCRATCH_2		0x44
+#define RGMII_IO_MACRO_BYPASS		0x16C
 
 #define EMAC_HW_NONE 0
 #define EMAC_HW_v2_1_1 0x20010001
@@ -97,22 +103,33 @@ do {\
 #define EMAC_HW_v2_3_0 0x20030000
 #define EMAC_HW_v2_3_1 0x20030001
 #define EMAC_HW_v3_0_0_RG 0x30000000
+#define EMAC_HW_v4_0_0 0x40000000
 #define EMAC_HW_vMAX 9
 
 #define ETHQOS_CONFIG_PPSOUT_CMD 44
 #define ETHQOS_AVB_ALGORITHM 27
 
-#define MAC_PPS_CONTROL			0x00000b70
 #define PPS_MAXIDX(x)			((((x) + 1) * 8) - 1)
 #define PPS_MINIDX(x)			((x) * 8)
 #define MCGRENX(x)			BIT(PPS_MAXIDX(x))
 #define PPSEN0				BIT(4)
-#define MAC_PPSX_TARGET_TIME_SEC(x)	(0x00000b80 + ((x) * 0x10))
-#define MAC_PPSX_TARGET_TIME_NSEC(x)	(0x00000b84 + ((x) * 0x10))
+
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_4K)
+	#define MAC_PPS_CONTROL		0x000007070
+	#define MAC_PPSX_TARGET_TIME_SEC(x)	(0x00007080 + ((x) * 0x10))
+	#define MAC_PPSX_TARGET_TIME_NSEC(x)	(0x00007084 + ((x) * 0x10))
+	#define MAC_PPSX_INTERVAL(x)		(0x00007088 + ((x) * 0x10))
+	#define MAC_PPSX_WIDTH(x)		(0x0000708c + ((x) * 0x10))
+#else
+	#define MAC_PPS_CONTROL		0x00000b70
+	#define MAC_PPSX_TARGET_TIME_SEC(x)	(0x00000b80 + ((x) * 0x10))
+	#define MAC_PPSX_TARGET_TIME_NSEC(x)	(0x00000b84 + ((x) * 0x10))
+	#define MAC_PPSX_INTERVAL(x)		(0x00000b88 + ((x) * 0x10))
+	#define MAC_PPSX_WIDTH(x)		(0x00000b8c + ((x) * 0x10))
+#endif
+
 #define TRGTBUSY0			BIT(31)
 #define TTSL0				GENMASK(30, 0)
-#define MAC_PPSX_INTERVAL(x)		(0x00000b88 + ((x) * 0x10))
-#define MAC_PPSX_WIDTH(x)		(0x00000b8c + ((x) * 0x10))
 
 #define PPS_START_DELAY 100000000
 #define ONE_NS 1000000000
@@ -134,6 +151,13 @@ do {\
 #define VOTE_IDX_10MBPS 1
 #define VOTE_IDX_100MBPS 2
 #define VOTE_IDX_1000MBPS 3
+#define VOTE_IDX_2500MBPS 4
+#define VOTE_IDX_5000MBPS 5
+#define VOTE_IDX_10000MBPS 6
+
+//Mac config
+#define XGMAC_RX_CONFIG		0x00000004
+#define XGMAC_CONFIG_LM			BIT(10)
 
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
@@ -153,9 +177,29 @@ static inline u32 PPSX_MASK(u32 x)
 }
 
 enum IO_MACRO_PHY_MODE {
-		RGMII_MODE,
-		RMII_MODE,
-		MII_MODE
+	RGMII_MODE,
+	RMII_MODE,
+	MII_MODE
+};
+
+enum loopback_mode {
+	DISABLE_LOOPBACK = 0,
+	ENABLE_IO_MACRO_LOOPBACK,
+	ENABLE_MAC_LOOPBACK,
+	ENABLE_PHY_LOOPBACK
+};
+
+enum phy_power_mode {
+	DISABLE_PHY_IMMEDIATELY = 1,
+	ENABLE_PHY_IMMEDIATELY,
+	DISABLE_PHY_AT_SUSPEND_ONLY,
+	DISABLE_PHY_SUSPEND_ENABLE_RESUME,
+	DISABLE_PHY_ON_OFF,
+};
+
+enum current_phy_state {
+	PHY_IS_ON = 0,
+	PHY_IS_OFF,
 };
 
 struct ethqos_emac_por {
@@ -168,14 +212,120 @@ struct ethqos_emac_driver_data {
 	unsigned int num_por;
 };
 
+struct emac_icc_data {
+	const char *name;
+	u32 average_bandwidth;
+	u32 peak_bandwidth;
+};
+
+static struct emac_icc_data emac_axi_icc_data[] = {
+	{
+		.name = "SPEED_0Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 0,
+	},
+	{
+		.name = "SPEED_10Mbps",
+		.average_bandwidth = 2500,
+		.peak_bandwidth = 2500,
+	},
+	{
+		.name = "SPEED_100Mbps",
+		.average_bandwidth = 25000,
+		.peak_bandwidth = 25000,
+	},
+	{
+		.name = "SPEED_1Gbps",
+		.average_bandwidth = 250000,
+		.peak_bandwidth = 250000,
+	},
+	{
+		.name = "SPEED_2.5Gbps",
+		.average_bandwidth = 625000,
+		.peak_bandwidth = 625000,
+	},
+	{
+		.name = "SPEED_5Gbps",
+		.average_bandwidth = 1250000,
+		.peak_bandwidth = 1250000,
+	},
+	{
+		.name = "SPEED_10Gbps",
+		.average_bandwidth = 2500000,
+		.peak_bandwidth = 2500000,
+	},
+};
+
+static struct emac_icc_data emac_apb_icc_data[] = {
+	{
+		.name = "SPEED_0Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 0,
+	},
+	{
+		.name = "SPEED_10Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 2500,
+	},
+	{
+		.name = "SPEED_100Mbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 25000,
+	},
+	{
+		.name = "SPEED_1Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 250000,
+	},
+	{
+		.name = "SPEED_2.5Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 625000,
+	},
+	{
+		.name = "SPEED_5Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 1250000,
+	},
+	{
+		.name = "SPEED_10Gbps",
+		.average_bandwidth = 0,
+		.peak_bandwidth = 2500000,
+	},
+};
+
 struct qcom_ethqos {
 	struct platform_device *pdev;
 	void __iomem *rgmii_base;
+	void __iomem *sgmii_base;
+	void __iomem *ioaddr;
 
 	struct msm_bus_scale_pdata *bus_scale_vec;
 	u32 bus_hdl;
 	unsigned int rgmii_clk_rate;
 	struct clk *rgmii_clk;
+	struct clk *phyaux_clk;
+	struct clk *sgmiref_clk;
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	/* Clocks required for SGMII and USXGMII interfaces */
+	struct clk *clk_eee;
+	struct clk *sgmii_rx_clk;
+	struct clk *sgmii_tx_clk;
+	struct clk *pcs_rx_clk;
+	struct clk *pcs_tx_clk;
+	struct clk *xgxs_rx_clk;
+	struct clk *xgxs_tx_clk;
+	struct clk *sgmii_rx_clk_src;
+	struct clk *sgmii_rclk;
+	struct clk *sgmii_tx_clk_src;
+	struct clk *sgmii_tclk;
+	struct clk *sgmii_mac_rx_clk_src;
+	struct clk *sgmii_mac_rclk;
+	struct clk *sgmii_mac_tx_clk_src;
+	struct clk *sgmii_mac_tclk;
+#endif
+
 	unsigned int speed;
 	unsigned int vote_idx;
 
@@ -184,7 +334,7 @@ struct qcom_ethqos {
 	/* Work struct for handling phy interrupt */
 	struct work_struct emac_phy_work;
 
-	const struct ethqos_emac_por *por;
+	struct ethqos_emac_por *por;
 	unsigned int num_por;
 	unsigned int emac_ver;
 
@@ -207,7 +357,10 @@ struct qcom_ethqos {
 	dev_t avb_class_b_dev_t;
 	struct cdev *avb_class_b_cdev;
 	struct class *avb_class_b_class;
-
+	struct icc_path *axi_icc_path;
+	struct emac_icc_data *emac_axi_icc;
+	struct icc_path *apb_icc_path;
+	struct emac_icc_data *emac_apb_icc;
 	unsigned long avb_class_a_intr_cnt;
 	unsigned long avb_class_b_intr_cnt;
 
@@ -229,6 +382,21 @@ struct qcom_ethqos {
 	/* Key Performance Indicators */
 	bool print_kpi;
 	struct dentry *debugfs_dir;
+	int curr_serdes_speed;
+	unsigned int emac_phy_off_suspend;
+	int loopback_speed;
+	enum loopback_mode current_loopback;
+	enum phy_power_mode current_phy_mode;
+	enum current_phy_state phy_state;
+	/*Backup variable for phy loopback*/
+	int backup_duplex;
+	int backup_speed;
+	u32 bmcr_backup;
+	/*Backup variable for suspend resume*/
+	int backup_suspend_speed;
+	u32 backup_bmcr;
+	unsigned backup_autoneg:1;
+	bool probed;
 };
 
 struct pps_cfg {
@@ -271,6 +439,11 @@ struct ip_params {
 	unsigned char mac_addr[QCOM_ETH_QOS_MAC_ADDR_LEN];
 };
 
+struct mac_params {
+	phy_interface_t eth_intf;
+	bool is_valid_eth_intf;
+};
+
 int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
@@ -284,6 +457,9 @@ bool qcom_ethqos_is_phy_link_up(struct qcom_ethqos *ethqos);
 void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos);
 
 int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg);
+int ethqos_phy_power_on(struct qcom_ethqos *ethqos);
+void  ethqos_phy_power_off(struct qcom_ethqos *ethqos);
+void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos);
 
 u16 dwmac_qcom_select_queue(struct net_device *dev,
 			    struct sk_buff *skb,
@@ -343,4 +519,5 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 				      struct ifr_data_struct *req);
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb);
 int ethqos_init_pps(void *priv);
+unsigned int dwmac_qcom_get_eth_type(unsigned char *buf);
 #endif

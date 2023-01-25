@@ -456,6 +456,7 @@ struct event_req {
 	void			(*msi_cb)(void *req);
 	struct list_head	list;
 	u32			flush_num;
+	u32			snd_cmpl;
 	bool		is_cmd_cpl;
 	bool		is_stale;
 };
@@ -514,6 +515,7 @@ struct mhi_dev_channel {
 	uint32_t			pend_wr_count;
 	uint32_t			msi_cnt;
 	uint32_t			flush_req_cnt;
+	uint32_t			snd_cmpl_cnt;
 	uint32_t			pend_flush_cnt;
 	bool				skip_td;
 	bool				db_pending;
@@ -609,13 +611,11 @@ struct mhi_dev {
 	bool				use_mhi_dma;
 
 	/* Denotes if the MHI instance is physcial or virtual */
-	bool				is_mhi_virtual;
+	bool				is_mhi_pf;
 
 	bool				is_flashless;
 
 	bool				mhi_has_smmu;
-
-	bool				is_mhi_pf;
 
 	/* iATU is required to map control and data region */
 	bool				config_iatu;
@@ -1203,4 +1203,14 @@ void mhi_uci_chan_state_notify(struct mhi_dev *mhi,
 
 void mhi_dev_pm_relax(struct mhi_dev *mhi_ctx);
 void mhi_dev_resume_init_with_link_up(struct ep_pcie_notify *notify);
+
+int  mhi_edma_release(void);
+
+int  mhi_edma_status(void);
+
+int mhi_edma_init(struct device *dev);
+void free_coherent(struct mhi_dev *mhi, size_t size, void *virt,
+		   dma_addr_t phys);
+void *alloc_coherent(struct mhi_dev *mhi, size_t size, dma_addr_t *phys,
+		     gfp_t gfp);
 #endif /* _MHI_H */

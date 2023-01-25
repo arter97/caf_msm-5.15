@@ -888,6 +888,14 @@ static int stmmac_ethtool_op_set_eee(struct net_device *dev,
 			return ret;
 	}
 
+	if (priv->hw->qxpcs) {
+		ret = qcom_xpcs_config_eee(priv->hw->qxpcs,
+					   priv->plat->mult_fact_100ns,
+					   edata->eee_enabled);
+		if (ret)
+			return ret;
+	}
+
 	if (!edata->eee_enabled)
 		stmmac_disable_eee_mode(priv);
 

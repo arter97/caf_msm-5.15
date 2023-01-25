@@ -357,7 +357,6 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 	struct net_device *ndev = bus->priv;
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned int mii_address = priv->hw->mii.addr;
-	bool active_high = false;
 
 	if (priv->early_eth)
 		return 0;
@@ -368,23 +367,38 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 		u32 delays[3] = { 0, 0, 0 };
 
 		reset_gpio = devm_gpiod_get_optional(priv->device,
-						     "snps,reset",
-						     GPIOD_OUT_LOW);
-		if (IS_ERR(reset_gpio))
+					    "snps,reset",
+					    GPIOD_OUT_HIGH);
+		if (IS_ERR(reset_gpio)) {
+			dev_err(priv->device, "error reset GPIO is %d\n", PTR_ERR(reset_gpio));
 			return PTR_ERR(reset_gpio);
+		}
 
 		device_property_read_u32_array(priv->device,
 					       "snps,reset-delays-us",
 					       delays, ARRAY_SIZE(delays));
 
+		if (priv->plat->reset_phy1_gpio) {
+			if (priv->plat->is_valid_eth_intf) {
+				reset_gpio = priv->plat->reset_phy1_gpio;
+				gpiod_set_value(reset_gpio, 1);
+
+				device_property_read_u32_array(priv->device,
+							       "snps,phy1-reset-delays-us",
+								delays, ARRAY_SIZE(delays));
+			} else {
+				gpiod_set_value(priv->plat->reset_phy1_gpio, 1);
+			}
+		}
+
 		if (delays[0])
 			msleep(DIV_ROUND_UP(delays[0], 1000));
 
-		gpiod_set_value_cansleep(reset_gpio, active_high ? 1 : 0);
+		gpiod_set_value(reset_gpio, 1);
 		if (delays[1])
 			msleep(DIV_ROUND_UP(delays[1], 1000));
 
-		gpiod_set_value_cansleep(reset_gpio, active_high ? 0 : 1);
+		gpiod_set_value(reset_gpio, 0);
 		if (delays[2])
 			msleep(DIV_ROUND_UP(delays[2], 1000));
 	}
@@ -471,6 +485,9 @@ int stmmac_mdio_register(struct net_device *ndev)
 	}
 
 	if (priv->plat->has_xgmac) {
+		if (priv->plat->is_valid_eth_intf)
+			new_bus->probe_capabilities = MDIOBUS_C45;
+
 		new_bus->read = &stmmac_xgmac2_mdio_read;
 		new_bus->write = &stmmac_xgmac2_mdio_write;
 

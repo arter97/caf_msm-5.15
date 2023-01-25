@@ -367,6 +367,7 @@ enum bus_vote {
 	BUS_VOTE_NONE,
 	BUS_VOTE_NOMINAL,
 	BUS_VOTE_SVS,
+	BUS_VOTE_LSVS,
 	BUS_VOTE_MIN,
 	BUS_VOTE_MAX
 };
@@ -382,6 +383,7 @@ static const struct {
 	[BUS_VOTE_NONE]    = { {0, 0}, {0, 0}, {0, 0} },
 	[BUS_VOTE_NOMINAL] = { {1000000, 1250000}, {0, 2400}, {0, 40000}, },
 	[BUS_VOTE_SVS]     = { {240000, 700000}, {0, 2400}, {0, 40000}, },
+	[BUS_VOTE_LSVS]     = { {120000, 380000}, {0, 2400}, {0, 40000}, },
 	[BUS_VOTE_MIN]     = { {1, 1}, {1, 1}, {1, 1}, },
 };
 
@@ -579,6 +581,7 @@ struct dwc3_msm {
 	int			refcnt_dp_usb;
 	enum dp_lane		dp_state;
 	bool			dynamic_disable;
+	bool			sleep_clk_bcr;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -4054,6 +4057,11 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 		if (ret)
 			dev_err(mdwc->dev, "%s:core_reset deassert failed\n",
 					__func__);
+
+		if (mdwc->sleep_clk_bcr) {
+			/* HW requires a short delay for reset to take place properly */
+			usleep_range(200, 250);
+		}
 	}
 
 	ret = dwc3_clk_enable_disable(mdwc, true, mdwc->lpm_flags & MDWC3_POWER_COLLAPSE);
@@ -5712,6 +5720,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	mdwc->use_eusb2_phy = of_property_read_bool(node, "qcom,use-eusb2-phy");
 	mdwc->disable_host_ssphy_powerdown = of_property_read_bool(node,
 				"qcom,disable-host-ssphy-powerdown");
+
+	mdwc->sleep_clk_bcr = of_property_read_bool(node, "qcom,sleep-clk-bcr");
 
 	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64))) {
 		dev_err(&pdev->dev, "setting DMA mask to 64 failed.\n");
