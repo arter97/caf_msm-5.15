@@ -3932,20 +3932,23 @@ static int qcom_ethqos_hib_restore(struct device *dev)
 #ifdef DWC_ETH_QOS_CONFIG_PTP
 	if (priv->plat->clk_ptp_ref) {
 		ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
-		if (ret < 0)
+		if (ret < 0) {
 			netdev_warn(priv->dev, "failed to enable PTP reference clock: %d\n", ret);
-	}
-	ret = stmmac_init_ptp(priv);
-	if (ret == -EOPNOTSUPP) {
-		netdev_warn(priv->dev, "PTP not supported by HW\n");
-	} else if (ret) {
-		netdev_warn(priv->dev, "PTP init failed\n");
-	} else {
-		clk_set_rate(priv->plat->clk_ptp_ref,
-			     priv->plat->clk_ptp_rate);
+		} else {
+			ret = stmmac_init_ptp(priv);
+			if (ret == -EOPNOTSUPP) {
+				netdev_warn(priv->dev, "PTP not supported by HW\n");
+			} else if (ret) {
+				netdev_warn(priv->dev, "PTP init failed\n");
+			} else {
+				clk_set_rate(priv->plat->clk_ptp_ref,
+					     priv->plat->clk_ptp_rate);
+			}
+
+			ret = priv->plat->init_pps(priv);
+		}
 	}
 
-	ret = priv->plat->init_pps(priv);
 #endif /* end of DWC_ETH_QOS_CONFIG_PTP */
 
 	/* issue software reset to device */
