@@ -3421,6 +3421,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->is_valid_eth_intf = mparams.is_valid_eth_intf;
 	}
 
+	if (pdev->name) {
+		if (strnstr(pdev->name, "emac1", strlen(pdev->name)))
+			plat_dat->port_num = 1;
+		else
+			plat_dat->port_num = 0;
+	}
+
 	ethqos->rgmii_base = devm_platform_ioremap_resource_byname(pdev, "rgmii");
 	if (IS_ERR(ethqos->rgmii_base)) {
 		ret = PTR_ERR(ethqos->rgmii_base);
