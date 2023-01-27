@@ -1766,6 +1766,7 @@ static int ethqos_configure_sgmii_v4(struct qcom_ethqos *ethqos)
 
 static int ethqos_configure_usxgmii_v4(struct qcom_ethqos *ethqos)
 {
+	rgmii_updatel(ethqos, RGMII_BYPASS_EN, RGMII_BYPASS_EN, RGMII_IO_MACRO_BYPASS);
 	rgmii_updatel(ethqos, RGMII_CONFIG2_MODE_EN_VIA_GMII, 0, RGMII_IO_MACRO_CONFIG2);
 	rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, BIT(5),
 		      EMAC_WRAPPER_SGMII_PHY_CNTRL0);
