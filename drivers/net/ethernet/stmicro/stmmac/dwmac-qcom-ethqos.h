@@ -16,6 +16,8 @@
 #include <linux/uaccess.h>
 #include <linux/ipc_logging.h>
 #include <linux/interconnect.h>
+#include <linux/qtee_shmbridge.h>
+
 
 #define QCOM_ETH_QOS_MAC_ADDR_LEN
 #define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
@@ -299,7 +301,10 @@ struct qcom_ethqos {
 	void __iomem *rgmii_base;
 	void __iomem *sgmii_base;
 	void __iomem *ioaddr;
-
+	u32 rgmii_phy_base;
+	struct qtee_shm shm_rgmii_hsr;
+	struct qtee_shm shm_rgmii_local;
+	phys_addr_t phys_rgmii_hsr_por;
 	struct msm_bus_scale_pdata *bus_scale_vec;
 	u32 bus_hdl;
 	unsigned int rgmii_clk_rate;

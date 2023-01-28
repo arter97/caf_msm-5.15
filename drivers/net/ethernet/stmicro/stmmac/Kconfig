@@ -285,6 +285,14 @@ config ETHQOS_QCOM_SERDES
 	  Serdes driver by default comes up on 1Gbps mode in SGMII and USXGMII
 	  due to h/w limitation.
 
+config ETHQOS_QCOM_SCM
+	bool "Enable Secure monitor calls"
+	depends on ETHQOS_QCOM_VER4
+	help
+	  Secure monitor calls are needed to pass parameters to EMAC driver running
+	  in secure subsystem so it can configure EMAC wrapper and IO macro hardware
+	  blocks. This is applicable for all interface modes and all speeds for
+	  some specific hardware configurations.
 endif
 
 config DWMAC_INTEL
