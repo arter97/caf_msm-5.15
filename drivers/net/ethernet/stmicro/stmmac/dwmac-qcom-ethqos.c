@@ -3637,10 +3637,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	/* Set mdio phy addr probe capability to c22 .
 	 * If c22_c45 is set then multiple phy is getting detected.
 	 */
-	if (of_property_read_bool(np, "eth-c22-mdio-probe"))
+	if (of_property_read_bool(np, "eth-c22-mdio-probe")) {
 		plat_dat->has_c22_mdio_probe_capability = 1;
-	else
+		plat_dat->has_c45_mdio_probe_capability = 0;
+	} else if (of_property_read_bool(np, "eth-c45-mdio-probe")) {
+		plat_dat->has_c45_mdio_probe_capability = 1;
 		plat_dat->has_c22_mdio_probe_capability = 0;
+	}
+
 	plat_dat->tso_en = of_property_read_bool(np, "snps,tso");
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;
 	plat_dat->request_phy_wol = qcom_ethqos_request_phy_wol;

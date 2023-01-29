@@ -480,12 +480,12 @@ int stmmac_mdio_register(struct net_device *ndev)
 	else
 		new_bus->name = "stmmac_dev0";
 
-	if (priv->plat->has_gmac4) {
-		if (priv->plat->has_c22_mdio_probe_capability)
-			new_bus->probe_capabilities = MDIOBUS_C22;
-		else
-			new_bus->probe_capabilities = MDIOBUS_C22_C45;
-	}
+	if (priv->plat->has_c22_mdio_probe_capability)
+		new_bus->probe_capabilities = MDIOBUS_C22;
+	else if (priv->plat->has_c45_mdio_probe_capability)
+		new_bus->probe_capabilities = MDIOBUS_C45;
+	else
+		new_bus->probe_capabilities = MDIOBUS_C22_C45;
 
 	if (priv->plat->has_xgmac) {
 		if (priv->plat->is_valid_eth_intf)
