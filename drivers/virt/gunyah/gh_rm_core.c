@@ -915,7 +915,8 @@ int gh_rm_populate_hyp_res(gh_vmid_t vmid, const char *vm_name)
 					ret = (*gh_vcpu_affinity_set_fn)(
 						vmid, label, cap_id, linux_irq);
 				} while (ret == -EAGAIN);
-			break;
+			if (ret < 0)
+				goto out;
 		}
 	}
 

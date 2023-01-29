@@ -272,7 +272,7 @@ int ethqos_init_pinctrl(struct device *dev)
 			return ret;
 		}
 
-		ETHQOSINFO("pinctrl_lookup_state %s succeeded\n", name);
+		ETHQOSDBG("pinctrl_lookup_state %s succeeded\n", name);
 
 		ret = pinctrl_select_state(pinctrl, pinctrl_state);
 		if (ret) {
@@ -280,7 +280,7 @@ int ethqos_init_pinctrl(struct device *dev)
 			return ret;
 		}
 
-		ETHQOSINFO("pinctrl_select_state %s succeeded\n", name);
+		ETHQOSDBG("pinctrl_select_state %s succeeded\n", name);
 	}
 
 	return ret;

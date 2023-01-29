@@ -3243,9 +3243,11 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 			msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
 		if (!status) {
 			log_event_err("%s: ipa ready timeout", __func__);
+			gsi->ipa_ready_timeout = true;
 			status = -ETIMEDOUT;
 			goto dereg_rndis;
 		}
+		gsi->d_port.ipa_ready = false;
 	}
 
 	gsi->d_port.ipa_usb_notify_cb = ipa_usb_notify_cb;

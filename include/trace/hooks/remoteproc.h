@@ -20,8 +20,11 @@
 #include <trace/hooks/vendor_hooks.h>
 #endif
 
-/* struct rproc */
+#ifdef __GENKSYMS__
 #include <linux/remoteproc.h>
+#endif
+
+struct rproc;
 
 /* When recovery succeeds */
 DECLARE_HOOK(android_vh_rproc_recovery,

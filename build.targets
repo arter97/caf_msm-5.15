@@ -1,5 +1,6 @@
+build.config.msm.cinder
 build.config.msm.sdxpinn
 build.config.msm.sdxpinn-cpe-wkk
 build.config.msm.sa525
 build.config.msm.sdxbaagha
-build.config.msm.sa410m
+build.config.msm.sa410m_auto

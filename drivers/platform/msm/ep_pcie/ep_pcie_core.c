@@ -1061,7 +1061,6 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 	}
 
 	ep_pcie_sriov_init(dev);
-
 	if (!configured) {
 		ep_pcie_config_mmio(dev);
 		ep_pcie_config_inbound_iatu(dev, PCIE_PHYSICAL_DEVICE);
