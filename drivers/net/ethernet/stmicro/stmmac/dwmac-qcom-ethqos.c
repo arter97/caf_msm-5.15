@@ -290,7 +290,10 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
 	} else {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
-		txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
+		if (pethqos->ipa_enabled)
+			txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
+		else
+			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
 	}
 
 	return txqueue_select;
@@ -4006,6 +4009,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		   ethqos->current_phy_mode);
 
 	ethqos->ioaddr = (&stmmac_res)->addr;
+
+	if (!!of_find_property(np, "qcom,ioss", NULL)) {
+		ETHQOSDBG("%s: IPA ENABLED", __func__);
+		ethqos->ipa_enabled = true;
+	}
 
 	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
 	if (ret)

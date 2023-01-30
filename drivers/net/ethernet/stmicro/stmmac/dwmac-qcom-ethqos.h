@@ -413,6 +413,7 @@ struct qcom_ethqos {
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
 	bool probed;
+	bool ipa_enabled;
 };
 
 struct pps_cfg {
