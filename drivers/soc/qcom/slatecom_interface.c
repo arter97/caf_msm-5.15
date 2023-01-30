@@ -16,9 +16,6 @@
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 #include <linux/kobject.h>
-#include "slatecom.h"
-#include "linux/slatecom_interface.h"
-#include "slatecom_interface.h"
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/gpio.h>
@@ -30,6 +27,9 @@
 #include <linux/remoteproc.h>
 #include <linux/remoteproc/qcom_rproc.h>
 #include <linux/compat.h>
+#include <linux/soc/qcom/slatecom_interface.h>
+#include <uapi/linux/slatecom_interface.h>
+#include "slatecom.h"
 #include "slatecom_rpmsg.h"
 
 #define SLATECOM "slate_com_dev"
