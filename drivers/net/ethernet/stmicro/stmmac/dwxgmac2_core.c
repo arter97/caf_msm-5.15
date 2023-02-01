@@ -1495,9 +1495,80 @@ static void dxgmac2_rx_queue_routing(struct mac_device_info *hw,
 	writel(value, ioaddr + XGMAC_RXQ_CTRL1);
 }
 
+/**
+ *  dwxgmac2_set_vlan_filter_rx_queue - Configure VLAN register
+ *  @priv: driver private structure
+ *  Description: It is used for configurring QMI over ethernet
+ */
+void dwxgmac2_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
+				       void __iomem *ioaddr)
+{
+	u32 queue = vlan->rx_queue;
+	u32 vlan_offset = vlan->vlan_offset;
+	u32 vlan_id = vlan->vlan_id;
+	u32 value = 0;
+	u32 retry_count = 5;
+	u32 count = 0;
+
+	pr_info("%s init value:\n", __func__);
+	pr_info("rx_queue %u, vlan_offset %u vlan_id %u\n",
+		queue, vlan_offset, vlan_id);
+
+	if (queue >= 4)
+		return;
+
+	if (vlan_id >= 4096)
+		return;
+
+/* Check if operation is busy before write */
+	while (1) {
+		if (count > retry_count)
+			return;
+		value = readl_relaxed(ioaddr + XGMAC_VLAN_CTRL_TAG);
+		if ((value & XGMAC_VLANTR_OB_MASK) == 0x0)
+			break;
+		count++;
+		usleep_range(500, 1000);
+	}
+	value = readl_relaxed(ioaddr + XGMAC_VLAN_DATA_TAG);
+	value = vlan_id;
+	value |= XGMAC_VLANTR_VLAN_EN;
+	value |= XGMAC_VLANTR_VLAN_CMP;
+	value |= XGMAC_VLANTR_VLAN_CMP_DISABLE;
+	value |= XGMAC_VLANTR_DMA_CHAN_EN;
+	value |= (queue << XGMAC_VLANTR_DMA_CHAN_NUM);
+	pr_info("%s VLAN_DATA_TAG val %x\n", __func__, value);
+	writel_relaxed(value, ioaddr + XGMAC_VLAN_DATA_TAG);
+
+	count = 1;
+/* Write the above value to offset if operation is not busy*/
+	while (1) {
+		if (count > retry_count)
+			return;
+		value = readl_relaxed(ioaddr + XGMAC_VLAN_CTRL_TAG);
+		if ((value & XGMAC_VLANTR_OB_MASK) == 0x0) {
+			value |= XGMAC_VLANTR_OB_MASK;
+			value &= ~(XGMAC_VLANTR_CT_MASKBIT);
+			value |= (vlan_offset << XGMAC_VLANTR_OFFSET_SHIFT);
+			pr_info("VLAN_CTRL_TAG val %x\n", value);
+			writel_relaxed(value, ioaddr + XGMAC_VLAN_CTRL_TAG);
+			break;
+		}
+		count++;
+		usleep_range(500, 1000);
+	}
+
+/*Configure DMA register to route packets to particular queue*/
+	value = readl_relaxed(ioaddr + XGMAC_MTL_RX_QMAP);
+	value |= XGMAC_MTL_RXQ_DMACH;
+	pr_info("XGMAC_MTL_RX_QMAP val %x\n", value);
+	writel_relaxed(value, ioaddr + XGMAC_MTL_RX_QMAP);
+}
+
 const struct stmmac_ops dwxgmac210_ops = {
 	.core_init = dwxgmac2_core_init,
 	.set_mac = dwxgmac2_set_mac,
+	.qcom_set_vlan = dwxgmac2_set_vlan_filter_rx_queue,
 	.rx_ipc = dwxgmac2_rx_ipc,
 	.rx_queue_enable = dwxgmac2_rx_queue_enable,
 	.rx_queue_prio = dwxgmac2_rx_queue_prio,
