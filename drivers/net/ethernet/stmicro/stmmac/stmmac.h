@@ -59,6 +59,9 @@ struct stmmac_tx_info {
 	enum stmmac_txbuf_type buf_type;
 };
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#define STMMAC_MAX_PID		1023
+#endif
 #define STMMAC_TBS_AVAIL	BIT(0)
 #define STMMAC_TBS_EN		BIT(1)
 
@@ -84,6 +87,9 @@ struct stmmac_tx_queue {
 	dma_addr_t dma_tx_phy;
 	dma_addr_t tx_tail_addr;
 	u32 mss;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	u32 pid;
+#endif
 };
 
 struct stmmac_rx_buffer {
@@ -336,6 +342,7 @@ struct stmmac_priv {
 
 	bool phy_irq_enabled;
 	bool en_wol;
+	u32 avb_vlan_id;
 };
 
 enum stmmac_state {

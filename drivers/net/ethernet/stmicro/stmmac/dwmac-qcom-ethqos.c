@@ -285,6 +285,9 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 			txqueue_select = CLASS_B_TRAFFIC_TX_CHANNEL;
 		else
 			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
+	} else if (eth_type == ETH_P_1588) {
+		/*gPTP seelct tx queue 1*/
+		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
 	} else {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
 		txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
@@ -3793,6 +3796,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	/* Read en_wol from device tree */
 	priv->en_wol = of_property_read_bool(np, "enable-wol");
+
+	if (of_property_read_bool(np, "avb-vlan-id"))
+		of_property_read_u32(np, "avb-vlan-id",
+				     &priv->avb_vlan_id);
+	else
+		priv->avb_vlan_id = 0;
+
 	/* enable safety feature from device tree */
 	if (of_property_read_bool(np, "safety-feat") && priv->dma_cap.asp)
 		priv->dma_cap.asp = 1;
