@@ -50,6 +50,7 @@ struct gunyah_pipe {
 /**
  * qrtr_gunyah_dev - qrtr gunyah transport structure
  * @ep: qrtr endpoint specific info.
+ * @net_id: qrtr endpoint network cluster identifer.
  * @dev: device from platform_device.
  * @pkt: buf for reading from fifo.
  * @res: resource of reserved mem region
@@ -68,6 +69,7 @@ struct gunyah_pipe {
  */
 struct qrtr_gunyah_dev {
 	struct qrtr_endpoint ep;
+	unsigned int net_id;
 	struct device *dev;
 	struct gunyah_ring ring;
 
@@ -535,8 +537,8 @@ static int qrtr_gunyah_rm_cb(struct notifier_block *nb, unsigned long cmd,
 
 	if (vm_status_payload->vm_status == GH_RM_VM_STATUS_READY) {
 		qrtr_gunyah_fifo_init(qdev);
-		if (qrtr_endpoint_register(&qdev->ep, QRTR_EP_NET_ID_AUTO,
-					   false, NULL)) {
+		if (qrtr_endpoint_register(&qdev->ep, qdev->net_id, false,
+					   NULL)) {
 			pr_err("%s: endpoint register failed\n", __func__);
 			return NOTIFY_DONE;
 		}
@@ -751,10 +753,14 @@ static int qrtr_gunyah_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&qdev->work, qrtr_gunyah_retry_work);
 
+	ret = of_property_read_u32(node, "qcom,net-id", &qdev->net_id);
+	if (ret < 0)
+		qdev->net_id = QRTR_EP_NET_ID_AUTO;
+
 	qdev->ep.xmit = qrtr_gunyah_send;
 	if (!qdev->master) {
-		ret = qrtr_endpoint_register(&qdev->ep, QRTR_EP_NET_ID_AUTO,
-					     false, NULL);
+		ret = qrtr_endpoint_register(&qdev->ep, qdev->net_id, false,
+					     NULL);
 		if (ret)
 			goto register_fail;
 	}
