@@ -334,6 +334,9 @@ struct qcom_ethqos {
 	unsigned int speed;
 	unsigned int vote_idx;
 
+	/* Serdes clocks will be set based on PHY max speed */
+	unsigned int usxgmii_mode;
+
 	int gpio_phy_intr_redirect;
 	u32 phy_intr;
 	/* Work struct for handling phy interrupt */
