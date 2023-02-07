@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QTI_THERMAL_ZONE_INTERNAL_H
@@ -35,6 +35,7 @@ static inline __maybe_unused int qti_tz_change_mode(struct thermal_zone_device *
 	return 0;
 }
 
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
 static void disable_cdev_stats(void *unused,
 		struct thermal_cooling_device *cdev, int *disable)
 {
@@ -60,6 +61,17 @@ static inline __maybe_unused void thermal_vendor_hooks_exit(void)
 			disable_cdev_stats, NULL);
 }
 
+#else
+
+static inline __maybe_unused void thermal_vendor_hooks_init(void)
+{
+}
+
+static inline __maybe_unused void thermal_vendor_hooks_exit(void)
+{
+}
+
+#endif
 /*Generic helpers for thermal zone -> get_trend ops */
 static __maybe_unused inline int qti_tz_get_trend(
 				struct thermal_zone_device *tz, int trip,
