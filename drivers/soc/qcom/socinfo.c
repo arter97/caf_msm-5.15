@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -1112,6 +1112,8 @@ static const struct soc_id soc_id[] = {
 	{ 590, "CINDERRU_1062"},
 	{ 600, "SG_KALAMA"},
 	{ 601, "SG_KALAMAP"},
+	{ 609, "SDXPINNL"},
+	{ 610, "SDXPINNUL"},
 };
 
 static struct qcom_socinfo *qsocinfo;
