@@ -792,34 +792,10 @@ static void msm_hsphy_create_debugfs(struct msm_hsphy *phy)
 	debugfs_create_x8("param_ovrd3", 0644, phy->root, &phy->param_ovrd3);
 }
 
-static int msm_hsphy_probe(struct platform_device *pdev)
+static void msm_hsphy_get_rcal_reg(struct msm_hsphy *phy, struct platform_device *pdev)
 {
-	struct msm_hsphy *phy;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
-	int ret = 0;
-
-	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
-	if (!phy) {
-		ret = -ENOMEM;
-		goto err_ret;
-	}
-
-	phy->phy.dev = dev;
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						"hsusb_phy_base");
-	if (!res) {
-		dev_err(dev, "missing memory base resource\n");
-		ret = -ENODEV;
-		goto err_ret;
-	}
-
-	phy->base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(phy->base)) {
-		dev_err(dev, "ioremap failed\n");
-		ret = -ENODEV;
-		goto err_ret;
-	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 							"phy_rcal_reg");
@@ -838,6 +814,98 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		dev_dbg(dev, "rcal_mask:%08x reg:%pK\n", phy->rcal_mask,
 				phy->phy_rcal_reg);
 	}
+}
+
+static int msm_hsphy_get_override_seq(struct msm_hsphy *phy, struct device *dev)
+{
+	int ret = 0;
+
+	phy->param_override_seq_cnt = of_property_count_elems_of_size(
+					dev->of_node,
+					"qcom,param-override-seq",
+					sizeof(*phy->param_override_seq));
+	if (phy->param_override_seq_cnt > 0) {
+		phy->param_override_seq = devm_kcalloc(dev,
+					phy->param_override_seq_cnt,
+					sizeof(*phy->param_override_seq),
+					GFP_KERNEL);
+		if (!phy->param_override_seq)
+			return -ENOMEM;
+
+		if (phy->param_override_seq_cnt % 2) {
+			dev_err(dev, "invalid param_override_seq_len\n");
+			return -EINVAL;
+		}
+
+		ret = of_property_read_u32_array(dev->of_node,
+				"qcom,param-override-seq",
+				phy->param_override_seq,
+				phy->param_override_seq_cnt);
+	}
+	return ret;
+}
+
+static int msm_hsphy_get_regulators(struct msm_hsphy *phy, struct device *dev)
+{
+	int ret = 0;
+
+	ret = of_property_read_u32_array(dev->of_node, "qcom,vdd-voltage-level",
+					 (u32 *) phy->vdd_levels,
+					 ARRAY_SIZE(phy->vdd_levels));
+	if (ret) {
+		dev_err(dev, "error reading qcom,vdd-voltage-level property\n");
+		return ret;
+	}
+
+	phy->vdd = devm_regulator_get(dev, "vdd");
+	if (IS_ERR(phy->vdd)) {
+		dev_err(dev, "unable to get vdd supply\n");
+		ret = PTR_ERR(phy->vdd);
+		return ret;
+	}
+
+	phy->vdda33 = devm_regulator_get(dev, "vdda33");
+	if (IS_ERR(phy->vdda33)) {
+		dev_err(dev, "unable to get vdda33 supply\n");
+		ret = PTR_ERR(phy->vdda33);
+		return ret;
+	}
+
+	phy->vdda18 = devm_regulator_get(dev, "vdda18");
+	if (IS_ERR(phy->vdda18)) {
+		dev_err(dev, "unable to get vdda18 supply\n");
+		ret = PTR_ERR(phy->vdda18);
+		return ret;
+	}
+	return ret;
+}
+
+static int msm_hsphy_probe(struct platform_device *pdev)
+{
+	struct msm_hsphy *phy;
+	struct device *dev = &pdev->dev;
+	struct resource *res;
+	int ret = 0;
+
+	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
+	if (!phy)
+		return -ENOMEM;
+
+	phy->phy.dev = dev;
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						"hsusb_phy_base");
+	if (!res) {
+		dev_err(dev, "missing memory base resource\n");
+		return -ENODEV;
+	}
+
+	phy->base = devm_ioremap_resource(dev, res);
+	if (IS_ERR(phy->base)) {
+		dev_err(dev, "ioremap failed\n");
+		return -ENODEV;
+	}
+
+	msm_hsphy_get_rcal_reg(phy, pdev);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 			"eud_enable_reg");
@@ -879,63 +947,15 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	if (IS_ERR(phy->phy_reset))
 		return PTR_ERR(phy->phy_reset);
 
-	phy->param_override_seq_cnt = of_property_count_elems_of_size(
-					dev->of_node,
-					"qcom,param-override-seq",
-					sizeof(*phy->param_override_seq));
-	if (phy->param_override_seq_cnt > 0) {
-		phy->param_override_seq = devm_kcalloc(dev,
-					phy->param_override_seq_cnt,
-					sizeof(*phy->param_override_seq),
-					GFP_KERNEL);
-		if (!phy->param_override_seq)
-			return -ENOMEM;
-
-		if (phy->param_override_seq_cnt % 2) {
-			dev_err(dev, "invalid param_override_seq_len\n");
-			return -EINVAL;
-		}
-
-		ret = of_property_read_u32_array(dev->of_node,
-				"qcom,param-override-seq",
-				phy->param_override_seq,
-				phy->param_override_seq_cnt);
-		if (ret) {
-			dev_err(dev, "qcom,param-override-seq read failed %d\n",
-				ret);
-			return ret;
-		}
-	}
-
-	ret = of_property_read_u32_array(dev->of_node, "qcom,vdd-voltage-level",
-					 (u32 *) phy->vdd_levels,
-					 ARRAY_SIZE(phy->vdd_levels));
+	ret = msm_hsphy_get_override_seq(phy, dev);
 	if (ret) {
-		dev_err(dev, "error reading qcom,vdd-voltage-level property\n");
-		goto err_ret;
+		dev_err(dev, "qcom,param-override-seq read failed %d\n", ret);
+		return ret;
 	}
 
-
-	phy->vdd = devm_regulator_get(dev, "vdd");
-	if (IS_ERR(phy->vdd)) {
-		dev_err(dev, "unable to get vdd supply\n");
-		ret = PTR_ERR(phy->vdd);
-		goto err_ret;
-	}
-
-	phy->vdda33 = devm_regulator_get(dev, "vdda33");
-	if (IS_ERR(phy->vdda33)) {
-		dev_err(dev, "unable to get vdda33 supply\n");
-		ret = PTR_ERR(phy->vdda33);
-		goto err_ret;
-	}
-
-	phy->vdda18 = devm_regulator_get(dev, "vdda18");
-	if (IS_ERR(phy->vdda18)) {
-		dev_err(dev, "unable to get vdda18 supply\n");
-		ret = PTR_ERR(phy->vdda18);
-		goto err_ret;
-	}
+	ret = msm_hsphy_get_regulators(phy, dev);
+	if (ret)
+		return ret;
 
 	mutex_init(&phy->phy_lock);
 	platform_set_drvdata(pdev, phy);
@@ -969,9 +989,6 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	if (phy->eud_enable_reg && readl_relaxed(phy->eud_enable_reg))
 		msm_hsphy_enable_power(phy, true);
 	return 0;
-
-err_ret:
-	return ret;
 }
 
 static int msm_hsphy_remove(struct platform_device *pdev)
