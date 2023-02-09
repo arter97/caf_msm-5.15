@@ -99,7 +99,8 @@ module_param(pause, int, 0644);
 MODULE_PARM_DESC(pause, "Flow Control Pause Time");
 
 #define TC_DEFAULT 64
-static int tc = TC_DEFAULT;
+#define TC_DEFAULT_Q0 32
+static int tc = TC_DEFAULT_Q0;
 module_param(tc, int, 0644);
 MODULE_PARM_DESC(tc, "DMA threshold control value");
 
@@ -2588,6 +2589,8 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 
 		qmode = priv->plat->rx_queues_cfg[chan].mode_to_use;
 
+		if (priv->plat->force_thresh_dma_mode_q0_en && chan == 0)
+			rxmode = tc;
 		stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
 				rxfifosz, qmode);
 

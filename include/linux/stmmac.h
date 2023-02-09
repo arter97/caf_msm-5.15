@@ -308,5 +308,6 @@ struct plat_stmmacenet_data {
 	void (*phy_irq_enable)(void *priv);
 	void (*phy_irq_disable)(void *priv);
 	int port_num;
+	bool force_thresh_dma_mode_q0_en;
 };
 #endif
