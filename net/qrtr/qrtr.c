@@ -2175,10 +2175,11 @@ static int qrtr_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	struct ifreq ifr;
 	long len = 0;
 	int rc = 0;
-	lock_sock(sk);
 #if IS_ENABLED(CONFIG_QRTR_BPF_FILTER)
 	int ufd;
 #endif
+	lock_sock(sk);
+
 	switch (cmd) {
 	case TIOCOUTQ:
 		len = sk->sk_sndbuf - sk_wmem_alloc_get(sk);
