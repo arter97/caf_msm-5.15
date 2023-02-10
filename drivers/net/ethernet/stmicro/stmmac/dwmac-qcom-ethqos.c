@@ -2499,6 +2499,184 @@ static void ethqos_set_early_eth_param(struct stmmac_priv *priv,
 	return;
 }
 
+static ssize_t mac_reg_read(struct file *file,
+			    const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(priv->ioaddr + offset));
+	return count;
+}
+
+static ssize_t pcs_reg_read(struct file *file,
+			    const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    priv->plat->interface != PHY_INTERFACE_MODE_SMII) {
+		pr_err("Current phy_interface type does not support PCS block\n");
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+	return count;
+}
+
+static ssize_t iomacro_reg_read(struct file *file,
+				const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(ethqos->rgmii_base + offset));
+	return count;
+}
+
+static ssize_t mac_reg_write(struct file *file,
+			     const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old value: 0X%x\n", readl(priv->ioaddr + offset));
+	writel(value, priv->ioaddr + offset);
+	pr_info("New Value: 0X%x\n", readl(priv->ioaddr + offset));
+
+	return count;
+}
+
+static ssize_t pcs_reg_write(struct file *file,
+			     const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    priv->plat->interface != PHY_INTERFACE_MODE_SGMII) {
+		pr_err("Current phy_interface type does not support PCS block\n");
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+	writel(value, priv->hw->qxpcs->addr + offset);
+	pr_info("New Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+
+	return count;
+}
+
+static ssize_t iomacro_reg_write(struct file *file,
+				 const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old Value: 0X%x\n", readl(ethqos->rgmii_base + offset));
+	writel(value, ethqos->rgmii_base + offset);
+	pr_info("New Value: 0X%x\n", readl(ethqos->rgmii_base + offset));
+
+	return count;
+}
+
 static ssize_t read_phy_reg_dump(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
@@ -3149,6 +3327,48 @@ static const struct file_operations fops_ipc_stmmac_log_low = {
 	.llseek = default_llseek,
 };
 
+static const struct file_operations fops_mac_read = {
+	.write = mac_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_pcs_read = {
+	.write = pcs_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_iomacro_read = {
+	.write = iomacro_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_pcs_write = {
+	.write = pcs_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_write = {
+	.write = mac_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_iomacro_write = {
+	.write = iomacro_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -3156,13 +3376,25 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *ipc_stmmac_log_low;
 	static struct dentry *phy_off;
 	static struct dentry *loopback_enable_mode;
+	static struct dentry *mac_dump;
+	static struct dentry *mac_pcs_dump;
+	static struct dentry *mac_iomacro_dump;
+	static struct dentry *mac_pcs_write;
+	static struct dentry *mac_write;
+	static struct dentry *mac_iomacro_write;
+	struct stmmac_priv *priv;
+	char dir_name[32];
 
 	if (!ethqos) {
 		ETHQOSERR("Null Param %s\n", __func__);
 		return -ENOMEM;
 	}
 
-	ethqos->debugfs_dir = debugfs_create_dir("eth", NULL);
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	snprintf(dir_name, sizeof(dir_name), "%s%d", "eth", priv->plat->port_num);
+
+	ethqos->debugfs_dir = debugfs_create_dir(dir_name, NULL);
 
 	if (!ethqos->debugfs_dir || IS_ERR(ethqos->debugfs_dir)) {
 		ETHQOSERR("Can't create debugfs dir\n");
@@ -3184,6 +3416,24 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		ETHQOSERR("Can't create rgmii_dump %d\n", (long)rgmii_reg_dump);
 		goto fail;
 	}
+
+	mac_dump = debugfs_create_file("mac_reg_read", (0220),
+				       ethqos->debugfs_dir, ethqos, &fops_mac_read);
+
+	mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0220),
+					   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
+
+	mac_iomacro_dump = debugfs_create_file("iomacro_reg_read", (0220),
+					       ethqos->debugfs_dir, ethqos, &fops_mac_iomacro_read);
+
+	mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
+					    ethqos->debugfs_dir, ethqos, &fops_mac_pcs_write);
+
+	mac_write = debugfs_create_file("mac_reg_write", (0220),
+					ethqos->debugfs_dir, ethqos, &fops_mac_write);
+
+	mac_iomacro_write = debugfs_create_file("iomacro_reg_write", (0220),
+						ethqos->debugfs_dir, ethqos, &fops_iomacro_write);
 
 	ipc_stmmac_log_low = debugfs_create_file("ipc_stmmac_log_low", 0220,
 						 ethqos->debugfs_dir, ethqos,
