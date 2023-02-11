@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __EP_PCIE_COM_H
@@ -470,6 +470,8 @@ struct ep_pcie_dev_t {
 	struct clk		     *pipe_clk_mux;
 	struct clk		     *pipe_clk_ext_src;
 	struct clk		     *ref_clk_src;
+
+	bool				override_disable_sriov;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;
