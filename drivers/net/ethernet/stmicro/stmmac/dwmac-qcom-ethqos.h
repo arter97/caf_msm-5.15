@@ -456,6 +456,7 @@ struct qcom_ethqos {
 	unsigned backup_autoneg:1;
 	bool probed;
 	bool ipa_enabled;
+	struct notifier_block panic_nb;
 
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
