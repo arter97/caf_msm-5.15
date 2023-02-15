@@ -190,6 +190,14 @@ static char buf[2000];
 #define RGMII_REG_OFFSET 0x74000
 #define EGPIO_ENABLE 0x1000
 
+#define GMAC_CONFIG_PS			BIT(15)
+#define GMAC_CONFIG_FES			BIT(14)
+#define GMAC_AN_CTRL_RAN	BIT(9)
+#define GMAC_AN_CTRL_ANE	BIT(12)
+
+#define DWMAC4_PCS_BASE	0x000000e0
+#define RGMII_CONFIG_10M_CLK_DVD GENMASK(18, 10)
+
 static struct ethqos_emac_por emac_por[] = {
 	{ .offset = RGMII_IO_MACRO_CONFIG,	.value = 0x0 },
 	{ .offset = SDCC_HC_REG_DLL_CONFIG,	.value = 0x0 },
@@ -1479,25 +1487,47 @@ static int ethqos_rgmii_macro_init_v3(struct qcom_ethqos *ethqos)
 int ethqos_configure_sgmii_v3_1(struct qcom_ethqos *ethqos)
 {
 	u32 value = 0;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 
 	ethqos_set_func_clk_en(ethqos);
 
 	value = readl(ethqos->ioaddr + MAC_CTRL_REG);
 	switch (ethqos->speed) {
-	case SPEED_1000:
-		value &= ~BIT(15);
+	case SPEED_2500:
+		value &= ~GMAC_CONFIG_PS;
 		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
-		rgmii_updatel(ethqos, BIT(16), BIT(16), RGMII_IO_MACRO_CONFIG2);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG, RGMII_IO_MACRO_CONFIG2);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value &= ~GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
+	break;
+	case SPEED_1000:
+		value &= ~GMAC_CONFIG_PS;
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG, RGMII_IO_MACRO_CONFIG2);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
 	break;
 
 	case SPEED_100:
-		value |= BIT(15) | BIT(14);
+		value |= GMAC_CONFIG_PS | GMAC_CONFIG_FES;
 		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
 	break;
 	case SPEED_10:
-		value |= BIT(15);
-		value &= ~BIT(14);
+		value |= GMAC_CONFIG_PS;
+		value &= ~GMAC_CONFIG_FES;
 		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, RGMII_CONFIG_10M_CLK_DVD, BIT(10) |
+			      GENMASK(15, 14), RGMII_IO_MACRO_CONFIG);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
 	break;
 
 	default:
