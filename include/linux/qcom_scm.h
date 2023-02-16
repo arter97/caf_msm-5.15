@@ -285,4 +285,5 @@ extern int qcom_scm_call_ethqos_configure(u32 emac_base_addr, u32 link_speed, u3
 extern int qcom_scm_call_loopback_configure(u32 emac_base_addr, u32 loopback_mode, u32 if_mode);
 extern int qcom_scm_call_iomacro_dump(u32 emac_base_addr, phys_addr_t buffer, u32 len);
 extern int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed);
+extern int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value);
 #endif

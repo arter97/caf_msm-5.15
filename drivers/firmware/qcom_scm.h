@@ -128,6 +128,7 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_LOOPBACK_CONFIG_CMD	0x0E
 #define QCOM_SCM_IO_MACRO_DUMP_CMD	0xF
 #define QCOM_SCM_EMAC_MAXSPEED_CMD	0x10
+#define QCOM_SCM_IPA_INTR_CONFIG_CMD	0x11
 
 #define QCOM_SCM_SVC_PWR			0x09
 #define QCOM_SCM_PWR_IO_DISABLE_PMIC_ARBITER	0x01

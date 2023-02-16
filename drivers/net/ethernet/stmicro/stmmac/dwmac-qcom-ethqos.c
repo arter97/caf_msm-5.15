@@ -640,13 +640,12 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 /* Local SMC buffer is valid only for HW where IO macro space is moved to TZ.
  * for other configurations it should always be passed as NULL
  */
-static int rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset, void *local_smc_buffer)
+static int rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset)
 {
-	if (local_smc_buffer) {
-		return readl(local_smc_buffer + offset);
-	} else {
+	if (ethqos->shm_rgmii_local.vaddr)
+		return readl(ethqos->shm_rgmii_local.vaddr + offset);
+	else
 		return readl(ethqos->rgmii_base + offset);
-	}
 }
 
 static void rgmii_writel(struct qcom_ethqos *ethqos,
@@ -660,7 +659,7 @@ static void rgmii_updatel(struct qcom_ethqos *ethqos,
 {
 	unsigned int temp;
 
-	temp =  rgmii_readl(ethqos, offset, NULL);
+	temp =  rgmii_readl(ethqos, offset);
 	temp = (temp & ~(mask)) | val;
 	rgmii_writel(ethqos, temp, offset);
 }
@@ -680,25 +679,25 @@ static void rgmii_dump(void *priv)
 	}
 #endif
 
-	dev_info(&ethqos->pdev->dev, "Rgmii register dump\n");
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DDR_CONFIG: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG2: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDC4_STATUS: %x\n",
-		 rgmii_readl(ethqos, SDC4_STATUS, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_USR_CTL: %x\n",
-		 rgmii_readl(ethqos, SDCC_USR_CTL, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG2: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_DEBUG1: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "EMAC_SYSTEM_LOW_POWER_DEBUG: %x\n",
-		 rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG, ethqos->shm_rgmii_local.vaddr));
+	dev_dbg(&ethqos->pdev->dev, "Rgmii register dump\n");
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DDR_CONFIG: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG2: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2));
+	dev_dbg(&ethqos->pdev->dev, "SDC4_STATUS: %x\n",
+		rgmii_readl(ethqos, SDC4_STATUS));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_USR_CTL: %x\n",
+		rgmii_readl(ethqos, SDCC_USR_CTL));
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG2: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2));
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_DEBUG1: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1));
+	dev_dbg(&ethqos->pdev->dev, "EMAC_SYSTEM_LOW_POWER_DEBUG: %x\n",
+		rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG));
 }
 
 /* Clock rates */
@@ -801,7 +800,7 @@ static void ethqos_read_iomacro_por_values(struct qcom_ethqos *ethqos)
 	/* Read to POR values and enable clk */
 	for (i = 0; i < ethqos->num_por; i++)
 		ethqos->por[i].value =
-			rgmii_readl(ethqos, ethqos->por[i].offset, ethqos->shm_rgmii_local.vaddr);
+			rgmii_readl(ethqos, ethqos->por[i].offset);
 }
 
 static void ethqos_read_io_macro_from_dtsi(struct device_node *np_hw,
@@ -1044,7 +1043,7 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 	}
 	/* Wait for CK_OUT_EN clear */
 	do {
-		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, NULL);
+		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 		val &= SDCC_DLL_CONFIG_CK_OUT_EN;
 		if (!val)
 			break;
@@ -1061,7 +1060,7 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 	/* Wait for CK_OUT_EN set */
 	retry = 1000;
 	do {
-		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, NULL);
+		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 		val &= SDCC_DLL_CONFIG_CK_OUT_EN;
 		if (val)
 			break;
@@ -1452,7 +1451,7 @@ static int ethqos_configure(struct qcom_ethqos *ethqos)
 		/* wait for DLL LOCK */
 		do {
 			mdelay(1);
-			dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+			dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 			if (dll_lock & SDC4_STATUS_DLL_LOCK)
 				break;
 			retry--;
@@ -1549,7 +1548,7 @@ static int ethqos_configure_mac_v3(struct qcom_ethqos *ethqos)
 		/* Check for DLL lock */
 		do {
 			udelay(1);
-			dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+			dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 			if (dll_lock & SDC4_STATUS_DLL_LOCK)
 				break;
 			retry--;
@@ -1679,7 +1678,7 @@ static int ethqos_dll_configure_v4(struct qcom_ethqos *ethqos)
 	retry = 1000;
 	do {
 		mdelay(1);
-		dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+		dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 		if (dll_lock & DDR_STATUS_DLL_LOCK)
 			break;
 		retry--;
@@ -2755,40 +2754,39 @@ static ssize_t read_rgmii_reg_dump(struct file *file,
 
 	len += scnprintf(buf + len, buf_len - len,
 					 "\n************* RGMII Reg dump *************\n");
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DLL_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DDR_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DLL_CONFIG2 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDC4_STATUS, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDC4_STATUS);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDC4_STATUS Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_USR_CTL, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_USR_CTL);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_USR_CTL Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_CONFIG2 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_DEBUG1 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG,
-				 ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "EMAC_SYSTEM_LOW_POWER_DEBUG Register = %#x\n",
 					 rgmii_data);
@@ -3969,7 +3967,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		} else {
 #endif
 			ethqos->emac_ver =
-			rgmii_readl(ethqos, EMAC_I0_EMAC_CORE_HW_VERSION_RGOFFADDR, NULL);
+			rgmii_readl(ethqos, EMAC_I0_EMAC_CORE_HW_VERSION_RGOFFADDR);
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 		}
 #endif

@@ -957,11 +957,9 @@ int __qcom_scm_ethqos_configure(struct device *dev, u32 emac_base_addr,
 	};
 	struct qcom_scm_res res;
 
-	pr_err("smc ethqos configure =0x%llx 0x%x 0x%x 0x%llx, 0x%llx\n",
-		emac_base_addr, link_speed, if_mode, phys_rgmii_hsr_por, len);
-
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
-	pr_err("smc ethqos configure done =0x%x\n", ret);
+	pr_info("scm ethqos configure 0x%llx 0x%x 0x%x 0x%llx, 0x%llx done =0x%x\n",
+		emac_base_addr, link_speed, if_mode, phys_rgmii_hsr_por, len, ret);
 
 	return ret;
 }
@@ -991,7 +989,7 @@ int __qcom_scm_loopback_configure(struct device *dev, u32 emac_base_addr,
 	struct qcom_scm_res res;
 
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
-	pr_err("smc loopback configure =0x%x\n", ret);
+	pr_info("scm loopback configure 0x%llx done = 0x%x\n", emac_base_addr, ret);
 
 	return ret;
 }
@@ -1020,11 +1018,9 @@ int __qcom_scm_iomacro_dump(struct device *dev, u32 emac_base_addr,
 	};
 	struct qcom_scm_res res;
 
-	pr_err("smc io macro dump =0x%llx buffer = 0x%llx len = 0x%x\n",
+	pr_info("scm io macro dump 0x%llx buf = 0x%llx len = 0x%x\n",
 		emac_base_addr, buffer, len);
-
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
-	pr_err("smc io macro dump  done =0x%x\n", ret);
 
 	return ret;
 }
@@ -1049,14 +1045,12 @@ int __qcom_scm_get_emac_maxspeed(struct device *dev, u32 emac_base_addr,
 	};
 	struct qcom_scm_res res;
 
-	pr_err("smc get max_speed\n");
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
 	if (maxspeed)
 		*maxspeed = res.result[1];
 
-	pr_err("smc get max_speed ret=0x%x res0 = %d res1 =%d res2 = %d\n",
+	pr_info("scm get max_spd ret=0x%x res0 = %d res1 =%d res2 = %d\n",
 		ret, res.result[0], res.result[1], res.result[2]);
-
 
 	return ret;
 }
@@ -1067,6 +1061,33 @@ int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed)
 					emac_base_addr, maxspeed);
 }
 EXPORT_SYMBOL(qcom_scm_call_get_emac_maxspeed);
+
+
+int __qcom_scm_ipa_intr_config(struct device *dev, u32 emac_base_addr, u32 value)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_IPA_INTR_CONFIG_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.args[1] = value,
+		.arginfo = QCOM_SCM_ARGS(2),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	pr_info("scm ipa intr 0x%llx config = 0x%x done = 0x%x\n", emac_base_addr, value, ret);
+
+	return ret;
+}
+
+int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value)
+{
+	return __qcom_scm_ipa_intr_config(__scm ? __scm->dev : NULL,
+					emac_base_addr, value);
+}
+EXPORT_SYMBOL(qcom_scm_call_ipa_intr_config);
 
 
 int __qcom_scm_get_feat_version(struct device *dev, u64 feat_id, u64 *version)
