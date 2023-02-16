@@ -397,6 +397,7 @@
 #define XGMAC_OSP			BIT(4)
 #define XGMAC_TXST			BIT(0)
 #define XGMAC_DMA_CH_RX_CONTROL(x)		(XGMAC_DMA_CHANX_BASE_ADDR(x) + 0x08)
+#define XGMAC_RPF			BIT(31)
 #define XGMAC_RxPBL			GENMASK(21, 16)
 #define XGMAC_RxPBL_SHIFT		16
 #define XGMAC_RBSZ			GENMASK(14, 4)
