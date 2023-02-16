@@ -1135,7 +1135,7 @@ static void stmmac_validate(struct phylink_config *config,
 	/* Early ethernet settings to bring up link in 100M,
 	 * Auto neg Off with full duplex link.
 	 */
-	if (priv->early_eth && !priv->early_eth_config_set) {
+	if (priv->phydev && priv->plat->early_eth && !priv->early_eth_config_set) {
 		priv->phydev->autoneg = AUTONEG_DISABLE;
 		priv->phydev->speed = SPEED_100;
 		priv->phydev->duplex = DUPLEX_FULL;
@@ -6081,7 +6081,7 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 		}
 
 		/* PCS link status */
-		if (priv->hw->pcs) {
+		if (priv->hw->pcs && !priv->plat->has_gmac4) {
 			if (priv->xstats.pcs_link)
 				netif_carrier_on(priv->dev);
 			else
@@ -7575,8 +7575,11 @@ int stmmac_dvr_probe(struct device *device,
 	ndev->features |= ndev->hw_features | NETIF_F_HIGHDMA;
 	ndev->watchdog_timeo = msecs_to_jiffies(watchdog);
 #ifdef STMMAC_VLAN_TAG_USED
+	ndev->vlan_features |= ndev->hw_features;
 	/* Both mac100 and gmac support receive VLAN tag detection */
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX;
+	priv->dma_cap.vlhash = 0;
+	priv->dma_cap.vlins = 0;
 	if (priv->dma_cap.vlhash) {
 		ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 		ndev->features |= NETIF_F_HW_VLAN_STAG_FILTER;

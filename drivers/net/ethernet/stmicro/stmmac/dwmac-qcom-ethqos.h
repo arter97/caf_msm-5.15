@@ -18,9 +18,8 @@
 #include <linux/interconnect.h>
 #include <linux/qtee_shmbridge.h>
 
-
-#define QCOM_ETH_QOS_MAC_ADDR_LEN
-#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
+#define QCOM_ETH_QOS_MAC_ADDR_LEN 6
+#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN 18
 
 extern void *ipc_stmmac_log_ctxt;
 extern void *ipc_stmmac_log_ctxt_low;
@@ -156,6 +155,10 @@ do {\
 #define VOTE_IDX_2500MBPS 4
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
+
+//Mac config
+#define XGMAC_RX_CONFIG		0x00000004
+#define XGMAC_CONFIG_LM			BIT(10)
 
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004

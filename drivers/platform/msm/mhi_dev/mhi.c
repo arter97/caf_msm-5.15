@@ -589,7 +589,7 @@ static int mhi_trigger_msi_edma(struct mhi_dev_ring *ring, u32 idx, struct event
 		}
 	}
 
-	dma_async_issue_pending(mhi_hw_ctx->tx_dma_chan);
+	dma_async_issue_pending(mhi->mhi_hw_ctx->tx_dma_chan);
 
 	spin_unlock_irqrestore(&mhi->msi_lock, flags);
 
@@ -3637,11 +3637,11 @@ void mhi_dev_close_channel(struct mhi_dev_client *handle)
 	mutex_lock(&ch->ch_lock);
 
 	if (ch->pend_wr_count)
-		mhi_log(MHI_MSG_INFO, "%d writes pending for channel %d\n",
+		mhi_log(MHI_MSG_INFO, "%d writes pending for ch_id:%d\n",
 			ch->pend_wr_count, ch->ch_id);
 	if (!list_empty(&ch->event_req_buffers))
-		mhi_log(MHI_MSG_INFO, "%d pending flush for channel %d\n",
-			ch->pend_wr_count, ch->ch_id);
+		mhi_log(MHI_MSG_INFO, "%d pending flush for ch_id:%d\n",
+		ch->pend_wr_count, ch->ch_id);
 
 	if (ch->state != MHI_DEV_CH_PENDING_START)
 		if ((ch->ch_type == MHI_DEV_CH_TYPE_OUTBOUND_CHANNEL &&
@@ -4526,18 +4526,23 @@ static int mhi_get_device_tree_data(struct mhi_dev_ctx *mhictx, int vf_id)
 	mhi->mhi_has_smmu = of_property_read_bool((&pdev->dev)->of_node,
 				"qcom,mhi-has-smmu");
 
-	device_init_wakeup(mhictx->dev, true);
-	/* MHI device will be woken up from PCIe event */
-	device_set_wakeup_capable(mhictx->dev, false);
-	/* Hold a wakelock until completion of M0 */
-	pm_stay_awake(mhictx->dev);
-	atomic_add(1, &mhi->mhi_dev_wake);
-
 	mhi->enable_m2 = of_property_read_bool((&pdev->dev)->of_node,
 				"qcom,enable-m2");
 
 	mhi->no_m0_timeout = of_property_read_bool((&pdev->dev)->of_node,
 		"qcom,no-m0-timeout");
+
+	return 0;
+err:
+	iounmap(mhi->mmio_base_addr);
+	return rc;
+}
+
+static int mhi_dev_basic_init(struct mhi_dev_ctx *mhictx, int vf_id)
+{
+	struct mhi_dev *mhi = mhictx->mhi_dev[vf_id];
+	struct platform_device *pdev = mhictx->pdev;
+	int rc = 0;
 
 	if (mhi->use_edma) {
 		mhi->read_from_host = mhi_dev_read_from_host_edma;
@@ -4560,6 +4565,12 @@ static int mhi_get_device_tree_data(struct mhi_dev_ctx *mhictx, int vf_id)
 		goto err;
 	}
 
+	device_init_wakeup(mhictx->dev, true);
+	/* MHI device will be woken up from PCIe event */
+	device_set_wakeup_capable(mhictx->dev, false);
+	/* Hold a wakelock until completion of M0 */
+	pm_stay_awake(mhictx->dev);
+	atomic_add(1, &mhi->mhi_dev_wake);
 	mhi_log(MHI_MSG_VERBOSE, "acquiring wakelock\n");
 
 	return 0;
@@ -4572,6 +4583,7 @@ static int mhi_get_device_info(struct platform_device *pdev)
 {
 	struct mhi_dev *mhi_pf;
 	struct mhi_dev_ctx *mhictx;
+	int ret = 0;
 
 	mhictx = devm_kzalloc(&pdev->dev,
 			sizeof(struct mhi_dev_ctx), GFP_KERNEL);
@@ -4591,14 +4603,25 @@ static int mhi_get_device_info(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	/*Allocate memory for Physcial MHI instance*/
+	/* Allocate memory for Physcial MHI instance */
 	mhictx->mhi_dev[MHI_DEV_PHY_FUN] = mhi_pf;
 
 	mhi_pf->mhi_hw_ctx = mhictx;
 
-	/*populate or initialize PHY MHI details in probe*/
-	return mhi_get_device_tree_data(mhictx, MHI_DEV_PHY_FUN);
+	/* populate or initialize physical MHI details in probe */
+	ret = mhi_get_device_tree_data(mhictx, MHI_DEV_PHY_FUN);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "mhi get device tree data failed\n");
+		return ret;
+	}
 
+	ret = mhi_dev_basic_init(mhictx, MHI_DEV_PHY_FUN);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "mhi dev basic init failed\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static int mhi_deinit(struct mhi_dev *mhi)
@@ -5044,7 +5067,9 @@ static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx)
 				return;
 			}
 			mhictx->mhi_dev[i] = mhi_vf;
-			mhi_get_device_tree_data(mhictx, i);
+			rc = mhi_get_device_tree_data(mhictx, i);
+			if (rc == 0)
+				mhi_dev_basic_init(mhictx, i);
 			mhi_vf->mhi_hw_ctx = mhictx;
 			INIT_LIST_HEAD(&mhi_vf->client_cb_list);
 			mutex_init(&mhi_vf->mhi_lock);
@@ -5058,7 +5083,6 @@ static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx)
 int mhi_edma_release(void)
 {
 	dma_release_channel(mhi_hw_ctx->tx_dma_chan);
-
 	mhi_hw_ctx->tx_dma_chan = NULL;
 	dma_release_channel(mhi_hw_ctx->rx_dma_chan);
 	mhi_hw_ctx->rx_dma_chan = NULL;
@@ -5082,20 +5106,20 @@ int mhi_edma_init(struct device *dev)
 	if (!mhi_hw_ctx->tx_dma_chan) {
 		mhi_hw_ctx->tx_dma_chan = dma_request_slave_channel(dev, "tx");
 		if (IS_ERR_OR_NULL(mhi_hw_ctx->tx_dma_chan)) {
-			pr_err("%s(): request for TX chan failed\n", __func__);
+			mhi_log(MHI_MSG_ERROR, "request for TX ch failed\n");
 			return -EIO;
 		}
 	}
-	mhi_log(MHI_MSG_VERBOSE, "request for TX chan returned :%pK\n",
+	mhi_log(MHI_MSG_VERBOSE, "request for TX ch returned :%pK\n",
 			mhi_hw_ctx->tx_dma_chan);
 
 	if (!mhi_hw_ctx->rx_dma_chan) {
 		mhi_hw_ctx->rx_dma_chan = dma_request_slave_channel(dev, "rx");
 		if (IS_ERR_OR_NULL(mhi_hw_ctx->rx_dma_chan)) {
-			pr_err("%s(): request for RX chan failed\n", __func__);
+			mhi_log(MHI_MSG_ERROR, "request for RX ch failed\n");
 			return -EIO;
 		}
-}
+	}
 	mhi_log(MHI_MSG_VERBOSE, "request for RX ch returned :%pK\n",
 			mhi_hw_ctx->rx_dma_chan);
 	return 0;

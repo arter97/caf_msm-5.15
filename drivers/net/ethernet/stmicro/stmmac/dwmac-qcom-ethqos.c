@@ -4000,6 +4000,22 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
+	if (of_property_read_bool(pdev->dev.of_node,
+				  "emac-phy-off-suspend")) {
+		ret = of_property_read_u32(pdev->dev.of_node,
+					   "emac-phy-off-suspend",
+					   &ethqos->current_phy_mode);
+		if (ret) {
+			ETHQOSDBG(":resource emac-phy-off-suspend! ");
+			ETHQOSDBG("not in dtsi\n");
+			ethqos->current_phy_mode = 0;
+		}
+	}
+	ETHQOSINFO("emac-phy-off-suspend = %d\n",
+		   ethqos->current_phy_mode);
+
+	ethqos->ioaddr = (&stmmac_res)->addr;
+
 	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
 	if (ret)
 		goto err_clk;
@@ -4488,7 +4504,7 @@ static int __init qcom_ethqos_init_module(void)
 {
 	int ret = 0;
 
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	ret = platform_driver_register(&qcom_ethqos_driver);
 	if (ret < 0) {
@@ -4496,14 +4512,14 @@ static int __init qcom_ethqos_init_module(void)
 		return ret;
 	}
 
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	return ret;
 }
 
 static void __exit qcom_ethqos_exit_module(void)
 {
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	platform_driver_unregister(&qcom_ethqos_driver);
 
@@ -4512,7 +4528,7 @@ static void __exit qcom_ethqos_exit_module(void)
 
 	ipc_stmmac_log_ctxt = NULL;
 	ipc_stmmac_log_ctxt_low = NULL;
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 }
 
 /*!

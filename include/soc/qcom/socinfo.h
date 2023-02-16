@@ -57,7 +57,7 @@ enum pcode {
 };
 
 enum socinfo_parttype {
-	SOCINFO_PART_GPU,
+	SOCINFO_PART_GPU = 1,
 	SOCINFO_PART_VIDEO,
 	SOCINFO_PART_CAMERA,
 	SOCINFO_PART_DISPLAY,
@@ -130,7 +130,7 @@ int socinfo_get_pcode(void)
 {
 	return -EINVAL;
 }
-const char *socinfo_get_partinfo_details(unsigned int part_id)
+const char *socinfo_get_partinfo_part_name(unsigned int part_id)
 {
 	return NULL;
 }

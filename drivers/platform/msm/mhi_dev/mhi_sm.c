@@ -777,6 +777,12 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 			MHI_SM_ERR("PF cannot suspend EP as VFs are active\n");
 			goto exit;
 		}
+
+		ready_for_suspend = check_dev_ready_for_suspend(mhi_sm_ctx, new_state);
+		if (!ready_for_suspend) {
+			MHI_SM_ERR("PF cannot suspend EP as VFs are active\n");
+			goto exit;
+		}
 		/*
 		 * Gate CLKREQ# and enable CLKREQ# override.
 		 * Disable forward logic for MHI DMA with M2 state.
