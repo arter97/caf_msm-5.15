@@ -23,7 +23,6 @@
 
 extern void *ipc_stmmac_log_ctxt;
 extern void *ipc_stmmac_log_ctxt_low;
-extern void *ipc_emac_log_ctxt;
 
 #define IPCLOG_STATE_PAGES 50
 #define IPC_RATELIMIT_BURST 1
@@ -155,6 +154,12 @@ do {\
 #define VOTE_IDX_2500MBPS 4
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+enum ipa_queue_type {
+	IPA_QUEUE_BE = 0,
+};
+#endif
 
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
