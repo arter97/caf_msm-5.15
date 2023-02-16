@@ -3809,12 +3809,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 	ethqos->rgmii_phy_base = rgmii_io_block->start;
 
-	ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
-	if (IS_ERR(ethqos->rgmii_clk)) {
-		ret = PTR_ERR(ethqos->rgmii_clk);
-		goto err_mem;
-	}
-
 	if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
