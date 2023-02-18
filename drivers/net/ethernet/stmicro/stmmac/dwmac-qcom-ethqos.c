@@ -2566,6 +2566,15 @@ static ssize_t iomacro_reg_read(struct file *file,
 	unsigned long ret;
 	struct qcom_ethqos *ethqos = file->private_data;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
+	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
+		qcom_scm_call_iomacro_dump(ethqos->rgmii_phy_base,
+					   ethqos->shm_rgmii_local.paddr,
+					   RGMII_BLOCK_SIZE);
+		qtee_shmbridge_inv_shm_buf(&ethqos->shm_rgmii_local);
+	}
+#endif
+
 	ret = copy_from_user(in_buf, buf, count);
 	if (ret) {
 		pr_err("%s: unable tocopyfromuser\n", __func__);
@@ -2579,7 +2588,7 @@ static ssize_t iomacro_reg_read(struct file *file,
 		return -EINVAL;
 	}
 
-	pr_info("0X%x\n", readl(ethqos->rgmii_base + offset));
+	pr_info("0X%x\n", rgmii_readl(ethqos, offset));
 	return count;
 }
 
@@ -2600,6 +2609,10 @@ static ssize_t mac_reg_write(struct file *file,
 	}
 
 	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
 
 	if (offset % 4 != 0) {
 		pr_err("offset is invalid\n");
@@ -2636,6 +2649,10 @@ static ssize_t pcs_reg_write(struct file *file,
 	}
 
 	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
 
 	if (offset % 4 != 0) {
 		pr_err("offset is invalid\n");
@@ -2645,35 +2662,6 @@ static ssize_t pcs_reg_write(struct file *file,
 	pr_info("Old Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
 	writel(value, priv->hw->qxpcs->addr + offset);
 	pr_info("New Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
-
-	return count;
-}
-
-static ssize_t iomacro_reg_write(struct file *file,
-				 const char __user *buf, size_t count, loff_t *ppos)
-{
-	char in_buf[400];
-	u32 offset = 0;
-	u32 value = 0;
-	unsigned long ret;
-	struct qcom_ethqos *ethqos = file->private_data;
-
-	ret = copy_from_user(in_buf, buf, count);
-	if (ret) {
-		pr_err("%s: unable to copyfromuser\n", __func__);
-		return -EFAULT;
-	}
-
-	ret = sscanf(in_buf, "%x %x", &offset, &value);
-
-	if (offset % 4 != 0) {
-		pr_err("offset is invalid\n");
-		return -EINVAL;
-	}
-
-	pr_info("Old Value: 0X%x\n", readl(ethqos->rgmii_base + offset));
-	writel(value, ethqos->rgmii_base + offset);
-	pr_info("New Value: 0X%x\n", readl(ethqos->rgmii_base + offset));
 
 	return count;
 }
@@ -3362,13 +3350,6 @@ static const struct file_operations fops_mac_write = {
 	.llseek = default_llseek,
 };
 
-static const struct file_operations fops_iomacro_write = {
-	.write = iomacro_reg_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-	.llseek = default_llseek,
-};
-
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -3381,7 +3362,6 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *mac_iomacro_dump;
 	static struct dentry *mac_pcs_write;
 	static struct dentry *mac_write;
-	static struct dentry *mac_iomacro_write;
 	struct stmmac_priv *priv;
 	char dir_name[32];
 
@@ -3431,9 +3411,6 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 
 	mac_write = debugfs_create_file("mac_reg_write", (0220),
 					ethqos->debugfs_dir, ethqos, &fops_mac_write);
-
-	mac_iomacro_write = debugfs_create_file("iomacro_reg_write", (0220),
-						ethqos->debugfs_dir, ethqos, &fops_iomacro_write);
 
 	ipc_stmmac_log_low = debugfs_create_file("ipc_stmmac_log_low", 0220,
 						 ethqos->debugfs_dir, ethqos,
