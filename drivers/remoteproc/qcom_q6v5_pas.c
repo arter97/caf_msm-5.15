@@ -62,6 +62,7 @@ struct adsp_data {
 	bool auto_boot;
 	bool dma_phys_below_32b;
 	bool needs_dsm_mem_setup;
+	int num_dsm_partitions;
 
 	char **active_pd_names;
 	char **proxy_pd_names;
@@ -1047,7 +1048,7 @@ out:
 	return ret;
 }
 
-static int setup_mpss_dsm_mem(struct platform_device *pdev)
+static int setup_mpss_dsm_mem(struct platform_device *pdev, int num_dsm_partitions)
 {
 	struct device_node *node;
 	struct resource res;
@@ -1056,30 +1057,36 @@ static int setup_mpss_dsm_mem(struct platform_device *pdev)
 	int vmperm[1] = {PERM_READ | PERM_WRITE};
 	phys_addr_t mem_phys;
 	u64 mem_size;
-	int ret;
+	int ret = 0, i;
+	static const char *const dsm_mem_nodes[] = {"mpss_dsm_mem_reg", "mpss_dsm_mem_reg2"};
 
-	node = of_parse_phandle(pdev->dev.of_node, "mpss_dsm_mem_reg", 0);
-	if (!node) {
-		dev_err(&pdev->dev, "mpss dsm mem region is missing\n");
-		return -EINVAL;
-	}
+	for (i = 0; i < num_dsm_partitions; i++) {
+		node = of_parse_phandle(pdev->dev.of_node, dsm_mem_nodes[i], 0);
+		if (!node) {
+			dev_err(&pdev->dev, "%s is missing\n", dsm_mem_nodes[i]);
+			return -EINVAL;
+		}
 
-	ret = of_address_to_resource(node, 0, &res);
-	if (ret) {
-		dev_err(&pdev->dev, "address to resource failed for mpss dsm mem\n");
-		return ret;
-	}
+		ret = of_address_to_resource(node, 0, &res);
+		if (ret) {
+			dev_err(&pdev->dev, "address to resource failed for %s\n",
+								dsm_mem_nodes[i]);
+			goto out;
+		}
 
-	mem_phys = res.start;
-	mem_size = resource_size(&res);
-	ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
-	if (ret) {
-		dev_err(&pdev->dev, "hyp assign for mpss dsm mem failed\n");
-		return ret;
+		mem_phys = res.start;
+		mem_size = resource_size(&res);
+		ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
+		if (ret) {
+			dev_err(&pdev->dev, "hyp assign for %s failed\n", dsm_mem_nodes[i]);
+			goto out;
+		}
 	}
 
 	mpss_dsm_mem_setup = true;
-	return 0;
+out:
+	of_node_put(node);
+	return ret;
 }
 
 static int adsp_probe(struct platform_device *pdev)
@@ -1108,7 +1115,7 @@ static int adsp_probe(struct platform_device *pdev)
 
 	if (desc->needs_dsm_mem_setup && !mpss_dsm_mem_setup &&
 			!strcmp(fw_name, "modem.mdt")) {
-		ret = setup_mpss_dsm_mem(pdev);
+		ret = setup_mpss_dsm_mem(pdev, desc->num_dsm_partitions);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to setup mpss dsm mem\n");
 			return -EINVAL;
@@ -1653,6 +1660,7 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.has_aggre2_clk = false,
 	.auto_boot = false,
 	.needs_dsm_mem_setup = true,
+	.num_dsm_partitions = 1,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
