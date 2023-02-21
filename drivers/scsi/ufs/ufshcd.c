@@ -2810,7 +2810,11 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	trace_android_vh_ufs_mcq_set_sqid(hba, scsi_cmd_to_rq(cmd)->mq_hctx->queue_num, lrbp);
 
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	ufshcd_prepare_lrbp_crypto(hba, scsi_cmd_to_rq(cmd), lrbp);
+#else
 	ufshcd_prepare_lrbp_crypto(scsi_cmd_to_rq(cmd), lrbp);
+#endif
 
 	trace_android_vh_ufs_prepare_command(hba, scsi_cmd_to_rq(cmd), lrbp,
 					     &err);
@@ -2857,7 +2861,11 @@ static int ufshcd_compose_dev_cmd(struct ufs_hba *hba,
 	lrbp->task_tag = tag;
 	lrbp->lun = 0; /* device management cmd is not specific to any LUN */
 	lrbp->intr_cmd = true; /* No interrupt aggregation */
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	ufshcd_prepare_lrbp_crypto(hba, NULL, lrbp);
+#else
 	ufshcd_prepare_lrbp_crypto(NULL, lrbp);
+#endif
 	hba->dev_cmd.type = cmd_type;
 
 	return ufshcd_compose_devman_upiu(hba, lrbp);
@@ -6790,7 +6798,11 @@ static int ufshcd_issue_devman_upiu_cmd(struct ufs_hba *hba,
 
 	trace_android_vh_ufs_mcq_set_sqid(hba, 0, lrbp);
 
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	ufshcd_prepare_lrbp_crypto(hba, NULL, lrbp);
+#else
 	ufshcd_prepare_lrbp_crypto(NULL, lrbp);
+#endif
 	hba->dev_cmd.type = cmd_type;
 
 	if (hba->ufs_version <= ufshci_version(1, 1))
