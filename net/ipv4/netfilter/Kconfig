@@ -238,7 +238,7 @@ config IP_NF_TARGET_MASQUERADE
 
 config IP_NF_TARGET_TRIGGER_MODULE
 	tristate "TRIGGER target support"
-	depends on NF_NAT && QGKI
+	depends on NF_NAT
 	default m if NETFILTER_ADVANCED=n
 	help
 	  TRIGGER is a special case of NAT: used to support Port Triggering

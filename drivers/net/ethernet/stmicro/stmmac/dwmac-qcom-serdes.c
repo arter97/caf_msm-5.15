@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
 #include <linux/kthread.h>
+#include <linux/of.h>
 
 #include "dwmac-qcom-serdes.h"
 
@@ -958,20 +959,30 @@ static int qcom_ethqos_serdes_update_usxgmii(struct qcom_ethqos *ethqos,
 {
 	int ret = 0;
 
-	switch (speed) {
-	case SPEED_2500:
-		ret = qcom_ethqos_serdes_usxgmii_2p5Gb(ethqos);
+	switch (ethqos->usxgmii_mode) {
+	case USXGMII_MODE_10G:
+		if (ethqos->curr_serdes_speed != SPEED_10000)
+			ret = qcom_ethqos_serdes_usxgmii_10Gb_1Gb(ethqos);
+
+		ethqos->curr_serdes_speed = SPEED_10000;
 		break;
-	case SPEED_5000:
-		ret = qcom_ethqos_serdes_usxgmii_5Gb(ethqos);
+	case USXGMII_MODE_5G:
+		if (ethqos->curr_serdes_speed != SPEED_5000)
+			ret = qcom_ethqos_serdes_usxgmii_5Gb(ethqos);
+
+		ethqos->curr_serdes_speed = SPEED_5000;
 		break;
-	case SPEED_1000:
-	case SPEED_10000:
-		ret = qcom_ethqos_serdes_usxgmii_10Gb_1Gb(ethqos);
+	case USXGMII_MODE_2P5G:
+		if (ethqos->curr_serdes_speed != SPEED_2500)
+			ret = qcom_ethqos_serdes_usxgmii_2p5Gb(ethqos);
+
+		ethqos->curr_serdes_speed = SPEED_2500;
 		break;
 	default:
-		ETHQOSINFO("%s : Serdes Speed 1GB set by default", __func__);
-		ret = qcom_ethqos_serdes_usxgmii_10Gb_1Gb(ethqos);
+		ETHQOSERR("%s : Serdes clock not set for USXGMII PHY speed = %d\n",
+			  __func__,
+			  ethqos->usxgmii_mode);
+		ethqos->curr_serdes_speed = 0;
 		break;
 	}
 
@@ -1007,6 +1018,7 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos)
 	struct resource *res = NULL;
 	struct platform_device *pdev = ethqos->pdev;
 	int ret;
+	u32 mode = 0;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "serdes");
 	ethqos->sgmii_base = devm_ioremap_resource(&pdev->dev, res);
@@ -1027,6 +1039,26 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos)
 		ETHQOSERR("%s : configure_serdes_dt Failed phyaux", __func__);
 		ret = PTR_ERR(ethqos->phyaux_clk);
 		goto err_mem;
+	}
+
+	if (of_property_read_bool(ethqos->pdev->dev.of_node, "usxgmii-mode")) {
+		ret = of_property_read_u32(ethqos->pdev->dev.of_node, "usxgmii-mode", &mode);
+		switch (mode) {
+		case 10000:
+			ethqos->usxgmii_mode = USXGMII_MODE_10G;
+			break;
+		case 5000:
+			ethqos->usxgmii_mode = USXGMII_MODE_5G;
+			break;
+		case 2500:
+			ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
+			break;
+		default:
+			ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
+			goto err_mem;
+		}
+	} else {
+		ETHQOSINFO("Unable to find USXGMII mode from device tree\n");
 	}
 
 	ret = clk_prepare_enable(ethqos->sgmiref_clk);

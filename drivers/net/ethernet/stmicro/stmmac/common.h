@@ -27,6 +27,10 @@
 #include "hwif.h"
 #include "mmc.h"
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#define DMA_OFFLOAD_ENABLE
+#endif
+
 /* Synopsys Core versions */
 #define	DWMAC_CORE_3_40		0x34
 #define	DWMAC_CORE_3_50		0x35

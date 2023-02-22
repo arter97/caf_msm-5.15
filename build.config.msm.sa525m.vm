@@ -1,0 +1,44 @@
+################################################################################
+## Inheriting configs from ACK
+. ${ROOT_DIR}/common/build.config.common
+. ${ROOT_DIR}/common/build.config.aarch64
+
+################################################################################
+## Variant setup
+VARIANTS=(defconfig debug_defconfig)
+[ -z "${VARIANT}" ] && VARIANT=debug_defconfig
+
+if [ -e "${ROOT_DIR}/msm-kernel" -a "${KERNEL_DIR}" = "common" ]; then
+	KERNEL_DIR="msm-kernel"
+fi
+
+BOOT_IMAGE_HEADER_VERSION=3
+PAGE_SIZE=4096
+VM_DTB_IMG_CREATE=1
+PREFERRED_USERSPACE=vm
+
+
+declare -A MKDTIMGDTBS
+
+################################################################################
+## Define TELE VM parameters
+
+TELEVM_KERNEL_OFFSET=0x0
+TELEVM_DTB_OFFSET=0x2000000
+TELEVM_RAMDISK_OFFSET=0x2100000
+
+
+################################################################################
+## Define FOTA VM parameters
+FOTAVM_KERNEL_OFFSET=0
+FOTAVM_DTB_OFFSET=0x2000000
+FOTAVM_RAMDISK_OFFSET=0x2100000
+
+
+VM_SIZE_EXT4=270000000
+DUMMY_IMG_SIZE=4096
+
+################################################################################
+## Inheriting MSM configs
+. ${KERNEL_DIR}/build.config.msm.common
+. ${KERNEL_DIR}/build.config.msm.vm

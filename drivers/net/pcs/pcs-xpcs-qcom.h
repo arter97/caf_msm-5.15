@@ -30,7 +30,6 @@
 #define DW_GMII_2500			(BIT(5))
 #define DW_GMII_1000			(BIT(6))
 #define DW_GMII_100				(BIT(13))
-#define DW_GMII_10				(0)
 #define DW_SGMII_SS_MASK		(BIT(13) | BIT(6))
 
 /* SR_AN */
@@ -196,6 +195,8 @@
 
 /* SR MII PCS KR Control defines */
 #define USXG_MODE_SEL				GENMASK(12, 10)
+#define USXGMII_5G				BIT(10)
+#define USXGMII_2P5G				BIT(11)
 
 /* SR_MII_AN_ADV */
 #define DW_SR_MII_AN_ADV_FD			BIT(5)

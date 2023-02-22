@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2010,2015,2019,2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)     "qcom-scm: %s: " fmt, __func__
 
@@ -542,6 +542,25 @@ void qcom_scm_set_download_mode(enum qcom_download_mode mode, phys_addr_t tcsr_b
 }
 EXPORT_SYMBOL(qcom_scm_set_download_mode);
 
+int qcom_scm_get_download_mode(unsigned int *mode, phys_addr_t tcsr_boot_misc)
+{
+	int ret = -EINVAL;
+	struct device *dev = __scm ? __scm->dev : NULL;
+
+	if (tcsr_boot_misc || (__scm && __scm->dload_mode_addr)) {
+		ret = qcom_scm_io_readl(tcsr_boot_misc ? : __scm->dload_mode_addr, mode);
+	} else {
+		dev_err(dev,
+			"No available mechanism for getting download mode\n");
+	}
+
+	if (ret)
+		dev_err(dev, "failed to get download mode: %d\n", ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(qcom_scm_get_download_mode);
+
 int qcom_scm_config_cpu_errata(void)
 {
 	struct qcom_scm_desc desc = {
@@ -919,6 +938,157 @@ bool qcom_scm_is_mode_switch_available(void)
 						QCOM_SCM_BOOT_SWITCH_MODE);
 }
 EXPORT_SYMBOL(qcom_scm_is_mode_switch_available);
+
+int __qcom_scm_ethqos_configure(struct device *dev, u32 emac_base_addr,
+	u32 link_speed, u32 if_mode, phys_addr_t phys_rgmii_hsr_por, u32 len)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_ETHQOS_CONFIG_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.args[1] = link_speed,
+		.args[2] = if_mode,
+		.args[3] = phys_rgmii_hsr_por,
+		.args[4] = len,
+		.arginfo = QCOM_SCM_ARGS(5, QCOM_SCM_VAL, QCOM_SCM_VAL, QCOM_SCM_VAL,
+							QCOM_SCM_RO, QCOM_SCM_VAL),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	pr_info("scm ethqos configure 0x%llx 0x%x 0x%x 0x%llx, 0x%llx done =0x%x\n",
+		emac_base_addr, link_speed, if_mode, phys_rgmii_hsr_por, len, ret);
+
+	return ret;
+}
+
+int qcom_scm_call_ethqos_configure(u32 emac_base_addr, u32 link_speed,
+	u32 if_mode, phys_addr_t phys_rgmii_hsr_por, u32 len)
+{
+	return __qcom_scm_ethqos_configure(__scm ? __scm->dev : NULL,
+		     emac_base_addr, link_speed, if_mode, phys_rgmii_hsr_por, len);
+}
+EXPORT_SYMBOL(qcom_scm_call_ethqos_configure);
+
+
+int __qcom_scm_loopback_configure(struct device *dev, u32 emac_base_addr,
+	u32 loopback_mode, u32 if_mode)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_LOOPBACK_CONFIG_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.args[1] = loopback_mode,
+		.args[2] = if_mode,
+		.arginfo = QCOM_SCM_ARGS(3),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	pr_info("scm loopback configure 0x%llx done = 0x%x\n", emac_base_addr, ret);
+
+	return ret;
+}
+
+int qcom_scm_call_loopback_configure(u32 emac_base_addr, u32 loopback_mode,
+	u32 if_mode)
+{
+	return __qcom_scm_loopback_configure(__scm ? __scm->dev : NULL,
+					emac_base_addr, loopback_mode, if_mode);
+}
+EXPORT_SYMBOL(qcom_scm_call_loopback_configure);
+
+
+int __qcom_scm_iomacro_dump(struct device *dev, u32 emac_base_addr,
+	phys_addr_t buffer, u32 len)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_IO_MACRO_DUMP_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.args[1] = buffer,
+		.args[2] = len,
+		.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_VAL, QCOM_SCM_RW, QCOM_SCM_VAL),
+	};
+	struct qcom_scm_res res;
+
+	pr_info("scm io macro dump 0x%llx buf = 0x%llx len = 0x%x\n",
+		emac_base_addr, buffer, len);
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+
+	return ret;
+}
+
+int qcom_scm_call_iomacro_dump(u32 emac_base_addr, phys_addr_t buffer, u32 len)
+{
+	return __qcom_scm_iomacro_dump(__scm ? __scm->dev : NULL,
+					emac_base_addr, buffer, len);
+}
+EXPORT_SYMBOL(qcom_scm_call_iomacro_dump);
+
+int __qcom_scm_get_emac_maxspeed(struct device *dev, u32 emac_base_addr,
+	u32 *maxspeed)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_EMAC_MAXSPEED_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.arginfo = QCOM_SCM_ARGS(1),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (maxspeed)
+		*maxspeed = res.result[1];
+
+	pr_info("scm get max_spd ret=0x%x res0 = %d res1 =%d res2 = %d\n",
+		ret, res.result[0], res.result[1], res.result[2]);
+
+	return ret;
+}
+
+int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed)
+{
+	return __qcom_scm_get_emac_maxspeed(__scm ? __scm->dev : NULL,
+					emac_base_addr, maxspeed);
+}
+EXPORT_SYMBOL(qcom_scm_call_get_emac_maxspeed);
+
+
+int __qcom_scm_ipa_intr_config(struct device *dev, u32 emac_base_addr, u32 value)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = QCOM_SCM_IPA_INTR_CONFIG_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = emac_base_addr,
+		.args[1] = value,
+		.arginfo = QCOM_SCM_ARGS(2),
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	pr_info("scm ipa intr 0x%llx config = 0x%x done = 0x%x\n", emac_base_addr, value, ret);
+
+	return ret;
+}
+
+int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value)
+{
+	return __qcom_scm_ipa_intr_config(__scm ? __scm->dev : NULL,
+					emac_base_addr, value);
+}
+EXPORT_SYMBOL(qcom_scm_call_ipa_intr_config);
+
 
 int __qcom_scm_get_feat_version(struct device *dev, u64 feat_id, u64 *version)
 {
@@ -2249,6 +2419,7 @@ int qcom_scm_tsens_reinit(int *tsens_ret)
 	struct qcom_scm_desc desc = {
 		.svc = QCOM_SCM_SVC_TSENS,
 		.cmd = QCOM_SCM_TSENS_INIT_ID,
+		.owner = ARM_SMCCC_OWNER_SIP
 	};
 	struct qcom_scm_res res;
 
@@ -2857,9 +3028,7 @@ static int qcom_scm_probe(struct platform_device *pdev)
 		}
 	}
 
-#if IS_ENABLED(CONFIG_QCOM_SCM_QCPE)
 	__qcom_scm_init();
-#endif
 	__get_convention();
 
 	scm->restart_nb.notifier_call = qcom_scm_do_restart;
@@ -2942,9 +3111,7 @@ subsys_initcall(qcom_scm_init);
 #if IS_MODULE(CONFIG_QCOM_SCM)
 static void __exit qcom_scm_exit(void)
 {
-#if IS_ENABLED(CONFIG_QCOM_SCM_QCPE)
 	__qcom_scm_qcpe_exit();
-#endif
 	platform_driver_unregister(&qcom_scm_driver);
 	qtee_shmbridge_driver_exit();
 }

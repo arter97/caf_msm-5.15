@@ -37,7 +37,7 @@ static u8 asm330lhh_addr;
 
 static const struct st_asm330lhh_odr_table_entry st_asm330lhh_odr_table[] = {
 	[ST_ASM330LHH_ID_ACC] = {
-		.size = 7,
+		.size = 8,
 		.reg = {
 			.addr = ST_ASM330LHH_CTRL1_XL_ADDR,
 			.mask = GENMASK(7, 4),
@@ -46,16 +46,17 @@ static const struct st_asm330lhh_odr_table_entry st_asm330lhh_odr_table[] = {
 			.addr = ST_ASM330LHH_REG_FIFO_CTRL3_ADDR,
 			.mask = GENMASK(3, 0),
 		},
-		.odr_avl[0] = {  12, 500000,  0x01,  0x01 },
-		.odr_avl[1] = {  26,      0,  0x02,  0x02 },
-		.odr_avl[2] = {  52,      0,  0x03,  0x03 },
-		.odr_avl[3] = { 104,      0,  0x04,  0x04 },
-		.odr_avl[4] = { 208,      0,  0x05,  0x05 },
-		.odr_avl[5] = { 416,      0,  0x06,  0x06 },
-		.odr_avl[6] = { 833,      0,  0x07,  0x07 },
+		.odr_avl[0] = {   0,      0,  0x00,  0x00 },
+		.odr_avl[1] = {  12, 500000,  0x01,  0x01 },
+		.odr_avl[2] = {  26,      0,  0x02,  0x02 },
+		.odr_avl[3] = {  52,      0,  0x03,  0x03 },
+		.odr_avl[4] = { 104,      0,  0x04,  0x04 },
+		.odr_avl[5] = { 208,      0,  0x05,  0x05 },
+		.odr_avl[6] = { 416,      0,  0x06,  0x06 },
+		.odr_avl[7] = { 833,      0,  0x07,  0x07 },
 	},
 	[ST_ASM330LHH_ID_GYRO] = {
-		.size = 7,
+		.size = 8,
 		.reg = {
 			.addr = ST_ASM330LHH_CTRL2_G_ADDR,
 			.mask = GENMASK(7, 4),
@@ -64,13 +65,14 @@ static const struct st_asm330lhh_odr_table_entry st_asm330lhh_odr_table[] = {
 			.addr = ST_ASM330LHH_REG_FIFO_CTRL3_ADDR,
 			.mask = GENMASK(7, 4),
 		},
-		.odr_avl[0] = {  12, 500000,  0x01,  0x01 },
-		.odr_avl[1] = {  26,      0,  0x02,  0x02 },
-		.odr_avl[2] = {  52,      0,  0x03,  0x03 },
-		.odr_avl[3] = { 104,      0,  0x04,  0x04 },
-		.odr_avl[4] = { 208,      0,  0x05,  0x05 },
-		.odr_avl[5] = { 416,      0,  0x06,  0x06 },
-		.odr_avl[6] = { 833,      0,  0x07,  0x07 },
+		.odr_avl[0] = {   0,      0,  0x00,  0x00 },
+		.odr_avl[1] = {  12, 500000,  0x01,  0x01 },
+		.odr_avl[2] = {  26,      0,  0x02,  0x02 },
+		.odr_avl[3] = {  52,      0,  0x03,  0x03 },
+		.odr_avl[4] = { 104,      0,  0x04,  0x04 },
+		.odr_avl[5] = { 208,      0,  0x05,  0x05 },
+		.odr_avl[6] = { 416,      0,  0x06,  0x06 },
+		.odr_avl[7] = { 833,      0,  0x07,  0x07 },
 	},
 	[ST_ASM330LHH_ID_TEMP] = {
 		.size = 2,
@@ -706,7 +708,7 @@ st_asm330lhh_sysfs_sampling_freq_avail(struct device *dev,
 	enum st_asm330lhh_sensor_id id = sensor->id;
 	int i, len = 0;
 
-	for (i = 0; i < st_asm330lhh_odr_table[id].size; i++) {
+	for (i = 1; i < st_asm330lhh_odr_table[id].size; i++) {
 		len += scnprintf(buf + len, PAGE_SIZE - len, "%d.%06d ",
 				 st_asm330lhh_odr_table[id].odr_avl[i].hz,
 				 st_asm330lhh_odr_table[id].odr_avl[i].uhz);

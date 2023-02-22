@@ -346,6 +346,19 @@ static void dwxgmac2_set_tbs(struct dma_edesc *p, u32 sec, u32 nsec)
 	p->des7 = 0;
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static void dwxgmac2_set_hw_ts(struct dma_desc *p, u32 pid)
+{
+	p->des0 = 0;
+	p->des1 = 0;
+	p->des2 = 0;
+	p->des3 = 0;
+	p->des0 = cpu_to_le32(pid & XGMAC_TDES0_TTSL);
+	p->des3 |= cpu_to_le32(XGMAC_TDES3_CTXT);
+	p->des3 |= cpu_to_le32(XGMAC_TDES3_PIDV);
+}
+#endif
+
 static void dwxgmac2_display_ring(void *head, unsigned int size, bool rx,
 				  dma_addr_t dma_rx_phy, unsigned int desc_size)
 {
@@ -427,4 +440,7 @@ const struct stmmac_desc_ops dwxgmac210_desc_ops = {
 	.set_vlan = dwxgmac2_set_vlan,
 	.set_tbs = dwxgmac2_set_tbs,
 	.display_ring = dwxgmac2_display_ring,
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	.set_hw_ts = dwxgmac2_set_hw_ts,
+#endif
 };

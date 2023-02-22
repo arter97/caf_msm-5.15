@@ -16,13 +16,13 @@
 #include <linux/uaccess.h>
 #include <linux/ipc_logging.h>
 #include <linux/interconnect.h>
+#include <linux/qtee_shmbridge.h>
 
-#define QCOM_ETH_QOS_MAC_ADDR_LEN
-#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
+#define QCOM_ETH_QOS_MAC_ADDR_LEN 6
+#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN 18
 
 extern void *ipc_stmmac_log_ctxt;
 extern void *ipc_stmmac_log_ctxt_low;
-extern void *ipc_emac_log_ctxt;
 
 #define IPCLOG_STATE_PAGES 50
 #define IPC_RATELIMIT_BURST 1
@@ -154,6 +154,16 @@ do {\
 #define VOTE_IDX_2500MBPS 4
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+enum ipa_queue_type {
+	IPA_QUEUE_BE = 0,
+};
+#endif
+
+//Mac config
+#define XGMAC_RX_CONFIG		0x00000004
+#define XGMAC_CONFIG_LM			BIT(10)
 
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
@@ -299,7 +309,10 @@ struct qcom_ethqos {
 	void __iomem *rgmii_base;
 	void __iomem *sgmii_base;
 	void __iomem *ioaddr;
-
+	u32 rgmii_phy_base;
+	struct qtee_shm shm_rgmii_hsr;
+	struct qtee_shm shm_rgmii_local;
+	phys_addr_t phys_rgmii_hsr_por;
 	struct msm_bus_scale_pdata *bus_scale_vec;
 	u32 bus_hdl;
 	unsigned int rgmii_clk_rate;
@@ -328,6 +341,9 @@ struct qcom_ethqos {
 
 	unsigned int speed;
 	unsigned int vote_idx;
+
+	/* Serdes clocks will be set based on PHY max speed */
+	unsigned int usxgmii_mode;
 
 	int gpio_phy_intr_redirect;
 	u32 phy_intr;
@@ -397,6 +413,7 @@ struct qcom_ethqos {
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
 	bool probed;
+	bool ipa_enabled;
 };
 
 struct pps_cfg {

@@ -17,9 +17,6 @@
 #define DW_2500BASEX			3
 #define DW_AN_C37_USXGMII		4
 
-/* Comment this out if pcs_intr is to be used */
-#define PCS_POLL
-
 struct xpcs_id;
 
 struct dw_xpcs_qcom {
@@ -27,6 +24,8 @@ struct dw_xpcs_qcom {
 	struct phylink_pcs pcs;
 	void __iomem *addr;
 	int pcs_intr;
+	bool intr_en;
+	bool sgmii_2p5g_en;
 };
 
 #if IS_ENABLED(CONFIG_PCS_QCOM)
@@ -46,11 +45,12 @@ const struct xpcs_compat *xpcs_find_compat(const struct xpcs_id *id,
 					   phy_interface_t interface);
 int qcom_xpcs_serdes_loopback(struct dw_xpcs_qcom *xpcs, bool on);
 int qcom_xpcs_pcs_loopback(struct dw_xpcs_qcom *xpcs, bool on);
-int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs);
+int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs, phy_interface_t interface);
+int qcom_xpcs_intr_enable(struct dw_xpcs_qcom *xpcs);
 irqreturn_t ethqos_xpcs_isr(int irq, void *dev_data);
-int ethqos_xpcs_intr_config(phy_interface_t interface);
-int ethqos_xpcs_intr_enable(void);
-int ethqos_xpcs_init(phy_interface_t mode);
+int ethqos_xpcs_intr_config(struct net_device *ndev);
+int ethqos_xpcs_intr_enable(struct net_device *ndev);
+int ethqos_xpcs_init(struct net_device *ndev);
 #else /* IS_ENABLED(CONFIG_PCS_QCOM) */
 static inline int qcom_xpcs_get_an_mode(struct dw_xpcs_qcom *xpcs,
 					phy_interface_t interface)
@@ -102,7 +102,13 @@ static inline int qcom_xpcs_pcs_loopback(struct dw_xpcs_qcom *xpcs, bool on)
 	return -EINVAL;
 }
 
-static inline int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs)
+static inline int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *xpcs,
+					   phy_interface_t interface)
+{
+	return -EINVAL;
+}
+
+static inline int qcom_xpcs_intr_enable(struct dw_xpcs_qcom *xpcs)
 {
 	return -EINVAL;
 }
@@ -112,17 +118,17 @@ static inline irqreturn_t ethqos_xpcs_isr(int irq, void *dev_data)
 	return IRQ_NONE;
 }
 
-static inline int ethqos_xpcs_intr_config(phy_interface_t interface)
+static inline int ethqos_xpcs_intr_config(struct net_device *ndev)
 {
 	return -EINVAL;
 }
 
-static inline int ethqos_xpcs_intr_enable(void)
+static inline int ethqos_xpcs_intr_enable(struct net_device *ndev)
 {
 	return -EINVAL;
 }
 
-static inline int ethqos_xpcs_init(phy_interface_t mode)
+static inline int ethqos_xpcs_init(struct net_device *ndev)
 {
 	return 0;
 }

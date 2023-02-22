@@ -184,6 +184,7 @@ extern void walt_init_foreground_tg(struct task_group *tg);
 extern int register_walt_callback(void);
 extern int input_boost_init(void);
 extern int core_ctl_init(void);
+extern void rebuild_sched_domains(void);
 
 extern atomic64_t walt_irq_work_lastq_ws;
 extern unsigned int __read_mostly sched_ravg_window;
@@ -776,17 +777,17 @@ static inline bool task_fits_capacity(struct task_struct *p,
 		margin = sched_capacity_margin_down[cpu];
 		if (task_in_related_thread_group(p)) {
 			if (is_min_cluster_cpu(cpu))
-				margin = sysctl_sched_early_down[0];
+				margin = max(margin, sysctl_sched_early_down[0]);
 			else if (!is_max_cluster_cpu(cpu))
-				margin = sysctl_sched_early_down[1];
+				margin = max(margin, sysctl_sched_early_down[1]);
 		}
 	} else {
 		margin = sched_capacity_margin_up[task_cpu(p)];
 		if (task_in_related_thread_group(p)) {
 			if (is_min_cluster_cpu(task_cpu(p)))
-				margin = sysctl_sched_early_up[0];
+				margin = max(margin, sysctl_sched_early_up[0]);
 			else if (!is_max_cluster_cpu(task_cpu(p)))
-				margin = sysctl_sched_early_up[1];
+				margin = max(margin, sysctl_sched_early_up[1]);
 		}
 	}
 

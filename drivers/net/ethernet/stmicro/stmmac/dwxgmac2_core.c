@@ -1457,6 +1457,44 @@ static void dwxgmac3_fpe_configure(void __iomem *ioaddr, u32 num_txq,
 	writel(value, ioaddr + XGMAC_FPE_CTRL_STS);
 }
 
+static void dxgmac2_rx_queue_routing(struct mac_device_info *hw,
+				     u8 packet, u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+	u32 ptp_value;
+
+	static const struct stmmac_rx_routing route_possibilities[] = {
+		{ XGMAC_RXQCTRL_AVCPQ_MASK, XGMAC_RXQCTRL_AVCPQ_SHIFT },
+		{ XGMAC_RXQCTRL_PTPQ_MASK, XGMAC_RXQCTRL_PTPQ_SHIFT },
+		{ XGMAC_RXQCTRL_DCBCPQ_MASK, XGMAC_RXQCTRL_DCBCPQ_SHIFT },
+		{ XGMAC_RXQCTRL_UPQ_MASK, XGMAC_RXQCTRL_UPQ_SHIFT },
+		{ XGMAC_RXQCTRL_MCBCQ_MASK, XGMAC_RXQCTRL_MCBCQ_SHIFT },
+	};
+
+	value = readl(ioaddr + XGMAC_RXQ_CTRL1);
+
+	/* routing configuration */
+	value &= ~route_possibilities[packet - 1].reg_mask;
+	value |= (queue << route_possibilities[packet - 1].reg_shift) &
+		 route_possibilities[packet - 1].reg_mask;
+
+	/* some packets require extra ops */
+	if (packet == PACKET_AVCPQ) {
+		value &= ~XGMAC_RXQCTRL_TACPQE;
+		value |= 0x1 << XGMAC_RXQCTRL_TACPQE_SHIFT;
+	} else if (packet == PACKET_MCBCQ) {
+		value &= ~XGMAC_RXQCTRL_MCBCQEN;
+		value |= 0x1 << XGMAC_RXQCTRL_MCBCQEN_SHIFT;
+	} else if (packet == PACKET_PTPQ) {
+		ptp_value = readl(ioaddr + XGMAC_TIMESTAMP_BASE_ADDR + PTP_TCR);
+		ptp_value |= PTP_TCR_AV8021ASMEN;
+		writel(ptp_value, ioaddr + XGMAC_TIMESTAMP_BASE_ADDR + PTP_TCR);
+	}
+
+	writel(value, ioaddr + XGMAC_RXQ_CTRL1);
+}
+
 const struct stmmac_ops dwxgmac210_ops = {
 	.core_init = dwxgmac2_core_init,
 	.set_mac = dwxgmac2_set_mac,
@@ -1464,7 +1502,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.rx_queue_enable = dwxgmac2_rx_queue_enable,
 	.rx_queue_prio = dwxgmac2_rx_queue_prio,
 	.tx_queue_prio = dwxgmac2_tx_queue_prio,
-	.rx_queue_routing = NULL,
+	.rx_queue_routing = dxgmac2_rx_queue_routing,
 	.prog_mtl_rx_algorithms = dwxgmac2_prog_mtl_rx_algorithms,
 	.prog_mtl_tx_algorithms = dwxgmac2_prog_mtl_tx_algorithms,
 	.set_mtl_tx_queue_weight = dwxgmac2_set_mtl_tx_queue_weight,

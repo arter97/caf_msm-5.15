@@ -463,7 +463,6 @@ static int qusb_phy_init(struct usb_phy *phy)
 	u8 reg;
 	bool pll_lock_fail = false;
 
-
 	if (qphy->eud_enable_reg && readl_relaxed(qphy->eud_enable_reg)) {
 		dev_err(qphy->phy.dev, "eud is enabled\n");
 		return 0;
@@ -617,7 +616,6 @@ static int qusb_phy_init(struct usb_phy *phy)
 static void qusb_phy_shutdown(struct usb_phy *phy)
 {
 	struct qusb_phy *qphy = container_of(phy, struct qusb_phy, phy);
-
 
 	if (qphy->eud_enable_reg && readl_relaxed(qphy->eud_enable_reg)) {
 		dev_err(qphy->phy.dev, "eud is enabled\n");
