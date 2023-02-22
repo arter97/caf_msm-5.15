@@ -81,5 +81,25 @@ int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
 }
 EXPORT_SYMBOL(qseecom_send_command);
 
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+int qseecom_create_key_in_slot(uint8_t usage_code, uint8_t key_slot, const uint8_t *key_id,
+    const uint8_t *inhash32)
+{
+	int32_t ret = -1;
+
+	if (qseecom_fun_ops.qseecom_create_key_in_slot) {
+		ret = qseecom_fun_ops.qseecom_create_key_in_slot(usage_code, key_slot, key_id, inhash32);
+		if (ret != 0)
+			pr_err("%s: qseecom_create_key_in_slot failed with ret = %d\n", __func__, ret);
+	} else {
+		pr_err_ratelimited("Qseecom driver is not up yet\n");
+		ret = -EAGAIN;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(qseecom_create_key_in_slot);
+#endif
+
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Qseecom proxy driver");

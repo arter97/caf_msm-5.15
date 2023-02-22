@@ -5,6 +5,7 @@
 
 #include "ufshcd.h"
 #include "ufshcd-crypto.h"
+#include <linux/blkdev.h>
 
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/ufshcd.h>
@@ -253,3 +254,27 @@ void ufshcd_crypto_setup_rq_keyslot_manager(struct ufs_hba *hba,
 	if (hba->caps & UFSHCD_CAP_CRYPTO)
 		blk_ksm_register(&hba->ksm, q);
 }
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+void ufshcd_prepare_lrbp_crypto(struct ufs_hba *hba, struct request *rq,
+					      struct ufshcd_lrb *lrbp)
+{
+	if (!rq) {
+		goto out;
+	}
+
+	if (hba->vops && hba->vops->prepare_lrbp_crypto) {
+		if (hba->vops->prepare_lrbp_crypto(hba, rq, lrbp)) {
+			goto out;
+		}
+	} else {
+		pr_err("prepare_lrbp_crypto is null %s\n", __func__);
+		goto out;
+	}
+
+	return;
+out:
+	lrbp->crypto_key_slot = -1;
+	return;
+}
+#endif

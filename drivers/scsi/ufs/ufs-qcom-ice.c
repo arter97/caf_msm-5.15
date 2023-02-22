@@ -144,6 +144,17 @@ int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 	if (!qcom_ice_supported(host))
 		goto disable;
 
+	/*
+	 * add support for FDE
+	 */
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	err = crypto_qti_ice_init_fde_node(dev);
+	if (err) {
+		dev_err(dev, "Failed to add fde node, err=%d\n", err);
+		return err;
+	}
+#endif
+
 	return 0;
 
 disable:
@@ -287,3 +298,33 @@ int ufs_qcom_ice_program_key(struct ufs_hba *hba,
 
 	return err;
 }
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+int ufshcd_crypto_qti_prep_lrbp_crypto(struct ufs_hba *hba,
+				       struct request *req,
+				       struct ufshcd_lrb *lrbp)
+{
+	//struct bio_crypt_ctx *bc;
+	int ret = 0;
+	struct ice_data_setting setting;
+	bool bypass = true;
+	short key_index = 0;
+
+	lrbp->crypto_enable = false;
+	if (!req || !req->bio)
+		return 0;
+
+	ret = crypto_qti_ice_config_start(req, &setting);
+	if (!ret) {
+		key_index = setting.crypto_data.key_index;
+		bypass = (rq_data_dir(req) == WRITE) ?
+			 setting.encr_bypass : setting.decr_bypass;
+		lrbp->crypto_enable = !bypass; //need to check this
+		lrbp->crypto_key_slot = key_index;
+		lrbp->data_unit_num = req->bio->bi_iter.bi_sector >>
+				      ICE_CRYPTO_DATA_UNIT_4_KB;
+	}
+
+	return ret;
+}
+#endif	//IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
