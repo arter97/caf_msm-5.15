@@ -19,7 +19,8 @@
 #include "virtio_fastrpc_mem.h"
 #include "virtio_fastrpc_queue.h"
 
-#define VIRTIO_ID_FASTRPC				34
+/* Virtio ID of FASTRPC : 0xC004 */
+#define VIRTIO_ID_FASTRPC				49156
 /* indicates remote invoke with buffer attributes is supported */
 #define VIRTIO_FASTRPC_F_INVOKE_ATTR			1
 /* indicates remote invoke with CRC is supported */

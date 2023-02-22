@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022, The Linux Foundation. All rights reserved.
  */
 
@@ -26,6 +26,7 @@
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/ioctl.h>
@@ -2853,7 +2854,7 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 		dev_err(uport->dev, "%s: ret %d rx_bytes %d\n", __func__,
 								ret, rx_bytes);
 		msm_geni_update_uart_error_code(msm_port, UART_ERROR_RX_TTY_INSERT_FAIL);
-		WARN_ON(1);
+		WARN_ON_ONCE(1);
 	}
 	uport->icount.rx += ret;
 	tty_flip_buffer_push(tport);
@@ -3092,6 +3093,7 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 	unsigned int dma;
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 	struct tty_port *tport = &uport->state->port;
+	struct tty_struct *tty = uport->state->port.tty;
 	bool s_cmd_done = false;
 	bool m_cmd_done = false;
 
@@ -3156,8 +3158,17 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 				dma_tx_status, dma_rx_status, is_irq_masked);
 		}
 
-		m_cmd_done = handle_tx_dma_xfer(m_irq_status, uport);
-		s_cmd_done = handle_rx_dma_xfer(s_irq_status, uport);
+		/* uport->state->port.tty pointer initialized as part of
+		 * UART port_open. Adding check to ensure tty should have
+		 * a valid value before using.
+		 */
+		if (tty) {
+			m_cmd_done = handle_tx_dma_xfer(m_irq_status, uport);
+			s_cmd_done = handle_rx_dma_xfer(s_irq_status, uport);
+		} else {
+			UART_LOG_DBG(msm_port->ipc_log_irqstatus, uport->dev,
+				     "Port is closed!\n");
+		}
 	}
 
 exit_geni_serial_isr:
@@ -3204,7 +3215,7 @@ static irqreturn_t msm_geni_wakeup_isr(int isr, void *dev)
 			UART_LOG_DBG(port->ipc_log_rx, uport->dev,
 				"%s: Unexpected wakeup ISR %d\n",
 					__func__, port->edge_count);
-			WARN_ON(1);
+			WARN_ON_ONCE(1);
 		} else {
 			tty_insert_flip_char(tty->port,
 					port->wakeup_byte, TTY_NORMAL);
@@ -3284,12 +3295,14 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 		console_stop(uport->cons);
 		disable_irq(uport->irq);
 	} else {
-		msm_geni_serial_power_on(uport);
-		ret = wait_for_transfers_inflight(uport);
-		if (ret)
-			UART_LOG_DBG(msm_port->ipc_log_misc, uport->dev,
-				  "%s wait_for_transfer_inflight return ret: %d", __func__, ret);
+		if (msm_port->wakeup_irq > 0 && msm_port->wakeup_enabled) {
+			irq_set_irq_wake(msm_port->wakeup_irq, 0);
+			disable_irq(msm_port->wakeup_irq);
+			msm_port->wakeup_enabled = false;
+		}
 
+		geni_se_common_clks_on(msm_port->serial_rsc.se_clk,
+			msm_port->serial_rsc.m_ahb_clk, msm_port->serial_rsc.s_ahb_clk);
 		if (msm_port->xfer_mode == GENI_GPI_DMA) {
 			/* From the framework every time the stop
 			 * rx sequncer will be called before the closing
@@ -3343,6 +3356,8 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 		} else {
 			msm_geni_serial_stop_tx(uport);
 		}
+		geni_se_common_clks_off(msm_port->serial_rsc.se_clk,
+			msm_port->serial_rsc.m_ahb_clk, msm_port->serial_rsc.s_ahb_clk);
 		msm_port->count = 0;
 	}
 
@@ -3369,12 +3384,6 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 					     "%s: Failed to suspend:%d\n",
 					     __func__, ret);
 			}
-		}
-
-		if (msm_port->wakeup_irq > 0 && msm_port->wakeup_enabled) {
-			irq_set_irq_wake(msm_port->wakeup_irq, 0);
-			disable_irq(msm_port->wakeup_irq);
-			msm_port->wakeup_enabled = false;
 		}
 
 		if (!IS_ERR_OR_NULL(msm_port->serial_rsc.geni_gpio_shutdown)) {
@@ -4900,6 +4909,39 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_DEEPSLEEP
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
+	struct uart_port *uport = &port->uport;
+
+	if (uart_console(uport)) {
+		uart_resume_port((struct uart_driver *)uport->private_data, uport);
+		/*
+		 * For hibernation usecase clients for
+		 * console UART won't call port setup during restore.
+		 * Hence call port setup for console uart.
+		 */
+		msm_geni_serial_port_setup(uport);
+	} else {
+		/*
+		 * Peripheral register settings are lost during hibernation.
+		 * Update setup flag such that port setup happens again
+		 * during next session. Clients of HS-UART will close and
+		 * open the port during hibernation.
+		 */
+		port->port_setup = false;
+	}
+	return 0;
+}
+#else
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
+{
+	return 0;
+}
+#endif
+
 static int msm_geni_serial_sys_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -4933,32 +4975,6 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 	return 0;
 }
 
-static int msm_geni_serial_sys_hib_resume(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
-	struct uart_port *uport = &port->uport;
-
-	if (uart_console(uport)) {
-		uart_resume_port((struct uart_driver *)uport->private_data,
-									uport);
-		/*
-		 * For hibernation usecase clients for
-		 * console UART won't call port setup during restore.
-		 * Hence call port setup for console uart.
-		 */
-		msm_geni_serial_port_setup(uport);
-	} else {
-		/*
-		 * Peripheral register settings are lost during hibernation.
-		 * Update setup flag such that port setup happens again
-		 * during next session. Clients of HS-UART will close and
-		 * open the port during hibernation.
-		 */
-		port->port_setup = false;
-	}
-	return 0;
-}
 #else
 static int msm_geni_serial_runtime_suspend(struct device *dev)
 {
@@ -4976,11 +4992,6 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 }
 
 static int msm_geni_serial_sys_resume(struct device *dev)
-{
-	return 0;
-}
-
-static int msm_geni_serial_sys_hib_resume(struct device *dev)
 {
 	return 0;
 }
