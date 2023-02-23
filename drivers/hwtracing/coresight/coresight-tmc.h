@@ -138,7 +138,7 @@ enum tmc_mem_intf_width {
 	(TMC_ETR_SAVE_RESTORE | TMC_ETR_AXI_ARCACHE)
 
 /* SW USB reserved memory size */
-#define TMC_ETR_SW_USB_BUF_SIZE min(SZ_64M, (MAX_ORDER-1) << PAGE_SHIFT)
+#define TMC_ETR_SW_USB_BUF_SIZE SZ_64M
 
 enum etr_mode {
 	ETR_MODE_FLAT,		/* Uses contiguous flat buffer */
