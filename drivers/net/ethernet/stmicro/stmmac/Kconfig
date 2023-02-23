@@ -277,7 +277,7 @@ config ETHQOS_QCOM_VER4
 config ETHQOS_QCOM_SERDES
 	bool "Enable Serdes driver"
 	depends on STMMAC_ETH
-	default y
+	default n
 	help
 	  SerDes is to provide data transmission over a single line or
 	  a differential pair in order to minimize the number of I/O pins
