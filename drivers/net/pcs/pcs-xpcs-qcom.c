@@ -339,12 +339,14 @@ static int qcom_xpcs_unset_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-	if (ret < 0)
-		return -EINVAL;
+	if (!xpcs->mac2mac_en) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+		if (ret < 0)
+			return -EINVAL;
 
-	ret |= AN_CL37_EN;
-	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
+		ret |= AN_CL37_EN;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
+	}
 
 	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
 	if (ret < 0)
@@ -574,18 +576,21 @@ static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
-	if (ret < 0)
-		return -EINVAL;
+	if (!xpcs->mac2mac_en) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
+		if (ret < 0)
+			return -EINVAL;
 
-	ret |= AN_CL37_EN;
-	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
+		ret |= AN_CL37_EN;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
+	}
 
 	ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
 	if (ret < 0)
 		return -EINVAL;
 
-	ret |= DW_VR_MII_TX_CONFIG_MASK;
+	if (!xpcs->mac2mac_en)
+		ret |= DW_VR_MII_TX_CONFIG_MASK;
 	ret |= DW_VR_MII_SGMII_LINK_STS;
 
 	return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);

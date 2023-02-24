@@ -21,6 +21,8 @@
 #include "stmmac.h"
 #include "stmmac_platform.h"
 
+extern long phyaddr_pt_param;
+
 #ifdef CONFIG_OF
 
 /**
@@ -349,7 +351,7 @@ static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
 		mdio = true;
 	}
 
-	if (mdio) {
+	if (mdio || plat->mac2mac_en) {
 		plat->mdio_bus_data =
 			devm_kzalloc(dev, sizeof(struct stmmac_mdio_bus_data),
 				     GFP_KERNEL);
@@ -445,7 +447,15 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 	plat->phy_addr = -1;
 
 	/* Flag for mac2mac feature support*/
-	plat->mac2mac_en = of_property_read_bool(np, "mac2mac");
+	if (of_property_read_bool(np, "mac2mac")) {
+		of_property_read_u32(np, "mac2mac", &plat->mac2mac_en);
+		dev_info(&pdev->dev, "dt mac2mac_en = %d\n", plat->mac2mac_en);
+	}
+
+	if (phyaddr_pt_param == 0xFF) {
+		plat->mac2mac_en = true;
+		dev_info(&pdev->dev, "partition mac2mac_en = %d\n", plat->mac2mac_en);
+	}
 
 	/* Default to get clk_csr from stmmac_clk_crs_set(),
 	 * or get clk_csr from device tree.
@@ -460,11 +470,9 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		dev_warn(&pdev->dev, "snps,phy-addr property is deprecated\n");
 
 	/* To Configure PHY by using all device-tree supported properties */
-	if (!plat->mac2mac_en) {
-		rc = stmmac_dt_phy(plat, np, &pdev->dev);
-		if (rc)
-			return ERR_PTR(rc);
-	}
+	rc = stmmac_dt_phy(plat, np, &pdev->dev);
+	if (rc)
+		return ERR_PTR(rc);
 
 	of_property_read_u32(np, "tx-fifo-depth", &plat->tx_fifo_size);
 
