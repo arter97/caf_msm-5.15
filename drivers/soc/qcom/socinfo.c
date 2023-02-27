@@ -1067,6 +1067,8 @@ static const struct soc_id soc_id[] = {
 	{ 349, "SDM632" },
 	{ 350, "SDA632" },
 	{ 351, "SDA450" },
+	{ 352, "QCS405" },
+	{ 411, "QCS407" },
 	{ 356, "SM8250" },
 	{ 362, "SA8155" },
 	{ 367, "SA8155P" },
@@ -1089,6 +1091,7 @@ static const struct soc_id soc_id[] = {
 	{ 481, "KONA-IOT" },
 	{ 482, "WAIPIOP" },
 	{ 486, "MONACO" },
+	{ 496, "QRB5165N" },
 	{ 517, "MONACOP" },
 	{ 518, "KHAJE" },
 	{ 548, "KONA-7230-IOT" },
@@ -1110,10 +1113,13 @@ static const struct soc_id soc_id[] = {
 	{ 588, "CINDERRU_1032"},
 	{ 589, "CINDERRU_1052"},
 	{ 590, "CINDERRU_1062"},
+	{ 598, "QRB3165"},
+	{ 599, "QRB3165N"},
 	{ 600, "SG_KALAMA"},
 	{ 601, "SG_KALAMAP"},
 	{ 603, "QCS_KALAMAP"},
 	{ 604, "QCM_KALAMA"},
+	{ 608, "CROW" },
 };
 
 static struct qcom_socinfo *qsocinfo;
