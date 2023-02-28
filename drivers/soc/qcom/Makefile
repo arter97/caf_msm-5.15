@@ -107,6 +107,11 @@ obj-$(CONFIG_MSM_SPCOM) += spcom.o
 obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
 obj-$(CONFIG_QCOM_MINIDUMP) += minidump.o
 minidump-y   += msm_minidump.o minidump_log.o
+ifdef CONFIG_QCOM_MINIDUMP_RM
+	minidump-y += minidump_rm.o
+else
+	minidump-$(CONFIG_QCOM_MINIDUMP_SMEM) += minidump_smem.o
+endif
 minidump-$(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) += minidump_memory.o
 obj-$(CONFIG_QCOM_VA_MINIDUMP) += qcom_va_minidump.o
 obj-$(CONFIG_QCOM_LOGBUF_VENDOR_HOOKS) += qcom_logbuf_vh.o
