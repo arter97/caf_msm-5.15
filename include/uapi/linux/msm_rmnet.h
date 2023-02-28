@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_RMNET_H_
@@ -77,7 +77,8 @@
 #define RMNET_IOCTL_ADD_MUX_CHANNEL_v2         0x0024   /* Add MUX ID + mac*/
 #define RMNET_IOCTL_GET_EPID_ETH               0x0025   /* Get ETH ep ID   */
 #define RMNET_IOCTL_GET_EP_PAIR_ETH            0x0026   /* ETH data ep pair*/
-
+#define RMNET_IOCTL_GET_EPID_V2X               0x0027   /* Get v2x ep ID   */
+#define RMNET_IOCTL_GET_EP_PAIR_V2X            0x0028   /* v2x data ep pair*/
 /**
  * RMNET_IOCTL_EXTENDED_V2 ioctl types.
  * Should be sent through "extended_ioctl_type" variable.
@@ -106,6 +107,7 @@
 #define RMNET_IOCTL_FEAT_GET_DFLT_CONTROL_CHANNEL        (1<<8)
 #define RMNET_IOCTL_FEAT_GET_HWSW_MAP                    (1<<9)
 #define RMNET_IOCTL_FEAT_ETH_PDU                         (1<<10)
+#define RMNET_IOCTL_FEAT_V2X_EMB                         (1<<11)
 
 /* Input values for the RMNET_IOCTL_SET_EGRESS_DATA_FORMAT IOCTL  */
 #define RMNET_IOCTL_EGRESS_FORMAT_MAP                  (1<<1)
@@ -147,7 +149,8 @@ enum rmnet_egress_ep_type {
 	RMNET_EGRESS_LOW_LAT_CTRL	= 0x0001,
 	RMNET_EGRESS_LOW_LAT_DATA	= 0x0002,
 	RMNET_EGRESS_ETH_DATA		= 0x0003,
-	RMNET_EGRESS_MAX		= 0x0004,
+	RMNET_EGRESS_V2X_DATA		= 0x0004,
+	RMNET_EGRESS_MAX		= 0x0005,
 };
 
 
@@ -164,7 +167,8 @@ enum rmnet_ingress_ep_type {
 	RMNET_INGRESS_DEFAULT		= 0x0001,
 	RMNET_INGRESS_LOW_LAT_CTRL	= 0x0002,
 	RMNET_INGRESS_LOW_LAT_DATA	= 0x0003,
-	RMNET_INGRESS_MAX		= 0x0004,
+	RMNET_INGRESS_V2X_DATA		= 0x0004,
+	RMNET_INGRESS_MAX		= 0x0005,
 };
 
 /**
@@ -321,7 +325,7 @@ struct rmnet_ioctl_extended_s {
 			__u8   mux_id;
 		} flow_control_prop;
 
-		/* Return values for RMNET_IOCTL_GET_EP_PAIR/LL/ETH */
+		/* Return values for RMNET_IOCTL_GET_EP_PAIR/LL/ETH/V2X */
 		struct {
 			__u32   consumer_pipe_num;
 			__u32   producer_pipe_num;
