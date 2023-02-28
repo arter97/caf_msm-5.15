@@ -469,6 +469,8 @@ struct ep_pcie_dev_t {
 	struct clk		     *pipe_clk_mux;
 	struct clk		     *pipe_clk_ext_src;
 	struct clk		     *ref_clk_src;
+
+	bool				override_disable_sriov;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;
@@ -510,6 +512,7 @@ extern int ep_pcie_get_debug_mask(void);
 extern void ep_pcie_phy_init(struct ep_pcie_dev_t *dev);
 extern bool ep_pcie_phy_is_ready(struct ep_pcie_dev_t *dev);
 extern void ep_pcie_reg_dump(struct ep_pcie_dev_t *dev, u32 sel, bool linkdown);
+extern void ep_pcie_clk_dump(struct ep_pcie_dev_t *dev);
 extern void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev);
 extern void ep_pcie_debugfs_exit(void);
 
