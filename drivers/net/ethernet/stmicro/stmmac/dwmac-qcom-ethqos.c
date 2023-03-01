@@ -2535,12 +2535,6 @@ static ssize_t pcs_reg_read(struct file *file,
 	struct qcom_ethqos *ethqos = file->private_data;
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 
-	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
-	    priv->plat->interface != PHY_INTERFACE_MODE_SMII) {
-		pr_err("Current phy_interface type does not support PCS block\n");
-		return -EINVAL;
-	}
-
 	ret = copy_from_user(in_buf, buf, count);
 	if (ret) {
 		pr_err("%s: unable tocopyfromuser\n", __func__);
@@ -2592,6 +2586,31 @@ static ssize_t iomacro_reg_read(struct file *file,
 	return count;
 }
 
+static ssize_t serdes_reg_read(struct file *file,
+			       const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(ethqos->sgmii_base + offset));
+	return count;
+}
+
 static ssize_t mac_reg_write(struct file *file,
 			     const char __user *buf, size_t count, loff_t *ppos)
 {
@@ -2635,12 +2654,6 @@ static ssize_t pcs_reg_write(struct file *file,
 	unsigned long ret;
 	struct qcom_ethqos *ethqos = file->private_data;
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
-
-	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
-	    priv->plat->interface != PHY_INTERFACE_MODE_SGMII) {
-		pr_err("Current phy_interface type does not support PCS block\n");
-		return -EINVAL;
-	}
 
 	ret = copy_from_user(in_buf, buf, count);
 	if (ret) {
@@ -3244,6 +3257,45 @@ static ssize_t read_loopback_config(struct file *file,
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
 
+static ssize_t icb_read(struct file *file,
+			char __user *user_buf,
+			size_t count, loff_t *ppos)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	unsigned int len = 0, buf_len = 2000;
+	char *buf;
+	ssize_t ret_cnt;
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (ethqos->emac_axi_icc && ethqos->emac_apb_icc) {
+		len += scnprintf(buf + len, buf_len - len, "Current Speed in Mbps: %d\n",
+				 ethqos->speed);
+		len += scnprintf(buf + len, buf_len - len, "ICB vote_idx : %d\n",
+				 ethqos->vote_idx);
+		len += scnprintf(buf + len, buf_len - len,
+				 "Master-Emac -> AXI peak BW vote in KBps: %d\n",
+				 ethqos->emac_axi_icc[ethqos->vote_idx].peak_bandwidth);
+		len += scnprintf(buf + len, buf_len - len,
+				 "Master-Emac -> AXI average BW vote in KBps: %d\n",
+				 ethqos->emac_axi_icc[ethqos->vote_idx].average_bandwidth);
+		len += scnprintf(buf + len, buf_len - len,
+				 "Slave-Emac -> APB peak BW vote in KBps: %d\n",
+				 ethqos->emac_apb_icc[ethqos->vote_idx].peak_bandwidth);
+	}
+
+	ret_cnt = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+	return ret_cnt;
+}
+
 static const struct file_operations fops_phy_reg_dump = {
 	.read = read_phy_reg_dump,
 	.open = simple_open,
@@ -3336,6 +3388,13 @@ static const struct file_operations fops_mac_iomacro_read = {
 	.llseek = default_llseek,
 };
 
+static const struct file_operations fops_mac_serdes_dump = {
+	.write = serdes_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static const struct file_operations fops_mac_pcs_write = {
 	.write = pcs_reg_write,
 	.open = simple_open,
@@ -3345,6 +3404,13 @@ static const struct file_operations fops_mac_pcs_write = {
 
 static const struct file_operations fops_mac_write = {
 	.write = mac_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_icb_read = {
+	.read = icb_read,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -3360,8 +3426,10 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *mac_dump;
 	static struct dentry *mac_pcs_dump;
 	static struct dentry *mac_iomacro_dump;
+	static struct dentry *mac_serdes_dump;
 	static struct dentry *mac_pcs_write;
 	static struct dentry *mac_write;
+	static struct dentry *icb_dump;
 	struct stmmac_priv *priv;
 	char dir_name[32];
 
@@ -3397,20 +3465,66 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
-	mac_dump = debugfs_create_file("mac_reg_read", (0220),
+	mac_dump = debugfs_create_file("mac_reg_read", (0400),
 				       ethqos->debugfs_dir, ethqos, &fops_mac_read);
+	if (!mac_dump || IS_ERR(mac_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_dump %x\n",
+			  mac_dump);
+		goto fail;
+	}
 
-	mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0220),
-					   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
-
-	mac_iomacro_dump = debugfs_create_file("iomacro_reg_read", (0220),
+	mac_iomacro_dump = debugfs_create_file("iomacro_reg_read", (0400),
 					       ethqos->debugfs_dir, ethqos, &fops_mac_iomacro_read);
-
-	mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
-					    ethqos->debugfs_dir, ethqos, &fops_mac_pcs_write);
+	if (!mac_iomacro_dump || IS_ERR(mac_iomacro_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_iomacro_dump %x\n",
+			  mac_iomacro_dump);
+		goto fail;
+	}
 
 	mac_write = debugfs_create_file("mac_reg_write", (0220),
 					ethqos->debugfs_dir, ethqos, &fops_mac_write);
+	if (!mac_write || IS_ERR(mac_write)) {
+		ETHQOSERR("Cannot create debugfs mac_write %x\n",
+			  mac_write);
+		goto fail;
+	}
+
+	if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
+		mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0400),
+						   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
+		if (!mac_pcs_dump || IS_ERR(mac_pcs_dump)) {
+			ETHQOSERR("Cannot create debugfs mac_pcs_dump %x\n",
+				  mac_pcs_dump);
+			goto fail;
+		}
+
+		mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
+						    ethqos->debugfs_dir, ethqos,
+						    &fops_mac_pcs_write);
+		if (!mac_pcs_write || IS_ERR(mac_pcs_write)) {
+			ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
+				  mac_pcs_write);
+			goto fail;
+		}
+
+		mac_serdes_dump = debugfs_create_file("serdes_reg_read", (0400),
+						      ethqos->debugfs_dir, ethqos,
+						      &fops_mac_serdes_dump);
+		if (!mac_serdes_dump || IS_ERR(mac_serdes_dump)) {
+			ETHQOSERR("Cannot create debugfs mac_serdes_dump %x\n",
+				  mac_serdes_dump);
+			goto fail;
+		}
+	}
+
+	icb_dump = debugfs_create_file("icb_dump", (0400),
+				       ethqos->debugfs_dir, ethqos, &fops_icb_read);
+	if (!icb_dump || IS_ERR(icb_dump)) {
+		ETHQOSERR("Cannot create debugfs icb_dump %x\n",
+			  icb_dump);
+		goto fail;
+	}
 
 	ipc_stmmac_log_low = debugfs_create_file("ipc_stmmac_log_low", 0220,
 						 ethqos->debugfs_dir, ethqos,
@@ -4277,6 +4391,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
+
+	debugfs_remove_recursive(ethqos->debugfs_dir);
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
