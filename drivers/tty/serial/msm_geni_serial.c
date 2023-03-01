@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022, The Linux Foundation. All rights reserved.
  */
 
@@ -26,6 +26,7 @@
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/ioctl.h>
@@ -369,6 +370,7 @@ struct msm_geni_serial_port {
 	struct uart_gsi *gsi;
 	struct work_struct tx_xfer_work;
 	struct work_struct rx_cancel_work;
+	struct work_struct tx_cancel_work;
 	struct workqueue_struct *tx_wq;
 	struct workqueue_struct *rx_wq;
 	struct completion xfer;
@@ -377,6 +379,9 @@ struct msm_geni_serial_port {
 	atomic_t stop_rx_inprogress;
 	bool pm_auto_suspend_disable;
 	bool gsi_rx_done;
+	atomic_t flush_buffers;
+	struct ktermios *current_termios;
+	bool resuming_from_deep_sleep;
 };
 
 static const struct uart_ops msm_geni_serial_pops;
@@ -404,6 +409,9 @@ static int msm_geni_serial_get_ver_info(struct uart_port *uport);
 static bool handle_rx_dma_xfer(u32 s_irq_status, struct uart_port *uport);
 static void msm_geni_serial_allow_rx(struct msm_geni_serial_port *port);
 static int uart_line_id;
+static int msm_geni_serial_config_baud_rate(struct uart_port *uport,
+					    struct ktermios *termios,
+					    unsigned int baud);
 
 #define GET_DEV_PORT(uport) \
 	container_of(uport, struct msm_geni_serial_port, uport)
@@ -1859,6 +1867,15 @@ exit_gsi_tx_xfer:
 		     "%s: Failed to prep Tx descriptor", __func__);
 }
 
+static void msm_geni_uart_gsi_cancel_tx(struct work_struct *work)
+{
+	struct msm_geni_serial_port *msm_port = container_of(work,
+			struct msm_geni_serial_port,
+			tx_cancel_work);
+
+	dmaengine_terminate_all(msm_port->gsi->tx_c);
+}
+
 static void msm_geni_uart_gsi_cancel_rx(struct work_struct *work)
 {
 	struct msm_geni_serial_port *msm_port = container_of(work,
@@ -1971,6 +1988,9 @@ static int msm_geni_serial_prep_dma_tx(struct uart_port *uport)
 	unsigned int dma_dbg;
 	bool timeout, is_irq_masked;
 	int ret = 0;
+
+	if (atomic_read(&msm_port->flush_buffers))
+		return -EIO;
 
 	xmit_size = uart_circ_chars_pending(xmit);
 	if (xmit_size < WAKEUP_CHARS)
@@ -2114,6 +2134,13 @@ static void msm_geni_serial_start_tx(struct uart_port *uport)
 		pm_runtime_get(uport->dev);
 	}
 
+	/*
+	 * If flush has been triggered earlier from userspace and port is
+	 * still active(not yet closed) then reset the flush_buffers flag
+	 */
+	if (atomic_read(&msm_port->flush_buffers))
+		atomic_set(&msm_port->flush_buffers, 0);
+
 	if (msm_port->xfer_mode == GENI_SE_FIFO) {
 		geni_status = geni_read_reg(uport->membase,
 						  SE_GENI_STATUS);
@@ -2171,11 +2198,12 @@ static void stop_tx_sequencer(struct uart_port *uport)
 	unsigned int dma_dbg;
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 
-	geni_status = geni_read_reg(uport->membase, SE_GENI_STATUS);
 	if (port->xfer_mode == GENI_GPI_DMA) {
-		dmaengine_terminate_all(port->gsi->tx_c);
+		queue_work(port->tx_wq, &port->tx_cancel_work);
 		return;
 	}
+	geni_status = geni_read_reg(uport->membase, SE_GENI_STATUS);
+
 	/* Possible stop tx is called multiple times. */
 	if (!(geni_status & M_GENI_CMD_ACTIVE))
 		return;
@@ -2378,6 +2406,7 @@ static void msm_geni_serial_set_manual_flow(bool enable,
 		UART_LOG_DBG(port->ipc_log_misc, port->uport.dev,
 			"%s: Manual Flow Enabled, HW Flow OFF rfr = 0x%x\n",
 			__func__, uart_manual_rfr);
+		msm_geni_update_uart_error_code(port, UART_ERROR_FLOW_OFF);
 	} else {
 		geni_write_reg(0, port->uport.membase,
 						SE_UART_MANUAL_RFR);
@@ -2388,6 +2417,8 @@ static void msm_geni_serial_set_manual_flow(bool enable,
 		UART_LOG_DBG(port->ipc_log_misc, port->uport.dev,
 			"%s: Manual Flow Disabled, HW Flow ON rfr = 0x%x\n",
 						__func__, uart_manual_rfr);
+		if (port->uart_error == UART_ERROR_FLOW_OFF)
+			msm_geni_update_uart_error_code(port, UART_ERROR_DEFAULT);
 	}
 }
 
@@ -2845,7 +2876,7 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 		dev_err(uport->dev, "%s: ret %d rx_bytes %d\n", __func__,
 								ret, rx_bytes);
 		msm_geni_update_uart_error_code(msm_port, UART_ERROR_RX_TTY_INSERT_FAIL);
-		WARN_ON(1);
+		WARN_ON_ONCE(1);
 	}
 	uport->icount.rx += ret;
 	tty_flip_buffer_push(tport);
@@ -3084,6 +3115,7 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 	unsigned int dma;
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 	struct tty_port *tport = &uport->state->port;
+	struct tty_struct *tty = uport->state->port.tty;
 	bool s_cmd_done = false;
 	bool m_cmd_done = false;
 
@@ -3148,8 +3180,17 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 				dma_tx_status, dma_rx_status, is_irq_masked);
 		}
 
-		m_cmd_done = handle_tx_dma_xfer(m_irq_status, uport);
-		s_cmd_done = handle_rx_dma_xfer(s_irq_status, uport);
+		/* uport->state->port.tty pointer initialized as part of
+		 * UART port_open. Adding check to ensure tty should have
+		 * a valid value before using.
+		 */
+		if (tty) {
+			m_cmd_done = handle_tx_dma_xfer(m_irq_status, uport);
+			s_cmd_done = handle_rx_dma_xfer(s_irq_status, uport);
+		} else {
+			UART_LOG_DBG(msm_port->ipc_log_irqstatus, uport->dev,
+				     "Port is closed!\n");
+		}
 	}
 
 exit_geni_serial_isr:
@@ -3196,7 +3237,7 @@ static irqreturn_t msm_geni_wakeup_isr(int isr, void *dev)
 			UART_LOG_DBG(port->ipc_log_rx, uport->dev,
 				"%s: Unexpected wakeup ISR %d\n",
 					__func__, port->edge_count);
-			WARN_ON(1);
+			WARN_ON_ONCE(1);
 		} else {
 			tty_insert_flip_char(tty->port,
 					port->wakeup_byte, TTY_NORMAL);
@@ -3263,6 +3304,22 @@ static void set_rfr_wm(struct msm_geni_serial_port *port)
 	port->tx_wm = 2;
 }
 
+/*
+ * msm_geni_serial_flush() - Stops any pending tx transactions
+ *
+ * @uport: pointer to uart port
+ *
+ * Return: None
+ */
+
+static void msm_geni_serial_flush(struct uart_port *uport)
+{
+	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
+
+	atomic_set(&port->flush_buffers, 1);
+	stop_tx_sequencer(uport);
+}
+
 static void msm_geni_serial_shutdown(struct uart_port *uport)
 {
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
@@ -3276,12 +3333,14 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 		console_stop(uport->cons);
 		disable_irq(uport->irq);
 	} else {
-		msm_geni_serial_power_on(uport);
-		ret = wait_for_transfers_inflight(uport);
-		if (ret)
-			UART_LOG_DBG(msm_port->ipc_log_misc, uport->dev,
-				  "%s wait_for_transfer_inflight return ret: %d", __func__, ret);
+		if (msm_port->wakeup_irq > 0 && msm_port->wakeup_enabled) {
+			irq_set_irq_wake(msm_port->wakeup_irq, 0);
+			disable_irq(msm_port->wakeup_irq);
+			msm_port->wakeup_enabled = false;
+		}
 
+		geni_se_common_clks_on(msm_port->serial_rsc.se_clk,
+			msm_port->serial_rsc.m_ahb_clk, msm_port->serial_rsc.s_ahb_clk);
 		if (msm_port->xfer_mode == GENI_GPI_DMA) {
 			/* From the framework every time the stop
 			 * rx sequncer will be called before the closing
@@ -3335,6 +3394,8 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 		} else {
 			msm_geni_serial_stop_tx(uport);
 		}
+		geni_se_common_clks_off(msm_port->serial_rsc.se_clk,
+			msm_port->serial_rsc.m_ahb_clk, msm_port->serial_rsc.s_ahb_clk);
 		msm_port->count = 0;
 	}
 
@@ -3363,12 +3424,6 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 			}
 		}
 
-		if (msm_port->wakeup_irq > 0 && msm_port->wakeup_enabled) {
-			irq_set_irq_wake(msm_port->wakeup_irq, 0);
-			disable_irq(msm_port->wakeup_irq);
-			msm_port->wakeup_enabled = false;
-		}
-
 		if (!IS_ERR_OR_NULL(msm_port->serial_rsc.geni_gpio_shutdown)) {
 			ret = pinctrl_select_state(
 				msm_port->serial_rsc.geni_pinctrl,
@@ -3381,6 +3436,8 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 
 		/* Reset UART error to default during port_close() */
 		msm_port->uart_error = UART_ERROR_DEFAULT;
+		msm_port->current_termios = NULL;
+		atomic_set(&msm_port->flush_buffers, 0);
 	}
 	UART_LOG_DBG(msm_port->ipc_log_misc, uport->dev, "%s: End %d\n", __func__, ret);
 }
@@ -3409,15 +3466,16 @@ static int msm_geni_serial_port_setup(struct uart_port *uport)
 			goto exit_portsetup;
 		}
 
-		msm_port->rx_buf =
-			geni_se_common_iommu_alloc_buf(msm_port->wrapper_dev,
-						       &dma_address, DMA_RX_BUF_SIZE);
 		if (!msm_port->rx_buf) {
-			msm_port->rx_fifo = NULL;
-			ret = -ENOMEM;
-			goto exit_portsetup;
+			msm_port->rx_buf =
+				geni_se_common_iommu_alloc_buf(msm_port->wrapper_dev,
+							       &dma_address, DMA_RX_BUF_SIZE);
+			if (!msm_port->rx_buf) {
+				ret = -ENOMEM;
+				goto exit_portsetup;
+			}
+			msm_port->rx_dma = dma_address;
 		}
-		msm_port->rx_dma = dma_address;
 	} else {
 		/*
 		 * Make an unconditional cancel on the main sequencer to reset
@@ -3441,7 +3499,6 @@ static int msm_geni_serial_port_setup(struct uart_port *uport)
 	 * framework.
 	 */
 	mb();
-
 	return 0;
 
 exit_portsetup:
@@ -3458,10 +3515,11 @@ static int msm_geni_serial_startup(struct uart_port *uport)
 	msm_port->startup_in_progress = true;
 
 	if (likely(!uart_console(uport))) {
+		msm_port->resuming_from_deep_sleep = false;
+
 		ret = msm_geni_serial_power_on(&msm_port->uport);
 		if (ret) {
-			dev_err(uport->dev, "%s:Failed to power on %d\n",
-							__func__, ret);
+			dev_err(uport->dev, "%s:Failed to power on %d\n", __func__, ret);
 			return ret;
 		}
 	}
@@ -3626,39 +3684,30 @@ static void msm_geni_serial_termios_cfg(struct uart_port *uport,
 				bits_per_char, stop_bit_len);
 }
 
-static void msm_geni_serial_set_termios(struct uart_port *uport,
-				struct ktermios *termios, struct ktermios *old)
+/*
+ * msm_geni_serial_reconfigure_baud_rate() - reconfigure the uart baud rate
+ *
+ * @uport: pointer to uart port
+ *
+ * Return: 0 on success else returns a error
+ */
+static int msm_geni_serial_reconfigure_baud_rate(struct uart_port *uport)
 {
-	int ret;
-	unsigned int baud;
-	unsigned int clk_div;
-	unsigned long ser_clk_cfg = 0;
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
-	unsigned long clk_rate;
-	unsigned long desired_rate;
-	unsigned int clk_idx;
-	int uart_sampling;
-	int clk_freq_diff;
-	int timeout;
+	struct ktermios *termios = port->current_termios;
+	int ret;
 
-	/* QUP_2.5.0 and older RUMI has sampling rate as 32 */
-	if (IS_ENABLED(CONFIG_SERIAL_MSM_GENI_HALF_SAMPLING) &&
-		port->rumi_platform && port->is_console) {
-		geni_write_reg(0x21, uport->membase, GENI_SER_M_CLK_CFG);
-		geni_write_reg(0x21, uport->membase, GENI_SER_S_CLK_CFG);
-		geni_read_reg(uport->membase, GENI_SER_M_CLK_CFG);
-	}
+	if (!termios)
+		return -EINVAL;
+
+	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s: start %d\n", __func__, true);
 
 	if (!uart_console(uport)) {
-		int ret;
-
-		UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s: start %d\n", __func__, true);
 		ret = msm_geni_serial_power_on(uport);
 		if (ret) {
 			UART_LOG_DBG(port->ipc_log_misc, uport->dev,
-				"%s: Failed to vote clock on:%d\n",
-				__func__, ret);
-			return;
+				     "%s: Failed to vote clock on:%d\n", __func__, ret);
+			return -EINVAL;
 		}
 	}
 
@@ -3672,17 +3721,42 @@ static void msm_geni_serial_set_termios(struct uart_port *uport,
 	msm_geni_serial_stop_rx(uport);
 
 	if (!uart_console(uport)) {
-		timeout = wait_for_completion_timeout(&port->xfer,
-						      msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC));
-
-		if (!timeout)
-			UART_LOG_DBG(port->ipc_log_misc, uport->dev,
-				     "%s:Timeout for stop_rx\n", __func__);
+		if (!wait_for_completion_timeout(&port->xfer,
+						 msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC)))
+			IPC_LOG_MSG(port->ipc_log_misc, "%s:Timeout for stop_rx\n", __func__);
 	}
-	/* baud rate */
-	baud = uart_get_baud_rate(uport, termios, old,
-			MIN_SUPPORTED_BAUD_RATE, MAX_SUPPORTED_BAUD_RATE);
-	port->cur_baud = baud;
+
+	ret = msm_geni_serial_config_baud_rate(uport, termios, port->cur_baud);
+	if (!ret)
+		IPC_LOG_MSG(port->ipc_log_misc, "%s: baud %d\n", __func__, port->cur_baud);
+
+	msm_geni_serial_start_rx(uport);
+	if (!uart_console(uport))
+		msm_geni_serial_power_off(uport);
+
+	return ret;
+}
+
+/*
+ * msm_geni_serial_config_baud_rate() - Configure the baud rate
+ *
+ * @uport: pointer to uart port
+ * @termios: pointer to termios structure
+ * @baud: baud rate which need to be configured
+ *
+ * Return: 0 on success else returns a error
+ */
+static int msm_geni_serial_config_baud_rate(struct uart_port *uport,
+					    struct ktermios *termios, unsigned int baud)
+{
+	int clk_div, ret;
+	unsigned long ser_clk_cfg = 0;
+	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
+	unsigned long clk_rate;
+	unsigned long desired_rate;
+	unsigned int clk_idx;
+	int uart_sampling;
+	int clk_freq_diff;
 
 	/* sampling is halved for QUP versions >= 2.5 */
 	uart_sampling = UART_OVERSAMPLING;
@@ -3702,12 +3776,12 @@ static void msm_geni_serial_set_termios(struct uart_port *uport,
 		dev_err(uport->dev, "%s: Failed(%d) to find src clk for 0x%x\n",
 				__func__, ret, baud);
 		msm_geni_update_uart_error_code(port, UART_ERROR_SE_CLK_RATE_FIND_FAIL);
-		goto exit_set_termios;
+		return -EINVAL;
 	}
 
 	clk_div = DIV_ROUND_UP(clk_rate, desired_rate);
-	if (!clk_div)
-		goto exit_set_termios;
+	if (clk_div <= 0)
+		return -EINVAL;
 
 	clk_freq_diff =  (desired_rate - (clk_rate / clk_div));
 	if (clk_freq_diff)
@@ -3732,8 +3806,62 @@ static void msm_geni_serial_set_termios(struct uart_port *uport,
 	msm_geni_enable_disable_se_clk(uport, true);
 
 	msm_geni_serial_termios_cfg(uport, termios, clk_div);
-	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s: baud %d ser_clk_cfg:0x%x\n",
-			__func__, baud, port->ser_clk_cfg);
+	return 0;
+}
+
+static void msm_geni_serial_set_termios(struct uart_port *uport,
+					struct ktermios *termios, struct ktermios *old)
+{
+	unsigned int baud;
+	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
+	unsigned long poll_wait_time;
+
+	/* QUP_2.5.0 and older RUMI has sampling rate as 32 */
+	if (IS_ENABLED(CONFIG_SERIAL_MSM_GENI_HALF_SAMPLING) &&
+	    port->rumi_platform && port->is_console) {
+		geni_write_reg(0x21, uport->membase, GENI_SER_M_CLK_CFG);
+		geni_write_reg(0x21, uport->membase, GENI_SER_S_CLK_CFG);
+		geni_read_reg(uport->membase, GENI_SER_M_CLK_CFG);
+	}
+
+	if (!uart_console(uport)) {
+		int ret;
+
+		ret = msm_geni_serial_power_on(uport);
+		if (ret) {
+			IPC_LOG_MSG(port->ipc_log_misc,
+				    "%s: Failed to vote clock on:%d\n",
+				    __func__, ret);
+			return;
+		}
+	}
+
+	if (port->tx_wq)
+		flush_workqueue(port->tx_wq);
+
+	if (port->rx_wq)
+		flush_workqueue(port->rx_wq);
+
+	reinit_completion(&port->xfer);
+	msm_geni_serial_stop_rx(uport);
+
+	if (!uart_console(uport)) {
+		poll_wait_time = msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC);
+		if (!wait_for_completion_timeout(&port->xfer, poll_wait_time))
+			IPC_LOG_MSG(port->ipc_log_misc,
+				    "%s:Timeout for stop_rx\n", __func__);
+	}
+
+	/* baud rate */
+	baud = uart_get_baud_rate(uport, termios, old, 300, 4000000);
+	port->cur_baud = baud;
+	if (msm_geni_serial_config_baud_rate(uport, termios, baud))
+		goto exit_set_termios;
+
+	if (!uart_console(uport))
+		port->current_termios = termios;
+
+	IPC_LOG_MSG(port->ipc_log_misc, "%s: baud %d\n", __func__, baud);
 exit_set_termios:
 	msm_geni_serial_start_rx(uport);
 	if (!uart_console(uport))
@@ -4075,7 +4203,7 @@ static const struct uart_ops msm_geni_serial_pops = {
 	.set_mctrl = msm_geni_serial_set_mctrl,
 	.get_mctrl = msm_geni_serial_get_mctrl,
 	.break_ctl = msm_geni_serial_break_ctl,
-	.flush_buffer = NULL,
+	.flush_buffer = msm_geni_serial_flush,
 	.ioctl = msm_geni_serial_ioctl,
 	/* For HSUART nodes without IOCTL support */
 	.pm = msm_geni_serial_hs_pm,
@@ -4131,6 +4259,8 @@ static void msm_geni_serial_init_gsi(struct uart_port *uport)
 		INIT_WORK(&msm_port->tx_xfer_work, msm_geni_uart_gsi_xfer_tx);
 		INIT_WORK(&msm_port->rx_cancel_work,
 			  msm_geni_uart_gsi_cancel_rx);
+		INIT_WORK(&msm_port->tx_cancel_work,
+			  msm_geni_uart_gsi_cancel_tx);
 	}
 }
 
@@ -4591,8 +4721,10 @@ static int msm_geni_serial_remove(struct platform_device *pdev)
 	 */
 	if (port->is_console && !con_enabled)
 		return 0;
-	if (!uart_console(&port->uport))
+	if (!uart_console(&port->uport)) {
 		wakeup_source_unregister(port->geni_wake);
+		port->geni_wake = NULL;
+	}
 	if (port->pm_auto_suspend_disable)
 		pm_runtime_allow(&pdev->dev);
 	uart_remove_one_port(drv, &port->uport);
@@ -4762,6 +4894,10 @@ static int msm_geni_serial_runtime_resume(struct device *dev)
 		goto exit_runtime_resume;
 	}
 	msm_geni_enable_disable_se_clk(&port->uport, true);
+
+	if (port->resuming_from_deep_sleep)
+		msm_geni_serial_port_setup(&port->uport);
+
 	start_rx_sequencer(&port->uport);
 	/* Ensure that the Rx is running before enabling interrupts */
 	mb();
@@ -4769,6 +4905,11 @@ static int msm_geni_serial_runtime_resume(struct device *dev)
 	enable_irq(port->uport.irq);
 
 	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: End %d\n", __func__, ret);
+	if (port->resuming_from_deep_sleep) {
+		msm_geni_serial_reconfigure_baud_rate(&port->uport);
+		port->resuming_from_deep_sleep = false;
+	}
+
 exit_runtime_resume:
 	return ret;
 }
@@ -4809,28 +4950,7 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 	return 0;
 }
 
-static int msm_geni_serial_sys_resume(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
-	struct uart_port *uport = &port->uport;
-
-	/* Platform driver is registered for console and when console
-	 * is disabled from cmdline simply return success.
-	 */
-	if (port->is_console && !con_enabled) {
-		return 0;
-	} else if ((uart_console(uport) &&
-	    console_suspend_enabled && uport->suspended) ||
-		port->pm_auto_suspend_disable) {
-		IPC_LOG_MSG(port->console_log, "%s start %d\n", __func__, true);
-		uart_resume_port((struct uart_driver *)uport->private_data,
-									uport);
-		IPC_LOG_MSG(port->console_log, "%s end %d", __func__, true);
-	}
-	return 0;
-}
-
+#ifdef CONFIG_DEEPSLEEP
 static int msm_geni_serial_sys_hib_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -4838,8 +4958,7 @@ static int msm_geni_serial_sys_hib_resume(struct device *dev)
 	struct uart_port *uport = &port->uport;
 
 	if (uart_console(uport)) {
-		uart_resume_port((struct uart_driver *)uport->private_data,
-									uport);
+		uart_resume_port((struct uart_driver *)uport->private_data, uport);
 		/*
 		 * For hibernation usecase clients for
 		 * console UART won't call port setup during restore.
@@ -4858,6 +4977,46 @@ static int msm_geni_serial_sys_hib_resume(struct device *dev)
 	return 0;
 }
 #else
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
+{
+	return 0;
+}
+#endif
+
+static int msm_geni_serial_sys_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
+	struct uart_port *uport = &port->uport;
+
+#ifdef CONFIG_DEEPSLEEP
+	if (pm_suspend_via_firmware()) {
+		IPC_LOG_MSG(port->ipc_log_pwr, "deepsleep: %s\n",
+			    __func__);
+
+		if (!uart_console(uport))
+			port->resuming_from_deep_sleep = true;
+
+		return msm_geni_serial_sys_hib_resume(dev);
+	}
+#endif
+	/* Platform driver is registered for console and when console
+	 * is disabled from cmdline simply return success.
+	 */
+	if (port->is_console && !con_enabled) {
+		return 0;
+	} else if ((uart_console(uport) &&
+	    console_suspend_enabled && uport->suspended) ||
+		port->pm_auto_suspend_disable) {
+		IPC_LOG_MSG(port->console_log, "%s start %d\n", __func__, true);
+		uart_resume_port((struct uart_driver *)uport->private_data,
+									uport);
+		IPC_LOG_MSG(port->console_log, "%s end %d", __func__, true);
+	}
+	return 0;
+}
+
+#else
 static int msm_geni_serial_runtime_suspend(struct device *dev)
 {
 	return 0;
@@ -4874,11 +5033,6 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 }
 
 static int msm_geni_serial_sys_resume(struct device *dev)
-{
-	return 0;
-}
-
-static int msm_geni_serial_sys_hib_resume(struct device *dev)
 {
 	return 0;
 }

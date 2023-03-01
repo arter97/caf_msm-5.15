@@ -2,14 +2,16 @@
 /*
  * Copyright (c) 2011-2015, 2017, 2020-2021, The Linux Foundation.
  * All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/iio/consumer.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -872,6 +874,14 @@ static int qpnp_tm_restore(struct device *dev)
 	return ret;
 }
 
+static void qpnp_tm_shutdown(struct platform_device *pdev)
+{
+	struct qpnp_tm_chip *chip = platform_get_drvdata(pdev);
+
+	if (chip->irq > 0)
+		devm_free_irq(chip->dev, chip->irq, chip);
+}
+
 static int qpnp_tm_freeze(struct device *dev)
 {
 	struct qpnp_tm_chip *chip = dev_get_drvdata(dev);
@@ -907,6 +917,7 @@ static const struct dev_pm_ops qpnp_tm_pm_ops = {
 	.restore = qpnp_tm_restore,
 	.suspend = qpnp_tm_suspend,
 	.resume = qpnp_tm_resume,
+	.thaw = qpnp_tm_restore,
 };
 
 static const struct of_device_id qpnp_tm_match_table[] = {
@@ -922,6 +933,7 @@ static struct platform_driver qpnp_tm_driver = {
 		.pm = &qpnp_tm_pm_ops,
 	},
 	.probe  = qpnp_tm_probe,
+	.shutdown = qpnp_tm_shutdown,
 };
 module_platform_driver(qpnp_tm_driver);
 

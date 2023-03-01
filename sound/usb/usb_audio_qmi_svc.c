@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -767,25 +767,26 @@ static int prepare_qmi_response(struct snd_usb_substream *subs,
 	memcpy(&resp->std_as_opr_intf_desc, &alts->desc, sizeof(alts->desc));
 	resp->std_as_opr_intf_desc_valid = 1;
 
-	ep = usb_pipe_endpoint(subs->dev, subs->data_endpoint->pipe);
-	if (!ep) {
-		uaudio_err("data ep # %d context is null\n",
-				subs->data_endpoint->ep_num);
-		ret = -ENODEV;
-		goto err;
-	}
-	data_ep_pipe = subs->data_endpoint->pipe;
-	memcpy(&resp->std_as_data_ep_desc, &ep->desc, sizeof(ep->desc));
-	resp->std_as_data_ep_desc_valid = 1;
+	if (subs->data_endpoint) {
+		ep = usb_pipe_endpoint(subs->dev, subs->data_endpoint->pipe);
+		if (!ep) {
+			uaudio_err("data ep # %d context is null\n",
+					subs->data_endpoint->ep_num);
+			ret = -ENODEV;
+			goto err;
+		}
+		data_ep_pipe = subs->data_endpoint->pipe;
+		memcpy(&resp->std_as_data_ep_desc, &ep->desc, sizeof(ep->desc));
+		resp->std_as_data_ep_desc_valid = 1;
 
-	tr_data_pa = xhci_get_xfer_ring_phys_addr(subs->dev, ep, &dma);
-	if (!tr_data_pa) {
-		uaudio_err("failed to get data ep ring dma address\n");
-		ret = -ENODEV;
-		goto err;
+		tr_data_pa = xhci_get_xfer_ring_phys_addr(subs->dev, ep, &dma);
+		if (!tr_data_pa) {
+			uaudio_err("failed to get data ep ring dma address\n");
+			ret = -ENODEV;
+			goto err;
+		}
+		resp->xhci_mem_info.tr_data.pa = dma;
 	}
-
-	resp->xhci_mem_info.tr_data.pa = dma;
 
 	if (subs->sync_endpoint) {
 		ep = usb_pipe_endpoint(subs->dev, subs->sync_endpoint->pipe);
@@ -1475,6 +1476,9 @@ static int enable_audio_stream(struct snd_usb_substream *subs,
 	_snd_pcm_hw_param_set(&params, SNDRV_PCM_HW_PARAM_RATE,
 			cur_rate, 0);
 
+	if (!chip->intf[0])
+		return -ENODEV;
+
 	pm_runtime_barrier(&chip->intf[0]->dev);
 	snd_usb_autoresume(chip);
 
@@ -1506,7 +1510,7 @@ static int enable_audio_stream(struct snd_usb_substream *subs,
 
 		if (fmt->sync_ep) {
 			subs->sync_endpoint = snd_usb_endpoint_open(chip,
-					fmt, &params, false);
+					fmt, &params, true);
 			if (!subs->sync_endpoint) {
 				uaudio_err("failed to open sync endpoint\n");
 				return -EINVAL;
