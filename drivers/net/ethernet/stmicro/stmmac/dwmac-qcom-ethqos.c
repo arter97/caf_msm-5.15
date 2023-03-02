@@ -2078,7 +2078,7 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	}
 
 	/*If phy driver support interrupt handling use it*/
-	if (priv->phydev->drv->handle_interrupt) {
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->handle_interrupt) {
 		priv->phydev->drv->handle_interrupt(priv->phydev);
 		return;
 	}
