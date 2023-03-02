@@ -22,6 +22,7 @@
 #include <soc/qcom/boot_stats.h>
 #include <soc/qcom/soc_sleep_stats.h>
 #include <linux/hashtable.h>
+#include <clocksource/arm_arch_timer.h>
 
 #define MARKER_STRING_WIDTH 50
 #define TS_WHOLE_NUM_WIDTH 8
