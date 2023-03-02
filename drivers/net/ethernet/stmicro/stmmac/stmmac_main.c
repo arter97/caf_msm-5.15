@@ -99,8 +99,7 @@ module_param(pause, int, 0644);
 MODULE_PARM_DESC(pause, "Flow Control Pause Time");
 
 #define TC_DEFAULT 64
-#define TC_DEFAULT_Q0 32
-static int tc = TC_DEFAULT_Q0;
+static int tc = TC_DEFAULT;
 module_param(tc, int, 0644);
 MODULE_PARM_DESC(tc, "DMA threshold control value");
 
@@ -2587,13 +2586,18 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 	for (chan = 0; chan < rx_channels_count; chan++) {
 		struct stmmac_rx_queue *rx_q = &priv->rx_queue[chan];
 		u32 buf_size;
+		u32 thresh_rx_mode;
 
 		qmode = priv->plat->rx_queues_cfg[chan].mode_to_use;
 
-		if (priv->plat->force_thresh_dma_mode_q0_en && chan == 0)
-			rxmode = tc;
-		stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
-				rxfifosz, qmode);
+		if (priv->plat->rx_queues_cfg[chan].thresholdmode) {
+			thresh_rx_mode = priv->plat->rx_queues_cfg[chan].threshold_byte;
+			stmmac_dma_rx_mode(priv, priv->ioaddr, thresh_rx_mode, chan,
+					   rxfifosz, qmode);
+		} else {
+			stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
+					   rxfifosz, qmode);
+		}
 
 		if (rx_q->xsk_pool) {
 			buf_size = xsk_pool_get_rx_frame_size(rx_q->xsk_pool);

@@ -215,6 +215,12 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		else
 			plat->rx_queues_cfg[queue].pkt_route = 0x0;
 
+		if (of_property_read_bool(q_node, "snps,threshold_byte")) {
+			of_property_read_u32(q_node, "snps,threshold_byte",
+					     &plat->rx_queues_cfg[queue].threshold_byte);
+			plat->rx_queues_cfg[queue].thresholdmode = true;
+		}
+
 		queue++;
 	}
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
