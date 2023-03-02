@@ -11,6 +11,7 @@ qcom-scm.ko
 smem.ko
 secure_buffer.ko
 qcom-cpufreq-hw.ko
+qcom_cpu_vendor_hooks.ko
 sched-walt.ko
 qti-regmap-debugfs.ko
 qcom_hwspinlock.ko
@@ -55,3 +56,5 @@ nvmem_qcom-spmi-sdam.ko
 rtc-pm8xxx.ko
 qpnp-power-on.ko
 msm-poweroff.ko
+qcom_llcc_pmu.ko
+qcom-pmu-lib.ko
