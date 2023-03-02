@@ -1721,6 +1721,7 @@ static int ethqos_configure_rgmii_v4(struct qcom_ethqos *ethqos)
 			ethqos_read_io_macro_from_dtsi(rgmii_io_macro_node, ethqos);
 
 		ethqos->probed = false;
+		of_node_put(rgmii_io_macro_node);
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
