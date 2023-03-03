@@ -178,7 +178,7 @@ static const struct parent_map npu_cc_parent_map_1[] = {
 };
 
 static const struct clk_parent_data npu_cc_parent_data_1_ao[] = {
-	{ .fw_name = "bi_tcxo" },
+	{ .fw_name = "bi_tcxo_ao" },
 };
 
 static const struct parent_map npu_cc_parent_map_2[] = {
@@ -222,11 +222,11 @@ static struct clk_rcg2 npu_cc_cal_hm0_clk_src = {
 		.vdd_class = &vdd_cx,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_LOWER] = 300000000,
-			[VDD_LOW] = 466000000,
-			[VDD_LOW_L1] = 533000000,
-			[VDD_NOMINAL] = 850000000,
-			[VDD_HIGH] = 1000000000},
+			[VDD_LOW] = 406000000,
+			[VDD_NOMINAL] = 730000000,
+			[VDD_NOMINAL_L1] = 850000000,
+			[VDD_HIGH] = 920000000,
+			[VDD_HIGH_L1] = 1000000000},
 	},
 };
 
@@ -249,11 +249,11 @@ static struct clk_rcg2 npu_cc_cal_hm1_clk_src = {
 		.vdd_class = &vdd_cx,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_LOWER] = 300000000,
-			[VDD_LOW] = 466000000,
-			[VDD_LOW_L1] = 533000000,
-			[VDD_NOMINAL] = 850000000,
-			[VDD_HIGH] = 1000000000},
+			[VDD_LOW] = 406000000,
+			[VDD_NOMINAL] = 730000000,
+			[VDD_NOMINAL_L1] = 850000000,
+			[VDD_HIGH] = 920000000,
+			[VDD_HIGH_L1] = 1000000000},
 	},
 };
 

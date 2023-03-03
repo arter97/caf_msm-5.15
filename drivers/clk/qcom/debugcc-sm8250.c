@@ -477,9 +477,9 @@ static const char *const gcc_debug_mux_parent_names[] = {
 };
 
 static int gcc_debug_mux_sels[] = {
-	0x121,		/* apss_cc_debug_mux */
-	0x71,		/* cam_cc_debug_mux */
-	0x77,		/* disp_cc_debug_mux */
+	0xE7,		/* apss_cc_debug_mux */
+	0x55,		/* cam_cc_debug_mux */
+	0x56,		/* disp_cc_debug_mux */
 	0x36,		/* gcc_aggre_noc_pcie_tbu_clk */
 	0x142,		/* gcc_aggre_ufs_card_axi_clk */
 	0x141,		/* gcc_aggre_ufs_phy_axi_clk */
@@ -624,7 +624,7 @@ static int gcc_debug_mux_sels[] = {
 	0x4B,		/* gcc_video_axi0_clk */
 	0x4C,		/* gcc_video_axi1_clk */
 	0x51,		/* gcc_video_xo_clk */
-	0x17B,		/* gpu_cc_debug_mux */
+	0x163,		/* gpu_cc_debug_mux */
 	0xD1,		/* mc_cc_debug_mux */
 	0x19,		/* measure_only_cnoc_clk */
 	0x147,		/* measure_only_ipa_2x_clk */
@@ -633,7 +633,7 @@ static int gcc_debug_mux_sels[] = {
 	0x180,		/* npu_cc_debug_mux */
 	0x7B,		/* usb3_phy_wrapper_gcc_usb30_pipe_clk */
 	0x7C,		/* usb3_uni_phy_sec_gcc_usb30_pipe_clk */
-	0x80,		/* video_cc_debug_mux */
+	0x57,		/* video_cc_debug_mux */
 };
 
 static struct clk_debug_mux gcc_debug_mux = {
