@@ -461,8 +461,6 @@ struct pps_info {
 
 struct ip_params {
 	bool is_valid_mac_addr;
-	char link_speed[32];
-	bool is_valid_link_speed;
 	char ipv4_addr_str[32];
 	struct in_addr ipv4_addr;
 	bool is_valid_ipv4_addr;
@@ -475,6 +473,7 @@ struct ip_params {
 struct mac_params {
 	phy_interface_t eth_intf;
 	bool is_valid_eth_intf;
+	unsigned long link_speed;
 };
 
 int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);

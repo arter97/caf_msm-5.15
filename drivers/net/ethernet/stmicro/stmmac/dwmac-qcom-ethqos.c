@@ -245,6 +245,7 @@ int stmmac_enable_ipc_low;
 char tmp_buff[MAX_PROC_SIZE];
 static struct ip_params pparams;
 static struct mac_params mparams = {0};
+long phyaddr_pt_param;
 
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf)
 {
@@ -491,6 +492,24 @@ fail:
 	return 1;
 }
 
+static int set_ethernet_phyaddr(char *phy_addr)
+{
+	/* Default link speed to 1000Mbps if not specified */
+	phyaddr_pt_param = -1;
+
+	if (!phy_addr)
+		return 1;
+
+	if (kstrtol(phy_addr, 0, &phyaddr_pt_param))
+		goto fail;
+
+	return 0;
+
+fail:
+	ETHQOSERR("Invalid phy addr programmed: %s\n", phy_addr);
+	return 1;
+}
+
 static int set_ethernet_interface(char *eth_intf)
 {
 	mparams.is_valid_eth_intf = false;
@@ -512,6 +531,35 @@ static int set_ethernet_interface(char *eth_intf)
 		return 1;
 	}
 	return 0;
+}
+
+static int set_ethernet_speed(char *eth_speed)
+{
+	if (!eth_speed)
+		return 1;
+
+	if (kstrtoul(eth_speed, 0, &mparams.link_speed))
+		goto fail;
+
+	switch (mparams.link_speed) {
+	case SPEED_10000:
+	case SPEED_5000:
+	case SPEED_2500:
+	case SPEED_1000:
+	case SPEED_100:
+	case SPEED_10:
+		break;
+
+	default:
+		/* Reset link speed on invalid value */
+		mparams.link_speed = 0;
+		return 1;
+	}
+	return 0;
+
+fail:
+	ETHQOSERR("Invalid link speed programmed: %d\n", mparams.link_speed);
+	return 1;
 }
 
 #ifndef MODULE
@@ -545,6 +593,16 @@ static int __init set_early_ethernet_mac_static(char *mac_addr)
 
 __setup("ermac=", set_early_ethernet_mac_static);
 
+static int __init set_ethernet_phyaddr_static(char *phy_addr)
+{
+	int ret = 1;
+
+	ret = set_ethernet_phyaddr(phy_addr);
+	return ret;
+}
+
+__setup("ephyaddr=", set_ethernet_phyaddr_static);
+
 static int __init set_ethernet_interface_static(char *eth_intf)
 {
 	int ret = 1;
@@ -554,6 +612,16 @@ static int __init set_ethernet_interface_static(char *eth_intf)
 }
 
 __setup("eiface=", set_ethernet_interface_static);
+
+static int __init set_ethernet_speed_static(char *eth_speed)
+{
+	int ret = 1;
+
+	ret = set_ethernet_speed(eth_speed);
+	return ret;
+}
+
+__setup("espeed=", set_ethernet_speed_static);
 
 #endif
 
@@ -3127,6 +3195,13 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		ETHQOSERR("Invalid config =%d\n", config);
 		return -EINVAL;
 	}
+
+	if (priv->current_loopback == ENABLE_PHY_LOOPBACK &&
+	    priv->plat->mac2mac_en) {
+		ETHQOSINFO("Not supported with Mac2Mac enabled\n");
+		return -EOPNOTSUPP;
+	}
+
 	if ((config == ENABLE_PHY_LOOPBACK  || ethqos->current_loopback ==
 			ENABLE_PHY_LOOPBACK) &&
 			ethqos->current_phy_mode == DISABLE_PHY_IMMEDIATELY) {
@@ -3535,12 +3610,14 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
-	phy_off = debugfs_create_file("phy_off", 0400,
-				      ethqos->debugfs_dir, ethqos,
-				      &fops_phy_off);
-	if (!phy_off || IS_ERR(phy_off)) {
-		ETHQOSERR("Can't create phy_off %x\n", phy_off);
-		goto fail;
+	if (!priv->plat->mac2mac_en) {
+		phy_off = debugfs_create_file("phy_off", 0400,
+					      ethqos->debugfs_dir, ethqos,
+					      &fops_phy_off);
+		if (!phy_off || IS_ERR(phy_off)) {
+			ETHQOSERR("Can't create phy_off %x\n", phy_off);
+			goto fail;
+		}
 	}
 
 	loopback_enable_mode = debugfs_create_file("loopback_enable_mode", 0400,
@@ -4163,23 +4240,24 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Get rgmii interface speed for mac2c from device tree */
-	if (of_property_read_u32(np, "mac2mac-rgmii-speed",
-				 &plat_dat->mac2mac_rgmii_speed))
-		plat_dat->mac2mac_rgmii_speed = -1;
-	else
-		ETHQOSINFO("mac2mac rgmii speed = %d\n",
-			   plat_dat->mac2mac_rgmii_speed);
+	/* Get speed for mac2c from device tree */
+	if (!of_property_read_u32(np, "mac2mac-speed", &plat_dat->mac2mac_speed))
+		ETHQOSINFO("dt mac2mac speed = %d\n", plat_dat->mac2mac_speed);
 
-	if (of_property_read_bool(pdev->dev.of_node,
-				  "emac-phy-off-suspend")) {
-		ret = of_property_read_u32(pdev->dev.of_node,
-					   "emac-phy-off-suspend",
-					   &ethqos->current_phy_mode);
-		if (ret) {
-			ETHQOSDBG(":resource emac-phy-off-suspend! ");
-			ETHQOSDBG("not in dtsi\n");
-			ethqos->current_phy_mode = 0;
+	if (mparams.link_speed)
+		plat_dat->mac2mac_speed = mparams.link_speed;
+
+	if (!plat_dat->mac2mac_en) {
+		if (of_property_read_bool(pdev->dev.of_node,
+					  "emac-phy-off-suspend")) {
+			ret = of_property_read_u32(pdev->dev.of_node,
+						   "emac-phy-off-suspend",
+						   &ethqos->current_phy_mode);
+			if (ret) {
+				ETHQOSDBG(":resource emac-phy-off-suspend! ");
+				ETHQOSDBG("not in dtsi\n");
+				ethqos->current_phy_mode = 0;
+			}
 		}
 	}
 	ETHQOSINFO("emac-phy-off-suspend = %d\n",
@@ -4345,7 +4423,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	if (priv->plat->mac2mac_en)
-		priv->plat->mac2mac_link = -1;
+		priv->plat->mac2mac_link = 0;
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 

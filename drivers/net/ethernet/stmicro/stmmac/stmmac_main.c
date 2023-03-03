@@ -3923,9 +3923,17 @@ void stmmac_mac2mac_adjust_link(int speed, struct stmmac_priv *priv)
 {
 	u32 ctrl = readl_relaxed(priv->ioaddr + MAC_CTRL_REG);
 
+	if (priv->hw->qxpcs) {
+		if (qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false) < 0)
+			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
+	}
+
 	ctrl &= ~priv->hw->link.speed_mask;
 
-	if (speed == SPEED_1000) {
+	if (speed == SPEED_2500) {
+		ctrl |= priv->hw->link.speed2500;
+		priv->speed = SPEED_2500;
+	} else if (speed == SPEED_1000) {
 		ctrl |= priv->hw->link.speed1000;
 		priv->speed = SPEED_1000;
 	} else if (speed == SPEED_100) {
@@ -3957,6 +3965,7 @@ static int stmmac_open(struct net_device *dev)
 	u32 chan;
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
+	const struct phylink_pcs_ops *pcs_ops;
 
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
@@ -3980,7 +3989,7 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
-	if (priv->hw->qxpcs && !netif_carrier_ok(dev)) {
+	if (priv->hw->qxpcs && (priv->plat->mac2mac_en || !netif_carrier_ok(dev))) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
@@ -4066,10 +4075,25 @@ static int stmmac_open(struct net_device *dev)
 	stmmac_enable_all_dma_irq(priv);
 
 	if (priv->plat->mac2mac_en) {
-		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_rgmii_speed,
+		if (priv->plat->mdio_bus_data && priv->plat->mdio_bus_data->has_xpcs) {
+			/* xpcs config */
+			pcs_ops = priv->hw->qxpcs->pcs.ops;
+			pcs_ops->pcs_config(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+					    NULL, 0);
+
+			/* xpcs link up */
+			qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+					  priv->plat->mac2mac_speed, 1);
+		}
+
+		/* mac link up */
+		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_speed,
 					   priv);
+
 		priv->plat->mac2mac_link = true;
 		netif_carrier_on(dev);
+		netdev_info(priv->dev, "mac2mac link up done: Interface = %d Speed = %d",
+			    priv->plat->interface, priv->plat->mac2mac_speed);
 	}
 
 	if (priv->avb_vlan_id > 1) {
