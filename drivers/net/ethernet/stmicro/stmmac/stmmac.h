@@ -90,6 +90,12 @@ struct stmmac_tx_queue {
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	u32 pid;
 #endif
+#ifdef DMA_OFFLOAD_ENABLE
+	struct sk_buff **tx_offload_skbuff;
+	dma_addr_t *tx_offload_skbuff_dma;
+	dma_addr_t buff_tx_phy;
+	void *buffer_tx_va_addr;
+#endif
 };
 
 struct stmmac_rx_buffer {
@@ -127,6 +133,12 @@ struct stmmac_rx_queue {
 		unsigned int len;
 		unsigned int error;
 	} state;
+#ifdef DMA_OFFLOAD_ENABLE
+	struct sk_buff **rx_offload_skbuff;
+	dma_addr_t *rx_offload_skbuff_dma;
+	dma_addr_t buff_rx_phy;
+	void *buffer_rx_va_addr;
+#endif
 };
 
 struct stmmac_channel {

@@ -136,9 +136,11 @@ enum {
 	HW_PLATFORM_SBC = 24,
 	HW_PLATFORM_ADP = 25,
 	HW_PLATFORM_HDK = 31,
+	HW_PLATFORM_IOT = 32,
 	HW_PLATFORM_ATP = 33,
 	HW_PLATFORM_IDP = 34,
 	HW_PLATFORM_X100 = 39,
+	HW_PLATFORM_WDP = 36,
 	HW_PLATFORM_INVALID
 };
 
@@ -161,9 +163,11 @@ static const char * const hw_platform[] = {
 	[HW_PLATFORM_SBC] = "SBC",
 	[HW_PLATFORM_ADP] = "ADP",
 	[HW_PLATFORM_HDK] = "HDK",
+	[HW_PLATFORM_IOT] = "IOT",
 	[HW_PLATFORM_ATP] = "ATP",
 	[HW_PLATFORM_IDP] = "IDP",
 	[HW_PLATFORM_X100] = "X100",
+	[HW_PLATFORM_WDP] = "WDP",
 };
 
 enum {
@@ -1087,6 +1091,7 @@ static const struct soc_id soc_id[] = {
 	{ 486, "MONACO" },
 	{ 517, "MONACOP" },
 	{ 518, "KHAJE" },
+	{ 548, "KONA-7230-IOT" },
 	{ 561, "KHAJEP" },
 	{ 562, "KHAJEQ" },
 	{ 585, "KHAJEG" },
@@ -1106,6 +1111,7 @@ static const struct soc_id soc_id[] = {
 	{ 559, "SA522M"},
 	{ 580, "SDXPINNM"},
 	{ 570, "SDXBAAGHA"},
+	{ 571, "SDXBAAGHA_HYBRID"},
 	{ 587, "CINDERDU_1010"},
 	{ 588, "CINDERRU_1032"},
 	{ 589, "CINDERRU_1052"},

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -135,6 +135,40 @@ static const struct ep_pcie_irq_info_t ep_pcie_irq_info[EP_PCIE_MAX_IRQ] = {
 
 static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event);
 static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, u32 vf_id);
+
+/*
+ * ep_pcie_clk_dump - Clock CBCR reg info will be dumped in Dmesg logs.
+ * @dev: PCIe endpoint device structure.
+ */
+void ep_pcie_clk_dump(struct ep_pcie_dev_t *dev)
+{
+	struct ep_pcie_clk_info_t *info;
+	int i;
+
+	for (i = 0; i < EP_PCIE_MAX_CLK; i++) {
+		info = &dev->clk[i];
+
+		if (!info->hdl) {
+			EP_PCIE_DBG(dev,
+				"PCIe V%d:  handle of Clock %s is NULL\n",
+				dev->rev, info->name);
+		} else {
+			qcom_clk_dump(info->hdl, NULL, 0);
+		}
+	}
+
+	for (i = 0; i < EP_PCIE_MAX_PIPE_CLK; i++) {
+		info = &dev->pipeclk[i];
+
+		if (!info->hdl) {
+			EP_PCIE_ERR(dev,
+				"PCIe V%d:  handle of Pipe Clock %s is NULL\n",
+				dev->rev, info->name);
+		} else {
+			qcom_clk_dump(info->hdl, NULL, 0);
+		}
+	}
+}
 
 int ep_pcie_get_debug_mask(void)
 {
@@ -438,17 +472,20 @@ static int ep_pcie_clk_init(struct ep_pcie_dev_t *dev)
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
 
 	rc = regulator_enable(dev->gdsc);
-
 	if (rc) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to enable GDSC for %s\n",
 			dev->rev, dev->pdev->name);
 		return rc;
 	}
 
-	rc = regulator_enable(dev->gdsc_phy);
-	if (rc) {
-		EP_PCIE_ERR(dev, "PCIe V%d: fail to enable GDSC_PHY for %s\n",
-			dev->rev, dev->pdev->name);
+	if (dev->gdsc_phy) {
+		rc = regulator_enable(dev->gdsc_phy);
+		if (rc) {
+			EP_PCIE_ERR(dev, "PCIe V%d: fail to enable GDSC_PHY for %s\n",
+					dev->rev, dev->pdev->name);
+			regulator_disable(dev->gdsc);
+			return rc;
+		}
 	}
 
 	/* switch pipe clock source after gdsc is turned on */
@@ -516,9 +553,9 @@ static int ep_pcie_clk_init(struct ep_pcie_dev_t *dev)
 		if (dev->pipe_clk_mux && dev->ref_clk_src)
 			clk_set_parent(dev->pipe_clk_mux, dev->ref_clk_src);
 
-		regulator_disable(dev->gdsc);
 		if (dev->gdsc_phy)
 			regulator_disable(dev->gdsc_phy);
+		regulator_disable(dev->gdsc);
 	}
 
 	return rc;
@@ -546,9 +583,9 @@ static void ep_pcie_clk_deinit(struct ep_pcie_dev_t *dev)
 		if (dev->pipe_clk_mux && dev->ref_clk_src)
 			clk_set_parent(dev->pipe_clk_mux, dev->ref_clk_src);
 
-		regulator_disable(dev->gdsc);
 		if (dev->gdsc_phy)
 			regulator_disable(dev->gdsc_phy);
+		regulator_disable(dev->gdsc);
 	}
 }
 
@@ -729,10 +766,13 @@ static void ep_pcie_config_mmio(struct ep_pcie_dev_t *dev)
 	dev->config_mmio_init = true;
 }
 
-static int ep_pcie_sriov_init(struct ep_pcie_dev_t *dev)
+static void ep_pcie_sriov_init(struct ep_pcie_dev_t *dev)
 {
 	void __iomem *dbi = ep_pcie_dev.dm_core;
 	u32 reg;
+
+	if (ep_pcie_dev.override_disable_sriov)
+		return;
 
 	ep_pcie_dev.sriov_cap = ep_pcie_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
 	if (ep_pcie_dev.sriov_cap) {
@@ -744,7 +784,6 @@ static int ep_pcie_sriov_init(struct ep_pcie_dev_t *dev)
 		EP_PCIE_INFO(&ep_pcie_dev, "PCIe V%d: Number of VFs: %d, SR-IOV mask: 0x%x\n",
 				ep_pcie_dev.rev, ep_pcie_dev.num_vfs, ep_pcie_dev.sriov_mask);
 	}
-	return 0;
 }
 
 static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
@@ -1061,7 +1100,6 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 	}
 
 	ep_pcie_sriov_init(dev);
-
 	if (!configured) {
 		ep_pcie_config_mmio(dev);
 		ep_pcie_config_inbound_iatu(dev, PCIE_PHYSICAL_DEVICE);
@@ -1424,6 +1462,7 @@ static int ep_pcie_get_resources(struct ep_pcie_dev_t *dev,
 		if (PTR_ERR(dev->gdsc_phy) == -EPROBE_DEFER) {
 			EP_PCIE_DBG(dev, "PCIe V%d: EPROBE_DEFER for %s GDSC\n",
 			dev->rev, dev->pdev->name);
+			ret = PTR_ERR(dev->gdsc_phy);
 			goto out;
 		}
 	}
@@ -2174,6 +2213,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			dev->rev);
 		ret = EP_PCIE_ERROR;
 		ep_pcie_reg_dump(dev, BIT(EP_PCIE_RES_PHY), false);
+		ep_pcie_clk_dump(dev);
 		goto link_fail_pipe_clk_deinit;
 	} else {
 		EP_PCIE_INFO(dev, "PCIe V%d: PCIe  PHY is ready\n", dev->rev);
@@ -3854,6 +3894,8 @@ static int ep_pcie_probe(struct platform_device *pdev)
 						(&pdev->dev)->of_node,
 						"qcom,db-fwd-off-varied");
 
+	ep_pcie_dev.override_disable_sriov = of_property_read_bool((&pdev->dev)->of_node,
+						"qcom,override-disable-sriov");
 	ep_pcie_dev.rev = 1711211;
 	ep_pcie_dev.pdev = pdev;
 	ep_pcie_dev.m2_autonomous =

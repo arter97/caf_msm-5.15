@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -19,7 +19,9 @@
 #include <trace/hooks/vendor_hooks_declare.h>
 #else /* !CONFIG_TRACEPOINTS || !CONFIG_ANDROID_VENDOR_HOOKS */
 /* suppress trace hooks */
+#undef DECLARE_HOOK
 #define DECLARE_HOOK DECLARE_EVENT_NOP
+#undef DECLARE_RESTRICTED_HOOK
 #define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
 	DECLARE_EVENT_NOP(name, PARAMS(proto), PARAMS(args))
 #endif

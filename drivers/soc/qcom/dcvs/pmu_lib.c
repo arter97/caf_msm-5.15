@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "qcom-pmu: " fmt
@@ -116,6 +117,7 @@ static inline bool is_event_shared(struct event_data *ev)
 }
 
 #define CYCLE_COUNTER_ID 0x11
+#ifdef CONFIG_ARM64
 static inline u64 cached_count_value(struct event_data *ev, u64 event_cached_count, bool amu)
 {
 	struct arm_pmu *cpu_pmu = container_of(ev->pevent->pmu, struct arm_pmu, pmu);
@@ -135,6 +137,18 @@ static inline u64 cached_count_value(struct event_data *ev, u64 event_cached_cou
 
 	return event_cached_count;
 }
+#else
+static inline u64 cached_count_value(struct event_data *ev, u64 event_cached_count, bool amu)
+{
+	if (amu)
+		return event_cached_count;
+
+	event_cached_count = ((event_cached_count & GENMASK(31, 0)) |
+				BIT(31));
+
+	return event_cached_count;
+}
+#endif
 
 static struct perf_event_attr *alloc_attr(void)
 {
@@ -206,6 +220,7 @@ static inline void delete_event(struct event_data *event)
 	}
 }
 
+#ifdef CONFIG_ARM64
 static void read_amu_reg(void *amu_data)
 {
 	struct amu_data *data = amu_data;
@@ -227,6 +242,11 @@ static void read_amu_reg(void *amu_data)
 		pr_err("AMU counter %d not supported!\n", data->amu_id);
 	}
 }
+#else
+static void read_amu_reg(void *amu_data)
+{
+}
+#endif
 
 static inline u64 read_event(struct event_data *event, bool local)
 {
@@ -269,7 +289,7 @@ static int __qcom_pmu_read(int cpu, u32 event_id, u64 *pmu_data, bool local)
 	if (!qcom_pmu_inited)
 		return -ENODEV;
 
-	if (!event_id || !pmu_data || cpu >= num_possible_cpus())
+	if (!event_id || !pmu_data || !cpumask_test_cpu(cpu, cpu_possible_mask))
 		return -EINVAL;
 
 	cpu_data = per_cpu(cpu_ev_data, cpu);
@@ -306,7 +326,7 @@ int __qcom_pmu_read_all(int cpu, struct qcom_pmu_data *data, bool local)
 	if (!qcom_pmu_inited)
 		return -ENODEV;
 
-	if (!data || cpu >= num_possible_cpus())
+	if (!data || !cpumask_test_cpu(cpu, cpu_possible_mask))
 		return -EINVAL;
 
 	cpu_data = per_cpu(cpu_ev_data, cpu);
@@ -345,7 +365,7 @@ static struct event_data *get_event(u32 event_id, int cpu)
 	if (!qcom_pmu_inited)
 		return ERR_PTR(-EPROBE_DEFER);
 
-	if (!event_id || cpu >= num_possible_cpus())
+	if (!event_id || !cpumask_test_cpu(cpu, cpu_possible_mask))
 		return ERR_PTR(-EINVAL);
 
 	cpu_data = per_cpu(cpu_ev_data, cpu);
@@ -881,8 +901,8 @@ int rimps_pmu_init(struct scmi_device *sdev)
 		return -EINVAL;
 
 	ops = sdev->handle->devm_protocol_get(sdev, SCMI_PMU_PROTOCOL, &ph);
-	if (!ops)
-		return -EINVAL;
+	if (IS_ERR(ops))
+		return PTR_ERR(ops);
 
 	/*
 	 * If communication with cpucp doesn't succeed here the device memory
@@ -907,7 +927,7 @@ static int configure_pmu_event(u32 event_id, int amu_id, int cid, int cpu)
 	struct cpu_data *cpu_data;
 	struct event_data *event;
 
-	if (!event_id || cpu >= num_possible_cpus())
+	if (!event_id || !cpumask_test_cpu(cpu, cpu_possible_mask))
 		return -EINVAL;
 
 	cpu_data = per_cpu(cpu_ev_data, cpu);
@@ -968,9 +988,11 @@ static int init_pmu_events(struct device *dev)
 			return -EINVAL;
 
 		for_each_cpu(cpu, to_cpumask(&cpus)) {
-			ret = configure_pmu_event(event_id, amu_id, cid, cpu);
-			if (ret < 0)
-				return ret;
+			if (cpumask_test_cpu(cpu, cpu_possible_mask)) {
+				ret = configure_pmu_event(event_id, amu_id, cid, cpu);
+				if (ret < 0)
+					return ret;
+			}
 		}
 
 		if (is_cid_valid(cid)) {

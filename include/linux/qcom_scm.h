@@ -64,6 +64,14 @@ struct qcom_scm_mem_map_info {
 	__le64 mem_size;
 };
 
+/**
+ * struct arm_smccc_args
+ * @args: The array of values used in registers in smc instruction
+ */
+struct arm_smccc_args {
+	unsigned long args[8];
+};
+
 enum qcom_scm_ice_cipher {
 	QCOM_SCM_ICE_CIPHER_AES_128_XTS = 0,
 	QCOM_SCM_ICE_CIPHER_AES_128_CBC = 1,
@@ -116,6 +124,7 @@ extern void qcom_scm_disable_sdi(void);
 extern int qcom_scm_set_remote_state(u32 state, u32 id);
 extern int qcom_scm_spin_cpu(void);
 extern void qcom_scm_set_download_mode(enum qcom_download_mode mode, phys_addr_t tcsr_boot_misc);
+extern int qcom_scm_get_download_mode(unsigned int *mode, phys_addr_t tcsr_boot_misc);
 extern int qcom_scm_config_cpu_errata(void);
 extern void qcom_scm_phy_update_scm_level_shifter(u32 val);
 
@@ -276,4 +285,5 @@ extern int qcom_scm_call_ethqos_configure(u32 emac_base_addr, u32 link_speed, u3
 extern int qcom_scm_call_loopback_configure(u32 emac_base_addr, u32 loopback_mode, u32 if_mode);
 extern int qcom_scm_call_iomacro_dump(u32 emac_base_addr, phys_addr_t buffer, u32 len);
 extern int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed);
+extern int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value);
 #endif

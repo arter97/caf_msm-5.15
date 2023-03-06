@@ -99,7 +99,8 @@ module_param(pause, int, 0644);
 MODULE_PARM_DESC(pause, "Flow Control Pause Time");
 
 #define TC_DEFAULT 64
-static int tc = TC_DEFAULT;
+#define TC_DEFAULT_Q0 32
+static int tc = TC_DEFAULT_Q0;
 module_param(tc, int, 0644);
 MODULE_PARM_DESC(tc, "DMA threshold control value");
 
@@ -1134,7 +1135,7 @@ static void stmmac_validate(struct phylink_config *config,
 	/* Early ethernet settings to bring up link in 100M,
 	 * Auto neg Off with full duplex link.
 	 */
-	if (priv->early_eth && !priv->early_eth_config_set) {
+	if (priv->phydev && priv->plat->early_eth && !priv->early_eth_config_set) {
 		priv->phydev->autoneg = AUTONEG_DISABLE;
 		priv->phydev->speed = SPEED_100;
 		priv->phydev->duplex = DUPLEX_FULL;
@@ -1458,6 +1459,7 @@ static int stmmac_init_phy(struct net_device *dev)
 			pr_info("stmmac phy polling mode\n");
 			priv->phydev->irq = PHY_POLL;
 		}
+		phy_attached_info(priv->phydev);
 	}
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
 		__func__);
@@ -2588,6 +2590,8 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 
 		qmode = priv->plat->rx_queues_cfg[chan].mode_to_use;
 
+		if (priv->plat->force_thresh_dma_mode_q0_en && chan == 0)
+			rxmode = tc;
 		stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
 				rxfifosz, qmode);
 
@@ -6078,7 +6082,7 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 		}
 
 		/* PCS link status */
-		if (priv->hw->pcs) {
+		if (priv->hw->pcs && !priv->plat->has_gmac4) {
 			if (priv->xstats.pcs_link)
 				netif_carrier_on(priv->dev);
 			else
@@ -7572,8 +7576,11 @@ int stmmac_dvr_probe(struct device *device,
 	ndev->features |= ndev->hw_features | NETIF_F_HIGHDMA;
 	ndev->watchdog_timeo = msecs_to_jiffies(watchdog);
 #ifdef STMMAC_VLAN_TAG_USED
+	ndev->vlan_features |= ndev->hw_features;
 	/* Both mac100 and gmac support receive VLAN tag detection */
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX;
+	priv->dma_cap.vlhash = 0;
+	priv->dma_cap.vlins = 0;
 	if (priv->dma_cap.vlhash) {
 		ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 		ndev->features |= NETIF_F_HW_VLAN_STAG_FILTER;

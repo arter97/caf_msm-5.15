@@ -243,7 +243,7 @@ void *ipc_stmmac_log_ctxt_low;
 int stmmac_enable_ipc_low;
 #define MAX_PROC_SIZE 1024
 char tmp_buff[MAX_PROC_SIZE];
-static struct ip_params pparams = {"", "", "", ""};
+static struct ip_params pparams;
 static struct mac_params mparams = {0};
 
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf)
@@ -290,10 +290,12 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
 	} else {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
-		txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
+		if (pethqos->ipa_enabled)
+			txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
+		else
+			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
 	}
 
-	ETHQOSDBG("tx_queue %d\n", txqueue_select);
 	return txqueue_select;
 }
 
@@ -640,13 +642,12 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 /* Local SMC buffer is valid only for HW where IO macro space is moved to TZ.
  * for other configurations it should always be passed as NULL
  */
-static int rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset, void *local_smc_buffer)
+static int rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset)
 {
-	if (local_smc_buffer) {
-		return readl(local_smc_buffer + offset);
-	} else {
+	if (ethqos->shm_rgmii_local.vaddr)
+		return readl(ethqos->shm_rgmii_local.vaddr + offset);
+	else
 		return readl(ethqos->rgmii_base + offset);
-	}
 }
 
 static void rgmii_writel(struct qcom_ethqos *ethqos,
@@ -660,7 +661,7 @@ static void rgmii_updatel(struct qcom_ethqos *ethqos,
 {
 	unsigned int temp;
 
-	temp =  rgmii_readl(ethqos, offset, NULL);
+	temp =  rgmii_readl(ethqos, offset);
 	temp = (temp & ~(mask)) | val;
 	rgmii_writel(ethqos, temp, offset);
 }
@@ -680,25 +681,25 @@ static void rgmii_dump(void *priv)
 	}
 #endif
 
-	dev_info(&ethqos->pdev->dev, "Rgmii register dump\n");
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DDR_CONFIG: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG2: %x\n",
-		 rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDC4_STATUS: %x\n",
-		 rgmii_readl(ethqos, SDC4_STATUS, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "SDCC_USR_CTL: %x\n",
-		 rgmii_readl(ethqos, SDCC_USR_CTL, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG2: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "RGMII_IO_MACRO_DEBUG1: %x\n",
-		 rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1, ethqos->shm_rgmii_local.vaddr));
-	dev_info(&ethqos->pdev->dev, "EMAC_SYSTEM_LOW_POWER_DEBUG: %x\n",
-		 rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG, ethqos->shm_rgmii_local.vaddr));
+	dev_dbg(&ethqos->pdev->dev, "Rgmii register dump\n");
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DDR_CONFIG: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_HC_REG_DLL_CONFIG2: %x\n",
+		rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2));
+	dev_dbg(&ethqos->pdev->dev, "SDC4_STATUS: %x\n",
+		rgmii_readl(ethqos, SDC4_STATUS));
+	dev_dbg(&ethqos->pdev->dev, "SDCC_USR_CTL: %x\n",
+		rgmii_readl(ethqos, SDCC_USR_CTL));
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_CONFIG2: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2));
+	dev_dbg(&ethqos->pdev->dev, "RGMII_IO_MACRO_DEBUG1: %x\n",
+		rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1));
+	dev_dbg(&ethqos->pdev->dev, "EMAC_SYSTEM_LOW_POWER_DEBUG: %x\n",
+		rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG));
 }
 
 /* Clock rates */
@@ -801,7 +802,7 @@ static void ethqos_read_iomacro_por_values(struct qcom_ethqos *ethqos)
 	/* Read to POR values and enable clk */
 	for (i = 0; i < ethqos->num_por; i++)
 		ethqos->por[i].value =
-			rgmii_readl(ethqos, ethqos->por[i].offset, ethqos->shm_rgmii_local.vaddr);
+			rgmii_readl(ethqos, ethqos->por[i].offset);
 }
 
 static void ethqos_read_io_macro_from_dtsi(struct device_node *np_hw,
@@ -1044,7 +1045,7 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 	}
 	/* Wait for CK_OUT_EN clear */
 	do {
-		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, NULL);
+		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 		val &= SDCC_DLL_CONFIG_CK_OUT_EN;
 		if (!val)
 			break;
@@ -1061,7 +1062,7 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 	/* Wait for CK_OUT_EN set */
 	retry = 1000;
 	do {
-		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, NULL);
+		val = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 		val &= SDCC_DLL_CONFIG_CK_OUT_EN;
 		if (val)
 			break;
@@ -1452,7 +1453,7 @@ static int ethqos_configure(struct qcom_ethqos *ethqos)
 		/* wait for DLL LOCK */
 		do {
 			mdelay(1);
-			dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+			dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 			if (dll_lock & SDC4_STATUS_DLL_LOCK)
 				break;
 			retry--;
@@ -1549,7 +1550,7 @@ static int ethqos_configure_mac_v3(struct qcom_ethqos *ethqos)
 		/* Check for DLL lock */
 		do {
 			udelay(1);
-			dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+			dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 			if (dll_lock & SDC4_STATUS_DLL_LOCK)
 				break;
 			retry--;
@@ -1679,7 +1680,7 @@ static int ethqos_dll_configure_v4(struct qcom_ethqos *ethqos)
 	retry = 1000;
 	do {
 		mdelay(1);
-		dll_lock = rgmii_readl(ethqos, SDC4_STATUS, NULL);
+		dll_lock = rgmii_readl(ethqos, SDC4_STATUS);
 		if (dll_lock & DDR_STATUS_DLL_LOCK)
 			break;
 		retry--;
@@ -2466,8 +2467,8 @@ static void ethqos_is_ipv6_NW_stack_ready(struct work_struct *work)
 	flush_delayed_work(&ethqos->ipv6_addr_assign_wq);
 }
 
-static int ethqos_set_early_eth_param(struct stmmac_priv *priv,
-				      struct qcom_ethqos *ethqos)
+static void ethqos_set_early_eth_param(struct stmmac_priv *priv,
+				       struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
@@ -2496,11 +2497,173 @@ static int ethqos_set_early_eth_param(struct stmmac_priv *priv,
 					      msecs_to_jiffies(1000));
 	}
 
-	if (pparams.is_valid_mac_addr) {
-		ether_addr_copy(dev_addr, pparams.mac_addr);
-		memcpy(priv->dev->dev_addr, dev_addr, ETH_ALEN);
+	return;
+}
+
+static ssize_t mac_reg_read(struct file *file,
+			    const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
 	}
-	return ret;
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(priv->ioaddr + offset));
+	return count;
+}
+
+static ssize_t pcs_reg_read(struct file *file,
+			    const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    priv->plat->interface != PHY_INTERFACE_MODE_SMII) {
+		pr_err("Current phy_interface type does not support PCS block\n");
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+	return count;
+}
+
+static ssize_t iomacro_reg_read(struct file *file,
+				const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
+	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
+		qcom_scm_call_iomacro_dump(ethqos->rgmii_phy_base,
+					   ethqos->shm_rgmii_local.paddr,
+					   RGMII_BLOCK_SIZE);
+		qtee_shmbridge_inv_shm_buf(&ethqos->shm_rgmii_local);
+	}
+#endif
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable tocopyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x", &offset);
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("0X%x\n", rgmii_readl(ethqos, offset));
+	return count;
+}
+
+static ssize_t mac_reg_write(struct file *file,
+			     const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old value: 0X%x\n", readl(priv->ioaddr + offset));
+	writel(value, priv->ioaddr + offset);
+	pr_info("New Value: 0X%x\n", readl(priv->ioaddr + offset));
+
+	return count;
+}
+
+static ssize_t pcs_reg_write(struct file *file,
+			     const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (priv->plat->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    priv->plat->interface != PHY_INTERFACE_MODE_SGMII) {
+		pr_err("Current phy_interface type does not support PCS block\n");
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+	writel(value, priv->hw->qxpcs->addr + offset);
+	pr_info("New Value: 0X%x\n", readl(priv->hw->qxpcs->addr + offset));
+
+	return count;
 }
 
 static ssize_t read_phy_reg_dump(struct file *file, char __user *user_buf,
@@ -2581,40 +2744,39 @@ static ssize_t read_rgmii_reg_dump(struct file *file,
 
 	len += scnprintf(buf + len, buf_len - len,
 					 "\n************* RGMII Reg dump *************\n");
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DLL_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DDR_CONFIG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DDR_CONFIG Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_HC_REG_DLL_CONFIG2);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_HC_REG_DLL_CONFIG2 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDC4_STATUS, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDC4_STATUS);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDC4_STATUS Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, SDCC_USR_CTL, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, SDCC_USR_CTL);
 	len += scnprintf(buf + len, buf_len - len,
 					 "SDCC_USR_CTL Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_CONFIG2);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_CONFIG2 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1, ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, RGMII_IO_MACRO_DEBUG1);
 	len += scnprintf(buf + len, buf_len - len,
 					 "RGMII_IO_MACRO_DEBUG1 Register = %#x\n",
 					 rgmii_data);
-	rgmii_data = rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG,
-				 ethqos->shm_rgmii_local.vaddr);
+	rgmii_data = rgmii_readl(ethqos, EMAC_SYSTEM_LOW_POWER_DEBUG);
 	len += scnprintf(buf + len, buf_len - len,
 					 "EMAC_SYSTEM_LOW_POWER_DEBUG Register = %#x\n",
 					 rgmii_data);
@@ -3153,6 +3315,41 @@ static const struct file_operations fops_ipc_stmmac_log_low = {
 	.llseek = default_llseek,
 };
 
+static const struct file_operations fops_mac_read = {
+	.write = mac_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_pcs_read = {
+	.write = pcs_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_iomacro_read = {
+	.write = iomacro_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_pcs_write = {
+	.write = pcs_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_write = {
+	.write = mac_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -3160,13 +3357,24 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *ipc_stmmac_log_low;
 	static struct dentry *phy_off;
 	static struct dentry *loopback_enable_mode;
+	static struct dentry *mac_dump;
+	static struct dentry *mac_pcs_dump;
+	static struct dentry *mac_iomacro_dump;
+	static struct dentry *mac_pcs_write;
+	static struct dentry *mac_write;
+	struct stmmac_priv *priv;
+	char dir_name[32];
 
 	if (!ethqos) {
 		ETHQOSERR("Null Param %s\n", __func__);
 		return -ENOMEM;
 	}
 
-	ethqos->debugfs_dir = debugfs_create_dir("eth", NULL);
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	snprintf(dir_name, sizeof(dir_name), "%s%d", "eth", priv->plat->port_num);
+
+	ethqos->debugfs_dir = debugfs_create_dir(dir_name, NULL);
 
 	if (!ethqos->debugfs_dir || IS_ERR(ethqos->debugfs_dir)) {
 		ETHQOSERR("Can't create debugfs dir\n");
@@ -3188,6 +3396,21 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		ETHQOSERR("Can't create rgmii_dump %d\n", (long)rgmii_reg_dump);
 		goto fail;
 	}
+
+	mac_dump = debugfs_create_file("mac_reg_read", (0220),
+				       ethqos->debugfs_dir, ethqos, &fops_mac_read);
+
+	mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0220),
+					   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
+
+	mac_iomacro_dump = debugfs_create_file("iomacro_reg_read", (0220),
+					       ethqos->debugfs_dir, ethqos, &fops_mac_iomacro_read);
+
+	mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
+					    ethqos->debugfs_dir, ethqos, &fops_mac_pcs_write);
+
+	mac_write = debugfs_create_file("mac_reg_write", (0220),
+					ethqos->debugfs_dir, ethqos, &fops_mac_write);
 
 	ipc_stmmac_log_low = debugfs_create_file("ipc_stmmac_log_low", 0220,
 						 ethqos->debugfs_dir, ethqos,
@@ -3472,6 +3695,159 @@ static inline int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, i
 }
 #endif
 
+static ssize_t ethqos_read_dev_emac(struct file *filp, char __user *buf,
+				    size_t count, loff_t *f_pos)
+{
+	unsigned int len = 0;
+	char *temp_buf;
+	ssize_t ret_cnt = 0;
+
+	ret_cnt = simple_read_from_buffer(buf, count, f_pos, temp_buf, len);
+	return ret_cnt;
+}
+
+static ssize_t ethqos_write_dev_emac(struct file *file,
+				     const char __user *user_buf,
+				     size_t count, loff_t *ppos)
+{
+	unsigned char in_buf[300] = {0};
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = pethqos;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(pethqos);
+	struct vlan_filter_info vlan_filter_info;
+	char vlan_str[30] = {0};
+	char *prefix = NULL;
+	u32 err;
+	unsigned int number;
+
+	if (sizeof(in_buf) < count) {
+		ETHQOSERR("emac string is too long - count=%u\n", count);
+		return -EFAULT;
+	}
+
+	memset(in_buf, 0,  sizeof(in_buf));
+	ret = copy_from_user(in_buf, user_buf, count);
+
+	if (ret)
+		return -EFAULT;
+
+	strscpy(vlan_str, in_buf, sizeof(vlan_str));
+
+	ETHQOSINFO("emac string is %s\n", vlan_str);
+
+	if (strnstr(vlan_str, "QOE", sizeof(vlan_str))) {
+		ethqos->qoe_vlan.available = true;
+		vlan_filter_info.vlan_id = ethqos->qoe_vlan.vlan_id;
+		vlan_filter_info.rx_queue = ethqos->qoe_vlan.rx_queue;
+		vlan_filter_info.vlan_offset = ethqos->qoe_vlan.vlan_offset;
+		priv->hw->mac->qcom_set_vlan(&vlan_filter_info, priv->ioaddr);
+	}
+
+	if (strnstr(vlan_str, "qvlanid=", sizeof(vlan_str))) {
+		prefix = strnchr(vlan_str,
+				 strlen(vlan_str), '=');
+		ETHQOSINFO("vlanid data written is %s\n", prefix + 1);
+		if (prefix) {
+			err = kstrtouint(prefix + 1, 0, &number);
+			if (!err)
+				ethqos->qoe_vlan.vlan_id = number;
+		}
+	}
+
+	return count;
+}
+
+static void ethqos_get_qoe_dt(struct qcom_ethqos *ethqos,
+			      struct device_node *np)
+{
+	int res;
+
+	res = of_property_read_u32(np, "qcom,qoe_mode", &ethqos->qoe_mode);
+	if (res) {
+		ETHQOSDBG("qoe_mode not in dtsi\n");
+		ethqos->qoe_mode = 0;
+	}
+
+	if (ethqos->qoe_mode) {
+		res = of_property_read_u32(np, "qcom,qoe-queue",
+					   &ethqos->qoe_vlan.rx_queue);
+		if (res) {
+			ETHQOSERR("qoe-queue not in dtsi for qoe_mode %u\n",
+				  ethqos->qoe_mode);
+			ethqos->qoe_vlan.rx_queue = QMI_TAG_TX_CHANNEL;
+		}
+
+		res = of_property_read_u32(np, "qcom,qoe-vlan-offset",
+					   &ethqos->qoe_vlan.vlan_offset);
+		if (res) {
+			ETHQOSERR("qoe-vlan-offset not in dtsi\n");
+			ethqos->qoe_vlan.vlan_offset = 0;
+		}
+	}
+}
+
+static const struct file_operations emac_fops = {
+	.owner = THIS_MODULE,
+	.read = ethqos_read_dev_emac,
+	.write = ethqos_write_dev_emac,
+};
+
+static int ethqos_create_emac_device_node(dev_t *emac_dev_t,
+					  struct cdev **emac_cdev,
+					  struct class **emac_class,
+					  char *emac_dev_node_name)
+{
+	int ret;
+
+	ret = alloc_chrdev_region(emac_dev_t, 0, 1,
+				  emac_dev_node_name);
+	if (ret) {
+		ETHQOSERR("alloc_chrdev_region error for node %s\n",
+			  emac_dev_node_name);
+		goto alloc_chrdev1_region_fail;
+	}
+
+	*emac_cdev = cdev_alloc();
+	if (!*emac_cdev) {
+		ret = -ENOMEM;
+		ETHQOSERR("failed to alloc cdev\n");
+		goto fail_alloc_cdev;
+	}
+	cdev_init(*emac_cdev, &emac_fops);
+
+	ret = cdev_add(*emac_cdev, *emac_dev_t, 1);
+	if (ret < 0) {
+		ETHQOSERR(":cdev_add err=%d\n", -ret);
+		goto cdev1_add_fail;
+	}
+
+	*emac_class = class_create(THIS_MODULE, emac_dev_node_name);
+	if (!*emac_class) {
+		ret = -ENODEV;
+		ETHQOSERR("failed to create class\n");
+		goto fail_create_class;
+	}
+
+	if (!device_create(*emac_class, NULL,
+			   *emac_dev_t, NULL, emac_dev_node_name)) {
+		ret = -EINVAL;
+		ETHQOSERR("failed to create device_create\n");
+		goto fail_create_device;
+	}
+
+	return 0;
+
+fail_create_device:
+	class_destroy(*emac_class);
+fail_create_class:
+	cdev_del(*emac_cdev);
+cdev1_add_fail:
+fail_alloc_cdev:
+	unregister_chrdev_region(*emac_dev_t, 1);
+alloc_chrdev1_region_fail:
+		return ret;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -3506,9 +3882,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			ret = set_ethernet_interface(eiface);
 #endif
 
-	ipc_emac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
-						   "emac", 0);
-	if (!ipc_emac_log_ctxt)
+	ipc_stmmac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
+						     "emac", 0);
+	if (!ipc_stmmac_log_ctxt)
 		ETHQOSERR("Error creating logging context for emac\n");
 	else
 		ETHQOSDBG("IPC logging has been enabled for emac\n");
@@ -3527,6 +3903,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos_init_reqgulators(ethqos);
 
 	ethqos_init_gpio(ethqos);
+
+	ethqos_get_qoe_dt(ethqos, np);
 
 	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
 	if (IS_ERR(plat_dat)) {
@@ -3562,12 +3940,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		}
 	}
 	ethqos->rgmii_phy_base = rgmii_io_block->start;
-
-	ethqos->rgmii_clk = devm_clk_get(&pdev->dev, "rgmii");
-	if (IS_ERR(ethqos->rgmii_clk)) {
-		ret = PTR_ERR(ethqos->rgmii_clk);
-		goto err_mem;
-	}
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
@@ -3649,6 +4021,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	plat_dat->tso_en = of_property_read_bool(np, "snps,tso");
+	plat_dat->force_thresh_dma_mode_q0_en =
+			of_property_read_bool(np,
+					      "snps,force_thresh_dma_mode_q0");
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;
 	plat_dat->request_phy_wol = qcom_ethqos_request_phy_wol;
 	plat_dat->init_pps = ethqos_init_pps;
@@ -3720,7 +4095,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		} else {
 #endif
 			ethqos->emac_ver =
-			rgmii_readl(ethqos, EMAC_I0_EMAC_CORE_HW_VERSION_RGOFFADDR, NULL);
+			rgmii_readl(ethqos, EMAC_I0_EMAC_CORE_HW_VERSION_RGOFFADDR);
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 		}
 #endif
@@ -3797,6 +4172,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	/* Read en_wol from device tree */
 	priv->en_wol = of_property_read_bool(np, "enable-wol");
 
+	/* If valid mac address is present from emac partition
+	 * Enable the mac address in the device.
+	 */
+	if (pparams.is_valid_mac_addr) {
+		ether_addr_copy(dev_addr, pparams.mac_addr);
+		memcpy(priv->dev->dev_addr, dev_addr, ETH_ALEN);
+	}
+
 	if (of_property_read_bool(np, "avb-vlan-id"))
 		of_property_read_u32(np, "avb-vlan-id",
 				     &priv->avb_vlan_id);
@@ -3817,6 +4200,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		queue_work(system_wq, &ethqos->early_eth);
 		/*Set early eth parameters*/
 		ethqos_set_early_eth_param(priv, ethqos);
+	}
+
+	if (ethqos->qoe_mode) {
+		ethqos_create_emac_device_node(&ethqos->emac_dev_t,
+					       &ethqos->emac_cdev,
+					       &ethqos->emac_class,
+					       "emac");
 	}
 
 	if (priv->plat->mac2mac_en)
@@ -4231,7 +4621,7 @@ static int __init qcom_ethqos_init_module(void)
 {
 	int ret = 0;
 
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	ret = platform_driver_register(&qcom_ethqos_driver);
 	if (ret < 0) {
@@ -4239,23 +4629,26 @@ static int __init qcom_ethqos_init_module(void)
 		return ret;
 	}
 
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	return ret;
 }
 
 static void __exit qcom_ethqos_exit_module(void)
 {
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 
 	platform_driver_unregister(&qcom_ethqos_driver);
+
+	if (!ipc_stmmac_log_ctxt)
+		ipc_log_context_destroy(ipc_stmmac_log_ctxt);
 
 	if (!ipc_stmmac_log_ctxt_low)
 		ipc_log_context_destroy(ipc_stmmac_log_ctxt_low);
 
 	ipc_stmmac_log_ctxt = NULL;
 	ipc_stmmac_log_ctxt_low = NULL;
-	ETHQOSINFO("\n");
+	ETHQOSDBG("\n");
 }
 
 /*!

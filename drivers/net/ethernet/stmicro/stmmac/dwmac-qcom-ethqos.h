@@ -18,13 +18,11 @@
 #include <linux/interconnect.h>
 #include <linux/qtee_shmbridge.h>
 
-
-#define QCOM_ETH_QOS_MAC_ADDR_LEN
-#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN
+#define QCOM_ETH_QOS_MAC_ADDR_LEN 6
+#define QCOM_ETH_QOS_MAC_ADDR_STR_LEN 18
 
 extern void *ipc_stmmac_log_ctxt;
 extern void *ipc_stmmac_log_ctxt_low;
-extern void *ipc_emac_log_ctxt;
 
 #define IPCLOG_STATE_PAGES 50
 #define IPC_RATELIMIT_BURST 1
@@ -157,6 +155,16 @@ do {\
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+enum ipa_queue_type {
+	IPA_QUEUE_BE = 0,
+};
+#endif
+
+//Mac config
+#define XGMAC_RX_CONFIG		0x00000004
+#define XGMAC_CONFIG_LM			BIT(10)
+
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
 #define XGMAC_CONFIG_LM			BIT(10)
@@ -202,6 +210,13 @@ enum phy_power_mode {
 enum current_phy_state {
 	PHY_IS_ON = 0,
 	PHY_IS_OFF,
+};
+
+struct ethqos_vlan_info {
+	u16 vlan_id;
+	u32 vlan_offset;
+	u32 rx_queue;
+	bool available;
 };
 
 struct ethqos_emac_por {
@@ -369,6 +384,11 @@ struct qcom_ethqos {
 	struct emac_icc_data *emac_axi_icc;
 	struct icc_path *apb_icc_path;
 	struct emac_icc_data *emac_apb_icc;
+
+	dev_t emac_dev_t;
+	struct cdev *emac_cdev;
+	struct class *emac_class;
+
 	unsigned long avb_class_a_intr_cnt;
 	unsigned long avb_class_b_intr_cnt;
 
@@ -405,6 +425,11 @@ struct qcom_ethqos {
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
 	bool probed;
+	bool ipa_enabled;
+
+	/* QMI over ethernet parameter */
+	u32 qoe_mode;
+	struct ethqos_vlan_info qoe_vlan;
 };
 
 struct pps_cfg {
@@ -481,6 +506,8 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 
 #define IPA_DMA_TX_CH 0
 #define IPA_DMA_RX_CH 0
+
+#define QMI_TAG_TX_CHANNEL 2
 
 #define VLAN_TAG_UCP_SHIFT 13
 #define CLASS_A_TRAFFIC_UCP 3

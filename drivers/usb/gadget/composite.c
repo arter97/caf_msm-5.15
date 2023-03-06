@@ -159,6 +159,8 @@ int config_ep_by_speed_and_alt(struct usb_gadget *g,
 	int want_comp_desc = 0;
 
 	struct usb_descriptor_header **d_spd; /* cursor for speed desc */
+	struct usb_composite_dev *cdev;
+	bool incomplete_desc = false;
 
 	if (!g || !f || !_ep)
 		return -EIO;
@@ -167,27 +169,42 @@ int config_ep_by_speed_and_alt(struct usb_gadget *g,
 	switch (g->speed) {
 	case USB_SPEED_SUPER_PLUS:
 		if (gadget_is_superspeed_plus(g)) {
-			speed_desc = f->ssp_descriptors;
-			want_comp_desc = 1;
-			break;
+			if (f->ssp_descriptors) {
+				speed_desc = f->ssp_descriptors;
+				want_comp_desc = 1;
+				break;
+			}
+			incomplete_desc = true;
 		}
 		fallthrough;
 	case USB_SPEED_SUPER:
 		if (gadget_is_superspeed(g)) {
-			speed_desc = f->ss_descriptors;
-			want_comp_desc = 1;
-			break;
+			if (f->ss_descriptors) {
+				speed_desc = f->ss_descriptors;
+				want_comp_desc = 1;
+				break;
+			}
+			incomplete_desc = true;
 		}
 		fallthrough;
 	case USB_SPEED_HIGH:
 		if (gadget_is_dualspeed(g)) {
-			speed_desc = f->hs_descriptors;
-			break;
+			if (f->hs_descriptors) {
+				speed_desc = f->hs_descriptors;
+				break;
+			}
+			incomplete_desc = true;
 		}
 		fallthrough;
 	default:
 		speed_desc = f->fs_descriptors;
 	}
+
+	cdev = get_gadget_data(g);
+	if (incomplete_desc)
+		WARNING(cdev,
+			"%s doesn't hold the descriptors for current speed\n",
+			f->name);
 
 	/* find correct alternate setting descriptor */
 	for_each_desc(speed_desc, d_spd, USB_DT_INTERFACE) {
@@ -244,12 +261,8 @@ ep_found:
 			_ep->maxburst = comp_desc->bMaxBurst + 1;
 			break;
 		default:
-			if (comp_desc->bMaxBurst != 0) {
-				struct usb_composite_dev *cdev;
-
-				cdev = get_gadget_data(g);
+			if (comp_desc->bMaxBurst != 0)
 				ERROR(cdev, "ep0 bMaxBurst must be 0\n");
-			}
 			_ep->maxburst = 1;
 			break;
 		}
@@ -574,18 +587,9 @@ static int config_desc(struct usb_composite_dev *cdev, unsigned w_value)
 	w_value &= 0xff;
 
 	pos = &cdev->configs;
-	c = cdev->os_desc_config;
-	if (c)
-		goto check_config;
-
 	while ((pos = pos->next) !=  &cdev->configs) {
 		c = list_entry(pos, typeof(*c), list);
 
-		/* skip OS Descriptors config which is handled separately */
-		if (c == cdev->os_desc_config)
-			continue;
-
-check_config:
 		/* ignore configs that won't work at this speed */
 		switch (speed) {
 		case USB_SPEED_SUPER_PLUS:

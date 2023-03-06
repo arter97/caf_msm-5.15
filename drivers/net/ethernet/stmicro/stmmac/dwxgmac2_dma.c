@@ -305,6 +305,7 @@ static void dwxgmac2_dma_start_rx(void __iomem *ioaddr, u32 chan)
 	u32 value;
 
 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
+	value &= ~XGMAC_RPF;
 	value |= XGMAC_RXST;
 	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
 
@@ -318,6 +319,7 @@ static void dwxgmac2_dma_stop_rx(void __iomem *ioaddr, u32 chan)
 	u32 value;
 
 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
+	value |= XGMAC_RPF;
 	value &= ~XGMAC_RXST;
 	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
 }
