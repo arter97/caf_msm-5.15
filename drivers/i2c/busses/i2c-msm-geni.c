@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -546,7 +546,6 @@ static int do_pending_cancel(struct geni_i2c_dev *gi2c)
 		dmaengine_terminate_all(gi2c->tx_c);
 		gi2c->cfg_sent = 0;
 	} else {
-		do_reg68_war_for_rtl_se(gi2c);
 		reinit_completion(&gi2c->xfer);
 		geni_se_cancel_m_cmd(&gi2c->i2c_rsc);
 		timeout = wait_for_completion_timeout(&gi2c->xfer, HZ);
@@ -1993,11 +1992,8 @@ static int geni_i2c_runtime_suspend(struct device *dev)
 		}
 	}
 
-	if (gi2c->is_le_vm) {
-		if (gi2c->first_xfer_done)
-			geni_i2c_unlock_bus(gi2c);
-		else
-			gi2c->first_xfer_done = true;
+	if (gi2c->is_le_vm && gi2c->first_xfer_done) {
+		geni_i2c_unlock_bus(gi2c);
 
 		if (gi2c->se_mode == GSI_ONLY) {
 			ret = geni_i2c_gpi_suspend_resume(gi2c, true);
