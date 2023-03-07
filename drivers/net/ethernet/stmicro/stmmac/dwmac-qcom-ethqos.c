@@ -3686,6 +3686,8 @@ static void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 
 	clk_disable_unprepare(ethqos->sgmii_rx_clk);
 	clk_disable_unprepare(ethqos->sgmii_tx_clk);
+	clk_disable_unprepare(ethqos->phyaux_clk);
+	clk_disable_unprepare(ethqos->sgmiref_clk);
 
 	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
 		clk_disable_unprepare(ethqos->xgxs_rx_clk);
@@ -4484,8 +4486,18 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		ethqos->shm_rgmii_local.vaddr = NULL;
 	}
 #endif
+
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->clk_eee)
+		clk_disable_unprepare(ethqos->clk_eee);
+#endif
+
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 
 	icc_put(ethqos->axi_icc_path);
 
@@ -4545,8 +4557,23 @@ static int qcom_ethqos_suspend(struct device *dev)
 			ethqos->backup_autoneg = AUTONEG_ENABLE;
 		}
 	}
+
 	ret = stmmac_suspend(dev);
+
+	if (ethqos->rgmii_clk)
+		clk_disable_unprepare(ethqos->rgmii_clk);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->clk_eee)
+		clk_disable_unprepare(ethqos->clk_eee);
+#endif
+
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+
 	qcom_ethqos_phy_suspend_clks(ethqos);
+
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("disable phy at suspend\n");
