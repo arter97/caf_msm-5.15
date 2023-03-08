@@ -1789,6 +1789,7 @@ static int ethqos_configure_rgmii_v4(struct qcom_ethqos *ethqos)
 			ethqos_read_io_macro_from_dtsi(rgmii_io_macro_node, ethqos);
 
 		ethqos->probed = false;
+		of_node_put(rgmii_io_macro_node);
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
@@ -2146,7 +2147,7 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	}
 
 	/*If phy driver support interrupt handling use it*/
-	if (priv->phydev->drv->handle_interrupt) {
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->handle_interrupt) {
 		priv->phydev->drv->handle_interrupt(priv->phydev);
 		return;
 	}

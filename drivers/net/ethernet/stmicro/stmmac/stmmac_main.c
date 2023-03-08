@@ -7768,6 +7768,17 @@ int stmmac_dvr_remove(struct device *dev)
 
 	netdev_info(priv->dev, "%s: removing driver", __func__);
 
+	if (priv->plat->rgmii_rst) {
+		reset_control_put(priv->plat->rgmii_rst);
+		priv->plat->rgmii_rst = NULL;
+	}
+
+	if (priv->avb_vlan_id > 1)
+		if (ndev->netdev_ops->ndo_vlan_rx_kill_vid)
+			ndev->netdev_ops->ndo_vlan_rx_kill_vid(ndev,
+							       htons(ETH_P_8021Q),
+							       priv->avb_vlan_id);
+
 	pm_runtime_get_sync(dev);
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
