@@ -4215,9 +4215,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	plat_dat->tso_en = of_property_read_bool(np, "snps,tso");
-	plat_dat->force_thresh_dma_mode_q0_en =
-			of_property_read_bool(np,
-					      "snps,force_thresh_dma_mode_q0");
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;
 	plat_dat->request_phy_wol = qcom_ethqos_request_phy_wol;
 	plat_dat->init_pps = ethqos_init_pps;
