@@ -96,6 +96,9 @@ static void dwxgmac2_dma_axi(void __iomem *ioaddr, struct stmmac_axi *axi)
 	value |= (axi->axi_rd_osr_lmt << XGMAC_RD_OSR_LMT_SHIFT) &
 		XGMAC_RD_OSR_LMT;
 
+	if (axi->axi_kbbe)
+		value |= XGMAC_ONEKBBE;
+
 	if (!axi->axi_fb)
 		value |= XGMAC_UNDEF;
 
