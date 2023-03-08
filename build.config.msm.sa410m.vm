@@ -5,7 +5,7 @@
 
 ################################################################################
 ## Variant setup
-VARIANTS=(defconfig debug_defconfig)
+VARIANTS=(perf_defconfig debug_defconfig)
 [ -z "${VARIANT}" ] && VARIANT=debug_defconfig
 
 if [ -e "${ROOT_DIR}/msm-kernel" -a "${KERNEL_DIR}" = "common" ]; then

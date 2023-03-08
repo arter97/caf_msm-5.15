@@ -33,10 +33,10 @@ function move_signing_keys() {
 }
 
 function build_defconfig_fragments() {
-	if [[ "${VARIANT}" =~ ^(defconfig|debug_defconfig)$ ]]; then
+	if [[ "${VARIANT}" =~ ^(perf_defconfig|debug_defconfig)$ ]]; then
 		apply_defconfig_fragment ${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}.config vendor/${MSM_ARCH}_defconfig
 
-		if [ "${VARIANT}" = defconfig ]; then
+		if [ "${VARIANT}" = perf_defconfig ]; then
 			return
 		fi
 
