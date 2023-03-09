@@ -358,4 +358,15 @@ static inline int qcom_edma_init(struct device *dev)
 static inline void edma_dump(void) {}
 #endif
 
+#if IS_ENABLED(CONFIG_QCOM_PCI_HDMA)
+int qcom_hdma_init(struct device *dev);
+void hdma_dump(void);
+#else
+static inline int qcom_hdma_init(struct device *dev)
+{
+	return 0;
+}
+static inline void hdma_dump(void) {}
+#endif
+
 #endif
