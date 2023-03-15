@@ -617,6 +617,7 @@ out:
 	mutex_unlock(&qcom_ssr_subsys_lock);
 	return info;
 }
+EXPORT_SYMBOL_GPL(qcom_ssr_add_subsys);
 
 void *qcom_register_early_ssr_notifier(const char *name, struct notifier_block *nb)
 {
@@ -716,6 +717,7 @@ int qcom_notify_ssr_clients(struct qcom_ssr_subsystem *info, int state,
 
 	return srcu_notifier_call_chain(&info->notifier_list, state, data);
 }
+EXPORT_SYMBOL_GPL(qcom_notify_ssr_clients);
 
 static inline void notify_ssr_clients(struct qcom_rproc_ssr *ssr, struct qcom_ssr_notify_data *data)
 {
