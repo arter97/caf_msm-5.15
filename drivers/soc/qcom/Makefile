@@ -109,6 +109,8 @@ obj-$(CONFIG_QCOM_MINIDUMP) += minidump.o
 minidump-y   += msm_minidump.o minidump_log.o
 ifdef CONFIG_QCOM_MINIDUMP_RM
 	minidump-y += minidump_rm.o
+else ifdef CONFIG_QCOM_MINIDUMP_MMIO
+	minidump-$(CONFIG_QCOM_MINIDUMP_MMIO) += minidump_mmio.o
 else
 	minidump-$(CONFIG_QCOM_MINIDUMP_SMEM) += minidump_smem.o
 endif
