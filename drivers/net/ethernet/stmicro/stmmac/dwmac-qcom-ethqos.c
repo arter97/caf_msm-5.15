@@ -2224,7 +2224,7 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	int micrel_intr_status = 0;
 
 	/*Interrupt routine shouldn't be called for mac2mac*/
-	if (priv->plat->mac2mac_en) {
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) {
 		WARN_ON(1);
 		return;
 	}
@@ -2457,7 +2457,7 @@ inline bool qcom_ethqos_is_phy_link_up(struct qcom_ethqos *ethqos)
 	 */
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 
-	if (priv->plat->mac2mac_en) {
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) {
 		return priv->plat->mac2mac_link;
 	} else {
 		return (priv->dev->phydev &&
@@ -3308,7 +3308,7 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	}
 
 	if (priv->current_loopback == ENABLE_PHY_LOOPBACK &&
-	    priv->plat->mac2mac_en) {
+	    (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)) {
 		ETHQOSINFO("Not supported with Mac2Mac enabled\n");
 		return -EOPNOTSUPP;
 	}
@@ -3721,7 +3721,7 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
 		phy_off = debugfs_create_file("phy_off", 0400,
 					      ethqos->debugfs_dir, ethqos,
 					      &fops_phy_off);
@@ -4152,6 +4152,60 @@ alloc_chrdev1_region_fail:
 		return ret;
 }
 
+static int ethqos_fixed_link_check(struct platform_device *pdev)
+{
+	struct device_node *fixed_phy_node;
+	struct property *status_prop;
+	int mac2mac_speed;
+	int ret = 0;
+
+	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
+	if (of_device_is_available(fixed_phy_node)) {
+		of_property_read_u32(fixed_phy_node, "speed", &mac2mac_speed);
+		plat_dat->fixed_phy_mode = true;
+		ETHQOSINFO("mac2mac mode: Fixed-link enabled from dt, Speed = %d\n",
+			   mac2mac_speed);
+		goto out;
+	} else if (!fixed_phy_node) {
+		goto out;
+	}
+
+	/* Check partition if mac2mac configuration enabled using the same */
+	if (phyaddr_pt_param == 0xFF) {
+		if (fixed_phy_node) {
+			status_prop = kcalloc(1, sizeof(*status_prop), GFP_KERNEL);
+
+			if (!status_prop) {
+				ETHQOSERR("kcalloc failed\n");
+				ret = -ENOMEM;
+			}
+
+			status_prop->name = kstrdup("status", GFP_KERNEL);
+			status_prop->value = kstrdup("okay", GFP_KERNEL);
+			status_prop->length = strlen(status_prop->value) + 1;
+
+			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
+				kfree(status_prop);
+				ETHQOSERR("Fixed-link prop update failed\n");
+				return -ENOENT;
+			}
+
+			kfree(status_prop);
+
+			plat_dat->fixed_phy_mode = true;
+
+			ETHQOSINFO("mac2mac mode: Fixed-link enabled from Partition\n");
+
+			if (mparams.link_speed)
+				plat_dat->mac2mac_speed = (int)mparams.link_speed;
+		}
+	}
+
+out:
+	of_node_put(fixed_phy_node);
+	return ret;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -4348,14 +4402,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Get speed for mac2c from device tree */
-	if (!of_property_read_u32(np, "mac2mac-speed", &plat_dat->mac2mac_speed))
-		ETHQOSINFO("dt mac2mac speed = %d\n", plat_dat->mac2mac_speed);
+	if (ethqos_fixed_link_check(pdev))
+		goto err_mem;
 
-	if (mparams.link_speed)
-		plat_dat->mac2mac_speed = mparams.link_speed;
-
-	if (!plat_dat->mac2mac_en) {
+	if (!plat_dat->mac2mac_en && !plat_dat->fixed_phy_mode) {
 		if (of_property_read_bool(pdev->dev.of_node,
 					  "emac-phy-off-suspend")) {
 			ret = of_property_read_u32(pdev->dev.of_node,
@@ -4491,7 +4541,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 				 &priv->dma_rx_size))
 		ETHQOSDBG("sw_dma_rx_desc_cnt not found in dtsi\n");
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
 		if (!ethqos_phy_intr_config(ethqos))
 			ethqos_phy_intr_enable(ethqos);
 		else
@@ -4551,7 +4601,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 					       "emac");
 	}
 
-	if (priv->plat->mac2mac_en)
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)
 		priv->plat->mac2mac_link = 0;
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER

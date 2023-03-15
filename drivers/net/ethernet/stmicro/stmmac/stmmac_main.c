@@ -1209,6 +1209,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
+	int mac_speed = speed;
+
+	if (priv->plat->fixed_phy_mode && priv->plat->mac2mac_speed)
+		mac_speed = priv->plat->mac2mac_speed;
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1223,7 +1227,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	ctrl &= ~priv->hw->link.speed_mask;
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_10000:
 			ctrl |= priv->hw->link.xgmii.speed10000;
 			break;
@@ -1246,7 +1250,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else if (interface == PHY_INTERFACE_MODE_XLGMII) {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_100000:
 			ctrl |= priv->hw->link.xlgmii.speed100000;
 			break;
@@ -1272,7 +1276,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_2500:
 			ctrl |= priv->hw->link.speed2500;
 			break;
@@ -1290,9 +1294,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	priv->speed = speed;
+	priv->speed = mac_speed;
 
-	if (priv->speed == SPEED_10 &&
+	if (!priv->plat->fixed_phy_mode &&
+	    priv->speed == SPEED_10 &&
 	    duplex &&
 	   ((priv->phydev->phy_id & priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 		phy_data = priv->mii->read(priv->mii, priv->plat->phy_addr, KSZ9131RNX_LBR);
@@ -1301,7 +1306,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, mac_speed);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1313,6 +1318,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		stmmac_mac_flow_ctrl(priv, duplex);
 
 		writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+
+	if (priv->plat->fixed_phy_mode) {
+		priv->plat->mac2mac_link = true;
+		netdev_info(priv->dev,
+			    "mac2mac mode: Mac link up speed = %d\n",
+			    mac_speed);
+	}
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
 	if (phy && priv->dma_cap.eee) {
@@ -1326,7 +1338,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		stmmac_fpe_link_state_handle(priv, true);
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	if (phy->link == 1 && !priv->boot_kpi) {
+	if (priv->plat->fixed_phy_mode && !priv->boot_kpi) {
+		update_marker("M - Ethernet is Ready.Link is UP");
+		priv->boot_kpi = true;
+	} else if (phy && phy->link == 1 && !priv->boot_kpi) {
 		update_marker("M - Ethernet is Ready.Link is UP");
 		priv->boot_kpi = true;
 	}
@@ -3980,7 +3995,6 @@ static int stmmac_open(struct net_device *dev)
 	u32 chan;
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
-	const struct phylink_pcs_ops *pcs_ops;
 
 	if (priv->plat->pm_lite) {
 		ret = device_init_wakeup(priv->device, true);
@@ -3995,6 +4009,7 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -4010,14 +4025,13 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
-	if (priv->plat->mac2mac_en || !netif_carrier_ok(dev)) {
-		if (priv->hw->qxpcs) {
-			ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
-			if (ret < 0)
-				netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
-		} else if (priv->plat->pcs_v3) {
-			qcom_serdes_loopback_v3_1(priv->plat, true);
-		}
+	if (priv->hw->qxpcs && ((priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) ||
+				!netif_carrier_ok(dev))) {
+		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
+		if (ret < 0)
+			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
+	} else if (priv->plat->pcs_v3) {
+		qcom_serdes_loopback_v3_1(priv->plat, true);
 	}
 
 	/* Extra statistics */
@@ -4109,17 +4123,6 @@ static int stmmac_open(struct net_device *dev)
 	stmmac_enable_all_dma_irq(priv);
 
 	if (priv->plat->mac2mac_en) {
-		if (priv->plat->mdio_bus_data && priv->plat->mdio_bus_data->has_xpcs) {
-			/* xpcs config */
-			pcs_ops = priv->hw->qxpcs->pcs.ops;
-			pcs_ops->pcs_config(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-					    NULL, 0);
-
-			/* xpcs link up */
-			qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-					  priv->plat->mac2mac_speed, 1);
-		}
-
 		/* mac link up */
 		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_speed,
 					   priv);
@@ -7721,6 +7724,7 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		/* MDIO bus Registration */
