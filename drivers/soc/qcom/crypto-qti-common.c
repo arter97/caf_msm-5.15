@@ -10,8 +10,6 @@
 #include "crypto-qti-ice-regs.h"
 #include "crypto-qti-platform.h"
 
-
-#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 #include <linux/of.h>
 #include <linux/blkdev.h>
 #include <linux/regulator/consumer.h>
@@ -24,6 +22,7 @@
 #include <linux/mutex.h>
 #include <linux/qseecom_kernel.h>
 
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 #define CRYPTO_ICE_TYPE_NAME_LEN		8
 #define CRYPTO_ICE_ENCRYPT				0x1
 #define CRYPTO_ICE_DECRYPT				0x2
@@ -1289,15 +1288,6 @@ int crypto_qti_ice_config_start(struct request *req, struct ice_data_setting *se
 EXPORT_SYMBOL(crypto_qti_ice_config_start);
 
 
-/* Following struct is required to match device with driver from dts file */
-
-static const struct of_device_id crypto_qti_ice_match[] = {
-	{ .compatible = "qcom,ice" },
-	{},
-};
-MODULE_DEVICE_TABLE(of, crypto_qti_ice_match);
-
-
 static int crypto_qti_ice_enable_clocks(struct ice_device *ice, bool enable)
 {
 	int ret = 0;
@@ -1616,7 +1606,29 @@ int crypto_qti_ice_setup_ice_hw(const char *storage_type, int enable)
 		return crypto_qti_ice_disable_setup(ice_dev);
 }
 EXPORT_SYMBOL(crypto_qti_ice_setup_ice_hw);
+#else
 
+static int crypto_qti_ice_probe(struct platform_device *pdev)
+{
+	dev_info(&pdev->dev, "Proxy probing\n");
+	return 0;
+}
+
+static int crypto_qti_ice_remove(struct platform_device *pdev)
+{
+	dev_info(&pdev->dev, "Proxy removing\n");
+	return 0;
+}
+
+#endif //CONFIG_QTI_CRYPTO_FDE
+
+/* Following struct is required to match device with driver from dts file */
+
+static const struct of_device_id crypto_qti_ice_match[] = {
+	{ .compatible = "qcom,ice" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, crypto_qti_ice_match);
 
 static struct platform_driver crypto_qti_ice_driver = {
 	.probe          = crypto_qti_ice_probe,
@@ -1627,7 +1639,6 @@ static struct platform_driver crypto_qti_ice_driver = {
 	},
 };
 module_platform_driver(crypto_qti_ice_driver);
-#endif //CONFIG_QTI_CRYPTO_FDE
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Common crypto library for storage encryption");
