@@ -655,7 +655,7 @@ static int qcom_ethqos_add_ipaddr(struct ip_params *ip_info,
 			ETHQOSINFO("Assigned IPv4 address: %s\r\n",
 				   ip_info->ipv4_addr_str);
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-place_marker("M - Etherent Assigned IPv4 address");
+	update_marker("M - Etherent Assigned IPv4 address");
 #endif
 		}
 	return res;
@@ -701,7 +701,7 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 			ETHQOSDBG("Assigned IPv6 address: %s\r\n",
 				  ip_info->ipv6_addr_str);
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-		place_marker("M - Ethernet Assigned IPv6 address");
+	update_marker("M - Ethernet Assigned IPv6 address");
 #endif
 		}
 	return ret;
@@ -4060,20 +4060,20 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		return emac_emb_smmu_cb_probe(pdev, plat_dat);
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	place_marker("M - Ethernet probe start");
+	update_marker("M - Ethernet probe start");
 #endif
 #ifdef MODULE
-		if (eipv4)
-			ret = set_early_ethernet_ipv4(eipv4);
+	if (eipv4)
+		ret = set_early_ethernet_ipv4(eipv4);
 
-		if (eipv6)
-			ret = set_early_ethernet_ipv6(eipv6);
+	if (eipv6)
+		ret = set_early_ethernet_ipv6(eipv6);
 
-		if (ermac)
-			ret = set_early_ethernet_mac(ermac);
+	if (ermac)
+		ret = set_early_ethernet_mac(ermac);
 
-		if (eiface)
-			ret = set_ethernet_interface(eiface);
+	if (eiface)
+		ret = set_ethernet_interface(eiface);
 #endif
 
 	ipc_stmmac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
@@ -4426,8 +4426,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		priv->plat->mac2mac_link = 0;
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-
-	place_marker("M - Ethernet probe end");
+	update_marker("M - Ethernet probe end");
 #endif
 
 	ethqos_create_debugfs(ethqos);
@@ -4532,6 +4531,9 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSDBG("smmu return\n");
 		return 0;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Suspend start");
+#endif
 
 	ethqos = get_stmmac_bsp_priv(dev);
 	if (!ethqos)
@@ -4577,6 +4579,9 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSINFO("disable phy at suspend\n");
 		ethqos_phy_power_off(ethqos);
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Suspend End");
+#endif
 
 	ETHQOSDBG(" ret = %d\n", ret);
 	return ret;
@@ -4592,6 +4597,10 @@ static int qcom_ethqos_resume(struct device *dev)
 	ETHQOSDBG("Resume Enter\n");
 	if (of_device_is_compatible(dev->of_node, "qcom,emac-smmu-embedded"))
 		return 0;
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Resume start");
+#endif
 
 	ethqos = get_stmmac_bsp_priv(dev);
 
@@ -4639,6 +4648,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Resume End");
+#endif
 	ETHQOSDBG("<--Resume Exit\n");
 	return ret;
 }

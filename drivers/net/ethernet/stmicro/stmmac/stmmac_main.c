@@ -1321,7 +1321,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	if (phy->link == 1 && !priv->boot_kpi) {
-		place_marker("M - Ethernet is Ready.Link is UP");
+		update_marker("M - Ethernet is Ready.Link is UP");
 		priv->boot_kpi = true;
 	}
 #endif
@@ -2775,8 +2775,8 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 				priv->xstats.tx_pkt_n++;
 				priv->xstats.txq_stats[queue].tx_pkt_n++;
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-if (priv->dev->stats.tx_packets == 1)
-	place_marker("M - Ethernet first packet transmitted");
+				if (priv->dev->stats.tx_packets == 1)
+					update_marker("M - Ethernet first packet transmitted");
 #endif
 			}
 			if (skb) {
@@ -5784,8 +5784,8 @@ drain_data:
 
 		priv->dev->stats.rx_packets++;
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	if (priv->dev->stats.rx_packets == 1)
-		place_marker("M - Ethernet first packet received");
+		if (priv->dev->stats.rx_packets == 1)
+			update_marker("M - Ethernet first packet received");
 #endif
 		priv->dev->stats.rx_bytes += len;
 		count++;
