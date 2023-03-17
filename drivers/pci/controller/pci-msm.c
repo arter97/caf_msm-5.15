@@ -681,8 +681,8 @@ struct msm_pcie_drv_info {
 
 #define AER_ERROR_SOURCES_MAX (128)
 
-#define AER_MAX_TYPEOF_COR_ERRS 16 /* as per PCI_ERR_COR_STATUS */
-#define AER_MAX_TYPEOF_UNCOR_ERRS 27 /* as per PCI_ERR_UNCOR_STATUS*/
+#define AER_MAX_TYPEOF_COR_ERRS 32 /* as per PCI_ERR_COR_STATUS */
+#define AER_MAX_TYPEOF_UNCOR_ERRS 32 /* as per PCI_ERR_UNCOR_STATUS*/
 #define	PCI_EXP_AER_FLAGS (PCI_EXP_DEVCTL_CERE | PCI_EXP_DEVCTL_NFERE | \
 			   PCI_EXP_DEVCTL_FERE | PCI_EXP_DEVCTL_URRE)
 
@@ -1604,7 +1604,7 @@ static void msm_pcie_loopback(struct msm_pcie_dev_t *dev, bool local)
 	/* PCIe DBI base + 8MB as initial PCIe address to be translated to target address */
 	phys_addr_t loopback_lbar_phy =
 		dev->res[MSM_PCIE_RES_DM_CORE].resource->start + SZ_8M;
-	u8 *src_vir_addr = (u8 *) ioremap(loopback_lbar_phy, SZ_4K);
+	u8 *src_vir_addr;
 	void __iomem *iatu_base_vir;
 	u32 dbi_base_addr = dev->res[MSM_PCIE_RES_DM_CORE].resource->start;
 	u32 iatu_base_phy, iatu_ctrl1_offset, iatu_ctrl2_offset, iatu_lbar_offset, iatu_ubar_offset,
@@ -1617,6 +1617,12 @@ static void msm_pcie_loopback(struct msm_pcie_dev_t *dev, bool local)
 	u32 ltar_addr_lo;
 	bool loopback_test_fail = false;
 	int i = 0;
+
+	src_vir_addr = (u8 *)ioremap(loopback_lbar_phy, SZ_4K);
+	if (!src_vir_addr) {
+		PCIE_ERR(dev, "PCIe: RC%d: ioremap fails for loopback_lbar_phy\n", dev->rc_idx);
+		return;
+	}
 
 	/*
 	 * Use platform dev to get buffer. Doing so will

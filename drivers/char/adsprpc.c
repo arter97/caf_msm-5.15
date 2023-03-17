@@ -4775,8 +4775,9 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked)
 		match = NULL;
 		spin_lock_irqsave(&me->hlock, irq_flags);
 		hlist_for_each_entry_safe(map, n, &me->maps, hn) {
-			if (map->servloc_name &&
-				fl->servloc_name && !strcmp(map->servloc_name, fl->servloc_name)) {
+			if ((!fl && map->servloc_name) ||
+					(fl && map->servloc_name  && fl->servloc_name &&
+					 !strcmp(map->servloc_name, fl->servloc_name))) {
 				match = map;
 				if (map->is_persistent && map->in_use) {
 					int destVM[1] = {VMID_HLOS};
@@ -6203,6 +6204,10 @@ int fastrpc_internal_control(struct fastrpc_file *fl,
 
 		for (ii = 0; ii < silver_core_count; ii++) {
 			cpu = me->silvercores.coreno[ii];
+			if (!cpu_possible(cpu)) {
+				ADSPRPC_ERR("%s cpu id: %d is not possible\n",  __func__, cpu);
+				continue;
+			}
 			if (!fl->qos_request) {
 				err = dev_pm_qos_add_request(
 						get_cpu_device(cpu),
