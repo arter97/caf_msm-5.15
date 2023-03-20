@@ -3782,67 +3782,72 @@ static int dwc3_clk_enable_disable(struct dwc3_msm *mdwc, bool enable, bool togg
 						__func__);
 			return ret;
 		}
-	}
+		/*
+		 * Enable clocks
+		 * Turned ON iface_clk before core_clk due to FSM depedency.
+		 */
+		ret = clk_prepare_enable(mdwc->iface_clk);
+		if (ret < 0) {
+			dev_err(mdwc->dev, "%s: iface_clk enable failed\n", __func__);
+			goto disable_sleep_clk;
+		}
+		ret = clk_prepare_enable(mdwc->noc_aggr_clk);
+		if (ret < 0) {
+			dev_err(mdwc->dev, "%s: noc_aggr_clk enable failed\n", __func__);
+			goto disable_iface_clk;
+		}
 
-	/*
-	 * Enable clocks
-	 * Turned ON iface_clk before core_clk due to FSM depedency.
-	 */
-	ret = clk_prepare_enable(mdwc->iface_clk);
-	if (ret < 0) {
-		dev_err(mdwc->dev, "%s: iface_clk enable failed\n", __func__);
-		goto disable_sleep_clk;
-	}
-	ret = clk_prepare_enable(mdwc->noc_aggr_clk);
-	if (ret < 0) {
-		dev_err(mdwc->dev, "%s: noc_aggr_clk enable failed\n", __func__);
-		goto disable_iface_clk;
-	}
+		core_clk_rate = mdwc->core_clk_rate_disconnected;
+		if (mdwc->in_host_mode && mdwc->max_rh_port_speed == USB_SPEED_HIGH)
+			core_clk_rate = mdwc->core_clk_rate_hs;
+		else if (!(mdwc->lpm_flags & MDWC3_POWER_COLLAPSE))
+			core_clk_rate = mdwc->core_clk_rate;
 
-	core_clk_rate = mdwc->core_clk_rate_disconnected;
-	if (mdwc->in_host_mode && mdwc->max_rh_port_speed == USB_SPEED_HIGH)
-		core_clk_rate = mdwc->core_clk_rate_hs;
-	else if (!(mdwc->lpm_flags & MDWC3_POWER_COLLAPSE))
-		core_clk_rate = mdwc->core_clk_rate;
-
-	dev_dbg(mdwc->dev, "%s: set core clk rate %ld\n", __func__,
-		core_clk_rate);
-	clk_set_rate(mdwc->core_clk, core_clk_rate);
-	ret = clk_prepare_enable(mdwc->core_clk);
-	if (ret < 0) {
-		dev_err(mdwc->dev, "%s: core_clk enable failed\n", __func__);
-		goto disable_noc_aggr_clk;
-	}
-	ret = clk_prepare_enable(mdwc->utmi_clk);
-	if (ret < 0) {
-		dev_err(mdwc->dev, "%s: utmi_clk enable failed\n", __func__);
-		goto disable_core_clk;
-	}
-	ret = clk_prepare_enable(mdwc->bus_aggr_clk);
-	if (ret < 0) {
-		dev_err(mdwc->dev, "%s: bus_aggr_clk enable failed\n", __func__);
-		goto disable_utmi_clk;
+		dev_dbg(mdwc->dev, "%s: set core clk rate %ld\n", __func__,
+			core_clk_rate);
+		clk_set_rate(mdwc->core_clk, core_clk_rate);
+		ret = clk_prepare_enable(mdwc->core_clk);
+		if (ret < 0) {
+			dev_err(mdwc->dev, "%s: core_clk enable failed\n", __func__);
+			goto disable_noc_aggr_clk;
+		}
+		ret = clk_prepare_enable(mdwc->utmi_clk);
+		if (ret < 0) {
+			dev_err(mdwc->dev, "%s: utmi_clk enable failed\n", __func__);
+			goto disable_core_clk;
+		}
+		ret = clk_prepare_enable(mdwc->bus_aggr_clk);
+		if (ret < 0) {
+			dev_err(mdwc->dev, "%s: bus_aggr_clk enable failed\n", __func__);
+			goto disable_utmi_clk;
+		}
 	}
 
 	return 0;
 
 	/* Disable clocks */
 disable_bus_aggr_clk:
-	clk_disable_unprepare(mdwc->bus_aggr_clk);
+	if (toggle_sleep)
+		clk_disable_unprepare(mdwc->bus_aggr_clk);
 disable_utmi_clk:
-	clk_disable_unprepare(mdwc->utmi_clk);
+	if (toggle_sleep)
+		clk_disable_unprepare(mdwc->utmi_clk);
 disable_core_clk:
-	clk_set_rate(mdwc->core_clk, 19200000);
-	clk_disable_unprepare(mdwc->core_clk);
+	if (toggle_sleep) {
+		clk_set_rate(mdwc->core_clk, 19200000);
+		clk_disable_unprepare(mdwc->core_clk);
+	}
 disable_noc_aggr_clk:
-	clk_disable_unprepare(mdwc->noc_aggr_clk);
+	if (toggle_sleep)
+		clk_disable_unprepare(mdwc->noc_aggr_clk);
 disable_iface_clk:
 	/*
 	 * Disable iface_clk only after core_clk as core_clk has FSM
 	 * depedency on iface_clk. Hence iface_clk should be turned off
 	 * after core_clk is turned off.
 	 */
-	clk_disable_unprepare(mdwc->iface_clk);
+	if (toggle_sleep)
+		clk_disable_unprepare(mdwc->iface_clk);
 disable_sleep_clk:
 	if (toggle_sleep)
 		clk_disable_unprepare(mdwc->sleep_clk);
