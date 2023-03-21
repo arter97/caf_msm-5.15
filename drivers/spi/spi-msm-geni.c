@@ -229,7 +229,12 @@ struct spi_geni_master {
 	bool master_cross_connect;
 	bool is_deep_sleep; /* For deep sleep restore the config similar to the probe. */
 	u32 xfer_timeout_offset;
+	bool vm_wo_pm; /* VM usecase w/o PM support */
 };
+
+/*TODO: This is temp change, to bypass LVM clk voting issue*/
+static int spi_geni_runtime_resume(struct device *dev);
+static int spi_geni_runtime_suspend(struct device *dev);
 
 /**
  * geni_spi_se_dump_dbg_regs() - Print relevant registers that capture most
@@ -1469,8 +1474,11 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 	 * Not required for LE as below intializations are specific
 	 * to usecases. For LE, client takes care of get_sync.
 	 */
-	if (mas->is_le_vm)
+	if (mas->is_le_vm) {
+		if (mas->vm_wo_pm)
+			return spi_geni_runtime_resume(mas->dev);
 		return 0;
+	}
 
 	 mas->is_xfer_in_progress = true;
 
@@ -1540,6 +1548,8 @@ static int spi_geni_unprepare_transfer_hardware(struct spi_master *spi)
 
 	if (mas->shared_ee || mas->is_le_vm) {
 		mas->is_xfer_in_progress = false;
+		if (mas->vm_wo_pm)
+			return spi_geni_runtime_suspend(mas->dev);
 		return 0;
 	}
 
@@ -1796,10 +1806,13 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 	 * can keep driver to forced suspend, hence it's client's responsibility
 	 * to not allow system suspend to trigger.
 	 */
-	if (pm_runtime_status_suspended(mas->dev)) {
-		SPI_LOG_ERR(mas->ipc, true, mas->dev,
-			"%s: device is PM suspended\n", __func__);
-		return -EACCES;
+	/* TBD: Temporary change */
+	if (!mas->vm_wo_pm) {
+		if (pm_runtime_status_suspended(mas->dev)) {
+			SPI_LOG_ERR(mas->ipc, true, mas->dev,
+				"%s: device is PM suspended\n", __func__);
+			return -EACCES;
+		}
 	}
 
 	xfer_timeout = (1000 * xfer->len * BITS_PER_BYTE) / xfer->speed_hz;
@@ -2152,6 +2165,12 @@ static void spi_get_dt_property(struct platform_device *pdev,
 		 */
 		geni_mas->shared_ee =
 		of_property_read_bool(pdev->dev.of_node, "qcom,shared_ee");
+	}
+
+	/* This is VM use case with no PM support*/
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,vm-no-pm")) {
+		geni_mas->vm_wo_pm = true;
+		dev_info(&pdev->dev, "VM usecase no PM support\n");
 	}
 
 	geni_mas->slave_cross_connected =
