@@ -117,6 +117,7 @@ static char  device_clients[][QMI_TMD_MITIGATION_DEV_ID_LENGTH_MAX_V01] = {
 	{"mmw_ific_sub1_dsc"},
 	{"modem_nr_1rx_dsc"},
 	{"modem_nr_2rx_dsc"},
+	{"modem_v2x"},
 };
 
 static int qmi_get_max_state(struct thermal_cooling_device *cdev,
