@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -83,7 +84,7 @@ static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 	gh_memparcel_handle_t mem_handle;
 	int rc = 0;
 
-	acl_desc = gh_tlmm_vm_get_acl(GH_TRUSTED_VM);
+	acl_desc = gh_tlmm_vm_get_acl(gh_tlmm_vm_info_data->vm_name);
 	if (IS_ERR(acl_desc)) {
 		dev_err(gh_tlmm_dev, "Failed to get acl of IO memories for TLMM\n");
 		return PTR_ERR(acl_desc);
@@ -126,7 +127,7 @@ static int __maybe_unused gh_guest_memshare_nb_handler(struct notifier_block *th
 	if (cmd != GH_RM_NOTIF_VM_STATUS)
 		return NOTIFY_DONE;
 
-	gh_rm_get_vmid(GH_TRUSTED_VM, &peer_vmid);
+	gh_rm_get_vmid(vm_info->vm_name, &peer_vmid);
 
 	if (peer_vmid != vm_status_payload->vmid)
 		return NOTIFY_DONE;
@@ -193,6 +194,7 @@ static int gh_tlmm_vm_populate_vm_info(struct platform_device *dev, struct gh_tl
 	bool ret;
 	gh_memparcel_handle_t __maybe_unused vm_mem_handle;
 	bool master;
+	u32 vm_enum;
 
 	master = of_property_read_bool(np, "qcom,master");
 	if (!master) {
@@ -206,7 +208,14 @@ static int gh_tlmm_vm_populate_vm_info(struct platform_device *dev, struct gh_tl
 		vm_info->vm_mem_handle = vm_mem_handle;
 	}
 
-	vm_info->vm_name = GH_TRUSTED_VM;
+	rc = of_property_read_u32(np, "vm-enum", &vm_enum);
+	if (rc) {
+		dev_err(gh_tlmm_dev, "vm-enum not found rc=%x using default\n", rc);
+		vm_enum = GH_TRUSTED_VM;
+	}
+
+	vm_info->vm_name = vm_enum;
+
 	num_regs = of_gpio_named_count(np,
 			"tlmm-vm-gpio-list");
 	if (num_regs < 0) {
@@ -349,7 +358,7 @@ static int gh_tlmm_vm_mem_access_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 	} else {
-		ret = gh_rm_get_vmid(GH_TRUSTED_VM, &vmid);
+		ret = gh_rm_get_vmid(gh_tlmm_vm_info_data.vm_name, &vmid);
 		if (ret)
 			return ret;
 
@@ -393,7 +402,7 @@ static int __init gh_tlmm_vm_mem_access_init(void)
 {
 	return platform_driver_register(&gh_tlmm_vm_mem_access_driver);
 }
-module_init(gh_tlmm_vm_mem_access_init);
+late_initcall_sync(gh_tlmm_vm_mem_access_init);
 
 static __exit void gh_tlmm_vm_mem_access_exit(void)
 {
