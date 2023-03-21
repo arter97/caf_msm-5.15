@@ -681,8 +681,8 @@ struct msm_pcie_drv_info {
 
 #define AER_ERROR_SOURCES_MAX (128)
 
-#define AER_MAX_TYPEOF_COR_ERRS 16 /* as per PCI_ERR_COR_STATUS */
-#define AER_MAX_TYPEOF_UNCOR_ERRS 27 /* as per PCI_ERR_UNCOR_STATUS*/
+#define AER_MAX_TYPEOF_COR_ERRS 32 /* as per PCI_ERR_COR_STATUS */
+#define AER_MAX_TYPEOF_UNCOR_ERRS 32 /* as per PCI_ERR_UNCOR_STATUS*/
 #define	PCI_EXP_AER_FLAGS (PCI_EXP_DEVCTL_CERE | PCI_EXP_DEVCTL_NFERE | \
 			   PCI_EXP_DEVCTL_FERE | PCI_EXP_DEVCTL_URRE)
 
@@ -7848,6 +7848,20 @@ static int __maybe_unused msm_pcie_pm_suspend_noirq(struct device *dev)
 		/* Disable the pipe clock*/
 		msm_pcie_pipe_clk_deinit(pcie_dev);
 
+		/*
+		 * In certain GEN speeds PCIe driver is voting for NOM level for min
+		 * MX rail voltage level, due to this msm is seeing around 10mW high power
+		 * consumption.
+		 *
+		 * So, Set min MX rail voltage level to retention.
+		 */
+		rc = regulator_set_voltage(pcie_dev->mx_vreg->hdl,
+					RPMH_REGULATOR_LEVEL_RETENTION,
+					RPMH_REGULATOR_LEVEL_MAX);
+		if (rc)
+			PCIE_ERR(pcie_dev, "RC%d: Failed to set vmin of mx rail. ret %d.\n",
+				pcie_dev->rc_idx, rc);
+
 		/* Disable the voltage regulators*/
 		msm_pcie_vreg_deinit_analog_rails(pcie_dev);
 	}
@@ -7863,8 +7877,10 @@ static int __maybe_unused msm_pcie_pm_resume_noirq(struct device *dev)
 {
 	int i, rc;
 	unsigned long irqsave_flags;
+	struct msm_pcie_bw_scale_info_t *bw_scale;
 	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)
 						dev_get_drvdata(dev);
+	u32 index = pcie_dev->current_link_speed - PCI_EXP_LNKCTL2_TLS_2_5GT;
 
 	PCIE_DBG(pcie_dev, "RC%d: entry\n", pcie_dev->rc_idx);
 
@@ -7875,6 +7891,15 @@ static int __maybe_unused msm_pcie_pm_resume_noirq(struct device *dev)
 
 		/* Enable the voltage regulators*/
 		msm_pcie_vreg_init_analog_rails(pcie_dev);
+
+		/* Set the min MX rail voltage level based up on GEN speed */
+		bw_scale = &pcie_dev->bw_scale[index];
+		rc = regulator_set_voltage(pcie_dev->mx_vreg->hdl,
+				bw_scale->mx_vreg_min,
+				pcie_dev->mx_vreg->max_v);
+		if (rc)
+			PCIE_ERR(pcie_dev, "RC%d: Failed to set vmin of mx rail. ret %d.\n",
+				pcie_dev->rc_idx, rc);
 
 		/* Enable GDSC core */
 		rc = regulator_enable(pcie_dev->gdsc_core);
@@ -9317,7 +9342,7 @@ int msm_pcie_deregister_event(struct msm_pcie_register_event *reg)
 				 node) {
 		if (reg_itr->user == reg->user) {
 			list_del(&reg->node);
-			spin_unlock(&pcie_dev->evt_reg_list_lock);
+			spin_unlock_irqrestore(&pcie_dev->evt_reg_list_lock, flags);
 			PCIE_DBG(pcie_dev,
 				 "PCIe: RC%d: Event deregistered for BDF 0x%04x\n",
 				 pcie_dev->rc_idx,
