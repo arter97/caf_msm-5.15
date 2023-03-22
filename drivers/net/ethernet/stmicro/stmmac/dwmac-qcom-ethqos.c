@@ -3779,15 +3779,14 @@ static void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 	struct plat_stmmacenet_data *plat = priv->plat;
 
+	clk_disable_unprepare(ethqos->clk_eee);
 	clk_disable_unprepare(ethqos->sgmii_rx_clk);
 	clk_disable_unprepare(ethqos->sgmii_tx_clk);
-	clk_disable_unprepare(ethqos->phyaux_clk);
-	clk_disable_unprepare(ethqos->sgmiref_clk);
 
 	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
 		clk_disable_unprepare(ethqos->xgxs_rx_clk);
 		clk_disable_unprepare(ethqos->xgxs_tx_clk);
-	} else if (plat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	} else if (plat->interface == PHY_INTERFACE_MODE_USXGMII) {
 		clk_disable_unprepare(ethqos->pcs_rx_clk);
 		clk_disable_unprepare(ethqos->pcs_tx_clk);
 	}
@@ -3806,7 +3805,7 @@ static int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int inte
 		ethqos->clk_eee = NULL;
 		goto err_clk;
 	} else {
-		clk_prepare_enable(ethqos->clk_eee);
+		ret = clk_prepare_enable(ethqos->clk_eee);
 		if (ret)
 			goto err_clk;
 	}
@@ -3941,7 +3940,7 @@ static int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int inte
 			if (ret)
 				goto err_clk;
 		}
-	} else if (interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	} else if (interface == PHY_INTERFACE_MODE_USXGMII) {
 		/*Clocks specific to USXGMII interface */
 		ethqos->pcs_rx_clk = devm_clk_get_optional(&pdev->dev, "pcs_rx");
 		if (IS_ERR(ethqos->pcs_rx_clk)) {
@@ -3972,12 +3971,57 @@ err_clk:
 	return ret;
 }
 
+static int ethqos_resume_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	struct plat_stmmacenet_data *plat = priv->plat;
+
+	ret = clk_prepare_enable(ethqos->clk_eee);
+	if (ret)
+		goto err;
+
+	ret = clk_prepare_enable(ethqos->sgmii_rx_clk);
+	if (ret)
+		goto err;
+
+	ret = clk_prepare_enable(ethqos->sgmii_tx_clk);
+	if (ret)
+		goto err;
+
+	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
+		ret = clk_prepare_enable(ethqos->xgxs_rx_clk);
+		if (ret)
+			goto err;
+		ret = clk_prepare_enable(ethqos->xgxs_tx_clk);
+		if (ret)
+			goto err;
+	} else if (plat->interface == PHY_INTERFACE_MODE_USXGMII) {
+		ret = clk_prepare_enable(ethqos->pcs_rx_clk);
+		if (ret)
+			goto err;
+		ret = clk_prepare_enable(ethqos->pcs_tx_clk);
+		if (ret)
+			goto err;
+	}
+
+	return 0;
+err:
+	ETHQOSERR("Failed to resume SGMII/USXGMII clocks\n");
+	return ret;
+}
+
 #else
 static inline void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 {
 }
 
 static inline int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int interface)
+{
+	return 0;
+}
+
+static int ethqos_resume_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 {
 	return 0;
 }
@@ -4544,6 +4588,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	return ret;
 
 err_clk:
+	if (ethqos->phyaux_clk)
+		clk_disable_unprepare(ethqos->phyaux_clk);
+
+	if (ethqos->sgmiref_clk)
+		clk_disable_unprepare(ethqos->sgmiref_clk);
+
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII)
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
@@ -4598,10 +4648,11 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (ethqos->clk_eee)
-		clk_disable_unprepare(ethqos->clk_eee);
-#endif
+	if (ethqos->phyaux_clk)
+		clk_disable_unprepare(ethqos->phyaux_clk);
+
+	if (ethqos->sgmiref_clk)
+		clk_disable_unprepare(ethqos->sgmiref_clk);
 
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
@@ -4671,11 +4722,6 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (ethqos->clk_eee)
-		clk_disable_unprepare(ethqos->clk_eee);
-#endif
-
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
@@ -4720,7 +4766,35 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("enable phy at resume\n");
 		ethqos_phy_power_on(ethqos);
 	}
+
 	qcom_ethqos_phy_resume_clks(ethqos);
+
+	if (ethqos->rgmii_clk) {
+		ret = clk_prepare_enable(ethqos->rgmii_clk);
+		if (ret) {
+			ETHQOSERR("Failed to resume RGMII clock\n");
+			return -EINVAL;
+		}
+	}
+
+	if (ethqos->phyaux_clk) {
+		ret = clk_prepare_enable(ethqos->phyaux_clk);
+		if (ret)
+			return ret;
+	}
+
+	if (ethqos->sgmiref_clk) {
+		ret = clk_prepare_enable(ethqos->sgmiref_clk);
+		if (ret)
+			return ret;
+	}
+
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret)
+			return -EINVAL;
+	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("reset phy after clock\n");
