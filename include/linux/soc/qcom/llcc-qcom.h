@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- *
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/platform_device.h>
@@ -124,6 +124,30 @@ struct llcc_drv_data {
 	bool cap_based_alloc_and_pwr_collapse;
 	struct llcc_slice_desc *desc;
 };
+
+/**
+ * llcc_tcm_data - Data associated with the llcc tcm driver
+ *
+ */
+struct llcc_tcm_data {
+	phys_addr_t phys_addr;
+	void __iomem *virt_addr;
+	size_t mem_size;
+};
+
+int qcom_llcc_tcm_init(struct platform_device *pdev,
+		const struct llcc_slice_config *table, size_t size,
+		struct device_node *node);
+
+struct llcc_tcm_data *llcc_tcm_activate(void);
+
+phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data);
+
+void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data);
+
+size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data);
+
+void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data);
 
 #if IS_ENABLED(CONFIG_QCOM_LLCC)
 /**
