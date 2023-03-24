@@ -4180,7 +4180,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII)
-		qcom_ethqos_serdes_configure_dt(ethqos);
+		qcom_ethqos_serdes_configure_dt(ethqos, plat_dat->interface);
 
 	ethqos->axi_icc_path = of_icc_get(&pdev->dev, "axi_icc_path");
 	if (!ethqos->axi_icc_path || IS_ERR(ethqos->axi_icc_path)) {
