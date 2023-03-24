@@ -3122,6 +3122,7 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 {
 	u32 rx_channels_count = priv->plat->rx_queues_to_use;
 	u32 tx_channels_count = priv->plat->tx_queues_to_use;
+	int interface = priv->plat->interface;
 	u32 dma_csr_ch = max(rx_channels_count, tx_channels_count);
 	struct stmmac_rx_queue *rx_q;
 	struct stmmac_tx_queue *tx_q;
@@ -3136,6 +3137,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 
 	if (priv->extend_desc && (priv->mode == STMMAC_RING_MODE))
 		atds = 1;
+
+	if (interface == PHY_INTERFACE_MODE_USXGMII &&
+	    priv->hw->qxpcs &&
+	    qcom_xpcs_verify_lnk_status_usxgmii(priv->hw->qxpcs)) {
+		dev_info(priv->device, "XPCS LINK not ready\n");
+	}
 
 	ret = stmmac_reset(priv, priv->ioaddr);
 	if (ret) {
