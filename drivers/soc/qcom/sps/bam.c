@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2011-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 /* Bus-Access-Manager (BAM) Hardware manager. */
 
@@ -1819,10 +1820,10 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	u32 bam_num_pipes;
 	u32 bam_pipe_num;
 	u32 bam_data_addr_bus_width;
-
+#ifdef DEBUG_NOT_BAM_LITE
 	u32 bam_desc_cnt_trshld;
 	u32 bam_desc_cnt_trd_val;
-
+#endif
 	u32 bam_irq_en;
 	u32 bam_irq_stts;
 
@@ -1837,9 +1838,13 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	u32 bam_cnfg_bits;
 
 	u32 bam_sw_rev = 0;
+#ifdef DEBUG_NOT_QPIC
 	u32 bam_timer = 0;
 	u32 bam_timer_ctrl = 0;
+#endif
+#ifdef DEBUG_36BIT_ADDRESS_MODE
 	u32 bam_ahb_err_addr_msb = 0;
+#endif
 
 	if (base == NULL)
 		return;
@@ -1854,9 +1859,11 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	bam_data_addr_bus_width = bam_read_reg_field(base, NUM_PIPES, 0,
 					BAM_DATA_ADDR_BUS_WIDTH);
 
+#ifdef DEBUG_NOT_BAM_LITE
 	bam_desc_cnt_trshld = bam_read_reg(base, DESC_CNT_TRSHLD, 0);
 	bam_desc_cnt_trd_val = bam_read_reg_field(base, DESC_CNT_TRSHLD, 0,
 					BAM_DESC_CNT_TRSHLD);
+#endif
 
 	bam_irq_en = bam_read_reg(base, IRQ_EN, 0);
 	bam_irq_stts = bam_read_reg(base, IRQ_STTS, 0);
@@ -1874,10 +1881,14 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 
 #ifdef CONFIG_SPS_SUPPORT_NDP_BAM
 	bam_sw_rev = bam_read_reg(base, SW_REVISION, 0);
+#ifdef DEBUG_NOT_QPIC
 	bam_timer = bam_read_reg(base, TIMER, 0);
 	bam_timer_ctrl = bam_read_reg(base, TIMER_CTRL, 0);
+#endif
+#ifdef DEBUG_36BIT_ADDRESS_MODE
 	bam_ahb_err_addr_msb = SPS_LPAE ?
 		bam_read_reg(base, AHB_MASTER_ERR_ADDR_MSB, 0) : 0;
+#endif
 	if (ee < BAM_MAX_EES)
 		bam_pipe_attr_ee = enhd_pipe ?
 			bam_read_reg(base, PIPE_ATTR_EE, ee) : 0x0;
@@ -1895,9 +1906,11 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	SPS_DUMP("BAM_DATA_ADDR_BUS_WIDTH: %d\n",
 			((bam_data_addr_bus_width == 0x0) ? 32 : 36));
 	SPS_DUMP("    NUM_PIPES: %d\n", bam_pipe_num);
+#ifdef DEBUG_NOT_BAM_LITE
 	SPS_DUMP("BAM_DESC_CNT_TRSHLD: 0x%x\n", bam_desc_cnt_trshld);
 	SPS_DUMP("    DESC_CNT_TRSHLD: 0x%x (%d)\n", bam_desc_cnt_trd_val,
-			bam_desc_cnt_trd_val);
+		 bam_desc_cnt_trd_val);
+#endif
 
 	SPS_DUMP("BAM_IRQ_EN: 0x%x\n", bam_irq_en);
 	SPS_DUMP("BAM_IRQ_STTS: 0x%x\n", bam_irq_stts);
@@ -1912,13 +1925,16 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 
 	SPS_DUMP("BAM_AHB_MASTER_ERR_CTRLS: 0x%x\n", bam_ahb_err_ctrl);
 	SPS_DUMP("BAM_AHB_MASTER_ERR_ADDR: 0x%x\n", bam_ahb_err_addr);
+#ifdef DEBUG_36BIT_ADDRESS_MODE
 	SPS_DUMP("BAM_AHB_MASTER_ERR_ADDR_MSB: 0x%x\n", bam_ahb_err_addr_msb);
+#endif
 	SPS_DUMP("BAM_AHB_MASTER_ERR_DATA: 0x%x\n", bam_ahb_err_data);
 
 	SPS_DUMP("BAM_CNFG_BITS: 0x%x\n", bam_cnfg_bits);
+#ifdef DEBUG_NOT_QPIC
 	SPS_DUMP("BAM_TIMER: 0x%x\n", bam_timer);
 	SPS_DUMP("BAM_TIMER_CTRL: 0x%x\n", bam_timer_ctrl);
-
+#endif
 	SPS_DUMP("%s", "\nsps:<bam-end> --- BAM-level registers ---\n\n");
 }
 
@@ -1959,34 +1975,38 @@ void print_bam_pipe_selected_reg(void *virt_addr, u32 pipe_index)
 	u32 p_write_pointer;
 
 	u32 p_evnt_dest;
-	u32 p_evnt_dest_msb = 0;
 	u32 p_desc_fifo_addr;
+#ifdef DEBUG_36BIT_ADDRESS_MODE
+	u32 p_evnt_dest_msb = 0;
 	u32 p_desc_fifo_addr_msb = 0;
+	u32 p_data_fifo_addr_msb = 0;
+#endif
 	u32 p_desc_fifo_size;
 	u32 p_data_fifo_addr;
-	u32 p_data_fifo_addr_msb = 0;
 	u32 p_data_fifo_size;
 	u32 p_fifo_sizes;
 
 	u32 p_evnt_trd;
 	u32 p_evnt_trd_val;
 
-	u32 p_retr_ct;
-	u32 p_retr_offset;
 	u32 p_si_ct;
 	u32 p_si_offset;
+#ifdef DEBUG_NOT_BAM_LITE
+	u32 p_retr_ct;
+	u32 p_retr_offset;
 	u32 p_df_ct = 0;
 	u32 p_df_offset = 0;
 	u32 p_au_ct1;
-	u32 p_psm_ct2;
 	u32 p_psm_ct3;
 	u32 p_psm_ct3_msb = 0;
+#endif
+	u32 p_psm_ct2;
 	u32 p_psm_ct4;
 	u32 p_psm_ct5;
-
+#ifdef DEBUG_NOT_QPIC
 	u32 p_timer;
 	u32 p_timer_ctrl;
-
+#endif
 	if (base == NULL)
 		return;
 
@@ -2046,35 +2066,39 @@ void print_bam_pipe_selected_reg(void *virt_addr, u32 pipe_index)
 	p_evnt_trd_val = bam_read_reg_field(base, P_EVNT_GEN_TRSHLD, pipe,
 					P_EVNT_GEN_TRSHLD_P_TRSHLD);
 
-	p_retr_ct = bam_read_reg(base, P_RETR_CNTXT, pipe);
-	p_retr_offset = bam_read_reg_field(base, P_RETR_CNTXT, pipe,
-					P_RETR_CNTXT_RETR_DESC_OFST);
 	p_si_ct = bam_read_reg(base, P_SI_CNTXT, pipe);
 	p_si_offset = bam_read_reg_field(base, P_SI_CNTXT, pipe,
 					P_SI_CNTXT_SI_DESC_OFST);
+#ifdef DEBUG_NOT_BAM_LITE
+	p_retr_ct = bam_read_reg(base, P_RETR_CNTXT, pipe);
+	p_retr_offset = bam_read_reg_field(base, P_RETR_CNTXT, pipe,
+					   P_RETR_CNTXT_RETR_DESC_OFST);
 	p_au_ct1 = bam_read_reg(base, P_AU_PSM_CNTXT_1, pipe);
-	p_psm_ct2 = bam_read_reg(base, P_PSM_CNTXT_2, pipe);
 	p_psm_ct3 = bam_read_reg(base, P_PSM_CNTXT_3, pipe);
+#endif
+	p_psm_ct2 = bam_read_reg(base, P_PSM_CNTXT_2, pipe);
 	p_psm_ct4 = bam_read_reg(base, P_PSM_CNTXT_4, pipe);
 	p_psm_ct5 = bam_read_reg(base, P_PSM_CNTXT_5, pipe);
-
+#ifdef DEBUG_NOT_QPIC
 	p_timer = bam_read_reg(base, P_TIMER, pipe);
 	p_timer_ctrl = bam_read_reg(base, P_TIMER_CTRL, pipe);
-
+#endif
 #ifdef CONFIG_SPS_SUPPORT_NDP_BAM
+#ifdef DEBUG_36BIT_ADDRESS_MODE
 	p_evnt_dest_msb = SPS_LPAE ?
 		bam_read_reg(base, P_EVNT_DEST_ADDR_MSB, pipe) : 0;
-
 	p_desc_fifo_addr_msb = SPS_LPAE ?
 		bam_read_reg(base, P_DESC_FIFO_ADDR_MSB, pipe) : 0;
 	p_data_fifo_addr_msb = SPS_LPAE ?
 		bam_read_reg(base, P_DATA_FIFO_ADDR_MSB, pipe) : 0;
-
+#endif
+#ifdef DEBUG_NOT_BAM_LITE
 	p_psm_ct3_msb = SPS_LPAE ? bam_read_reg(base, P_PSM_CNTXT_3, pipe) : 0;
-	p_lock_group = bam_read_reg_field(base, P_CTRL, pipe, P_LOCK_GROUP);
 	p_df_ct = bam_read_reg(base, P_DF_CNTXT, pipe);
 	p_df_offset = bam_read_reg_field(base, P_DF_CNTXT, pipe,
-					P_DF_CNTXT_DF_DESC_OFST);
+					 P_DF_CNTXT_DF_DESC_OFST);
+#endif
+	p_lock_group = bam_read_reg_field(base, P_CTRL, pipe, P_LOCK_GROUP);
 #endif
 
 	SPS_DUMP("\nsps:<pipe-begin> --- Registers of Pipe %d ---\n\n", pipe);
@@ -2111,17 +2135,21 @@ void print_bam_pipe_selected_reg(void *virt_addr, u32 pipe_index)
 	SPS_DUMP("BAM_P_EVNT_REG: 0x%x\n", p_evnt_reg);
 	SPS_DUMP("    DESC_FIFO_PEER_OFST: 0x%x\n", p_write_pointer);
 
-	SPS_DUMP("BAM_P_RETR_CNTXT: 0x%x\n", p_retr_ct);
-	SPS_DUMP("    RETR_OFFSET: 0x%x\n", p_retr_offset);
 	SPS_DUMP("BAM_P_SI_CNTXT: 0x%x\n", p_si_ct);
 	SPS_DUMP("    SI_OFFSET: 0x%x\n", p_si_offset);
+#ifdef DEBUG_NOT_BAM_LITE
+	SPS_DUMP("BAM_P_RETR_CNTXT: 0x%x\n", p_retr_ct);
+	SPS_DUMP("    RETR_OFFSET: 0x%x\n", p_retr_offset);
 	SPS_DUMP("BAM_P_DF_CNTXT: 0x%x\n", p_df_ct);
 	SPS_DUMP("    DF_OFFSET: 0x%x\n", p_df_offset);
-
+#endif
 	SPS_DUMP("BAM_P_DESC_FIFO_ADDR: 0x%x\n", p_desc_fifo_addr);
+#ifdef DEBUG_36BIT_ADDRESS_MODE
 	SPS_DUMP("BAM_P_DESC_FIFO_ADDR_MSB: 0x%x\n", p_desc_fifo_addr_msb);
-	SPS_DUMP("BAM_P_DATA_FIFO_ADDR: 0x%x\n", p_data_fifo_addr);
 	SPS_DUMP("BAM_P_DATA_FIFO_ADDR_MSB: 0x%x\n", p_data_fifo_addr_msb);
+	SPS_DUMP("BAM_P_EVNT_DEST_ADDR_MSB: 0x%x\n", p_evnt_dest_msb);
+#endif
+	SPS_DUMP("BAM_P_DATA_FIFO_ADDR: 0x%x\n", p_data_fifo_addr);
 	SPS_DUMP("BAM_P_FIFO_SIZES: 0x%x\n", p_fifo_sizes);
 	SPS_DUMP("    DESC_FIFO_SIZE: 0x%x (%d)\n", p_desc_fifo_size,
 							p_desc_fifo_size);
@@ -2129,20 +2157,21 @@ void print_bam_pipe_selected_reg(void *virt_addr, u32 pipe_index)
 							p_data_fifo_size);
 
 	SPS_DUMP("BAM_P_EVNT_DEST_ADDR: 0x%x\n", p_evnt_dest);
-	SPS_DUMP("BAM_P_EVNT_DEST_ADDR_MSB: 0x%x\n", p_evnt_dest_msb);
 	SPS_DUMP("BAM_P_EVNT_GEN_TRSHLD: 0x%x\n", p_evnt_trd);
 	SPS_DUMP("    EVNT_GEN_TRSHLD: 0x%x (%d)\n", p_evnt_trd_val,
 							p_evnt_trd_val);
-
+#ifdef DEBUG_NOT_BAM_LITE
 	SPS_DUMP("BAM_P_AU_PSM_CNTXT_1: 0x%x\n", p_au_ct1);
-	SPS_DUMP("BAM_P_PSM_CNTXT_2: 0x%x\n", p_psm_ct2);
 	SPS_DUMP("BAM_P_PSM_CNTXT_3: 0x%x\n", p_psm_ct3);
 	SPS_DUMP("BAM_P_PSM_CNTXT_3_MSB: 0x%x\n", p_psm_ct3_msb);
+#endif
+	SPS_DUMP("BAM_P_PSM_CNTXT_2: 0x%x\n", p_psm_ct2);
 	SPS_DUMP("BAM_P_PSM_CNTXT_4: 0x%x\n", p_psm_ct4);
 	SPS_DUMP("BAM_P_PSM_CNTXT_5: 0x%x\n", p_psm_ct5);
+#ifdef DEBUG_NOT_QPIC
 	SPS_DUMP("BAM_P_TIMER: 0x%x\n", p_timer);
 	SPS_DUMP("BAM_P_TIMER_CTRL: 0x%x\n", p_timer_ctrl);
-
+#endif
 	SPS_DUMP("\nsps:<pipe-end> --- Registers of Pipe %d ---\n\n", pipe);
 }
 
