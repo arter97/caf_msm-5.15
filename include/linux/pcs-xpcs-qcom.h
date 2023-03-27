@@ -26,6 +26,7 @@ struct dw_xpcs_qcom {
 	int pcs_intr;
 	bool intr_en;
 	bool sgmii_2p5g_en;
+	bool mac2mac_en;
 };
 
 #if IS_ENABLED(CONFIG_PCS_QCOM)

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _QCOM_BWMON_H
@@ -12,8 +13,8 @@
 #define NUM_MBPS_ZONES		10
 #define UP_WAKE			1
 #define DOWN_WAKE		2
-#define MBYTE			(1ULL << 20)
-#define MBPS_TO_KHZ(mbps, w)	(mult_frac(mbps, MBYTE, w * 1000ULL))
+#define MBYTE			(1 << 20)
+#define MBPS_TO_KHZ(mbps, w)	(mult_frac(mbps, MBYTE, w * 1000))
 #define KHZ_TO_MBPS(khz, w)	(mult_frac(w * 1000ULL, khz, MBYTE))
 #define to_bwmon(ptr)		container_of(ptr, struct bwmon, hw)
 

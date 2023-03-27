@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define CREATE_TRACE_POINTS
@@ -13,6 +13,9 @@
 #endif
 #if defined(CONFIG_REMOTEPROC)
 #include <trace/hooks/remoteproc.h>
+#endif
+#if defined(CONFIG_QCOM_DCVS)
+#include <trace/hooks/sched.h>
 #endif
 
 /*
@@ -29,4 +32,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cpuidle_psci_exit);
 #if defined(CONFIG_REMOTEPROC)
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_rproc_recovery);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_rproc_recovery_set);
+#endif
+#if defined(CONFIG_QCOM_DCVS)
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_jiffies_update);
 #endif

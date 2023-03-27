@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "qcom-memlat: " fmt
@@ -21,6 +22,7 @@
 #include <linux/irq.h>
 #include <linux/cpu_pm.h>
 #include <linux/cpu.h>
+#include <asm/cputype.h>
 #include <linux/of_fdt.h>
 #include <linux/of_device.h>
 #include <linux/mutex.h>
@@ -493,7 +495,8 @@ static ssize_t show_hlos_cpucp_offset(struct kobject *kobj,
 		return ret;
 	}
 
-	hlos_ts = ktime_get()/1000;
+	hlos_ts = ktime_get();
+	do_div(hlos_ts, 1000);
 
 	return scnprintf(buf, PAGE_SIZE, "%ld\n", le64_to_cpu(cpucp_ts) - hlos_ts);
 }
@@ -713,6 +716,7 @@ static void calculate_sampling_stats(void)
 	struct memlat_group *memlat_grp;
 	ktime_t now = ktime_get();
 	s64 delta_us, update_us;
+	u64 freq, ipm;
 
 	update_us = ktime_us_delta(now, memlat_data->last_update_ts);
 	memlat_data->last_update_ts = now;
@@ -759,19 +763,21 @@ static void calculate_sampling_stats(void)
 			}
 		}
 
-		stats->freq_mhz = delta->common_ctrs[CYC_IDX] / delta_us;
+		freq = delta->common_ctrs[CYC_IDX];
+		do_div(freq, delta_us);
+		stats->freq_mhz = freq;
 		if (!memlat_data->common_ev_ids[FE_STALL_IDX])
 			stats->fe_stall_pct = 100;
 		else
 			stats->fe_stall_pct = mult_frac(100,
-					       delta->common_ctrs[FE_STALL_IDX],
-					       delta->common_ctrs[CYC_IDX]);
+						(u32)delta->common_ctrs[FE_STALL_IDX],
+						(u32)delta->common_ctrs[CYC_IDX]);
 		if (!memlat_data->common_ev_ids[BE_STALL_IDX])
 			stats->be_stall_pct = 100;
 		else
 			stats->be_stall_pct = mult_frac(100,
-					       delta->common_ctrs[BE_STALL_IDX],
-					       delta->common_ctrs[CYC_IDX]);
+						(u32)delta->common_ctrs[BE_STALL_IDX],
+						(u32)delta->common_ctrs[CYC_IDX]);
 		for (grp = 0; grp < MAX_MEMLAT_GRPS; grp++) {
 			memlat_grp = memlat_data->groups[grp];
 			if (!memlat_grp) {
@@ -779,18 +785,18 @@ static void calculate_sampling_stats(void)
 				stats->wb_pct[grp] = 0;
 				continue;
 			}
-			stats->ipm[grp] = delta->common_ctrs[INST_IDX];
+			ipm = delta->common_ctrs[INST_IDX];
 			if (delta->grp_ctrs[grp][MISS_IDX])
-				stats->ipm[grp] /=
-					delta->grp_ctrs[grp][MISS_IDX];
+				do_div(ipm, delta->grp_ctrs[grp][MISS_IDX]);
+			stats->ipm[grp] = ipm;
 
 			if (!memlat_grp->grp_ev_ids[WB_IDX]
 					|| !memlat_grp->grp_ev_ids[ACC_IDX])
 				stats->wb_pct[grp] = 0;
 			else
 				stats->wb_pct[grp] = mult_frac(100,
-						delta->grp_ctrs[grp][WB_IDX],
-						delta->grp_ctrs[grp][ACC_IDX]);
+						(u32)delta->grp_ctrs[grp][WB_IDX],
+						(u32)delta->grp_ctrs[grp][ACC_IDX]);
 
 			/* one meas event per memlat_group with group name */
 			trace_memlat_dev_meas(dev_name(memlat_grp->dev), cpu,

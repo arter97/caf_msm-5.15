@@ -20,6 +20,8 @@
 #define GMAC_VLAN_TAG			0x00000050
 #define GMAC_VLAN_TAG_DATA		0x00000054
 #define GMAC_VLAN_HASH_TABLE		0x00000058
+#define GMAC_VLAN_CTRL_TAG		0x00000050
+#define GMAC_VLAN_DATA_TAG		0x00000054
 #define GMAC_RX_FLOW_CTRL		0x00000090
 #define GMAC_VLAN_INCL			0x00000060
 #define GMAC_QX_TX_FLOW_CTRL(x)		(0x70 + x * 4)
@@ -46,6 +48,21 @@
 #define GMAC_ARP_ADDR			0x00000210
 #define GMAC_ADDR_HIGH(reg)		(0x300 + reg * 8)
 #define GMAC_ADDR_LOW(reg)		(0x304 + reg * 8)
+#define GMAC_MTL_RX_QMAP		0x00000c30
+
+/*MAC VLAN CTRL Bit*/
+#define GMAC_VLANTR_OB_MASK			(0x1)
+#define GMAC_VLANTR_CT_MASKBIT			BIT(1)
+#define GMAC_VLANTR_OFFSET_SHIFT		2
+#define GMAC_VLANTR_VLAN_EN			BIT(16)
+#define GMAC_VLANTR_VLAN_CMP			BIT(17)
+#define GMAC_VLANTR_VLAN_CMP_DISABLE		BIT(18)
+#define GMAC_VLANTR_DMA_CHAN_EN			BIT(24)
+#define GMAC_VLANTR_DMA_CHAN_NUM		25
+
+/*MTL Rx Queue Bit*/
+#define GMAC_MTL_RXQ_DMACH		BIT(4)
+
 #define GMAC_L3L4_CTRL(reg)		(0x900 + (reg) * 0x30)
 #define GMAC_L4_ADDR(reg)		(0x904 + (reg) * 0x30)
 #define GMAC_L3_ADDR0(reg)		(0x910 + (reg) * 0x30)

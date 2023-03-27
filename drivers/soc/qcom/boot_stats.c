@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -23,7 +23,7 @@
 #include <soc/qcom/soc_sleep_stats.h>
 #include <linux/hashtable.h>
 
-#define MARKER_STRING_WIDTH 40
+#define MARKER_STRING_WIDTH 50
 #define TS_WHOLE_NUM_WIDTH 8
 #define TS_PRECISION_WIDTH 3
 /* Field width to consider the spaces, 's' character and \n */
@@ -313,6 +313,13 @@ static void set_bootloader_stats(void)
 			readl_relaxed(&boot_stats->bootloader_end));
 }
 
+void update_marker(const char *name)
+{
+	_destroy_boot_marker(name);
+	_create_boot_marker(name, msm_timer_get_sclk_ticks());
+}
+EXPORT_SYMBOL(update_marker);
+
 static ssize_t bootkpi_reader(struct file *fp, struct kobject *obj,
 		struct bin_attribute *bin_attr, char *user_buffer, loff_t off,
 		size_t count)
@@ -386,7 +393,7 @@ static ssize_t bootkpi_writer(struct file *fp, struct kobject *obj,
 		return rc;
 
 	buf[rc] = '\0';
-	place_marker(buf);
+	update_marker(buf);
 	return rc;
 }
 

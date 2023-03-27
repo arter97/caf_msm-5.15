@@ -320,6 +320,15 @@ config ARCH_SA525
 	  wish to build a kernel that runs on this chipset or if you
 	  are unsure, say 'N' here.
 
+config ARCH_SA525_HOSTVM
+	bool "Enable Support for Qualcomm Technologies, Inc. SA525 HostVM"
+	depends on ARCH_SA525
+	help
+	  This enables support for the Qualcomm Technologies, Inc.
+	  SA525 Hostvm configurations. Say 'Y' if you wish to build a
+	  kernel that supports hostvm configuration or if you
+	  are unsure, say 'N' here.
+
 config ARCH_SA8155
         bool "Enable Support for Qualcomm Technologies, Inc. SA8155"
 	depends on ARCH_QCOM

@@ -247,6 +247,18 @@ config QTEE_SHM_BRIDGE
 	  memory sub-allocation and free from the default kernel bridge
 	  created by bridge driver.
 
+config QCOM_SCM_ALLOC_FROM_SHM_BRIDGE
+	bool "Allocate from shared memory bridge by SCM itself"
+	depends on QCOM_SCM && QTEE_SHM_BRIDGE
+	default n
+	help
+	  By default, when reassigning memory, SCM doesn't need to handle the
+	  memory by allocating from and memcpy to shared memory bridge since
+	  the hypervisor will do it. But some targets haven't the hypervisor,
+	  SCM itself needs to handle the memory by allocating from and memcpy
+	  to shared memory bridge and then transfer to trustzone, set Y here
+	  if the case is like this.
+
 config SYSFB
 	bool
 	default y

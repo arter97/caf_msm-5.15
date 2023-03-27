@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1154,6 +1154,7 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 		return;
 	case PORT_DISCONNECTED:
 		msm_hsphy_unprepare_chg_det(phy);
+		msm_hsphy_notify_charger(phy, POWER_SUPPLY_TYPE_UNKNOWN);
 		phy->port_state = PORT_UNKNOWN;
 		break;
 	case PORT_DCD_IN_PROGRESS:
@@ -1246,8 +1247,9 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 		fallthrough;
 	case PORT_CHG_DET_DONE:
 		if (!phy->vbus_active) {
-			phy->port_state = PORT_UNKNOWN;
+			phy->port_state = PORT_DISCONNECTED;
 			msm_hsphy_notify_extcon(phy, EXTCON_USB, 0);
+			break;
 		}
 
 		return;

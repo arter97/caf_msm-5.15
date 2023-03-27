@@ -212,6 +212,13 @@ enum current_phy_state {
 	PHY_IS_OFF,
 };
 
+struct ethqos_vlan_info {
+	u16 vlan_id;
+	u32 vlan_offset;
+	u32 rx_queue;
+	bool available;
+};
+
 struct ethqos_emac_por {
 	unsigned int offset;
 	unsigned int value;
@@ -377,6 +384,11 @@ struct qcom_ethqos {
 	struct emac_icc_data *emac_axi_icc;
 	struct icc_path *apb_icc_path;
 	struct emac_icc_data *emac_apb_icc;
+
+	dev_t emac_dev_t;
+	struct cdev *emac_cdev;
+	struct class *emac_class;
+
 	unsigned long avb_class_a_intr_cnt;
 	unsigned long avb_class_b_intr_cnt;
 
@@ -414,6 +426,10 @@ struct qcom_ethqos {
 	unsigned backup_autoneg:1;
 	bool probed;
 	bool ipa_enabled;
+
+	/* QMI over ethernet parameter */
+	u32 qoe_mode;
+	struct ethqos_vlan_info qoe_vlan;
 };
 
 struct pps_cfg {
@@ -445,8 +461,6 @@ struct pps_info {
 
 struct ip_params {
 	bool is_valid_mac_addr;
-	char link_speed[32];
-	bool is_valid_link_speed;
 	char ipv4_addr_str[32];
 	struct in_addr ipv4_addr;
 	bool is_valid_ipv4_addr;
@@ -459,6 +473,7 @@ struct ip_params {
 struct mac_params {
 	phy_interface_t eth_intf;
 	bool is_valid_eth_intf;
+	unsigned long link_speed;
 };
 
 int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
@@ -490,6 +505,8 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 
 #define IPA_DMA_TX_CH 0
 #define IPA_DMA_RX_CH 0
+
+#define QMI_TAG_TX_CHANNEL 2
 
 #define VLAN_TAG_UCP_SHIFT 13
 #define CLASS_A_TRAFFIC_UCP 3
