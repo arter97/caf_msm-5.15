@@ -267,10 +267,9 @@ int ethqos_init_pps(void *priv_n)
 	/* Before we update ptp register please check if it has some information
 	 * in the register then we need to overwrite it.
 	 */
-	priv->systime_flags = readl(priv->ptpaddr + PTP_TCR);
-	value = (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
-	priv->systime_flags |= value;
-	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, priv->systime_flags);
+	value = readl(priv->ptpaddr + PTP_TCR);
+	value |= (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
+	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, value);
 	priv->hw->ptp->init_systime(priv->ptpaddr, 0, 0);
 	priv->hw->ptp->adjust_systime(priv->ptpaddr, 0, 0, 0, 1);
 
