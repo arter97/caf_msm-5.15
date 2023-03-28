@@ -287,6 +287,37 @@ int qcom_xpcs_config_eee(struct dw_xpcs_qcom *xpcs, int mult_fact_100ns, int ena
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_config_eee);
 
+int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs)
+{
+	unsigned int retries = LINK_STS_RETRY_COUNT;
+	int ret;
+
+	do {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_STS);
+		if (ret < 0)
+			return ret;
+
+		if (ret & DW_SR_MII_STS_LINK_STS)
+			break;
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_DIG_CTRL1);
+		if (ret < 0)
+			return ret;
+
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_DIG_CTRL1, ret | SOFT_RST);
+
+		usleep_range(500, 1000);
+	} while (--retries);
+
+	XPCSINFO("%s : Val = 0x%x retries = %ld\n",
+		 __func__,
+		ret,
+		(LINK_STS_RETRY_COUNT - retries));
+
+	return !(retries) ? -ETIMEDOUT : 0;
+}
+EXPORT_SYMBOL(qcom_xpcs_verify_lnk_status_usxgmii);
+
 /* Cannot sleep in interrupt-context, increase retries and remove usleep call. */
 static int qcom_xpcs_poll_reset_usxgmii(struct dw_xpcs_qcom *xpcs, unsigned int offset,
 					unsigned int field)

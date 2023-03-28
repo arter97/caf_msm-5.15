@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -9,6 +9,7 @@
 
 #include <linux/pcs-xpcs-qcom.h>
 
+#define LINK_STS_RETRY_COUNT		50
 #define SYNOPSYS_XPCS_ID		0x7996ced0
 #define SYNOPSYS_XPCS_MASK		0xffffffff // Reset mask for Dev IDs
 
@@ -201,6 +202,7 @@
 /* SR_MII_AN_ADV */
 #define DW_SR_MII_AN_ADV_FD			BIT(5)
 #define DW_SR_MII_AN_ADV_HD			BIT(6)
+#define DW_SR_MII_STS_LINK_STS			BIT(2)
 
 /* Required settings to enable 2.5G SGMII mode */
 #define LINK_TIMER_1P6MS			0x07a1
