@@ -4548,6 +4548,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	update_marker("M - Ethernet probe end");
 #endif
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	priv->plat->pm_lite = true;
+#endif
+
 	ethqos_create_debugfs(ethqos);
 	return ret;
 

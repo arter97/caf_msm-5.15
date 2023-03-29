@@ -319,5 +319,6 @@ struct plat_stmmacenet_data {
 	void (*phy_irq_disable)(void *priv);
 	int port_num;
 	bool pcs_v3;
+	bool pm_lite;
 };
 #endif
