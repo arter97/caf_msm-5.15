@@ -378,7 +378,7 @@ static int qcom_xpcs_set_2p5g_sgmii(struct dw_xpcs_qcom *xpcs, int duplex)
 	else
 		ret &= ~DW_FULL_DUPLEX;
 
-	ret |= DW_GMII_2500;
+	ret |= DW_GMII_1000;
 	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
 
 	ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
