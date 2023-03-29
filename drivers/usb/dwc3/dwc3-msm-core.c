@@ -6158,6 +6158,12 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void dwc3_msm_shutdown(struct platform_device *pdev)
+{
+	pr_info("dwc3 msm reboot handler\n");
+	dwc3_msm_remove(pdev);
+}
+
 static int dwc3_msm_host_ss_powerdown(struct dwc3_msm *mdwc)
 {
 	u32 reg;
@@ -7040,6 +7046,7 @@ MODULE_DEVICE_TABLE(of, of_dwc3_matach);
 static struct platform_driver dwc3_msm_driver = {
 	.probe		= dwc3_msm_probe,
 	.remove		= dwc3_msm_remove,
+	.shutdown	= dwc3_msm_shutdown,
 	.driver		= {
 		.name	= "msm-dwc3",
 		.pm	= &dwc3_msm_dev_pm_ops,
