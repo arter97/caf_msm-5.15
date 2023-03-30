@@ -4347,6 +4347,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->ipa_enabled)
+		priv->reinit_sw_path = stmmac_reinit;
+#endif
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
