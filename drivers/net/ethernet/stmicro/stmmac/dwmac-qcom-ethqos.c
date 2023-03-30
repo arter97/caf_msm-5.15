@@ -1479,6 +1479,8 @@ int ethqos_configure_sgmii_v3_1(struct qcom_ethqos *ethqos)
 {
 	u32 value = 0;
 
+	ethqos_set_func_clk_en(ethqos);
+
 	value = readl(ethqos->ioaddr + MAC_CTRL_REG);
 	switch (ethqos->speed) {
 	case SPEED_1000:
