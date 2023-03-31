@@ -3783,6 +3783,13 @@ static int is_pcie_boot_config(struct platform_device *pdev)
 		return ret;
 	}
 
+	if (!host_bypass_mask || !fast_boot_mask) {
+		EP_PCIE_ERR(&ep_pcie_dev,
+			"PCIe V%d: host_bypass_mask and fast_boot_mask should be non-zero\n",
+			ep_pcie_dev.rev);
+		return -EINVAL;
+	}
+
 	if (!of_get_property((&pdev->dev)->of_node, "qcom,fast-boot-values", NULL))
 		return -EINVAL;
 
@@ -3818,7 +3825,7 @@ static int is_pcie_boot_config(struct platform_device *pdev)
 	}
 
 	fast_boot = (((*buf) & fast_boot_mask) >> ((ffs(fast_boot_mask)) - 1));
-	host_bypass = ((*buf) & host_bypass_mask);
+	host_bypass = (((*buf) & host_bypass_mask) >> ((ffs(host_bypass_mask)) - 1));
 	EP_PCIE_INFO(&ep_pcie_dev,
 		"PCIe V%d: BOOT_CONFIG val = %x, fast_boot = %x, host_bypass = %x\n",
 		ep_pcie_dev.rev, (*buf), fast_boot, host_bypass);
