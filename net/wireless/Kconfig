@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config WIRELESS_EXT
-	def_bool y
+	bool
 
 config WEXT_CORE
 	def_bool y
@@ -15,7 +15,7 @@ config WEXT_SPY
 	bool
 
 config WEXT_PRIV
-	def_bool y
+	bool
 
 config CFG80211
 	tristate "cfg80211 - wireless configuration API"
