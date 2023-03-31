@@ -255,8 +255,8 @@ dump_counters(struct sk_buff *skb, struct nf_conn_acct *acct,
 		pkts = atomic64_xchg(&counter[dir].packets, 0);
 		bytes = atomic64_xchg(&counter[dir].bytes, 0);
 	} else {
-		pkts = atomic64_read(&counter[dir].packets);
-		bytes = atomic64_read(&counter[dir].bytes);
+		pkts = (u64)atomic64_read(&counter[dir].packets);
+		bytes = (u64)atomic64_read(&counter[dir].bytes);
 	}
 
 	nest_count = nla_nest_start(skb, attr);
@@ -816,11 +816,12 @@ ctnetlink_conntrack_event(unsigned int events, const struct nf_ct_event *item)
 
 		if (events & (1 << IPCT_SYNPROXY) &&
 		    ctnetlink_dump_ct_synproxy(skb, ct) < 0)
+			goto nla_put_failure;
 #ifdef CONFIG_ENABLE_SFE
-			if (events & (1 << IPCT_COUNTER) &&
-			    ctnetlink_dump_acct(skb, ct, 0) < 0)
+		if (events & (1 << IPCT_COUNTER) &&
+		    ctnetlink_dump_acct(skb, ct, 0) < 0)
+			goto nla_put_failure;
 #endif
-				goto nla_put_failure;
 	}
 
 #ifdef CONFIG_NF_CONNTRACK_MARK

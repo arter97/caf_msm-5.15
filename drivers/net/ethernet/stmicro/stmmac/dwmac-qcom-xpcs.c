@@ -79,6 +79,9 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	priv->hw->qxpcs = qxpcs;
 	priv->hw->xpcs = NULL;
 
+	if (priv->plat->mac2mac_en)
+		priv->hw->qxpcs->mac2mac_en = true;
+
 	ret = ethqos_xpcs_intr_config(ndev);
 	if (!ret) {
 		ret = ethqos_xpcs_intr_enable(ndev);
@@ -94,7 +97,8 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	}
 
 out:
-	phylink_set_pcs(priv->phylink, &priv->hw->qxpcs->pcs);
+	if (!priv->plat->mac2mac_en)
+		phylink_set_pcs(priv->phylink, &priv->hw->qxpcs->pcs);
 	ETHQOSINFO("Successfully initialized XPCS\n");
 	return 0;
 }

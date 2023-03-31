@@ -41,6 +41,7 @@
 #include <asm/byteorder.h>
 #include <linux/platform_device.h>
 #include <trace/hooks/remoteproc.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "remoteproc_internal.h"
 
@@ -2026,6 +2027,9 @@ int rproc_boot(struct rproc *rproc)
 {
 	const struct firmware *firmware_p;
 	struct device *dev;
+	char *rproc_name = NULL;
+	char rproc_start[80] = {'\0'};
+	char rproc_end[80] = {'\0'};
 	int ret;
 
 	if (!rproc) {
@@ -2060,6 +2064,14 @@ int rproc_boot(struct rproc *rproc)
 	} else {
 		dev_info(dev, "powering up %s\n", rproc->name);
 
+		rproc_name = strnchr(rproc->name, strlen(rproc->name), '-');
+
+		if (rproc_name) {
+			snprintf(rproc_start, sizeof(rproc_start),
+				"M - %s image start loading", ++rproc_name);
+			update_marker(rproc_start);
+		}
+
 		/* load firmware */
 		ret = request_firmware(&firmware_p, rproc->firmware, dev);
 		if (ret < 0) {
@@ -2070,6 +2082,12 @@ int rproc_boot(struct rproc *rproc)
 		ret = rproc_fw_boot(rproc, firmware_p);
 
 		release_firmware(firmware_p);
+
+		if (rproc_name) {
+			snprintf(rproc_end, sizeof(rproc_end),
+				"M - %s out of reset", rproc_name);
+			update_marker(rproc_end);
+		}
 	}
 
 downref_rproc:

@@ -99,8 +99,7 @@ module_param(pause, int, 0644);
 MODULE_PARM_DESC(pause, "Flow Control Pause Time");
 
 #define TC_DEFAULT 64
-#define TC_DEFAULT_Q0 32
-static int tc = TC_DEFAULT_Q0;
+static int tc = TC_DEFAULT;
 module_param(tc, int, 0644);
 MODULE_PARM_DESC(tc, "DMA threshold control value");
 
@@ -926,18 +925,9 @@ int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
 	struct timespec64 now;
 	u32 sec_inc = 0;
 	u64 temp = 0;
-	int ret;
 
 	if (!(priv->dma_cap.time_stamp || priv->dma_cap.atime_stamp))
 		return -EOPNOTSUPP;
-
-	ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
-	if (ret < 0) {
-		netdev_warn(priv->dev,
-			    "failed to enable PTP reference clock: %pe\n",
-			    ERR_PTR(ret));
-		return ret;
-	}
 
 	stmmac_config_hw_tstamping(priv, priv->ptpaddr, systime_flags);
 	priv->systime_flags = systime_flags;
@@ -2587,13 +2577,18 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 	for (chan = 0; chan < rx_channels_count; chan++) {
 		struct stmmac_rx_queue *rx_q = &priv->rx_queue[chan];
 		u32 buf_size;
+		u32 thresh_rx_mode;
 
 		qmode = priv->plat->rx_queues_cfg[chan].mode_to_use;
 
-		if (priv->plat->force_thresh_dma_mode_q0_en && chan == 0)
-			rxmode = tc;
-		stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
-				rxfifosz, qmode);
+		if (priv->plat->rx_queues_cfg[chan].thresholdmode) {
+			thresh_rx_mode = priv->plat->rx_queues_cfg[chan].threshold_byte;
+			stmmac_dma_rx_mode(priv, priv->ioaddr, thresh_rx_mode, chan,
+					   rxfifosz, qmode);
+		} else {
+			stmmac_dma_rx_mode(priv, priv->ioaddr, rxmode, chan,
+					   rxfifosz, qmode);
+		}
 
 		if (rx_q->xsk_pool) {
 			buf_size = xsk_pool_get_rx_frame_size(rx_q->xsk_pool);
@@ -3561,6 +3556,13 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 	stmmac_mmc_setup(priv);
 
 	if (priv->plat->clk_ptp_ref) {
+		if (ptp_register) {
+			ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
+			if (ret < 0)
+				netdev_warn(priv->dev,
+					    "failed to enable PTP reference clock: %pe\n",
+					    ERR_PTR(ret));
+		}
 		ret = stmmac_init_ptp(priv);
 		if (ret == -EOPNOTSUPP) {
 			netdev_warn(priv->dev, "PTP not supported by HW\n");
@@ -3923,9 +3925,17 @@ void stmmac_mac2mac_adjust_link(int speed, struct stmmac_priv *priv)
 {
 	u32 ctrl = readl_relaxed(priv->ioaddr + MAC_CTRL_REG);
 
+	if (priv->hw->qxpcs) {
+		if (qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false) < 0)
+			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
+	}
+
 	ctrl &= ~priv->hw->link.speed_mask;
 
-	if (speed == SPEED_1000) {
+	if (speed == SPEED_2500) {
+		ctrl |= priv->hw->link.speed2500;
+		priv->speed = SPEED_2500;
+	} else if (speed == SPEED_1000) {
 		ctrl |= priv->hw->link.speed1000;
 		priv->speed = SPEED_1000;
 	} else if (speed == SPEED_100) {
@@ -3957,6 +3967,7 @@ static int stmmac_open(struct net_device *dev)
 	u32 chan;
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
+	const struct phylink_pcs_ops *pcs_ops;
 
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
@@ -3980,7 +3991,7 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
-	if (priv->hw->qxpcs && !netif_carrier_ok(dev)) {
+	if (priv->hw->qxpcs && (priv->plat->mac2mac_en || !netif_carrier_ok(dev))) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
@@ -4066,10 +4077,25 @@ static int stmmac_open(struct net_device *dev)
 	stmmac_enable_all_dma_irq(priv);
 
 	if (priv->plat->mac2mac_en) {
-		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_rgmii_speed,
+		if (priv->plat->mdio_bus_data && priv->plat->mdio_bus_data->has_xpcs) {
+			/* xpcs config */
+			pcs_ops = priv->hw->qxpcs->pcs.ops;
+			pcs_ops->pcs_config(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+					    NULL, 0);
+
+			/* xpcs link up */
+			qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+					  priv->plat->mac2mac_speed, 1);
+		}
+
+		/* mac link up */
+		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_speed,
 					   priv);
+
 		priv->plat->mac2mac_link = true;
 		netif_carrier_on(dev);
+		netdev_info(priv->dev, "mac2mac link up done: Interface = %d Speed = %d",
+			    priv->plat->interface, priv->plat->mac2mac_speed);
 	}
 
 	if (priv->avb_vlan_id > 1) {
@@ -4105,8 +4131,10 @@ static void stmmac_fpe_stop_wq(struct stmmac_priv *priv)
 {
 	set_bit(__FPE_REMOVING, &priv->fpe_task_state);
 
-	if (priv->fpe_wq)
+	if (priv->fpe_wq) {
 		destroy_workqueue(priv->fpe_wq);
+		priv->fpe_wq = NULL;
+	}
 
 	netdev_info(priv->dev, "FPE workqueue stop");
 }
@@ -7692,8 +7720,7 @@ int stmmac_dvr_probe(struct device *device,
 	}
 
 	/* Disable tx_coal_timer if plat provides callback */
-	priv->tx_coal_timer_disable =
-		plat_dat->get_plat_tx_coal_frames ? true : false;
+	priv->tx_coal_timer_disable = false;
 
 #ifdef CONFIG_DEBUG_FS
 	stmmac_init_fs(ndev);
@@ -7741,6 +7768,17 @@ int stmmac_dvr_remove(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
 	netdev_info(priv->dev, "%s: removing driver", __func__);
+
+	if (priv->plat->rgmii_rst) {
+		reset_control_put(priv->plat->rgmii_rst);
+		priv->plat->rgmii_rst = NULL;
+	}
+
+	if (priv->avb_vlan_id > 1)
+		if (ndev->netdev_ops->ndo_vlan_rx_kill_vid)
+			ndev->netdev_ops->ndo_vlan_rx_kill_vid(ndev,
+							       htons(ETH_P_8021Q),
+							       priv->avb_vlan_id);
 
 	pm_runtime_get_sync(dev);
 	pm_runtime_disable(dev);

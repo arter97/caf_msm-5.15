@@ -134,6 +134,8 @@ struct stmmac_rxq_cfg {
 	u8 pkt_route;
 	bool use_prio;
 	u32 prio;
+	bool thresholdmode;
+	u32 threshold_byte;
 };
 
 struct stmmac_txq_cfg {
@@ -308,14 +310,13 @@ struct plat_stmmacenet_data {
 		int cmd);
 	void (*request_phy_wol)(void *plat);
 	int (*init_pps)(void *priv);
-	int mac2mac_rgmii_speed;
-	bool mac2mac_en;
+	int mac2mac_speed;
+	u32 mac2mac_en;
 	int mac2mac_link;
 	bool early_eth;
 	bool sph_disable;
 	void (*phy_irq_enable)(void *priv);
 	void (*phy_irq_disable)(void *priv);
 	int port_num;
-	bool force_thresh_dma_mode_q0_en;
 };
 #endif
