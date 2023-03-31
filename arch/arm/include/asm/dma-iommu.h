@@ -7,7 +7,6 @@
 #include <linux/mm_types.h>
 #include <linux/scatterlist.h>
 #include <linux/kref.h>
-#include <linux/device/bus.h>
 
 struct dma_iommu_mapping {
 	/* iommu specific data */
