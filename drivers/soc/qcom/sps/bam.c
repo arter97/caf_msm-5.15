@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2011-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 /* Bus-Access-Manager (BAM) Hardware manager. */
 
@@ -1820,9 +1821,6 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	u32 bam_pipe_num;
 	u32 bam_data_addr_bus_width;
 
-	u32 bam_desc_cnt_trshld;
-	u32 bam_desc_cnt_trd_val;
-
 	u32 bam_irq_en;
 	u32 bam_irq_stts;
 
@@ -1853,10 +1851,6 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	bam_pipe_num = bam_read_reg_field(base, NUM_PIPES, 0, BAM_NUM_PIPES);
 	bam_data_addr_bus_width = bam_read_reg_field(base, NUM_PIPES, 0,
 					BAM_DATA_ADDR_BUS_WIDTH);
-
-	bam_desc_cnt_trshld = bam_read_reg(base, DESC_CNT_TRSHLD, 0);
-	bam_desc_cnt_trd_val = bam_read_reg_field(base, DESC_CNT_TRSHLD, 0,
-					BAM_DESC_CNT_TRSHLD);
 
 	bam_irq_en = bam_read_reg(base, IRQ_EN, 0);
 	bam_irq_stts = bam_read_reg(base, IRQ_STTS, 0);
@@ -1895,9 +1889,6 @@ void print_bam_selected_reg(void *virt_addr, u32 ee)
 	SPS_DUMP("BAM_DATA_ADDR_BUS_WIDTH: %d\n",
 			((bam_data_addr_bus_width == 0x0) ? 32 : 36));
 	SPS_DUMP("    NUM_PIPES: %d\n", bam_pipe_num);
-	SPS_DUMP("BAM_DESC_CNT_TRSHLD: 0x%x\n", bam_desc_cnt_trshld);
-	SPS_DUMP("    DESC_CNT_TRSHLD: 0x%x (%d)\n", bam_desc_cnt_trd_val,
-			bam_desc_cnt_trd_val);
 
 	SPS_DUMP("BAM_IRQ_EN: 0x%x\n", bam_irq_en);
 	SPS_DUMP("BAM_IRQ_STTS: 0x%x\n", bam_irq_stts);
