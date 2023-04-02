@@ -212,6 +212,7 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 /* OEM Services and Function IDs */
 #define QCOM_SCM_SVC_OEM_POWER			0x09
 #define QCOM_SCM_OEM_POWER_REBOOT		0x22
+#define QCOM_SCM_OEM_POWER_CUSTOM_REBOOT	0x23
 
 /* TOS Services and Function IDs */
 #define QCOM_SCM_SVC_QSEELOG			0x01

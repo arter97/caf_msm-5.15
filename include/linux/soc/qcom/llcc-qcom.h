@@ -148,6 +148,31 @@ void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data);
 size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data);
 
 void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data);
+/**
+ * Enum describing the various staling modes available for clients to use.
+ */
+enum llcc_staling_mode {
+	LLCC_STALING_MODE_CAPACITY, /* Default option on reset */
+	LLCC_STALING_MODE_NOTIFY,
+	LLCC_STALING_MODE_MAX
+};
+
+enum llcc_staling_notify_op {
+	LLCC_NOTIFY_STALING_WRITEBACK,
+	/* LLCC_NOTIFY_STALING_NO_WRITEBACK, */
+	LLCC_NOTIFY_STALING_OPS_MAX
+};
+
+struct llcc_staling_mode_params {
+	enum llcc_staling_mode staling_mode;
+	union {
+		/* STALING_MODE_CAPACITY needs no params */
+		struct staling_mode_notify_params {
+			u8 staling_distance;
+			enum llcc_staling_notify_op op;
+		} notify_params;
+	};
+};
 
 #if IS_ENABLED(CONFIG_QCOM_LLCC)
 /**
@@ -212,6 +237,15 @@ static inline int llcc_slice_activate(struct llcc_slice_desc *desc)
 }
 
 static inline int llcc_slice_deactivate(struct llcc_slice_desc *desc)
+{
+	return -EINVAL;
+}
+static inline int llcc_configure_staling_mode(struct llcc_slice_desc *desc,
+				       struct llcc_staling_mode_params *p)
+{
+	return -EINVAL;
+}
+static inline int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
 }
