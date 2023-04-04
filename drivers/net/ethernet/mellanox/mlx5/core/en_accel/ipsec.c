@@ -272,6 +272,10 @@ static inline int mlx5e_xfrm_validate_state(struct xfrm_state *x)
 		netdev_info(netdev, "Cannot offload xfrm states with geniv other than seqiv\n");
 		return -EINVAL;
 	}
+	if (x->xso.type != XFRM_DEV_OFFLOAD_CRYPTO) {
+		netdev_info(netdev, "Unsupported xfrm offload type\n");
+		return -EINVAL;
+	}
 	if (x->props.family == AF_INET6 &&
 	    !(mlx5_accel_ipsec_device_caps(priv->mdev) &
 	     MLX5_ACCEL_IPSEC_CAP_IPV6)) {
