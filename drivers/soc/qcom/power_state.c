@@ -30,6 +30,7 @@
 #endif
 
 #include "linux/power_state.h"
+#include <dt-bindings/soc/qcom,power-state.h>
 
 #ifdef CONFIG_ARCH_MONACO
 #define DS_ENTRY_SMC_ID		0xC3000924
@@ -86,6 +87,7 @@ struct subsystem_data {
 	bool ignore_ssr;
 	enum ps_event_type enter;
 	enum ps_event_type exit;
+	u32 supported_state;
 	phandle rproc_handle;
 	void *ssr_handle;
 };
@@ -114,6 +116,13 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
+		ss_data->ignore_ssr = true;
+		if (ss_data->supported_state == RPROC_SUSPEND)
+			ret = rproc_suspend(rproc);
+		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+			rproc_shutdown(rproc);
+		ss_data->ignore_ssr = false;
+		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
 		rproc_shutdown(rproc);
@@ -134,6 +143,13 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
+		ss_data->ignore_ssr = true;
+		if (ss_data->supported_state == RPROC_SUSPEND)
+			ret = rproc_resume(rproc);
+		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+			ret = rproc_boot(rproc);
+		ss_data->ignore_ssr = false;
+		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
 		ret = rproc_boot(rproc);
@@ -503,6 +519,7 @@ static int power_state_probe(struct platform_device *pdev)
 	struct device_node *dn = pdev->dev.of_node;
 	struct subsystem_data *ss_data;
 	int ret, i, j;
+	u32 supported_state;
 	const char *name;
 	phandle rproc_handle;
 
@@ -536,6 +553,10 @@ static int power_state_probe(struct platform_device *pdev)
 		if (ret)
 			goto remove_ss;
 
+		ret = of_property_read_u32_index(dn, "qcom,rproc-state", i, &supported_state);
+		if (ret)
+			goto remove_ss;
+
 		ss_data = devm_kzalloc(&pdev->dev, sizeof(struct subsystem_data), GFP_KERNEL);
 		if (!ss_data) {
 			ret = -ENOMEM;
@@ -544,6 +565,7 @@ static int power_state_probe(struct platform_device *pdev)
 
 		ss_data->name = name;
 		ss_data->rproc_handle = rproc_handle;
+		ss_data->supported_state = supported_state;
 		ss_data->ssr_handle = qcom_register_ssr_notifier(name, &drv->ps_ssr_nb);
 		if (IS_ERR(ss_data->ssr_handle)) {
 			ret = PTR_ERR(ss_data->ssr_handle);
