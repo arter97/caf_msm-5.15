@@ -4362,6 +4362,16 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_clk;
 	}
 
+	/* Get sw path tx desc count from device tree */
+	if (of_property_read_u32(np, "sw-dma-tx-desc-cnt",
+				 &priv->dma_tx_size))
+		ETHQOSDBG("sw_dma_tx_desc_cnt not found in dtsi\n");
+
+	/* Get sw path rx desc count from device tree */
+	if (of_property_read_u32(np, "sw-dma-rx-desc-cnt",
+				 &priv->dma_rx_size))
+		ETHQOSDBG("sw_dma_rx_desc_cnt not found in dtsi\n");
+
 	if (!priv->plat->mac2mac_en) {
 		if (!ethqos_phy_intr_config(ethqos))
 			ethqos_phy_intr_enable(ethqos);
