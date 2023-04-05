@@ -30,6 +30,7 @@
 #include <linux/if_arp.h>
 #include <linux/inet.h>
 #include <net/inet_common.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -2996,6 +2997,19 @@ static ssize_t phy_off_config(struct file *file, const char __user *user_buffer,
 	return count;
 }
 
+void qcom_serdes_loopback_v3_1(struct plat_stmmacenet_data *plat, bool on)
+{
+	struct qcom_ethqos *ethqos = plat->bsp_priv;
+
+	if (on)
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
+			      SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	else
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN, 0,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+}
+
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos, int mode)
 {
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
@@ -4160,7 +4174,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_mem;
 		}
 
-
 		ret = clk_prepare_enable(ethqos->rgmii_clk);
 		if (ret)
 			goto err_mem;
@@ -4370,7 +4383,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
 
-	if (plat_dat->mdio_bus_data &&
+	if (of_property_read_bool(np, "pcs-v3")) {
+		plat_dat->pcs_v3 = true;
+	} else {
+		plat_dat->pcs_v3 = false;
+		ETHQOSDBG(":pcs-v3 not in dtsi\n");
+	}
+
+	if (ethqos->emac_ver != EMAC_HW_v3_1_0 && plat_dat->mdio_bus_data &&
 	    (plat_dat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII))
 		plat_dat->mdio_bus_data->has_xpcs = true;

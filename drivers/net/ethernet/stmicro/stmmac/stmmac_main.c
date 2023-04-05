@@ -1186,6 +1186,9 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
 	}
 
+	if (priv->plat->pcs_v3)
+		qcom_serdes_loopback_v3_1(priv->plat, true);
+
 	stmmac_mac_set(priv, priv->ioaddr, false);
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
@@ -1212,6 +1215,9 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
 	}
+
+	if (priv->plat->pcs_v3)
+		qcom_serdes_loopback_v3_1(priv->plat, false);
 
 	ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
 	ctrl &= ~priv->hw->link.speed_mask;
@@ -3991,10 +3997,14 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
-	if (priv->hw->qxpcs && (priv->plat->mac2mac_en || !netif_carrier_ok(dev))) {
-		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
-		if (ret < 0)
-			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
+	if (priv->plat->mac2mac_en || !netif_carrier_ok(dev)) {
+		if (priv->hw->qxpcs) {
+			ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
+			if (ret < 0)
+				netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
+		} else if (priv->plat->pcs_v3) {
+			qcom_serdes_loopback_v3_1(priv->plat, true);
+		}
 	}
 
 	/* Extra statistics */
