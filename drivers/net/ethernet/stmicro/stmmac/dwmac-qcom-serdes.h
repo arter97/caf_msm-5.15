@@ -443,6 +443,11 @@ enum USXGMII_MODES {
 		USXGMII_MODE_2P5G,
 };
 
+#define QSERDES3_COM_C_READY BIT(0)
+#define QSERDES3_PCS_READY BIT(0)
+#define QSERDES3_PCS_SGMIIPHY_READY BIT(7)
+#define QSERDES3_COM_C_PLL_LOCKED BIT(1)
+
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SERDES)
 int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos);
 int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
