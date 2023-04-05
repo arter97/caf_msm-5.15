@@ -324,5 +324,6 @@ struct plat_stmmacenet_data {
 	bool pcs_v3;
 	bool pm_lite;
 	bool fixed_phy_mode;
+	bool crc_strip_en;
 };
 #endif

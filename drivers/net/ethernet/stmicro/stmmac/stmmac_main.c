@@ -3611,6 +3611,8 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 		}
 	}
 
+	priv->hw->crc_strip_en = priv->plat->crc_strip_en;
+
 	/* Initialize the MAC Core */
 	stmmac_core_init(priv, priv->hw, dev);
 
@@ -5518,6 +5520,7 @@ read_again:
 		 * stripped manually.
 		 */
 		if (likely(!(status & rx_not_ls)) &&
+		    (unlikely(!priv->hw->crc_strip_en)) &&
 		    (likely(priv->synopsys_id >= DWMAC_CORE_4_00) ||
 		     unlikely(status != llc_snap))) {
 			buf1_len -= ETH_FCS_LEN;
@@ -5746,6 +5749,7 @@ read_again:
 		 * stripped manually.
 		 */
 		if (likely(!(status & rx_not_ls)) &&
+		    (unlikely(!priv->hw->crc_strip_en)) &&
 		    (likely(priv->synopsys_id >= DWMAC_CORE_4_00) ||
 		     unlikely(status != llc_snap))) {
 			if (buf2_len)
