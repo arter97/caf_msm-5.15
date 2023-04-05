@@ -1337,7 +1337,7 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 }
 EXPORT_SYMBOL(qcom_ethqos_serdes_update);
 
-int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos)
+int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 {
 	struct resource *res = NULL;
 	struct platform_device *pdev = ethqos->pdev;
@@ -1365,24 +1365,30 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos)
 		goto err_mem;
 	}
 
-	if (of_property_read_bool(ethqos->pdev->dev.of_node, "usxgmii-mode")) {
-		ret = of_property_read_u32(ethqos->pdev->dev.of_node, "usxgmii-mode", &mode);
-		switch (mode) {
-		case 10000:
-			ethqos->usxgmii_mode = USXGMII_MODE_10G;
-			break;
-		case 5000:
-			ethqos->usxgmii_mode = USXGMII_MODE_5G;
-			break;
-		case 2500:
-			ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
-			break;
-		default:
-			ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
+	if (interface == PHY_INTERFACE_MODE_USXGMII) {
+		if (of_property_read_bool(ethqos->pdev->dev.of_node, "usxgmii-mode")) {
+			ret = of_property_read_u32(ethqos->pdev->dev.of_node, "usxgmii-mode",
+						   &mode);
+			switch (mode) {
+			case 10000:
+				ethqos->usxgmii_mode = USXGMII_MODE_10G;
+				break;
+			case 5000:
+				ethqos->usxgmii_mode = USXGMII_MODE_5G;
+				break;
+			case 2500:
+				ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
+				break;
+			default:
+				ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
+				ethqos->usxgmii_mode = USXGMII_MODE_NA;
+				goto err_mem;
+			}
+		} else {
+			ETHQOSINFO("Unable to find USXGMII mode from device tree\n");
+			ethqos->usxgmii_mode = USXGMII_MODE_NA;
 			goto err_mem;
 		}
-	} else {
-		ETHQOSINFO("Unable to find USXGMII mode from device tree\n");
 	}
 
 	ret = clk_prepare_enable(ethqos->sgmiref_clk);
