@@ -92,7 +92,7 @@ int ethqos_xpcs_init(struct net_device *ndev)
 		}
 		priv->hw->qxpcs->intr_en = true;
 	} else {
-		ETHQOSINFO("Failed to configure XPCS interrupt, using non-interrupt mode\n");
+		ETHQOSINFO("No DTSI entry found for XPCS interrupt, using non-interrupt mode\n");
 		priv->hw->qxpcs->intr_en = false;
 	}
 
