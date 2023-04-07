@@ -15,7 +15,6 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
-#include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -571,7 +570,7 @@ static struct llcc_tcm_drv_data *tcm_drv_data = (void *) -EPROBE_DEFER;
  *
  * Returns 0 on success and a negative error code on failure
  */
-int qcom_llcc_tcm_init(struct platform_device *pdev,
+static int qcom_llcc_tcm_init(struct platform_device *pdev,
 		const struct llcc_slice_config *table, size_t size,
 		struct device_node *node)
 {
@@ -636,7 +635,6 @@ cfg_err:
 	drv_data = ERR_PTR(-ENODEV);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_llcc_tcm_init);
 
 /**
  * llcc_tcm_activate - Activate the TCM slice and give exclusive access

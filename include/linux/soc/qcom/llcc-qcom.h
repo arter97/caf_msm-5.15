@@ -135,19 +135,6 @@ struct llcc_tcm_data {
 	size_t mem_size;
 };
 
-int qcom_llcc_tcm_init(struct platform_device *pdev,
-		const struct llcc_slice_config *table, size_t size,
-		struct device_node *node);
-
-struct llcc_tcm_data *llcc_tcm_activate(void);
-
-phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data);
-
-void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data);
-
-size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data);
-
-void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data);
 /**
  * Enum describing the various staling modes available for clients to use.
  */
@@ -211,6 +198,31 @@ int llcc_slice_activate(struct llcc_slice_desc *desc);
  */
 int llcc_slice_deactivate(struct llcc_slice_desc *desc);
 
+/**
+ * llcc_tcm_activate - Activate llcc tcm
+ */
+struct llcc_tcm_data *llcc_tcm_activate(void);
+
+/**
+ * llcc_tcm_get_phys_addr - get the physical address of llcc tcm slice
+ */
+phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_get_virt_addr - get the virtual address of llcc tcm slice
+ */
+void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_get_slice_size - get the llcc tcm slice size
+ */
+size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_deactivate - Deactivate the llcc tcm
+ */
+void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data);
+
 #else
 static inline struct llcc_slice_desc *llcc_slice_getd(u32 uid)
 {
@@ -231,6 +243,7 @@ static inline size_t llcc_get_slice_size(struct llcc_slice_desc *desc)
 {
 	return 0;
 }
+
 static inline int llcc_slice_activate(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
@@ -245,9 +258,35 @@ static inline int llcc_configure_staling_mode(struct llcc_slice_desc *desc,
 {
 	return -EINVAL;
 }
+
 static inline int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
+}
+
+static inline struct llcc_tcm_data *llcc_tcm_activate(void)
+{
+	return NULL;
+}
+
+static inline phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data)
+{
+	return 0;
+}
+
+static inline void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data)
+{
+	return NULL;
+}
+
+static inline size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data)
+{
+	return 0;
+}
+
+static inline void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data)
+{
+
 }
 #endif
 
