@@ -1143,30 +1143,19 @@ static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, u32 vf_id)
 		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_LOWER, lower);
 		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_UPPER, 0x0);
 
-		lower = readl_relaxed(dev->parf + PCIE20_PARF_MHI_BASE_ADDR_LOWER);
+		EP_PCIE_DBG(dev, "MHI PARF vf_id:%d addr:0x%x\n",
+			vf_id, readl_relaxed(dev->parf + PCIE20_PARF_MHI_BASE_ADDR_LOWER));
 	} else {
 		lower = (lower + (vf_id * size));
 		limit = lower + size;
 		vf_num = vf_id - 1;
 		bar = readl_relaxed(dev->dm_core + ep_pcie_dev.sriov_cap + PCIE20_SRIOV_BAR(0));
-		if (ep_pcie_dev.db_fwd_off_varied) {
-			ep_pcie_write_reg(dev->parf,
-				PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(vf_num), lower);
-			ep_pcie_write_reg(dev->parf,
-				PCIE20_PARF_MHI_BASE_ADDR_VFn_UPPER(vf_num), 0);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(vf_num), lower);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_MHI_BASE_ADDR_VFn_UPPER(vf_num), 0);
 
-			lower = readl_relaxed(dev->parf + PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(vf_num));
-		}
-		else {
-			ep_pcie_write_reg(dev->parf,
-				PCIE20_PARF_MHI_BASE_ADDR_V1_VFn_LOWER(vf_num), lower);
-			ep_pcie_write_reg(dev->parf,
-				PCIE20_PARF_MHI_BASE_ADDR_V1_VFn_UPPER(vf_num), 0);
-
-			lower = readl_relaxed(dev->parf + PCIE20_PARF_MHI_BASE_ADDR_V1_VFn_LOWER(vf_num));
-		}
+		EP_PCIE_DBG(dev, "MHI PARF vf_id:%d addr:0x%x\n", vf_id,
+			readl_relaxed(dev->parf + PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(vf_num)));
 	}
-	EP_PCIE_DBG(dev, "MHI PARF vf_id:%d addr:0x%x\n", vf_id, lower);
 
 	/* Bar address is between 4-31 bits, masking 0-3 bits */
 	bar &= ~(0xf);
