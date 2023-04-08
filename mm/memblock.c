@@ -152,6 +152,7 @@ static __refdata struct memblock_type *memblock_memory = &memblock.memory;
 	} while (0)
 
 static int memblock_debug __initdata_memblock;
+static bool memblock_nomap_remove __initdata_memblock = true;
 static bool system_has_some_mirror __initdata_memblock = false;
 static int memblock_can_resize __initdata_memblock;
 static int memblock_memory_in_slab __initdata_memblock = 0;
@@ -2005,6 +2006,20 @@ static void __init free_unused_memmap(void)
 		free_memmap(prev_end, ALIGN(prev_end, PAGES_PER_SECTION));
 	}
 #endif
+}
+
+static int __init early_memblock_nomap(char *str)
+{
+	int rc;
+
+	rc = kstrtobool(str, &memblock_nomap_remove);
+	return rc;
+}
+early_param("memblock_nomap_remove", early_memblock_nomap);
+
+bool __init memblock_is_nomap_remove(void)
+{
+	return memblock_nomap_remove;
 }
 
 static void __init __free_pages_memory(unsigned long start, unsigned long end)
