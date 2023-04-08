@@ -7957,6 +7957,22 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 	}
 }
 
+static int stmmac_resume_lite(struct stmmac_priv *priv, struct net_device *ndev)
+{
+	stmmac_enable_all_queues(priv);
+	netif_device_attach(ndev);
+	stmmac_start_all_dma(priv);
+	stmmac_mac_set(priv, priv->ioaddr, true);
+
+	if (priv->dma_cap.fpesel) {
+		stmmac_fpe_start_wq(priv);
+		if (priv->plat->fpe_cfg->enable)
+			stmmac_fpe_handshake(priv, true);
+	}
+
+	return 0;
+}
+
 /**
  * stmmac_resume - resume callback
  * @dev: device pointer
@@ -8011,6 +8027,9 @@ int stmmac_resume(struct device *dev)
 		}
 		rtnl_unlock();
 	}
+
+	if (priv->plat->pm_lite)
+		return stmmac_resume_lite(priv, ndev);
 
 	rtnl_lock();
 	mutex_lock(&priv->lock);
