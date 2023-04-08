@@ -3982,6 +3982,12 @@ static int stmmac_open(struct net_device *dev)
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
 	const struct phylink_pcs_ops *pcs_ops;
 
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, true);
+		if (ret < 0)
+			return ret;
+	}
+
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
 		pm_runtime_put_noidle(priv->device);
@@ -4178,6 +4184,7 @@ static int stmmac_release(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 chan;
+	int ret = 0;
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
@@ -4208,6 +4215,12 @@ static int stmmac_release(struct net_device *dev)
 	/* Free the IRQ lines */
 	stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
 
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, false);
+		if (ret < 0)
+			netdev_err(dev, "Failed to disable wakeup-capable: %d\n", ret);
+	}
+
 	if (priv->eee_enabled) {
 		priv->tx_path_in_lpi_mode = false;
 		del_timer_sync(&priv->eee_ctrl_timer);
@@ -4235,7 +4248,7 @@ static int stmmac_release(struct net_device *dev)
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_stop_wq(priv);
 
-	return 0;
+	return ret;
 }
 
 static bool stmmac_vlan_insert(struct stmmac_priv *priv, struct sk_buff *skb,
