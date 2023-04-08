@@ -661,14 +661,6 @@ static void ep_pcie_pipe_clk_deinit(struct ep_pcie_dev_t *dev)
 				dev->pipeclk[i].hdl);
 }
 
-void ep_pcie_irq_deinit(struct ep_pcie_dev_t *dev)
-{
-	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
-
-	if (dev->perst_irq >= 0)
-		disable_irq(dev->perst_irq);
-}
-
 static void ep_pcie_bar_init(struct ep_pcie_dev_t *dev)
 {
 	struct resource *res = dev->res[EP_PCIE_RES_MMIO].resource;
@@ -2669,17 +2661,7 @@ static int ep_pcie_enumeration(struct ep_pcie_dev_t *dev)
 		"PCIe V%d: start PCIe link enumeration per host side\n",
 		dev->rev);
 
-	ret = ep_pcie_core_enable_endpoint(EP_PCIE_OPT_POWER_ON | EP_PCIE_OPT_ENUM_ASYNC);
-	/*
-	 * When there is no host attached ep driver is creating a huge boot delay about 35sec,
-	 * as our driver is waiting for the host to deassert PERST in response to WAKE. All this
-	 * waiting happening in the driver probe context. So it's delaying our driver probe
-	 * completion and thus affecting the overall kernel bootup. To avoid this scenario,
-	 * offloading the link training part to a worker thread context.
-	 */
-	if (!(dev->link_status == EP_PCIE_LINK_ENABLED ||
-		dev->link_status == EP_PCIE_LINK_UP))
-		schedule_work(&dev->handle_enumeration_work);
+	ret = ep_pcie_core_enable_endpoint(EP_PCIE_OPT_ALL);
 
 	if (ret) {
 		EP_PCIE_ERR(&ep_pcie_dev,
@@ -2727,41 +2709,6 @@ static void handle_d3cold_func(struct work_struct *work)
 				atomic_read(&dev->ep_pcie_dev_wake));
 	}
 	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-}
-
-static void handle_enumeration_func(struct work_struct *work)
-{
-	int ret;
-
-	struct ep_pcie_dev_t *dev = container_of(work,
-			struct ep_pcie_dev_t, handle_enumeration_work);
-
-	ret = ep_pcie_core_enable_endpoint(EP_PCIE_OPT_ENUM_ASYNC | EP_PCIE_OPT_AST_WAKE
-						| EP_PCIE_OPT_ENUM);
-	if (ret) {
-		EP_PCIE_ERR(&ep_pcie_dev,
-			"PCIe V%d: PCIe link enumeration failed\n",
-			ep_pcie_dev.rev);
-	} else {
-		if (dev->link_status == EP_PCIE_LINK_ENABLED) {
-			EP_PCIE_INFO(&ep_pcie_dev,
-				"PCIe V%d: PCIe link enumeration is successful with host side\n",
-				ep_pcie_dev.rev);
-		} else if (dev->link_status == EP_PCIE_LINK_UP) {
-			EP_PCIE_INFO(&ep_pcie_dev,
-				"PCIe V%d: PCIe link training is successful with host side. Waiting for enumeration to complete\n",
-				ep_pcie_dev.rev);
-		} else {
-			EP_PCIE_ERR(&ep_pcie_dev,
-				"PCIe V%d: PCIe link is in the unexpected status: %d\n",
-				ep_pcie_dev.rev, dev->link_status);
-			if (!ep_pcie_debug_keep_resource) {
-				ep_pcie_irq_deinit(&ep_pcie_dev);
-				ep_pcie_gpio_deinit(&ep_pcie_dev);
-				ep_pcie_release_resources(&ep_pcie_dev);
-			}
-		}
-	}
 }
 
 static void handle_bme_func(struct work_struct *work)
@@ -3038,7 +2985,6 @@ int32_t ep_pcie_irq_init(struct ep_pcie_dev_t *dev)
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
 
 	/* Initialize all works to be performed before registering for IRQs*/
-	INIT_WORK(&dev->handle_enumeration_work, handle_enumeration_func);
 	INIT_WORK(&dev->handle_bme_work, handle_bme_func);
 	INIT_WORK(&dev->handle_d3cold_work, handle_d3cold_func);
 
@@ -3199,6 +3145,14 @@ perst_irq:
 	}
 
 	return 0;
+}
+
+void ep_pcie_irq_deinit(struct ep_pcie_dev_t *dev)
+{
+	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
+
+	if (dev->perst_irq >= 0)
+		disable_irq(dev->perst_irq);
 }
 
 int ep_pcie_core_register_event(struct ep_pcie_register_event *reg)
