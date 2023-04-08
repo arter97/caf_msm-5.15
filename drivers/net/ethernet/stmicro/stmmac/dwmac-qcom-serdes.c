@@ -390,13 +390,15 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX0_VGA_CAL_CNTRL2);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_GM_CAL);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL2);
 	writel_relaxed(0x4A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
-	writel_relaxed(0x0A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
+	writel_relaxed(0x5A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_HIGH);
 	writel_relaxed(0x20, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_MEASURE_TIME);
@@ -423,9 +425,10 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
+	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
@@ -570,13 +573,15 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX0_VGA_CAL_CNTRL2);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_GM_CAL);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL2);
 	writel_relaxed(0x4A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
-	writel_relaxed(0x0A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
+	writel_relaxed(0x5A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_HIGH);
 	writel_relaxed(0x20, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_MEASURE_TIME);
@@ -603,9 +608,10 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
+	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
 
@@ -757,14 +763,14 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX0_VGA_CAL_CNTRL2);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_GM_CAL);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL2);
-	writel_relaxed(0x4E, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
+	writel_relaxed(0x4A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
 	writel_relaxed(0x5A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_HIGH);
@@ -787,10 +793,9 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
-	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
+	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
@@ -939,14 +944,14 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX0_VGA_CAL_CNTRL2);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_GM_CAL);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL2);
-	writel_relaxed(0x4E, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
+	writel_relaxed(0x4A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
 	writel_relaxed(0x5A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_HIGH);
@@ -956,23 +961,27 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CNTRL);
 	writel_relaxed(0x1E, ethqos->sgmii_base + QSERDES_RX0_SIGDET_DEGLITCH_CNTRL);
 	writel_relaxed(0x18, ethqos->sgmii_base + QSERDES_RX0_RX_BAND);
-	writel_relaxed(0xE4, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_LOW);
-	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH);
-	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH2);
-	writel_relaxed(0xC9, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH3);
-	writel_relaxed(0x3A, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH4);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_LOW);
+	writel_relaxed(0xBF, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH);
+	writel_relaxed(0xFF, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH2);
+	writel_relaxed(0xDF, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH3);
+	writel_relaxed(0xED, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_00_HIGH4);
 	writel_relaxed(0xE0, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_LOW);
 	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH);
 	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH2);
 	writel_relaxed(0x09, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH3);
 	writel_relaxed(0xB1, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH4);
+	writel_relaxed(0xE0, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_LOW);
+	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH);
+	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH2);
+	writel_relaxed(0x3B, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH3);
+	writel_relaxed(0xB7, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH4);
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
-	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
+	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
@@ -1121,14 +1130,14 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_RX0_VGA_CAL_CNTRL2);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_RX0_GM_CAL);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL2);
-	writel_relaxed(0x4E, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
+	writel_relaxed(0x4A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL3);
 	writel_relaxed(0x5A, ethqos->sgmii_base + QSERDES_RX0_RX_EQU_ADAPTOR_CNTRL4);
 	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_RX_IDAC_TSETTLE_HIGH);
@@ -1148,13 +1157,17 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH2);
 	writel_relaxed(0x09, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH3);
 	writel_relaxed(0xB1, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_01_HIGH4);
+	writel_relaxed(0xE0, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_LOW);
+	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH);
+	writel_relaxed(0xC8, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH2);
+	writel_relaxed(0x3B, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH3);
+	writel_relaxed(0xB7, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH4);
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
-	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
+	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
