@@ -140,6 +140,8 @@ enum tmc_mem_intf_width {
 /* SW USB reserved memory size */
 #define TMC_ETR_SW_USB_BUF_SIZE SZ_64M
 
+static u32 sw_usb_buf_size = TMC_ETR_SW_USB_BUF_SIZE;
+
 enum etr_mode {
 	ETR_MODE_FLAT,		/* Uses contiguous flat buffer */
 	ETR_MODE_ETR_SG,	/* Uses in-built TMC ETR SG mechanism */
