@@ -350,6 +350,12 @@ enum request_irq_err {
 	REQ_IRQ_ERR_NO,
 };
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+enum ipa_queue_type {
+	IPA_QUEUE_BE = 0,
+};
+#endif
+
 /* EEE and LPI defines */
 #define	CORE_IRQ_TX_PATH_IN_LPI_MODE	(1 << 0)
 #define	CORE_IRQ_TX_PATH_EXIT_LPI_MODE	(1 << 1)

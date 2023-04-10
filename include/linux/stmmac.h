@@ -136,6 +136,7 @@ struct stmmac_rxq_cfg {
 	u32 prio;
 	bool thresholdmode;
 	u32 threshold_byte;
+	bool skip_sw;
 };
 
 struct stmmac_txq_cfg {
@@ -149,6 +150,7 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
+	bool skip_sw;
 };
 
 /* FPE link state */
