@@ -51,7 +51,7 @@
 
 #define ICC_AVG_BW				500
 #define ICC_PEAK_BW				800
-#define PERST_RAW_RESET_STATUS			BIT(11)
+#define PERST_RAW_RESET_STATUS			BIT(0)
 
 /* debug mask sys interface */
 static int ep_pcie_debug_mask;
