@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/platform_device.h>
@@ -213,7 +213,10 @@ static int aop_psens_probe_volt(struct platform_device *pdev,
 		return -ENOMEM;
 
 	st->num_channels = channels;
-	st->attrs = devm_kcalloc(dev, st->num_channels, sizeof(*st->attrs), GFP_KERNEL);
+	st->attrs = devm_kcalloc(dev,
+				st->num_channels + 1,
+				sizeof(*st->attrs),
+				GFP_KERNEL);
 	if (st->attrs == NULL)
 		return -ENOMEM;
 
@@ -397,4 +400,3 @@ static struct platform_driver aop_pmic_sensor_driver = {
 module_platform_driver(aop_pmic_sensor_driver);
 MODULE_DESCRIPTION("QTI AOP PMIC Sensor Driver");
 MODULE_LICENSE("GPL v2");
-
