@@ -16,6 +16,8 @@
 #define EMAC_VREG_RGMII_NAME "vreg_rgmii"
 #define EMAC_VREG_EMAC_PHY_NAME "vreg_emac_phy"
 #define EMAC_VREG_RGMII_IO_PADS_NAME "vreg_rgmii_io_pads"
+#define EMAC_VREG_A_SGMII_1P2_NAME "vreg_a_sgmii_1p2"
+#define EMAC_VREG_A_SGMII_0P9_NAME "vreg_a_sgmii_0p9"
 
 static int setup_gpio_input_common
 	(struct device *dev, const char *name, int *gpio)
@@ -55,9 +57,15 @@ static int setup_gpio_input_common
 	return ret;
 }
 
-int ethqos_init_reqgulators(struct qcom_ethqos *ethqos)
+int ethqos_init_regulators(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
+	u32 a_sgmii_1p2_max_voltage = 1200000;
+	u32 a_sgmii_1p2_min_voltage = 1200000;
+	u32 a_sgmii_0p9_max_voltage = 912000;
+	u32 a_sgmii_0p9_min_voltage = 880000;
+	u32 a_sgmii_1p2_load_current = 25000;
+	u32 a_sgmii_0p9_load_current = 132000;
 
 	if (of_property_read_bool(ethqos->pdev->dev.of_node,
 				  "gdsc_emac-supply")) {
@@ -136,6 +144,72 @@ int ethqos_init_reqgulators(struct qcom_ethqos *ethqos)
 		ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_RGMII_IO_PADS_NAME);
 	}
 
+	if (of_property_read_bool(ethqos->pdev->dev.of_node,
+				  "vreg_a_sgmii_1p2-supply")) {
+		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get
+		(&ethqos->pdev->dev, EMAC_VREG_A_SGMII_1P2_NAME);
+		if (IS_ERR(ethqos->vreg_a_sgmii_1p2)) {
+			ETHQOSERR("Can not get <%s>\n",
+				  EMAC_VREG_A_SGMII_1P2_NAME);
+			return PTR_ERR(ethqos->vreg_a_sgmii_1p2);
+		}
+
+		ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, a_sgmii_1p2_min_voltage,
+					    a_sgmii_1p2_max_voltage);
+		if (ret) {
+			ETHQOSERR("Failed to set voltage for %s\n", EMAC_VREG_A_SGMII_1P2_NAME);
+			goto reg_error;
+		}
+
+		ret = regulator_set_load(ethqos->vreg_a_sgmii_1p2, a_sgmii_1p2_load_current);
+		if (ret) {
+			ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_1P2_NAME);
+			goto reg_error;
+		}
+
+		ret = regulator_enable(ethqos->vreg_a_sgmii_1p2);
+		if (ret) {
+			ETHQOSERR("Can not enable <%s>\n",
+				  EMAC_VREG_A_SGMII_1P2_NAME);
+			goto reg_error;
+		}
+
+		ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_1P2_NAME);
+	}
+
+	if (of_property_read_bool(ethqos->pdev->dev.of_node,
+				  "vreg_a_sgmii_0p9-supply")) {
+		ethqos->vreg_a_sgmii_0p9 = devm_regulator_get
+		(&ethqos->pdev->dev, EMAC_VREG_A_SGMII_0P9_NAME);
+		if (IS_ERR(ethqos->vreg_a_sgmii_0p9)) {
+			ETHQOSERR("Can not get <%s>\n",
+				  EMAC_VREG_A_SGMII_0P9_NAME);
+			return PTR_ERR(ethqos->vreg_a_sgmii_0p9);
+		}
+
+		ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, a_sgmii_0p9_min_voltage,
+					    a_sgmii_0p9_max_voltage);
+		if (ret) {
+			ETHQOSERR("Failed to set voltage for %s\n", EMAC_VREG_A_SGMII_0P9_NAME);
+			goto reg_error;
+		}
+
+		ret = regulator_set_load(ethqos->vreg_a_sgmii_0p9, a_sgmii_0p9_load_current);
+		if (ret) {
+			ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_0P9_NAME);
+			goto reg_error;
+		}
+
+		ret = regulator_enable(ethqos->vreg_a_sgmii_0p9);
+		if (ret) {
+			ETHQOSERR("Can not enable <%s>\n",
+				  EMAC_VREG_A_SGMII_0P9_NAME);
+			goto reg_error;
+		}
+
+		ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
+	}
+
 	return ret;
 
 reg_error:
@@ -143,28 +217,56 @@ reg_error:
 	ethqos_disable_regulators(ethqos);
 	return ret;
 }
-EXPORT_SYMBOL(ethqos_init_reqgulators);
+EXPORT_SYMBOL(ethqos_init_regulators);
 
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 {
+	int ret = 0;
+
 	if (ethqos->reg_rgmii) {
 		regulator_disable(ethqos->reg_rgmii);
+		devm_regulator_put(ethqos->reg_rgmii);
 		ethqos->reg_rgmii = NULL;
 	}
 
 	if (ethqos->reg_emac_phy) {
 		regulator_disable(ethqos->reg_emac_phy);
+		devm_regulator_put(ethqos->reg_emac_phy);
 		ethqos->reg_emac_phy = NULL;
 	}
 
 	if (ethqos->reg_rgmii_io_pads) {
 		regulator_disable(ethqos->reg_rgmii_io_pads);
+		devm_regulator_put(ethqos->reg_rgmii_io_pads);
 		ethqos->reg_rgmii_io_pads = NULL;
 	}
 
 	if (ethqos->gdsc_emac) {
 		regulator_disable(ethqos->gdsc_emac);
+		devm_regulator_put(ethqos->gdsc_emac);
 		ethqos->gdsc_emac = NULL;
+	}
+
+	if (ethqos->vreg_a_sgmii_1p2) {
+		regulator_disable(ethqos->vreg_a_sgmii_1p2);
+		ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, 0, INT_MAX);
+		if (ret < 0)
+			ETHQOSERR("Failed to remove %s voltage request: %d\n",
+				  EMAC_VREG_A_SGMII_1P2_NAME, ret);
+
+		devm_regulator_put(ethqos->vreg_a_sgmii_1p2);
+		ethqos->vreg_a_sgmii_1p2 = NULL;
+	}
+
+	if (ethqos->vreg_a_sgmii_0p9) {
+		regulator_disable(ethqos->vreg_a_sgmii_0p9);
+		ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, 0, INT_MAX);
+		if (ret < 0)
+			ETHQOSERR("Failed to %s voltage request: %d\n", EMAC_VREG_A_SGMII_0P9_NAME,
+				  ret);
+
+		devm_regulator_put(ethqos->vreg_a_sgmii_0p9);
+		ethqos->vreg_a_sgmii_0p9 = NULL;
 	}
 }
 EXPORT_SYMBOL(ethqos_disable_regulators);
