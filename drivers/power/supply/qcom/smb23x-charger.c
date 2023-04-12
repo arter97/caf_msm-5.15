@@ -700,11 +700,18 @@ static int smb23x_suspend_usb(struct smb23x_chip *chip,
 #define CURRENT_SUSPEND	2
 #define CURRENT_100_MA	100
 #define CURRENT_500_MA	500
+#define CURRENT_1500_MA	1500
 static int smb23x_set_appropriate_usb_current(struct smb23x_chip *chip)
 {
 	int rc = 0, therm_ma, current_ma;
-	int usb_current = chip->usb_psy_ma;
+	int usb_current;
 	u8 tmp;
+
+	if ((chip->charger_type == POWER_SUPPLY_TYPE_USB_CDP) ||
+				(chip->charger_type == POWER_SUPPLY_TYPE_USB_DCP))
+		chip->usb_psy_ma  = CURRENT_1500_MA;
+
+	usb_current = chip->usb_psy_ma;
 
 	if (chip->therm_lvl_sel > 0
 			&& chip->therm_lvl_sel < (chip->thermal_levels - 1))
@@ -1406,9 +1413,12 @@ static struct irq_handler_info handlers[] = {
 #define DEBUG_BATT_ID_HIGH	9000
 static bool is_debug_batt_id(struct smb23x_chip *chip)
 {
+	pr_info("DEBUG_BATT: DEBUG BATT ID value is %d\n", chip->batt_id_ohm);
+
 	if (is_between(DEBUG_BATT_ID_LOW, DEBUG_BATT_ID_HIGH,
 						chip->batt_id_ohm))
 		return true;
+
 
 	return false;
 
@@ -1833,12 +1843,14 @@ static int smb23x_usb_set_property(struct power_supply *psy,
 		smb23x_update_desc_type(chip);
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		chip->usb_psy_ma = val->intval / 1000;
-		smb23x_enable_volatile_writes(chip);
-		rc = smb23x_set_appropriate_usb_current(chip);
-		if (rc)
-			pr_err("Couldn't set USB current rc = %d\n", rc);
-		break;
+		if (!is_debug_batt_id(chip)) {
+			chip->usb_psy_ma = val->intval / 1000;
+			smb23x_enable_volatile_writes(chip);
+			rc = smb23x_set_appropriate_usb_current(chip);
+			if (rc)
+				pr_err("Couldn't set USB current rc = %d\n", rc);
+			break;
+		}
 	default:
 		return -EINVAL;
 	}
@@ -2344,8 +2356,6 @@ static int smb23x_probe(struct i2c_client *client,
 
 	smb23x_init_usb_psy(chip);
 
-	if (is_debug_batt_id(chip))
-		chip->debug_batt = true;
 
 	rc = smb23x_determine_initial_status(chip);
 	if (rc < 0) {
@@ -2353,6 +2363,8 @@ static int smb23x_probe(struct i2c_client *client,
 		goto destroy_mutex;
 	}
 
+	if (is_debug_batt_id(chip))
+		chip->debug_batt = true;
 	/*
 	 * Disable charging if device tree (USER) requested:
 	 * set USB_SUSPEND to cutoff USB power completely
