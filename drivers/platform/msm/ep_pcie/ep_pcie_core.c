@@ -2890,10 +2890,11 @@ static irqreturn_t ep_pcie_handle_sriov_irq(int irq, void *data)
 		sriov_irq_mask = readl_relaxed(dev->parf + PCIE20_INT_ALL_VF_BME_MASK);
 		ep_pcie_write_mask(
 			dev->parf + PCIE20_INT_ALL_VF_BME_CLEAR, 0, sriov_irq_status);
+		sriov_irq_status &= sriov_irq_mask;
 	}
 
 	dev->sriov_irq_counter++;
-	EP_PCIE_DBG(dev,
+	EP_PCIE_DUMP(dev,
 		"PCIe V%d: No. %ld SR-IOV IRQ %d received; status:0x%x; mask:0x%x\n",
 		dev->rev, dev->sriov_irq_counter, irq, sriov_irq_status, sriov_irq_mask);
 
