@@ -370,7 +370,7 @@ static int qcom_xpcs_unset_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	if (!xpcs->mac2mac_en) {
+	if (!xpcs->fixed_phy_mode) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
 		if (ret < 0)
 			return -EINVAL;
@@ -607,7 +607,7 @@ static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	if (!xpcs->mac2mac_en) {
+	if (!xpcs->fixed_phy_mode) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
 		if (ret < 0)
 			return -EINVAL;
@@ -620,7 +620,7 @@ static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 	if (ret < 0)
 		return -EINVAL;
 
-	if (!xpcs->mac2mac_en)
+	if (!xpcs->fixed_phy_mode)
 		ret |= DW_VR_MII_TX_CONFIG_MASK;
 	ret |= DW_VR_MII_SGMII_LINK_STS;
 
@@ -757,8 +757,13 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 {
 	int mmd_ctrl, an_ctrl;
 	int ret = 0;
+	int pcs_speed = speed;
 
-	if (speed == SPEED_2500) {
+	if (xpcs->fixed_phy_mode && xpcs->mac2mac_speed) {
+		pcs_speed = xpcs->mac2mac_speed;
+	}
+
+	if (pcs_speed == SPEED_2500) {
 		ret = qcom_xpcs_set_2p5g_sgmii(xpcs, duplex);
 		if (ret < 0)
 			goto err;
@@ -779,7 +784,7 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 
 	mmd_ctrl &= ~DW_SGMII_SS_MASK;
 
-	switch (speed) {
+	switch (pcs_speed) {
 	case SPEED_1000:
 		an_ctrl |= DW_VR_MII_CTRL;
 		mmd_ctrl |= DW_GMII_1000;
@@ -795,7 +800,7 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 		XPCSINFO("10Mbps-SGMII enabled\n");
 		break;
 	default:
-		XPCSERR("Invalid speed mode: %d\n", speed);
+		XPCSERR("Invalid speed mode: %d\n", pcs_speed);
 		return;
 	}
 
@@ -806,6 +811,9 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 	an_ctrl = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, an_ctrl);
 
 out:
+	if (xpcs->fixed_phy_mode)
+		XPCSINFO("mac2mac mode: PCS link up speed = %d\n",
+			 pcs_speed);
 	XPCSINFO("SGMII link is up\n");
 	return;
 err:

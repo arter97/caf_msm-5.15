@@ -79,8 +79,11 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	priv->hw->qxpcs = qxpcs;
 	priv->hw->xpcs = NULL;
 
-	if (priv->plat->mac2mac_en)
-		priv->hw->qxpcs->mac2mac_en = true;
+	if (priv->plat->mac2mac_speed)
+		priv->hw->qxpcs->mac2mac_speed = priv->plat->mac2mac_speed;
+
+	if (priv->plat->fixed_phy_mode && priv->hw->qxpcs)
+		priv->hw->qxpcs->fixed_phy_mode = true;
 
 	ret = ethqos_xpcs_intr_config(ndev);
 	if (!ret) {
