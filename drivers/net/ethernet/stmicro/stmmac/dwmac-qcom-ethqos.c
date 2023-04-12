@@ -4143,6 +4143,39 @@ err:
 	return ret;
 }
 
+/* Skip stmmac_ethtool_set_wol and do something similar to qcom_ethqos_request_phy_wol.
+ */
+static int ethqos_enable_wol(struct net_device *ndev, struct ethtool_wolinfo *wol)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = get_stmmac_bsp_priv(priv->device);
+	int ret = 0;
+
+	if (priv->phydev) {
+		wol->cmd = ETHTOOL_SWOL;
+		ret = phy_ethtool_set_wol(priv->phydev, wol);
+		if (ret)
+			return ret;
+
+		if (wol->wolopts) {
+			ret = enable_irq_wake(ethqos->phy_intr);
+			ETHQOSINFO("Enabled WoL\n");
+		} else {
+			ret = disable_irq_wake(ethqos->phy_intr);
+			ETHQOSINFO("Disabled WoL\n");
+		}
+
+		if (ret) {
+			ETHQOSERR("Failed to configure WoL\n");
+			return ret;
+		}
+	} else {
+		ret = -ENODEV;
+	}
+
+	return ret;
+}
+
 #else
 static inline void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 {
@@ -4771,6 +4804,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	priv->plat->pm_lite = true;
+	plat_dat->enable_wol = ethqos_enable_wol;
 #endif
 
 	ethqos_create_debugfs(ethqos);
