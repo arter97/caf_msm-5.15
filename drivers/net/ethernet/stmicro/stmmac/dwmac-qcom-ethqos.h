@@ -463,6 +463,11 @@ struct qcom_ethqos {
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	s8 passthrough_en;
+#else
+	s8 cv2x_priority;
+#endif
 };
 
 struct pps_cfg {

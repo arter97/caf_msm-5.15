@@ -191,6 +191,8 @@ static char buf[2000];
 #define EMAC_PHY_REG_OFFSET 0x73000
 #define RGMII_REG_OFFSET 0x74000
 #define EGPIO_ENABLE 0x1000
+#define ETHQOS_SYSFS_DEV_ATTR_PERMS 0644
+#define BUFF_SZ 256
 
 #define GMAC_CONFIG_PS			BIT(15)
 #define GMAC_CONFIG_FES			BIT(14)
@@ -3736,6 +3738,221 @@ static const struct file_operations fops_icb_read = {
 	.llseek = default_llseek,
 };
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+static ssize_t show_passthrough_en(struct device *dev,
+				   struct device_attribute *attr, char *user_buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	return scnprintf(user_buf, BUFF_SZ, "%d\n", ethqos->passthrough_en);
+}
+
+static ssize_t store_passthrough_en(struct device *dev,
+				    struct device_attribute *attr, const char *user_buf,
+				    size_t size)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	s8 input = 0;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos8(user_buf, 0, &input)) {
+		ETHQOSERR("Error in reading option from user\n");
+		return -EINVAL;
+	}
+
+	if (input != 0 && input != 1) {
+		ETHQOSERR("Invalid option set by user\n");
+		return -EINVAL;
+	}
+
+	if (input == ethqos->passthrough_en)
+		ETHQOSERR("No effect as duplicate input\n");
+
+	ethqos->passthrough_en = input;
+
+	return size;
+}
+#else
+static ssize_t show_cv2x_priority(struct device *dev,
+				  struct device_attribute *attr, char *user_buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	return scnprintf(user_buf, BUFF_SZ, "%d\n", ethqos->cv2x_priority);
+}
+
+static ssize_t store_cv2x_priority(struct device *dev,
+				   struct device_attribute *attr, const char *user_buf, size_t size)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	s8 input = 0;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos8(user_buf, 0, &input)) {
+		ETHQOSERR("Error in reading option from user\n");
+		return -EINVAL;
+	}
+
+	if (input < 0 || input > 7) {
+		ETHQOSERR("Invalid option set by user\n");
+		return -EINVAL;
+	}
+
+	if (input == ethqos->cv2x_priority)
+		ETHQOSERR("No effect as duplicate input\n");
+
+	ethqos->cv2x_priority = input;
+
+	return size;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+static DEVICE_ATTR(passthrough_en, ETHQOS_SYSFS_DEV_ATTR_PERMS, show_passthrough_en,
+		   store_passthrough_en);
+#else
+static DEVICE_ATTR(cv2x_priority, ETHQOS_SYSFS_DEV_ATTR_PERMS, show_cv2x_priority,
+		   store_cv2x_priority);
+#endif
+
+static int ethqos_remove_sysfs(struct qcom_ethqos *ethqos)
+{
+	struct net_device *net_dev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	net_dev = platform_get_drvdata(ethqos->pdev);
+	if (!net_dev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	sysfs_remove_file(&net_dev->dev.kobj,
+			  &dev_attr_passthrough_en.attr);
+#else
+	sysfs_remove_file(&net_dev->dev.kobj,
+			  &dev_attr_cv2x_priority.attr);
+#endif
+
+	return 0;
+}
+
+static int ethqos_create_sysfs(struct qcom_ethqos *ethqos)
+{
+	int ret;
+	struct net_device *net_dev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	net_dev = platform_get_drvdata(ethqos->pdev);
+	if (!net_dev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	ret = sysfs_create_file(&net_dev->dev.kobj,
+				&dev_attr_passthrough_en.attr);
+	if (ret) {
+		ETHQOSERR("unable to create passthrough_en sysfs node\n");
+		goto fail;
+	}
+#else
+	ret = sysfs_create_file(&net_dev->dev.kobj,
+				&dev_attr_cv2x_priority.attr);
+	if (ret) {
+		ETHQOSERR("unable to create cv2x_priority sysfs node\n");
+		goto fail;
+	}
+#endif
+
+	return ret;
+
+fail:
+	return ethqos_remove_sysfs(ethqos);
+}
+
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -4870,6 +5087,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		ETHQOSERR("Failed to enable Device wakeup capable ret = %d\n",
 			  ret);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	ethqos->passthrough_en = 0;
+#else
+	ethqos->cv2x_priority = 0;
+#endif
+
+	ethqos_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
 	return ret;
 
@@ -4945,6 +5169,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
+	ethqos_remove_sysfs(ethqos);
 
 	debugfs_remove_recursive(ethqos->debugfs_dir);
 
