@@ -310,6 +310,7 @@ struct plat_stmmacenet_data {
 		 struct net_device *sb_dev);
 	unsigned int (*get_plat_tx_coal_frames)
 		(struct sk_buff *skb);
+	int (*handle_mac_err)(void *priv, int type, int chan);
 	int (*handle_prv_ioctl)(struct net_device *dev, struct ifreq *ifr,
 		int cmd);
 	void (*request_phy_wol)(void *plat);
@@ -328,5 +329,6 @@ struct plat_stmmacenet_data {
 	bool crc_strip_en;
 	bool plat_wait_for_emac_rx_clk_en;
 	bool rx_clk_rdy;
+	bool mac_err_rec;
 };
 #endif
