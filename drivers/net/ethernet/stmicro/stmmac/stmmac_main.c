@@ -4137,9 +4137,6 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	priv->reinit_sw_path = stmmac_reinit;
-#endif
 	return 0;
 
 irq_error:
@@ -7821,9 +7818,7 @@ int stmmac_dvr_remove(struct device *dev)
 	stmmac_mac_set(priv, priv->ioaddr, false);
 	netif_carrier_off(ndev);
 	unregister_netdev(ndev);
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	priv->reinit_sw_path = NULL;
-#endif
+
 	/* Serdes power down needs to happen after VLAN filter
 	 * is deleted that is triggered by unregister_netdev().
 	 */
@@ -8062,101 +8057,6 @@ int stmmac_resume(struct device *dev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(stmmac_resume);
-
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-int stmmac_reinit(struct stmmac_priv *priv)
-{
-	struct stmmac_tx_queue *tx_q = NULL;
-	struct stmmac_rx_queue *rx_q = NULL;
-
-	mutex_lock(&priv->lock);
-
-	/*Stop network queues until initialisation is done */
-	netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
-
-	/*clear so that we start fresh */
-	stmmac_clear_rx_descriptors(priv, IPA_QUEUE_BE);
-	stmmac_clear_tx_descriptors(priv, IPA_QUEUE_BE);
-
-	tx_q = &priv->tx_queue[IPA_QUEUE_BE];
-	rx_q = &priv->rx_queue[IPA_QUEUE_BE];
-
-	/*stop rx and tx DMA */
-	stmmac_stop_rx_dma(priv, IPA_QUEUE_BE);
-	stmmac_stop_tx_dma(priv, IPA_QUEUE_BE);
-
-	/*free tx buffers cache*/
-	dma_free_tx_skbufs(priv, IPA_QUEUE_BE);
-	tx_q->dirty_tx = 0;
-	tx_q->cur_tx = 0;
-	tx_q->mss = 0;
-
-	/*free rx buffers cache*/
-	rx_q->cur_rx = 0;
-	rx_q->dirty_rx = 0;
-	priv->rx_coal_frames[IPA_QUEUE_BE] = STMMAC_RX_FRAMES;
-
-	/*reset netdev queues*/
-	netdev_tx_reset_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
-
-	/*clear the Channel cache by programming the List address again*/
-	/*This will flush cached data refer databook page 68*/
-	stmmac_init_chan(priv, priv->ioaddr, priv->plat->dma_cfg, IPA_QUEUE_BE);
-
-	/*Stop DMA IRQ*/
-	stmmac_disable_dma_irq(priv, priv->ioaddr, IPA_QUEUE_BE, 1, 1);
-
-	/*clear the RX cache by programming the List address again*/
-	/*This will flush cached data refer databook page 68*/
-	stmmac_init_rx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
-			    rx_q->dma_rx_phy, IPA_QUEUE_BE);
-
-	rx_q->rx_tail_addr = rx_q->dma_rx_phy +
-				     (rx_q->buf_alloc_num *
-				      sizeof(struct dma_desc));
-
-	stmmac_set_rx_tail_ptr(priv, priv->ioaddr,
-			       rx_q->rx_tail_addr, IPA_QUEUE_BE);
-
-	/*clear the TX cache by programming the List address again*/
-	/*This will flush cached data refer databook page 68*/
-	stmmac_init_tx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
-			    tx_q->dma_tx_phy, IPA_QUEUE_BE);
-
-	tx_q->tx_tail_addr = tx_q->dma_tx_phy;
-
-	stmmac_set_tx_tail_ptr(priv, priv->ioaddr,
-			       tx_q->tx_tail_addr, IPA_QUEUE_BE);
-
-	/*set watchdog to 16 packets*/
-	stmmac_rx_watchdog(priv, priv->ioaddr,
-			   MIN_DMA_RIWT, IPA_QUEUE_BE);
-
-	/*reset ring to 511 in SW path RX*/
-	stmmac_set_rx_ring_len(priv, priv->ioaddr,
-			       (priv->dma_rx_size - 1), IPA_QUEUE_BE);
-
-	/*reset ring to 511 in SW path TX*/
-	stmmac_set_tx_ring_len(priv, priv->ioaddr,
-			       (priv->dma_tx_size - 1), IPA_QUEUE_BE);
-
-	/*Let the ball roll in RX*/
-	stmmac_start_rx_dma(priv, IPA_QUEUE_BE);
-
-	/*Let the ball roll in TX*/
-	stmmac_start_tx_dma(priv, IPA_QUEUE_BE);
-
-	/*wake up network queues*/
-	netif_tx_wake_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
-
-	/*Finally enable IRQ*/
-	stmmac_enable_dma_irq(priv, priv->ioaddr, IPA_QUEUE_BE, 1, 1);
-
-	mutex_unlock(&priv->lock);
-
-	return 0;
-}
-#endif
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)

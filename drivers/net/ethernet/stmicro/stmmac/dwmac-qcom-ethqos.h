@@ -161,6 +161,12 @@ do {\
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+enum ipa_queue_type {
+	IPA_QUEUE_BE = 0,
+};
+#endif
+
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
 #define XGMAC_CONFIG_LM			BIT(10)
