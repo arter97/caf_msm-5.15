@@ -82,7 +82,7 @@ static int pndisc_constructor(struct pneigh_entry *n);
 static void pndisc_destructor(struct pneigh_entry *n);
 static void pndisc_redo(struct sk_buff *skb);
 static int ndisc_is_multicast(const void *pkey);
-
+static unsigned int handle_unsolicited_na;
 static const struct neigh_ops ndisc_generic_ops = {
 	.family =		AF_INET6,
 	.solicit =		ndisc_solicit,
@@ -964,6 +964,7 @@ static void ndisc_recv_na(struct sk_buff *skb)
 	struct inet6_dev *idev = __in6_dev_get(dev);
 	struct inet6_ifaddr *ifp;
 	struct neighbour *neigh;
+	int check = 0;
 
 	if (skb->len < sizeof(struct nd_msg)) {
 		ND_PRINTK(2, warn, "NA: packet too short\n");
@@ -1024,8 +1025,16 @@ static void ndisc_recv_na(struct sk_buff *skb)
 		in6_ifa_put(ifp);
 		return;
 	}
-	neigh = neigh_lookup(&nd_tbl, &msg->target, dev);
 
+		neigh_probe_enable_rcv(&handle_unsolicited_na);
+		if (handle_unsolicited_na) {
+			check = (!msg->icmph.icmp6_solicited && lladdr &&
+					idev && idev->cnf.forwarding &&
+					handle_unsolicited_na);
+			neigh = __neigh_lookup(&nd_tbl, &msg->target, dev, check);
+		} else {
+			neigh = neigh_lookup(&nd_tbl, &msg->target, dev);
+		}
 	if (neigh) {
 		u8 old_flags = neigh->flags;
 		struct net *net = dev_net(dev);
@@ -1052,6 +1061,9 @@ static void ndisc_recv_na(struct sk_buff *skb)
 			     NEIGH_UPDATE_F_OVERRIDE_ISROUTER|
 			     (msg->icmph.icmp6_router ? NEIGH_UPDATE_F_ISROUTER : 0),
 			     NDISC_NEIGHBOUR_ADVERTISEMENT, &ndopts);
+		if (!msg->icmph.icmp6_solicited && check) {
+			neigh_event_send(neigh, NULL);
+		}
 
 		if ((old_flags & ~neigh->flags) & NTF_ROUTER) {
 			/*
