@@ -22,6 +22,7 @@
 #include <linux/stat.h>
 #include <linux/slab.h>
 #include <linux/xarray.h>
+#include <linux/memblock.h>
 
 #include <linux/atomic.h>
 #include <linux/uaccess.h>
@@ -442,6 +443,22 @@ static DEVICE_ATTR_RW(state);
 static DEVICE_ATTR_RO(phys_device);
 static DEVICE_ATTR_RO(removable);
 
+#ifdef CONFIG_MEMORY_HOTPLUG
+static ssize_t show_aligned_blocks_addr(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	return memblock_dump_aligned_blocks_addr(buf);
+}
+
+static ssize_t show_aligned_blocks_num(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	return memblock_dump_aligned_blocks_num(buf);
+}
+static DEVICE_ATTR(aligned_blocks_addr, 0444, show_aligned_blocks_addr, NULL);
+static DEVICE_ATTR(aligned_blocks_num, 0444, show_aligned_blocks_num, NULL);
+#endif
+
 /*
  * Show the memory block size (shared by all memory blocks).
  */
@@ -793,6 +810,10 @@ static struct attribute *memory_root_attrs[] = {
 
 	&dev_attr_block_size_bytes.attr,
 	&dev_attr_auto_online_blocks.attr,
+#ifdef CONFIG_MEMORY_HOTPLUG
+	&dev_attr_aligned_blocks_addr.attr,
+	&dev_attr_aligned_blocks_num.attr,
+#endif
 	NULL
 };
 
