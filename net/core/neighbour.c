@@ -62,6 +62,12 @@ static unsigned int neigh_probe_enable;
 static const struct seq_operations neigh_stat_seq_ops;
 #endif
 
+void neigh_probe_enable_rcv(unsigned int *data)
+{
+	*data = neigh_probe_enable;
+}
+EXPORT_SYMBOL(neigh_probe_enable_rcv);
+
 /*
    Neighbour hash table buckets are protected with rwlock tbl->lock.
 
