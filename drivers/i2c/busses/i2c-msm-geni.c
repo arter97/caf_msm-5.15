@@ -761,11 +761,11 @@ static void gi2c_ev_cb(struct dma_chan *ch, struct msm_gpi_cb const *cb_str,
 			geni_i2c_err(gi2c, I2C_BUS_PROTO);
 		if (m_stat & M_GP_IRQ_4_EN)
 			geni_i2c_err(gi2c, I2C_ARB_LOST);
-		complete(&gi2c->xfer);
 		break;
 	default:
 		break;
 	}
+	complete(&gi2c->xfer);
 	if (cb_str->cb_event != MSM_GPI_QUP_NOTIFY)
 		I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
 				"GSI QN err:0x%x, status:0x%x, err:%d\n",
@@ -918,10 +918,15 @@ static struct msm_gpi_tre *setup_go_tre(struct geni_i2c_dev *gi2c,
 	if (msgs[i].flags & I2C_M_RD) {
 		go_t->dword[2] = MSM_GPI_I2C_GO_TRE_DWORD2(msgs[i].len);
 		/*
-		 * Since we are doing unlock tre separately for shared-se,
-		 * so ieob bit is common for shared and non shared SE's.
+		 * For Rx Go tre: Set ieob for non-shared se and for all
+		 * but last transfer in shared se
 		 */
-		go_t->dword[3] = MSM_GPI_I2C_GO_TRE_DWORD3(1, 0, 0, 1, 0);
+		if (!gi2c->is_shared || (gi2c->is_shared && i != num-1))
+			go_t->dword[3] = MSM_GPI_I2C_GO_TRE_DWORD3(1, 0,
+							0, 1, 0);
+		else
+			go_t->dword[3] = MSM_GPI_I2C_GO_TRE_DWORD3(1, 0,
+							0, 0, 0);
 	} else {
 		/* For Tx Go tre: ieob is not set, chain bit is set */
 		go_t->dword[2] = MSM_GPI_I2C_GO_TRE_DWORD2(0);
@@ -954,11 +959,16 @@ static struct msm_gpi_tre *setup_tx_tre(struct geni_i2c_dev *gi2c,
 	tx_t->dword[0] = MSM_GPI_DMA_W_BUFFER_TRE_DWORD0(gi2c->tx_ph);
 	tx_t->dword[1] = MSM_GPI_DMA_W_BUFFER_TRE_DWORD1(gi2c->tx_ph);
 	tx_t->dword[2] = MSM_GPI_DMA_W_BUFFER_TRE_DWORD2(msgs[i].len);
-	/*
-	 * Since we are doing unlock tre separately for shared-se,
-	 * so no need to set chain bit.
-	 */
-	tx_t->dword[3] = MSM_GPI_DMA_W_BUFFER_TRE_DWORD3(0, 0, 1, 0, 0);
+	if (gi2c->is_shared && i == num-1)
+		/*
+		 * For Tx: unlock tre is send for last transfer
+		 * so set chain bit for last transfer DMA tre.
+		 */
+		tx_t->dword[3] =
+		MSM_GPI_DMA_W_BUFFER_TRE_DWORD3(0, 0, 1, 0, 1);
+	else
+		tx_t->dword[3] =
+		MSM_GPI_DMA_W_BUFFER_TRE_DWORD3(0, 0, 1, 0, 0);
 
 	return tx_t;
 }
@@ -1296,18 +1306,7 @@ geni_i2c_err_prep_sg:
 					goto geni_i2c_gsi_xfer_out;
 				}
 			}
-			ret = gi2c->err;
 		}
-
-		/* Error cases need to perform unlock after recovery */
-		if (gi2c->is_shared) {
-			if ((i == (num - 1)) || gi2c->err) {
-				/* Send unlock tre at the end of last transfer and error case */
-				I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "gsi_unlock\n");
-				geni_i2c_unlock_bus(gi2c);
-			}
-		}
-
 		if (gi2c->is_shared)
 			/* Resend cfg tre for every new message on shared se */
 			gi2c->cfg_sent = 0;
