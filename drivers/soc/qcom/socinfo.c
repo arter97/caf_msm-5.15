@@ -847,7 +847,7 @@ socinfo_get_subset_parts(void)
 	info += offset;
 	for (i = 0; i < num_parts; i++) {
 		part_entry = get_unaligned_le32(info);
-		if (part_entry)
+		if (part_entry & 1)
 			sub_parts |= BIT(i);
 		info += sizeof(uint32_t);
 	}
@@ -884,6 +884,30 @@ msm_get_subset_parts(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "%x\n", sub_parts);
 }
 ATTR_DEFINE(subset_parts);
+
+int32_t
+socinfo_get_subpart_info(enum subset_part_type part, uint32_t *nIdx, uint32_t *part_info)
+{
+	uint32_t num_parts = 0, offset = 0;
+	void *info = socinfo;
+
+	if (part >= NUM_PARTS_MAX) {
+		pr_err("Bad part number\n");
+		return -EINVAL;
+	}
+
+	num_parts = socinfo_get_num_subset_parts();
+	offset = socinfo_get_nsubset_parts_array_offset();
+	if (!num_parts || !offset)
+		return -EINVAL;
+
+	info += (offset + (part * sizeof(uint32_t)));
+	*part_info = get_unaligned_le32(info);
+	*nIdx = 0;
+
+	return 0;
+}
+EXPORT_SYMBOL(socinfo_get_subpart_info);
 
 /* Version 15 */
 static ssize_t
@@ -1067,6 +1091,8 @@ static const struct soc_id soc_id[] = {
 	{ 349, "SDM632" },
 	{ 350, "SDA632" },
 	{ 351, "SDA450" },
+	{ 352, "QCS405" },
+	{ 411, "QCS407" },
 	{ 356, "SM8250" },
 	{ 362, "SA8155" },
 	{ 367, "SA8155P" },
@@ -1089,6 +1115,7 @@ static const struct soc_id soc_id[] = {
 	{ 481, "KONA-IOT" },
 	{ 482, "WAIPIOP" },
 	{ 486, "MONACO" },
+	{ 496, "QRB5165N" },
 	{ 517, "MONACOP" },
 	{ 518, "KHAJE" },
 	{ 548, "KONA-7230-IOT" },
@@ -1116,10 +1143,15 @@ static const struct soc_id soc_id[] = {
 	{ 588, "CINDERRU_1032"},
 	{ 589, "CINDERRU_1052"},
 	{ 590, "CINDERRU_1062"},
+	{ 598, "QRB3165"},
+	{ 599, "QRB3165N"},
 	{ 600, "SG_KALAMA"},
 	{ 601, "SG_KALAMAP"},
 	{ 609, "SDXPINNL"},
 	{ 610, "SDXPINNUL"},
+	{ 603, "QCS_KALAMAP"},
+	{ 604, "QCM_KALAMA"},
+	{ 608, "CROW" },
 };
 
 static struct qcom_socinfo *qsocinfo;

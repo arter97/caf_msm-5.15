@@ -357,15 +357,13 @@ static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
 		mdio = true;
 	}
 
-	if (mdio || plat->mac2mac_en) {
-		plat->mdio_bus_data =
-			devm_kzalloc(dev, sizeof(struct stmmac_mdio_bus_data),
-				     GFP_KERNEL);
-		if (!plat->mdio_bus_data)
-			return -ENOMEM;
+	plat->mdio_bus_data =
+		devm_kzalloc(dev, sizeof(struct stmmac_mdio_bus_data),
+			     GFP_KERNEL);
+	if (!plat->mdio_bus_data)
+		return -ENOMEM;
 
-		plat->mdio_bus_data->needs_reset = true;
-	}
+	plat->mdio_bus_data->needs_reset = true;
 
 	return 0;
 }
@@ -456,11 +454,6 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 	if (of_property_read_bool(np, "mac2mac")) {
 		of_property_read_u32(np, "mac2mac", &plat->mac2mac_en);
 		dev_info(&pdev->dev, "dt mac2mac_en = %d\n", plat->mac2mac_en);
-	}
-
-	if (phyaddr_pt_param == 0xFF) {
-		plat->mac2mac_en = true;
-		dev_info(&pdev->dev, "partition mac2mac_en = %d\n", plat->mac2mac_en);
 	}
 
 	/* Default to get clk_csr from stmmac_clk_crs_set(),
@@ -868,7 +861,13 @@ static int __maybe_unused stmmac_pltfr_noirq_resume(struct device *dev)
 		if (ret)
 			return ret;
 
-		stmmac_init_tstamp_counter(priv, priv->systime_flags);
+		ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
+		if (ret < 0) {
+			netdev_warn(priv->dev,
+				    "failed to enable PTP reference clock: %pe\n",
+				    ERR_PTR(ret));
+			return ret;
+		}
 	}
 
 	return 0;

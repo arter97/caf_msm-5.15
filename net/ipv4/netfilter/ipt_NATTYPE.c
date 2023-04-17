@@ -82,7 +82,7 @@ bool nattype_refresh_timer_impl(unsigned long nat_type,
 		return false;
 	}
 	if (del_timer(&nte->timeout)) {
-		nte->timeout.expires = timeout_value;
+		nte->timeout.expires = jiffies + timeout_value;
 		add_timer(&nte->timeout);
 		spin_unlock_bh(&nattype_lock);
 		nattype_nte_debug_print(nte, "refresh");
@@ -294,7 +294,7 @@ static unsigned int nattype_nat(struct sk_buff *skb,
 		 * found the entry.
 		 */
 		if (!nattype_refresh_timer((unsigned long)nte,
-					   jiffies + nte->timeout_value))
+					    nte->timeout_value))
 			break;
 
 		/* netfilter
@@ -359,7 +359,7 @@ static unsigned int nattype_forward(struct sk_buff *skb,
 			 * found the entry.
 			 */
 			if (!nattype_refresh_timer((unsigned long)nte,
-						   ct->timeout))
+						    ct->timeout))
 				break;
 
 			/* netfilter NATTYPE
@@ -432,7 +432,7 @@ static unsigned int nattype_forward(struct sk_buff *skb,
 		 * entry as this one is timed out and will be removed
 		 * from the list shortly.
 		 */
-		if (!nattype_refresh_timer((unsigned long)nte2, jiffies + nte2->timeout_value))
+		if (!nattype_refresh_timer((unsigned long)nte2,  nte2->timeout_value))
 			break;
 
 		/* netfilter NATTYPE

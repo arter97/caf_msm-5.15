@@ -1186,6 +1186,9 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
 	}
 
+	if (priv->plat->pcs_v3)
+		qcom_serdes_loopback_v3_1(priv->plat, true);
+
 	stmmac_mac_set(priv, priv->ioaddr, false);
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
@@ -1206,6 +1209,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
+	int mac_speed = speed;
+
+	if (priv->plat->fixed_phy_mode && priv->plat->mac2mac_speed)
+		mac_speed = priv->plat->mac2mac_speed;
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1213,11 +1220,14 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
 	}
 
+	if (priv->plat->pcs_v3)
+		qcom_serdes_loopback_v3_1(priv->plat, false);
+
 	ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
 	ctrl &= ~priv->hw->link.speed_mask;
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_10000:
 			ctrl |= priv->hw->link.xgmii.speed10000;
 			break;
@@ -1240,7 +1250,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else if (interface == PHY_INTERFACE_MODE_XLGMII) {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_100000:
 			ctrl |= priv->hw->link.xlgmii.speed100000;
 			break;
@@ -1266,7 +1276,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else {
-		switch (speed) {
+		switch (mac_speed) {
 		case SPEED_2500:
 			ctrl |= priv->hw->link.speed2500;
 			break;
@@ -1284,9 +1294,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	priv->speed = speed;
+	priv->speed = mac_speed;
 
-	if (priv->speed == SPEED_10 &&
+	if (!priv->plat->fixed_phy_mode &&
+	    priv->speed == SPEED_10 &&
 	    duplex &&
 	   ((priv->phydev->phy_id & priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 		phy_data = priv->mii->read(priv->mii, priv->plat->phy_addr, KSZ9131RNX_LBR);
@@ -1295,7 +1306,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, mac_speed);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1306,7 +1317,14 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	if (tx_pause && rx_pause)
 		stmmac_mac_flow_ctrl(priv, duplex);
 
-	writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+		writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+
+	if (priv->plat->fixed_phy_mode) {
+		priv->plat->mac2mac_link = true;
+		netdev_info(priv->dev,
+			    "mac2mac mode: Mac link up speed = %d\n",
+			    mac_speed);
+	}
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
 	if (phy && priv->dma_cap.eee) {
@@ -1320,8 +1338,11 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		stmmac_fpe_link_state_handle(priv, true);
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	if (phy->link == 1 && !priv->boot_kpi) {
-		place_marker("M - Ethernet is Ready.Link is UP");
+	if (priv->plat->fixed_phy_mode && !priv->boot_kpi) {
+		update_marker("M - Ethernet is Ready.Link is UP");
+		priv->boot_kpi = true;
+	} else if (phy && phy->link == 1 && !priv->boot_kpi) {
+		update_marker("M - Ethernet is Ready.Link is UP");
 		priv->boot_kpi = true;
 	}
 #endif
@@ -2775,8 +2796,8 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 				priv->xstats.tx_pkt_n++;
 				priv->xstats.txq_stats[queue].tx_pkt_n++;
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-if (priv->dev->stats.tx_packets == 1)
-	place_marker("M - Ethernet first packet transmitted");
+				if (priv->dev->stats.tx_packets == 1)
+					update_marker("M - Ethernet first packet transmitted");
 #endif
 			}
 			if (skb) {
@@ -3116,6 +3137,7 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 {
 	u32 rx_channels_count = priv->plat->rx_queues_to_use;
 	u32 tx_channels_count = priv->plat->tx_queues_to_use;
+	int interface = priv->plat->interface;
 	u32 dma_csr_ch = max(rx_channels_count, tx_channels_count);
 	struct stmmac_rx_queue *rx_q;
 	struct stmmac_tx_queue *tx_q;
@@ -3130,6 +3152,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 
 	if (priv->extend_desc && (priv->mode == STMMAC_RING_MODE))
 		atds = 1;
+
+	if (interface == PHY_INTERFACE_MODE_USXGMII &&
+	    priv->hw->qxpcs &&
+	    qcom_xpcs_verify_lnk_status_usxgmii(priv->hw->qxpcs)) {
+		dev_info(priv->device, "XPCS LINK not ready\n");
+	}
 
 	ret = stmmac_reset(priv, priv->ioaddr);
 	if (ret) {
@@ -3967,7 +3995,12 @@ static int stmmac_open(struct net_device *dev)
 	u32 chan;
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
-	const struct phylink_pcs_ops *pcs_ops;
+
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, true);
+		if (ret < 0)
+			return ret;
+	}
 
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
@@ -3976,6 +4009,7 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -3991,10 +4025,13 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
-	if (priv->hw->qxpcs && (priv->plat->mac2mac_en || !netif_carrier_ok(dev))) {
+	if (priv->hw->qxpcs && ((priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) ||
+				!netif_carrier_ok(dev))) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
+	} else if (priv->plat->pcs_v3) {
+		qcom_serdes_loopback_v3_1(priv->plat, true);
 	}
 
 	/* Extra statistics */
@@ -4041,6 +4078,15 @@ static int stmmac_open(struct net_device *dev)
 		goto init_error;
 	}
 
+	if (priv->plat->serdes_powerup) {
+		ret = priv->plat->serdes_powerup(dev, priv->plat->bsp_priv);
+		if (ret < 0) {
+			netdev_err(priv->dev, "%s: Serdes powerup failed\n",
+				   __func__);
+			goto init_error;
+		}
+	}
+
 #ifdef CONFIG_PTPSUPPORT_OBJ
 	ret = stmmac_hw_setup(dev, true);
 #else
@@ -4077,17 +4123,6 @@ static int stmmac_open(struct net_device *dev)
 	stmmac_enable_all_dma_irq(priv);
 
 	if (priv->plat->mac2mac_en) {
-		if (priv->plat->mdio_bus_data && priv->plat->mdio_bus_data->has_xpcs) {
-			/* xpcs config */
-			pcs_ops = priv->hw->qxpcs->pcs.ops;
-			pcs_ops->pcs_config(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-					    NULL, 0);
-
-			/* xpcs link up */
-			qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-					  priv->plat->mac2mac_speed, 1);
-		}
-
 		/* mac link up */
 		stmmac_mac2mac_adjust_link(priv->plat->mac2mac_speed,
 					   priv);
@@ -4107,6 +4142,9 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	priv->reinit_sw_path = stmmac_reinit;
+#endif
 	return 0;
 
 irq_error:
@@ -4149,6 +4187,7 @@ static int stmmac_release(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 chan;
+	int ret = 0;
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
@@ -4179,6 +4218,12 @@ static int stmmac_release(struct net_device *dev)
 	/* Free the IRQ lines */
 	stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
 
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, false);
+		if (ret < 0)
+			netdev_err(dev, "Failed to disable wakeup-capable: %d\n", ret);
+	}
+
 	if (priv->eee_enabled) {
 		priv->tx_path_in_lpi_mode = false;
 		del_timer_sync(&priv->eee_ctrl_timer);
@@ -4193,6 +4238,10 @@ static int stmmac_release(struct net_device *dev)
 	/* Disable the MAC Rx/Tx */
 	stmmac_mac_set(priv, priv->ioaddr, false);
 
+	/* Powerdown Serdes if there is */
+	if (priv->plat->serdes_powerdown)
+		priv->plat->serdes_powerdown(dev, priv->plat->bsp_priv);
+
 	netif_carrier_off(dev);
 
 	stmmac_release_ptp(priv);
@@ -4202,7 +4251,7 @@ static int stmmac_release(struct net_device *dev)
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_stop_wq(priv);
 
-	return 0;
+	return ret;
 }
 
 static bool stmmac_vlan_insert(struct stmmac_priv *priv, struct sk_buff *skb,
@@ -5784,8 +5833,8 @@ drain_data:
 
 		priv->dev->stats.rx_packets++;
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	if (priv->dev->stats.rx_packets == 1)
-		place_marker("M - Ethernet first packet received");
+		if (priv->dev->stats.rx_packets == 1)
+			update_marker("M - Ethernet first packet received");
 #endif
 		priv->dev->stats.rx_bytes += len;
 		count++;
@@ -7675,6 +7724,7 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		/* MDIO bus Registration */
@@ -7711,14 +7761,6 @@ int stmmac_dvr_probe(struct device *device,
 		goto error_netdev_register;
 	}
 
-	if (priv->plat->serdes_powerup) {
-		ret = priv->plat->serdes_powerup(ndev,
-						 priv->plat->bsp_priv);
-
-		if (ret < 0)
-			goto error_serdes_powerup;
-	}
-
 	/* Disable tx_coal_timer if plat provides callback */
 	priv->tx_coal_timer_disable = false;
 
@@ -7736,8 +7778,6 @@ int stmmac_dvr_probe(struct device *device,
 
 	return ret;
 
-error_serdes_powerup:
-	unregister_netdev(ndev);
 error_netdev_register:
 	if (!priv->plat->mac2mac_en)
 		phylink_destroy(priv->phylink);
@@ -7781,14 +7821,14 @@ int stmmac_dvr_remove(struct device *dev)
 							       priv->avb_vlan_id);
 
 	pm_runtime_get_sync(dev);
-	pm_runtime_disable(dev);
-	pm_runtime_put_noidle(dev);
 
 	stmmac_stop_all_dma(priv);
 	stmmac_mac_set(priv, priv->ioaddr, false);
 	netif_carrier_off(ndev);
 	unregister_netdev(ndev);
-
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	priv->reinit_sw_path = NULL;
+#endif
 	/* Serdes power down needs to happen after VLAN filter
 	 * is deleted that is triggered by unregister_netdev().
 	 */
@@ -7809,6 +7849,9 @@ int stmmac_dvr_remove(struct device *dev)
 	destroy_workqueue(priv->wq);
 	mutex_destroy(&priv->lock);
 	bitmap_free(priv->af_xdp_zc_qps);
+
+	pm_runtime_disable(dev);
+	pm_runtime_put_noidle(dev);
 
 	return 0;
 }
@@ -7918,6 +7961,22 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 	}
 }
 
+static int stmmac_resume_lite(struct stmmac_priv *priv, struct net_device *ndev)
+{
+	stmmac_enable_all_queues(priv);
+	netif_device_attach(ndev);
+	stmmac_start_all_dma(priv);
+	stmmac_mac_set(priv, priv->ioaddr, true);
+
+	if (priv->dma_cap.fpesel) {
+		stmmac_fpe_start_wq(priv);
+		if (priv->plat->fpe_cfg->enable)
+			stmmac_fpe_handshake(priv, true);
+	}
+
+	return 0;
+}
+
 /**
  * stmmac_resume - resume callback
  * @dev: device pointer
@@ -7970,9 +8029,11 @@ int stmmac_resume(struct device *dev)
 			if (device_may_wakeup(priv->device))
 				phylink_speed_up(priv->phylink);
 		}
+		rtnl_unlock();
 	}
 
-	rtnl_unlock();
+	if (priv->plat->pm_lite)
+		return stmmac_resume_lite(priv, ndev);
 
 	rtnl_lock();
 	mutex_lock(&priv->lock);
@@ -8006,6 +8067,101 @@ int stmmac_resume(struct device *dev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(stmmac_resume);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+int stmmac_reinit(struct stmmac_priv *priv)
+{
+	struct stmmac_tx_queue *tx_q = NULL;
+	struct stmmac_rx_queue *rx_q = NULL;
+
+	mutex_lock(&priv->lock);
+
+	/*Stop network queues until initialisation is done */
+	netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
+
+	/*clear so that we start fresh */
+	stmmac_clear_rx_descriptors(priv, IPA_QUEUE_BE);
+	stmmac_clear_tx_descriptors(priv, IPA_QUEUE_BE);
+
+	tx_q = &priv->tx_queue[IPA_QUEUE_BE];
+	rx_q = &priv->rx_queue[IPA_QUEUE_BE];
+
+	/*stop rx and tx DMA */
+	stmmac_stop_rx_dma(priv, IPA_QUEUE_BE);
+	stmmac_stop_tx_dma(priv, IPA_QUEUE_BE);
+
+	/*free tx buffers cache*/
+	dma_free_tx_skbufs(priv, IPA_QUEUE_BE);
+	tx_q->dirty_tx = 0;
+	tx_q->cur_tx = 0;
+	tx_q->mss = 0;
+
+	/*free rx buffers cache*/
+	rx_q->cur_rx = 0;
+	rx_q->dirty_rx = 0;
+	priv->rx_coal_frames[IPA_QUEUE_BE] = STMMAC_RX_FRAMES;
+
+	/*reset netdev queues*/
+	netdev_tx_reset_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
+
+	/*clear the Channel cache by programming the List address again*/
+	/*This will flush cached data refer databook page 68*/
+	stmmac_init_chan(priv, priv->ioaddr, priv->plat->dma_cfg, IPA_QUEUE_BE);
+
+	/*Stop DMA IRQ*/
+	stmmac_disable_dma_irq(priv, priv->ioaddr, IPA_QUEUE_BE, 1, 1);
+
+	/*clear the RX cache by programming the List address again*/
+	/*This will flush cached data refer databook page 68*/
+	stmmac_init_rx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
+			    rx_q->dma_rx_phy, IPA_QUEUE_BE);
+
+	rx_q->rx_tail_addr = rx_q->dma_rx_phy +
+				     (rx_q->buf_alloc_num *
+				      sizeof(struct dma_desc));
+
+	stmmac_set_rx_tail_ptr(priv, priv->ioaddr,
+			       rx_q->rx_tail_addr, IPA_QUEUE_BE);
+
+	/*clear the TX cache by programming the List address again*/
+	/*This will flush cached data refer databook page 68*/
+	stmmac_init_tx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
+			    tx_q->dma_tx_phy, IPA_QUEUE_BE);
+
+	tx_q->tx_tail_addr = tx_q->dma_tx_phy;
+
+	stmmac_set_tx_tail_ptr(priv, priv->ioaddr,
+			       tx_q->tx_tail_addr, IPA_QUEUE_BE);
+
+	/*set watchdog to 16 packets*/
+	stmmac_rx_watchdog(priv, priv->ioaddr,
+			   MIN_DMA_RIWT, IPA_QUEUE_BE);
+
+	/*reset ring to 511 in SW path RX*/
+	stmmac_set_rx_ring_len(priv, priv->ioaddr,
+			       (priv->dma_rx_size - 1), IPA_QUEUE_BE);
+
+	/*reset ring to 511 in SW path TX*/
+	stmmac_set_tx_ring_len(priv, priv->ioaddr,
+			       (priv->dma_tx_size - 1), IPA_QUEUE_BE);
+
+	/*Let the ball roll in RX*/
+	stmmac_start_rx_dma(priv, IPA_QUEUE_BE);
+
+	/*Let the ball roll in TX*/
+	stmmac_start_tx_dma(priv, IPA_QUEUE_BE);
+
+	/*wake up network queues*/
+	netif_tx_wake_queue(netdev_get_tx_queue(priv->dev, IPA_QUEUE_BE));
+
+	/*Finally enable IRQ*/
+	stmmac_enable_dma_irq(priv, priv->ioaddr, IPA_QUEUE_BE, 1, 1);
+
+	mutex_unlock(&priv->lock);
+
+	return 0;
+}
+#endif
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)

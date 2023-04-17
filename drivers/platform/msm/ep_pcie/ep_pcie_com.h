@@ -49,8 +49,11 @@
 #define PCIE20_PARF_INT_ALL_3_STATUS   0x2D88
 #define PCIE20_PARF_INT_ALL_3_MASK     0x2D8C
 #define PCIE20_PARF_INT_ALL_3_CLEAR    0x2D90
-#define PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(n)       (((n) * 8) + 0x3088)
-#define PCIE20_PARF_MHI_BASE_ADDR_VFn_UPPER(n)       (((n) * 8)  + 0x308C)
+#define PCIE20_PARF_MHI_BASE_ADDR_V1_VFn_LOWER(n)       (((n) * 0x8) + 0x3088)
+#define PCIE20_PARF_MHI_BASE_ADDR_V1_VFn_UPPER(n)       (((n) * 0x8)  + 0x308C)
+#define PCIE20_PARF_MHI_BASE_ADDR_VFn_LOWER(n)       (((n) * 0x28) + 0x3100)
+#define PCIE20_PARF_MHI_BASE_ADDR_VFn_UPPER(n)       (((n) * 0x28)  + 0x3104)
+
 
 #define PCIE20_PARF_MHI_IPA_DBS_V1_VF(n)                (((n) * 0x8) + 0x2E9C)
 #define PCIE20_PARF_MHI_IPA_CDB_V1_VF_TARGET_LOWER(n)   (((n) * 0x18) + 0x2E08)
@@ -121,6 +124,12 @@
 #define PCIE20_DEVICE_CAPABILITIES     0x74
 #define PCIE20_MSIX_TABLE_OFFSET_REG   0xB4
 #define PCIE20_MSIX_PBA_OFFSET_REG	0xB8
+#define PCIE20_MSIX_CAP_ID_NEXT_CTRL_REG(n) (0x200*n)
+#define PCIE20_MSIX_DOORBELL_OFF_REG	0x898 /* Offset from MSI-X capability base */
+#define PCIE20_MSIX_ADDRESS_MATCH_LOW_OFF 0x890 /* Offset from MSI-X capability base */
+#define PCIE20_MSIX_ADDRESS_MATCH_UPPER_OFF 0x894 /* Offset from MSI-X capability base */
+#define PCIE20_MSIX_ADDRESS_MATCH_EN	BIT(0)
+#define PCIE20_MSIX_DB_VF_ACTIVE	BIT(15)
 #define PCIE20_MASK_EP_L1_ACCPT_LATENCY 0xE00
 #define PCIE20_MASK_EP_L0S_ACCPT_LATENCY 0x1C0
 #define PCIE20_LINK_CAPABILITIES       0x7C
@@ -182,9 +191,9 @@
 #define PCIE20_AUX_CLK_FREQ_REG        0xB40
 #define PCIE20_GEN3_RELATED_OFF		0x890
 
-#define PCIE20_INT_ALL_VF_BME_STATUS	0xE68
-#define PCIE20_INT_ALL_VF_BME_MASK	0xE6C
-#define PCIE20_INT_ALL_VF_BME_CLEAR	0xE70
+#define PCIE20_INT_ALL_VF_BME_STATUS	0x2E68
+#define PCIE20_INT_ALL_VF_BME_MASK	0x2E6C
+#define PCIE20_INT_ALL_VF_BME_CLEAR	0x2E70
 
 #define PERST_TIMEOUT_US_MIN	              1000
 #define PERST_TIMEOUT_US_MAX	              1000
@@ -442,6 +451,7 @@ struct ep_pcie_dev_t {
 	ulong                        perst_deast_counter;
 	ulong                        wake_counter;
 	ulong                        msi_counter;
+	ulong                        msix_counter;
 	ulong                        global_irq_counter;
 	ulong                        sriov_irq_counter;
 	ulong                        perst_ast_in_enum_counter;

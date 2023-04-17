@@ -2,7 +2,7 @@
 
 // Copyright (c) 2018-19, Linaro Limited
 // Copyright (c) 2021, The Linux Foundation. All rights reserved.
-// Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/module.h>
 #include <linux/of.h>
@@ -30,6 +30,7 @@
 #include <linux/if_arp.h>
 #include <linux/inet.h>
 #include <net/inet_common.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -188,6 +189,14 @@ static char buf[2000];
 #define EMAC_PHY_REG_OFFSET 0x73000
 #define RGMII_REG_OFFSET 0x74000
 #define EGPIO_ENABLE 0x1000
+
+#define GMAC_CONFIG_PS			BIT(15)
+#define GMAC_CONFIG_FES			BIT(14)
+#define GMAC_AN_CTRL_RAN	BIT(9)
+#define GMAC_AN_CTRL_ANE	BIT(12)
+
+#define DWMAC4_PCS_BASE	0x000000e0
+#define RGMII_CONFIG_10M_CLK_DVD GENMASK(18, 10)
 
 static struct ethqos_emac_por emac_por[] = {
 	{ .offset = RGMII_IO_MACRO_CONFIG,	.value = 0x0 },
@@ -655,7 +664,7 @@ static int qcom_ethqos_add_ipaddr(struct ip_params *ip_info,
 			ETHQOSINFO("Assigned IPv4 address: %s\r\n",
 				   ip_info->ipv4_addr_str);
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-place_marker("M - Etherent Assigned IPv4 address");
+	update_marker("M - Etherent Assigned IPv4 address");
 #endif
 		}
 	return res;
@@ -670,8 +679,10 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 	struct net *net = dev_net(dev);
 	/*For valid IPv6 address*/
 
-	if (!net || !net->genl_sock || !net->genl_sock->sk_socket)
+	if (!net || !net->genl_sock || !net->genl_sock->sk_socket) {
 		ETHQOSERR("Sock is null, unable to assign ipv6 address\n");
+		return -EFAULT;
+	}
 
 	if (!net->ipv6.devconf_dflt) {
 		ETHQOSERR("ipv6.devconf_dflt is null, schedule wq\n");
@@ -701,7 +712,7 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 			ETHQOSDBG("Assigned IPv6 address: %s\r\n",
 				  ip_info->ipv6_addr_str);
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-		place_marker("M - Ethernet Assigned IPv6 address");
+	update_marker("M - Ethernet Assigned IPv6 address");
 #endif
 		}
 	return ret;
@@ -1475,11 +1486,83 @@ static int ethqos_rgmii_macro_init_v3(struct qcom_ethqos *ethqos)
 	return 0;
 }
 
+int ethqos_configure_sgmii_v3_1(struct qcom_ethqos *ethqos)
+{
+	u32 value = 0;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	ethqos_set_func_clk_en(ethqos);
+
+	value = readl(ethqos->ioaddr + MAC_CTRL_REG);
+	switch (ethqos->speed) {
+	case SPEED_2500:
+		value &= ~GMAC_CONFIG_PS;
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG, RGMII_IO_MACRO_CONFIG2);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value &= ~GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
+	break;
+	case SPEED_1000:
+		value &= ~GMAC_CONFIG_PS;
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG, RGMII_IO_MACRO_CONFIG2);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
+	break;
+
+	case SPEED_100:
+		value |= GMAC_CONFIG_PS | GMAC_CONFIG_FES;
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
+	break;
+	case SPEED_10:
+		value |= GMAC_CONFIG_PS;
+		value &= ~GMAC_CONFIG_FES;
+		writel(value, ethqos->ioaddr + MAC_CTRL_REG);
+		rgmii_updatel(ethqos, RGMII_CONFIG_10M_CLK_DVD, BIT(10) |
+			      GENMASK(15, 14), RGMII_IO_MACRO_CONFIG);
+		value = readl(priv->ioaddr + DWMAC4_PCS_BASE);
+		value |= GMAC_AN_CTRL_RAN | GMAC_AN_CTRL_ANE;
+		writel(value, priv->ioaddr + DWMAC4_PCS_BASE);
+	break;
+
+	default:
+		dev_err(&ethqos->pdev->dev,
+			"Invalid speed %d\n", ethqos->speed);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int ethqos_configure_mac_v3_1(struct qcom_ethqos *ethqos)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	int ret = 0;
+
+	switch (priv->plat->interface) {
+	case PHY_INTERFACE_MODE_SGMII:
+		ret = ethqos_configure_sgmii_v3_1(ethqos);
+		qcom_ethqos_serdes_update(ethqos, ethqos->speed, priv->plat->interface);
+		break;
+	}
+	return ret;
+}
+
 static int ethqos_configure(struct qcom_ethqos *ethqos)
 {
 	volatile unsigned int dll_lock;
 	unsigned int i, retry = 1000;
 	int ret;
+
+	if (ethqos->emac_ver == EMAC_HW_v3_1_0)
+		return ethqos_configure_mac_v3_1(ethqos);
 
 	/* Reset to POR values and enable clk */
 	for (i = 0; i < ethqos->num_por; i++)
@@ -2141,7 +2224,7 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	int micrel_intr_status = 0;
 
 	/*Interrupt routine shouldn't be called for mac2mac*/
-	if (priv->plat->mac2mac_en) {
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) {
 		WARN_ON(1);
 		return;
 	}
@@ -2374,7 +2457,7 @@ inline bool qcom_ethqos_is_phy_link_up(struct qcom_ethqos *ethqos)
 	 */
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 
-	if (priv->plat->mac2mac_en) {
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode) {
 		return priv->plat->mac2mac_link;
 	} else {
 		return (priv->dev->phydev &&
@@ -2394,8 +2477,14 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_prepare_enable(priv->plat->pclk);
 
+	if (priv->plat->clk_ptp_ref)
+		clk_prepare_enable(priv->plat->clk_ptp_ref);
+
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
+
+	if (priv->plat->clk_ptp_ref)
+		clk_prepare_enable(priv->plat->clk_ptp_ref);
 
 	if (qcom_ethqos_is_phy_link_up(ethqos))
 		ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
@@ -2752,17 +2841,25 @@ static ssize_t read_phy_reg_dump(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
 	struct qcom_ethqos *ethqos = file->private_data;
+	struct platform_device *pdev;
+	struct net_device *dev;
+	struct stmmac_priv *priv;
 	unsigned int len = 0, buf_len = 2000;
 	char *buf;
 	ssize_t ret_cnt;
 	int phydata = 0;
 	int i = 0;
 
-	struct platform_device *pdev = ethqos->pdev;
-	struct net_device *dev = platform_get_drvdata(pdev);
-	struct stmmac_priv *priv = netdev_priv(dev);
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
 
-	if (!ethqos || !dev->phydev) {
+	pdev = ethqos->pdev;
+	dev = platform_get_drvdata(pdev);
+	priv = netdev_priv(dev);
+
+	if (!dev->phydev) {
 		ETHQOSERR("NULL Pointer\n");
 		return -EINVAL;
 	}
@@ -2803,7 +2900,7 @@ static ssize_t read_rgmii_reg_dump(struct file *file,
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 
-	if (!ethqos || !dev->phydev) {
+	if (!dev->phydev) {
 		ETHQOSERR("NULL Pointer\n");
 		return -EINVAL;
 	}
@@ -2978,6 +3075,19 @@ static ssize_t phy_off_config(struct file *file, const char __user *user_buffer,
 	}
 	kfree(in_buf);
 	return count;
+}
+
+void qcom_serdes_loopback_v3_1(struct plat_stmmacenet_data *plat, bool on)
+{
+	struct qcom_ethqos *ethqos = plat->bsp_priv;
+
+	if (on)
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
+			      SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+	else
+		rgmii_updatel(ethqos, SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN, 0,
+			      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
 }
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos, int mode)
@@ -3198,7 +3308,7 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	}
 
 	if (priv->current_loopback == ENABLE_PHY_LOOPBACK &&
-	    priv->plat->mac2mac_en) {
+	    (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)) {
 		ETHQOSINFO("Not supported with Mac2Mac enabled\n");
 		return -EOPNOTSUPP;
 	}
@@ -3611,7 +3721,7 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
 		phy_off = debugfs_create_file("phy_off", 0400,
 					      ethqos->debugfs_dir, ethqos,
 					      &fops_phy_off);
@@ -4042,6 +4152,60 @@ alloc_chrdev1_region_fail:
 		return ret;
 }
 
+static int ethqos_fixed_link_check(struct platform_device *pdev)
+{
+	struct device_node *fixed_phy_node;
+	struct property *status_prop;
+	int mac2mac_speed;
+	int ret = 0;
+
+	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
+	if (of_device_is_available(fixed_phy_node)) {
+		of_property_read_u32(fixed_phy_node, "speed", &mac2mac_speed);
+		plat_dat->fixed_phy_mode = true;
+		ETHQOSINFO("mac2mac mode: Fixed-link enabled from dt, Speed = %d\n",
+			   mac2mac_speed);
+		goto out;
+	} else if (!fixed_phy_node) {
+		goto out;
+	}
+
+	/* Check partition if mac2mac configuration enabled using the same */
+	if (phyaddr_pt_param == 0xFF) {
+		if (fixed_phy_node) {
+			status_prop = kcalloc(1, sizeof(*status_prop), GFP_KERNEL);
+
+			if (!status_prop) {
+				ETHQOSERR("kcalloc failed\n");
+				ret = -ENOMEM;
+			}
+
+			status_prop->name = kstrdup("status", GFP_KERNEL);
+			status_prop->value = kstrdup("okay", GFP_KERNEL);
+			status_prop->length = strlen(status_prop->value) + 1;
+
+			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
+				kfree(status_prop);
+				ETHQOSERR("Fixed-link prop update failed\n");
+				return -ENOENT;
+			}
+
+			kfree(status_prop);
+
+			plat_dat->fixed_phy_mode = true;
+
+			ETHQOSINFO("mac2mac mode: Fixed-link enabled from Partition\n");
+
+			if (mparams.link_speed)
+				plat_dat->mac2mac_speed = (int)mparams.link_speed;
+		}
+	}
+
+out:
+	of_node_put(fixed_phy_node);
+	return ret;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -4060,20 +4224,20 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		return emac_emb_smmu_cb_probe(pdev, plat_dat);
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	place_marker("M - Ethernet probe start");
+	update_marker("M - Ethernet probe start");
 #endif
 #ifdef MODULE
-		if (eipv4)
-			ret = set_early_ethernet_ipv4(eipv4);
+	if (eipv4)
+		ret = set_early_ethernet_ipv4(eipv4);
 
-		if (eipv6)
-			ret = set_early_ethernet_ipv6(eipv6);
+	if (eipv6)
+		ret = set_early_ethernet_ipv6(eipv6);
 
-		if (ermac)
-			ret = set_early_ethernet_mac(ermac);
+	if (ermac)
+		ret = set_early_ethernet_mac(ermac);
 
-		if (eiface)
-			ret = set_ethernet_interface(eiface);
+	if (eiface)
+		ret = set_ethernet_interface(eiface);
 #endif
 
 	ipc_stmmac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
@@ -4088,8 +4252,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos = devm_kzalloc(&pdev->dev, sizeof(*ethqos), GFP_KERNEL);
 	if (!ethqos) {
-		ret = -ENOMEM;
-		goto err_mem;
+		return -ENOMEM;
 	}
 
 	ethqos->pdev = pdev;
@@ -4145,7 +4308,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_mem;
 		}
 
-
 		ret = clk_prepare_enable(ethqos->rgmii_clk);
 		if (ret)
 			goto err_mem;
@@ -4177,7 +4339,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII)
-		qcom_ethqos_serdes_configure_dt(ethqos);
+		qcom_ethqos_serdes_configure_dt(ethqos, plat_dat->interface);
 
 	ethqos->axi_icc_path = of_icc_get(&pdev->dev, "axi_icc_path");
 	if (!ethqos->axi_icc_path || IS_ERR(ethqos->axi_icc_path)) {
@@ -4240,14 +4402,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Get speed for mac2c from device tree */
-	if (!of_property_read_u32(np, "mac2mac-speed", &plat_dat->mac2mac_speed))
-		ETHQOSINFO("dt mac2mac speed = %d\n", plat_dat->mac2mac_speed);
+	if (ethqos_fixed_link_check(pdev))
+		goto err_mem;
 
-	if (mparams.link_speed)
-		plat_dat->mac2mac_speed = mparams.link_speed;
-
-	if (!plat_dat->mac2mac_en) {
+	if (!plat_dat->mac2mac_en && !plat_dat->fixed_phy_mode) {
 		if (of_property_read_bool(pdev->dev.of_node,
 					  "emac-phy-off-suspend")) {
 			ret = of_property_read_u32(pdev->dev.of_node,
@@ -4347,11 +4505,22 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->ipa_enabled)
+		priv->reinit_sw_path = stmmac_reinit;
+#endif
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
 
-	if (plat_dat->mdio_bus_data &&
+	if (of_property_read_bool(np, "pcs-v3")) {
+		plat_dat->pcs_v3 = true;
+	} else {
+		plat_dat->pcs_v3 = false;
+		ETHQOSDBG(":pcs-v3 not in dtsi\n");
+	}
+
+	if (ethqos->emac_ver != EMAC_HW_v3_1_0 && plat_dat->mdio_bus_data &&
 	    (plat_dat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII))
 		plat_dat->mdio_bus_data->has_xpcs = true;
@@ -4362,7 +4531,17 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_clk;
 	}
 
-	if (!priv->plat->mac2mac_en) {
+	/* Get sw path tx desc count from device tree */
+	if (of_property_read_u32(np, "sw-dma-tx-desc-cnt",
+				 &priv->dma_tx_size))
+		ETHQOSDBG("sw_dma_tx_desc_cnt not found in dtsi\n");
+
+	/* Get sw path rx desc count from device tree */
+	if (of_property_read_u32(np, "sw-dma-rx-desc-cnt",
+				 &priv->dma_rx_size))
+		ETHQOSDBG("sw_dma_rx_desc_cnt not found in dtsi\n");
+
+	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
 		if (!ethqos_phy_intr_config(ethqos))
 			ethqos_phy_intr_enable(ethqos);
 		else
@@ -4422,12 +4601,15 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 					       "emac");
 	}
 
-	if (priv->plat->mac2mac_en)
+	if (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)
 		priv->plat->mac2mac_link = 0;
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet probe end");
+#endif
 
-	place_marker("M - Ethernet probe end");
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	priv->plat->pm_lite = true;
 #endif
 
 	ethqos_create_debugfs(ethqos);
@@ -4532,6 +4714,9 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSDBG("smmu return\n");
 		return 0;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Suspend start");
+#endif
 
 	ethqos = get_stmmac_bsp_priv(dev);
 	if (!ethqos)
@@ -4541,8 +4726,17 @@ static int qcom_ethqos_suspend(struct device *dev)
 	priv = netdev_priv(ndev);
 	plat = priv->plat;
 
-	if (!ndev || !netif_running(ndev))
+	if (!ndev)
 		return -EINVAL;
+
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, false);
+		if (ret < 0) {
+			ETHQOSERR("Failed to disable wakeup-capable: %d\n", ret);
+			return ret;
+		}
+	}
+
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		/*Backup phy related data*/
@@ -4577,7 +4771,14 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSINFO("disable phy at suspend\n");
 		ethqos_phy_power_off(ethqos);
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Suspend End");
+#endif
 
+	priv->boot_kpi = false;
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	place_marker("M - Ethernet Suspend End");
+#endif
 	ETHQOSDBG(" ret = %d\n", ret);
 	return ret;
 }
@@ -4593,6 +4794,10 @@ static int qcom_ethqos_resume(struct device *dev)
 	if (of_device_is_compatible(dev->of_node, "qcom,emac-smmu-embedded"))
 		return 0;
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Resume start");
+#endif
+
 	ethqos = get_stmmac_bsp_priv(dev);
 
 	if (!ethqos)
@@ -4601,9 +4806,17 @@ static int qcom_ethqos_resume(struct device *dev)
 	ndev = dev_get_drvdata(dev);
 	priv = netdev_priv(ndev);
 
-	if (!ndev || !netif_running(ndev)) {
+	if (!ndev) {
 		ETHQOSERR(" Resume not possible\n");
 		return -EINVAL;
+	}
+
+	if (priv->plat->pm_lite) {
+		ret = device_init_wakeup(priv->device, true);
+		if (ret < 0) {
+			ETHQOSERR("Failed to enable wakeup-capable: %d\n", ret);
+			return ret;
+		}
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -4639,6 +4852,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Resume End");
+#endif
 	ETHQOSDBG("<--Resume Exit\n");
 	return ret;
 }

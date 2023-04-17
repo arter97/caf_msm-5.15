@@ -153,6 +153,7 @@
 #define IPA_IOCTL_SET_EXT_ROUTER_MODE           97
 #define IPA_IOCTL_QUERY_CACHED_DRIVER_MSG       98
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
+#define IPA_IOCTL_ADD_VLAN_PRIORITY             100
 /**
  * max size of the header to be inserted
  */
@@ -511,7 +512,7 @@ enum ipa_client_type {
 	IPA_CLIENT_ETHERNET2_PROD = 116,
 	IPA_CLIENT_ETHERNET2_CONS = 117,
 
-	/* RESERVED PROD			= 118, */
+	IPA_CLIENT_WLAN1_PROD1			= 118,
 	IPA_CLIENT_WLAN2_CONS1			= 119,
 
 	IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_PROD	= 120,
@@ -997,8 +998,13 @@ enum ipa_eth_pdu_evt {
 #define IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX
 };
 
+enum ipa_vlan_priority_evt {
+	IPA_VLAN_PRIORITY_UPDATE_EVENT = IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX,
+	IPA_VLAN_PRIORITY_EVENT_MAX
+#define IPA_VLAN_PRIORITY_EVENT_MAX IPA_VLAN_PRIORITY_EVENT_MAX
+};
 
-#define IPA_EVENT_MAX_NUM (IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX)
+#define IPA_EVENT_MAX_NUM (IPA_VLAN_PRIORITY_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -3564,6 +3570,26 @@ struct ipa_ioc_dscp_pcp_map_info {
 };
 
 /**
+ * struct vlan_priority - provides info required for vlan prirority
+ * @vlan_name: vlan interface name
+ * @vlan_priority: priority of corresponding vlan
+ */
+struct vlan_info {
+	char vlan_name[IPA_RESOURCE_NAME_MAX];
+	uint8_t vlan_priority;
+};
+
+/**
+ * struct ipa_ioc_vlan_priority - provide vlan priority values
+ * @no_of_vlans: Number of vlans passed
+ * @vlan_pri0_info: holds info required for vlan priority
+ */
+struct ipa_ioc_vlan_priority {
+	uint8_t num_of_vlans;
+	struct vlan_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
+};
+
+/**
  *   actual IOCTLs supported by IPA driver
  */
 #define IPA_IOC_COAL_EVICT_POLICY _IOWR(IPA_IOC_MAGIC, \
@@ -3899,6 +3925,10 @@ struct ipa_ioc_dscp_pcp_map_info {
 #define IPA_IOC_ADD_DEL_DSCP_PCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING, \
 				struct ipa_ioc_dscp_pcp_map_info)
+
+#define IPA_IOC_ADD_VLAN_PRIORITY _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_ADD_VLAN_PRIORITY, \
+				struct ipa_ioc_vlan_priority)
 
 /*
  * unique magic number of the Tethering bridge ioctls
