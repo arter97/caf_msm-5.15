@@ -488,6 +488,10 @@ struct ep_pcie_dev_t {
 	struct clk		     *ref_clk_src;
 
 	bool				override_disable_sriov;
+	u32				tcsr_perst_separation_en_offset;
+	u32				tcsr_reset_separation_offset;
+	u32				tcsr_perst_enable_offset;
+	u32				perst_raw_rst_status_mask;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;
