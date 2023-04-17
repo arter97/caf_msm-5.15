@@ -620,7 +620,6 @@ static int gpi_ring_add_element(struct gpi_ring *ring, void **wp);
 static void gpi_process_events(struct gpii *gpii);
 static int gpi_deep_sleep_exit_config(struct dma_chan *chan,
 				      struct dma_slave_config *config);
-static void gpi_noop_tre(struct gpii_chan *gpii_chan);
 
 static inline struct gpii_chan *to_gpii_chan(struct dma_chan *dma_chan)
 {
@@ -2225,8 +2224,6 @@ int gpi_terminate_all(struct dma_chan *chan)
 	struct gpii *gpii = gpii_chan->gpii;
 	int schid, echid, i;
 	int ret = 0;
-	bool is_reset_tre = false;
-	bool is_noop_tre = true;
 
 	GPII_INFO(gpii, gpii_chan->chid, "Enter\n");
 	mutex_lock(&gpii->ctrl_lock);
@@ -2250,46 +2247,32 @@ int gpi_terminate_all(struct dma_chan *chan)
 
 		/* send command to Stop the channel */
 		ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_STOP);
-		if (ret) {
+		if (ret)
 			GPII_ERR(gpii, gpii_chan->chid,
 				 "Error Stopping Chan:%d resetting\n", ret);
-			is_reset_tre = true;
-			is_noop_tre = false;
-		}
 	}
 
-	/* if Stop fails for tx/rx, doing Reset TRE */
-	if (is_reset_tre) {
-		/* reset the channels (clears any pending tre) */
-		for (i = schid; i < echid; i++) {
-			gpii_chan = &gpii->gpii_chan[i];
+	/* reset the channels (clears any pending tre) */
+	for (i = schid; i < echid; i++) {
+		gpii_chan = &gpii->gpii_chan[i];
 
-			ret = gpi_reset_chan(gpii_chan, GPI_CH_CMD_RESET);
-			if (ret) {
-				GPII_ERR(gpii, gpii_chan->chid,
-					 "Error resetting channel ret:%d\n", ret);
-				if (!gpii->reg_table_dump) {
-					gpi_dump_debug_reg(gpii);
-					gpii->reg_table_dump = true;
-				}
-				goto terminate_exit;
+		ret = gpi_reset_chan(gpii_chan, GPI_CH_CMD_RESET);
+		if (ret) {
+			GPII_ERR(gpii, gpii_chan->chid,
+				 "Error resetting channel ret:%d\n", ret);
+			if (!gpii->reg_table_dump) {
+				gpi_dump_debug_reg(gpii);
+				gpii->reg_table_dump = true;
 			}
-
-			/* reprogram channel CNTXT */
-			ret = gpi_alloc_chan(gpii_chan, false);
-			if (ret) {
-				GPII_ERR(gpii, gpii_chan->chid,
-					 "Error alloc_channel ret:%d\n", ret);
-				goto terminate_exit;
-			}
+			goto terminate_exit;
 		}
-	}
 
-	/* if Stop succeeded for tx and rx, doing noop TRE */
-	if (is_noop_tre) {
-		for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
-			gpii_chan = &gpii->gpii_chan[i];
-			gpi_noop_tre(gpii_chan);
+		/* reprogram channel CNTXT */
+		ret = gpi_alloc_chan(gpii_chan, false);
+		if (ret) {
+			GPII_ERR(gpii, gpii_chan->chid,
+				 "Error alloc_channel ret:%d\n", ret);
+			goto terminate_exit;
 		}
 	}
 
