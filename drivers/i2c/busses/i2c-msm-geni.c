@@ -159,10 +159,8 @@ struct geni_i2c_dev {
 	dma_addr_t rx_ph;
 	struct msm_gpi_ctrl tx_ev;
 	struct msm_gpi_ctrl rx_ev;
-	struct scatterlist *tx_sg; /* lock, cfg0, go, TX, unlock */
-	struct scatterlist *rx_sg;
-	dma_addr_t tx_sg_dma;
-	dma_addr_t rx_sg_dma;
+	struct scatterlist tx_sg[5]; /* lock, cfg0, go, TX, unlock */
+	struct scatterlist rx_sg;
 	int cfg_sent;
 	int clk_freq_out;
 	struct dma_async_tx_descriptor *tx_desc;
@@ -1007,7 +1005,7 @@ static struct dma_async_tx_descriptor *geni_i2c_prep_desc
 		geni_desc->callback_param = &gi2c->tx_cb;
 	} else {
 		geni_desc = dmaengine_prep_slave_sg(gi2c->rx_c,
-					gi2c->rx_sg, 1, DMA_DEV_TO_MEM,
+					&gi2c->rx_sg, 1, DMA_DEV_TO_MEM,
 					(DMA_PREP_INTERRUPT | DMA_CTRL_ACK));
 		if (!geni_desc) {
 			I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
@@ -1191,7 +1189,7 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 		if (msgs[i].flags & I2C_M_RD) {
 			I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev,
 				"msg[%d].len:%d R\n", i, gi2c->cur->len);
-			sg_init_table(gi2c->rx_sg, 1);
+			sg_init_table(&gi2c->rx_sg, 1);
 			ret = geni_se_common_iommu_map_buf(rx_dev, &gi2c->rx_ph,
 						dma_buf, msgs[i].len,
 						DMA_FROM_DEVICE);
@@ -1211,8 +1209,8 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 			}
 
 			rx_t = setup_rx_tre(gi2c, msgs, i, num);
-			sg_set_buf(gi2c->rx_sg, rx_t,
-				   sizeof(gi2c->rx_t));
+			sg_set_buf(&gi2c->rx_sg, rx_t,
+						 sizeof(gi2c->rx_t));
 
 			gi2c->rx_desc =
 			geni_i2c_prep_desc(gi2c, gi2c->rx_c, segs, !tx_chan);
@@ -1826,18 +1824,6 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		}
 	}
 
-	gi2c->tx_sg = dmam_alloc_coherent(gi2c->dev, 5 * sizeof(struct scatterlist),
-					 &gi2c->tx_sg_dma, GFP_KERNEL);
-	if (!gi2c->tx_sg) {
-		dev_err(&pdev->dev, "could not allocate for tx_sg\n");
-		return -ENOMEM;
-	}
-	gi2c->rx_sg = dmam_alloc_coherent(gi2c->dev, sizeof(struct scatterlist),
-					 &gi2c->rx_sg_dma, GFP_KERNEL);
-	if (!gi2c->rx_sg) {
-		dev_err(&pdev->dev, "could not allocate for rx_sg\n");
-		return -ENOMEM;
-	}
 	gi2c->adap.algo = &geni_i2c_algo;
 	init_completion(&gi2c->xfer);
 	platform_set_drvdata(pdev, gi2c);
@@ -2246,4 +2232,3 @@ module_init(i2c_dev_init);
 module_exit(i2c_dev_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:i2c_geni");
-
