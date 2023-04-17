@@ -365,6 +365,8 @@ enum rsc_handling_status {
  * @stop:	power off the device
  * @attach:	attach to a device that his already powered up
  * @detach:	detach from a device, leaving it powered up
+ * @suspend:  deep sleep to a device that his already powered up
+ * @resume:	resume from a device, leaving it powered up
  * @kick:	kick a virtqueue (virtqueue id given as a parameter)
  * @da_to_va:	optional platform hook to perform address translations
  * @parse_fw:	parse firmware to extract information (e.g. resource table)
@@ -389,6 +391,8 @@ struct rproc_ops {
 	int (*stop)(struct rproc *rproc);
 	int (*attach)(struct rproc *rproc);
 	int (*detach)(struct rproc *rproc);
+	int (*resume)(struct rproc *rproc);
+	int (*suspend)(struct rproc *rproc);
 	void (*kick)(struct rproc *rproc, int vqid);
 	void * (*da_to_va)(struct rproc *rproc, u64 da, size_t len, bool *is_iomem);
 	int (*parse_fw)(struct rproc *rproc, const struct firmware *fw);
@@ -578,6 +582,10 @@ struct rproc {
  * @stop: stop function, called before the rproc is stopped; the @crashed
  *	    parameter indicates if this originates from a recovery
  * @unprepare: unprepare function, called after the rproc has been stopped
+ * @resume: deep sleep resume function, called after the rproc is suspended
+ * @suspend: deep sleep suspend function, called after the rproc has been started
+ * @resume_prepare: deep sleep prepare function, called before the rproc is suspended
+ * @suspend_unprepare: deep sleep unprepare function, called after the rproc has been stopped
  */
 struct rproc_subdev {
 	struct list_head node;
@@ -586,6 +594,10 @@ struct rproc_subdev {
 	int (*start)(struct rproc_subdev *subdev);
 	void (*stop)(struct rproc_subdev *subdev, bool crashed);
 	void (*unprepare)(struct rproc_subdev *subdev);
+	int (*resume_prepare)(struct rproc_subdev *subdev);
+	int (*resume)(struct rproc_subdev *subdev);
+	int (*suspend)(struct rproc_subdev *subdev);
+	int (*suspend_unprepare)(struct rproc_subdev *subdev);
 };
 
 /* we currently support only two vrings per rvdev */
@@ -673,6 +685,8 @@ rproc_of_resm_mem_entry_init(struct device *dev, u32 of_resm_idx, size_t len,
 int rproc_boot(struct rproc *rproc);
 void rproc_shutdown(struct rproc *rproc);
 int rproc_detach(struct rproc *rproc);
+int rproc_resume(struct rproc *rproc);
+int rproc_suspend(struct rproc *rproc);
 int rproc_set_firmware(struct rproc *rproc, const char *fw_name);
 void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type);
 void *rproc_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem);
