@@ -169,6 +169,35 @@ do {\
 #define XGMAC_RX_CONFIG		0x00000004
 #define XGMAC_CONFIG_LM			BIT(10)
 
+#define TLMM_BASE_ADDRESS (tlmm_central_base_addr)
+
+#define TLMM_MDC_HDRV_PULL_CTL_ADDRESS\
+	(((unsigned long *)\
+	  (TLMM_BASE_ADDRESS + 0xA1000)))
+
+#define TLMM_MDIO_HDRV_PULL_CTL_ADDRESS\
+	(((unsigned long *)\
+	  (TLMM_BASE_ADDRESS + 0xA0000)))
+
+#define TLMM_MDC_HDRV_PULL_CTL_RGWR(data)\
+	iowrite32(data, (void __iomem *)TLMM_MDC_HDRV_PULL_CTL_ADDRESS)
+#define TLMM_MDC_HDRV_PULL_CTL_RGRD(data)\
+	((data) = ioread32((void __iomem *)TLMM_MDC_HDRV_PULL_CTL_ADDRESS))
+
+#define TLMM_MDIO_HDRV_PULL_CTL_RGWR(data)\
+	iowrite32(data, (void __iomem *)TLMM_MDIO_HDRV_PULL_CTL_ADDRESS)
+#define TLMM_MDIO_HDRV_PULL_CTL_RGRD(data)\
+	((data) = ioread32((void __iomem *)TLMM_MDIO_HDRV_PULL_CTL_ADDRESS))
+
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_2MA ((unsigned long)(0x0))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_4MA ((unsigned long)(0x1))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_6MA ((unsigned long)(0x2))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_8MA ((unsigned long)(0x3))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_10MA ((unsigned long)(0x4))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_12MA ((unsigned long)(0x5))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_14MA ((unsigned long)(0x6))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_16MA ((unsigned long)(0x7))
+
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
 	return (GENMASK(PPS_MINIDX(x) + 3, PPS_MINIDX(x)) &
