@@ -1878,6 +1878,9 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_prepare_enable(priv->plat->pclk);
 
+	if (priv->plat->clk_ptp_ref)
+		clk_prepare_enable(priv->plat->clk_ptp_ref);
+
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
 
@@ -3088,6 +3091,9 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSDBG("smmu return\n");
 		return 0;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	place_marker("M - Ethernet Suspend start");
+#endif
 
 	ethqos = get_stmmac_bsp_priv(dev);
 	if (!ethqos)
@@ -3119,6 +3125,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ethqos_phy_power_off(ethqos);
 	}
 
+	priv->boot_kpi = false;
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	place_marker("M - Ethernet Suspend End");
+#endif
 	ETHQOSDBG(" ret = %d\n", ret);
 	return ret;
 }
@@ -3133,6 +3143,10 @@ static int qcom_ethqos_resume(struct device *dev)
 	ETHQOSDBG("Resume Enter\n");
 	if (of_device_is_compatible(dev->of_node, "qcom,emac-smmu-embedded"))
 		return 0;
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	place_marker("M - Ethernet Resume start");
+#endif
 
 	ethqos = get_stmmac_bsp_priv(dev);
 
@@ -3180,6 +3194,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	place_marker("M - Ethernet Resume End");
+#endif
 	ETHQOSDBG("<--Resume Exit\n");
 	return ret;
 }
