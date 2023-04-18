@@ -1470,6 +1470,8 @@ static int stmmac_init_phy(struct net_device *dev)
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
 		__func__);
 
+	dev->phydev = priv->phydev;
+
 	if (!priv->plat->pmt) {
 		struct ethtool_wolinfo wol = { .cmd = ETHTOOL_GWOL };
 
@@ -4004,7 +4006,6 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
-	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -7719,7 +7720,6 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
-	    !priv->plat->fixed_phy_mode &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		/* MDIO bus Registration */
