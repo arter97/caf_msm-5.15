@@ -10,6 +10,40 @@
 
 #include "dwmac-qcom-serdes.h"
 
+void qcom_ethqos_disable_serdes_clocks(struct qcom_ethqos *ethqos)
+{
+	if (ethqos->phyaux_clk)
+		clk_disable_unprepare(ethqos->phyaux_clk);
+
+	if (ethqos->sgmiref_clk)
+		clk_disable_unprepare(ethqos->sgmiref_clk);
+}
+EXPORT_SYMBOL(qcom_ethqos_disable_serdes_clocks);
+
+int qcom_ethqos_enable_serdes_clocks(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+
+	if (ethqos->phyaux_clk) {
+		ret = clk_prepare_enable(ethqos->phyaux_clk);
+		if (ret) {
+			ETHQOSERR("Failed to enable phyaux clock: %d\n", ret);
+			return ret;
+		}
+	}
+
+	if (ethqos->sgmiref_clk) {
+		ret = clk_prepare_enable(ethqos->sgmiref_clk);
+		if (ret) {
+			ETHQOSERR("Failed to enable SerDes reference clock: %d\n", ret);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(qcom_ethqos_enable_serdes_clocks);
+
 static int qcom_ethqos_serdes3_sgmii_1Gb(struct qcom_ethqos *ethqos)
 {
 	int retry = 500;
@@ -1407,11 +1441,7 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 		of_node_put(serdes_node);
 	}
 
-	ret = clk_prepare_enable(ethqos->sgmiref_clk);
-	if (ret)
-		goto err_mem;
-
-	ret = clk_prepare_enable(ethqos->phyaux_clk);
+	ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 	if (ret)
 		goto err_mem;
 
