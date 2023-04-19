@@ -3585,7 +3585,7 @@ struct ipa_ioc_dscp_pcp_map_info {
  * @vlan_name: vlan interface name
  * @vlan_priority: priority of corresponding vlan
  */
-struct vlan_info {
+struct vlan_priority_info {
 	char vlan_name[IPA_RESOURCE_NAME_MAX];
 	uint8_t vlan_priority;
 };
@@ -3597,7 +3597,7 @@ struct vlan_info {
  */
 struct ipa_ioc_vlan_priority {
 	uint8_t num_of_vlans;
-	struct vlan_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
+	struct vlan_priority_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
 };
 
 /**
