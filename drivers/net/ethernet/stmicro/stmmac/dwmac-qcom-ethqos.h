@@ -394,6 +394,8 @@ struct qcom_ethqos {
 	struct regulator *reg_rgmii;
 	struct regulator *reg_emac_phy;
 	struct regulator *reg_rgmii_io_pads;
+	struct regulator *vreg_a_sgmii_1p2;
+	struct regulator *vreg_a_sgmii_0p9;
 
 	int pps_class_a_irq;
 	int pps_class_b_irq;
@@ -505,7 +507,7 @@ struct mac_params {
 	unsigned long link_speed;
 };
 
-int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
+int ethqos_init_regulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
 void ethqos_free_gpios(struct qcom_ethqos *ethqos);
