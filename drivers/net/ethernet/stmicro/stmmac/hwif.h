@@ -223,6 +223,8 @@ struct stmmac_dma_ops {
 	void (*set_bfsize)(void __iomem *ioaddr, int bfsize, u32 chan);
 	void (*enable_sph)(void __iomem *ioaddr, bool en, u32 chan);
 	int (*enable_tbs)(void __iomem *ioaddr, bool en, u32 chan);
+	void (*desc_stats)(void __iomem *ioaddr, struct stmmac_extra_stats *xstats,
+			   u32 tx_queues, u32 rx_queues);
 };
 
 #define stmmac_reset(__priv, __args...) \
@@ -283,6 +285,8 @@ struct stmmac_dma_ops {
 	stmmac_do_void_callback(__priv, dma, enable_sph, __args)
 #define stmmac_enable_tbs(__priv, __args...) \
 	stmmac_do_callback(__priv, dma, enable_tbs, __args)
+#define stmmac_desc_stats(__priv, __args...) \
+	stmmac_do_void_callback(__priv, dma, desc_stats, __args)
 
 struct mac_device_info;
 struct net_device;
