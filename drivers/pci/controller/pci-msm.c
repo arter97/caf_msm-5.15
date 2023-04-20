@@ -6181,6 +6181,9 @@ static void msm_handle_error_source(struct pci_dev *dev,
 	int aer = dev->aer_cap;
 	struct msm_pcie_dev_t *rdev = info->rdev;
 	u32 status, sev;
+	unsigned long irqsave_flags;
+
+	spin_lock_irqsave(&rdev->irq_lock, irqsave_flags);
 
 	if (!rdev->aer_dump && !rdev->suspending &&
 		rdev->link_status == MSM_PCIE_LINK_ENABLED) {
@@ -6194,7 +6197,8 @@ static void msm_handle_error_source(struct pci_dev *dev,
 			panic("AER error severity %d\n", info->severity);
 	}
 
-	if (info->severity == AER_CORRECTABLE) {
+	if (info->severity == AER_CORRECTABLE && !rdev->suspending &&
+		rdev->link_status == MSM_PCIE_LINK_ENABLED) {
 		/*
 		 * Correctable error does not need software intervention.
 		 * No need to go through error recovery process.
@@ -6206,7 +6210,8 @@ static void msm_handle_error_source(struct pci_dev *dev,
 						   PCI_EXP_DEVSTA_CED |
 						   PCI_EXP_DEVSTA_NFED |
 						   PCI_EXP_DEVSTA_FED);
-	} else if (info->severity == AER_NONFATAL) {
+	} else if (info->severity == AER_NONFATAL && !rdev->suspending &&
+				rdev->link_status == MSM_PCIE_LINK_ENABLED) {
 		if (aer) {
 			/* Clear status bits for ERR_NONFATAL errors only */
 			pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
@@ -6224,6 +6229,7 @@ static void msm_handle_error_source(struct pci_dev *dev,
 		panic("AER error severity %d\n", info->severity);
 	}
 
+	spin_unlock_irqrestore(&rdev->irq_lock, irqsave_flags);
 	pci_dev_put(dev);
 }
 
