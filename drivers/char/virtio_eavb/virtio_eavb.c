@@ -65,15 +65,6 @@ do { \
 	} \
 } while (0)
 
-#define eavb_place_marker_once(log) \
-do { \
-	static int times; \
-	if (times < 1) { \
-		place_marker(log); \
-		times++; \
-	} \
-} while (0)
-
 static unsigned int timeout_msec = 5000; /* default 5s */
 
 /*
@@ -942,7 +933,7 @@ static int qavb_create_stream_with_path(struct eavb_file *fl, void __user *buf)
 	}
 
 	LOG_EAVB(LEVEL_INFO, "fl->index=%d\n", fl->index);
-	eavb_place_marker_once("M - DRIVER EAVB FE create stream");
+	LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE create stream\n");
 
 	stream = getStream(fl, 0);
 	if (!stream) {
@@ -984,8 +975,7 @@ static int qavb_create_stream_with_path(struct eavb_file *fl, void __user *buf)
 		stream->fl = fl;
 		LOG_EAVB(LEVEL_INFO, "stream%d (ctx 0x%llx, idx %d)\n",
 			stream->index, vhdr->streamctx_hdl, vhdr->stream_idx);
-		eavb_place_marker_once(
-			"M - DRIVER EAVB FE create stream success");
+		LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE create stream success\n");
 
 		create_dbugfs_stream(stream);
 	} else {
@@ -1041,7 +1031,7 @@ static int qavb_get_stream_info(struct eavb_file *fl, void __user *buf)
 	}
 
 	LOG_EAVB(LEVEL_INFO, "streamCtx=0x%llx\n", get_info.hdr.streamCtx);
-	eavb_place_marker_once("M - DRIVER EAVB FE get stream info");
+	LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE get stream info\n");
 
 	stream = getStream(fl, get_info.hdr.streamCtx);
 	if (!stream) {
@@ -1076,8 +1066,7 @@ static int qavb_get_stream_info(struct eavb_file *fl, void __user *buf)
 		ASSERT(sizeof(get_info.info) == sizeof(*info));
 		memcpy(&get_info.info, info, sizeof(*info));
 
-		eavb_place_marker_once(
-			"M - DRIVER EAVB FE get stream info success");
+		LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE get stream info success\n");
 	}
 
 	virt_free_msg(priv, msg);
@@ -1105,7 +1094,7 @@ static int qavb_connect_stream(struct eavb_file *fl, void __user *buf)
 	}
 
 	LOG_EAVB(LEVEL_INFO, "streamCtx=0x%llx\n", connect.hdr.streamCtx);
-	eavb_place_marker_once("M - DRIVER EAVB FE connect stream");
+	LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE connect stream\n");
 
 	stream = getStream(fl, connect.hdr.streamCtx);
 	if (!stream) {
@@ -1137,8 +1126,7 @@ static int qavb_connect_stream(struct eavb_file *fl, void __user *buf)
 	if (!ret && vhdr) {
 		ret = vhdr->result;
 		stream->status = CONNECTED;
-		eavb_place_marker_once(
-			"M - DRIVER EAVB FE connect stream success");
+		LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE connect stream success\n");
 	}
 
 	virt_free_msg(priv, msg);
@@ -1236,8 +1224,7 @@ static int qavb_receive(struct eavb_file *fl, void __user *buf)
 		memcpy(&receive.data, &vmsg->data,
 				sizeof(struct eavb_buf_data));
 		if (receive.received)
-			eavb_place_marker_once(
-				"M - DRIVER EAVB FE First received data");
+			LOG_EAVB(LEVEL_DEBUG, "M - DRIVER EAVB FE First received data\n");
 	}
 
 	virt_free_msg(priv, msg);
@@ -1630,7 +1617,7 @@ static int virtio_eavb_probe(struct virtio_device *vdev)
 			priv->debugfs_root, NULL,
 			&fops_debugfs_timeout);
 #endif
-	place_marker("M - DRIVER EAVB FE Ready");
+	LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE Ready\n");
 	return 0;
 
 alloc_rxbufs_fail:
@@ -1672,7 +1659,7 @@ static void virtio_eavb_remove(struct virtio_device *vdev)
 }
 
 
-const static struct virtio_device_id id_table[] = {
+static const struct virtio_device_id id_table[] = {
 	{ VIRTIO_ID_EAVB, VIRTIO_DEV_ANY_ID },
 	{ VIRTIO_ID_EAVB_BC, VIRTIO_DEV_ANY_ID },
 	{ 0 },
@@ -1694,7 +1681,7 @@ static struct virtio_driver virtio_eavb_driver = {
 
 static int __init virtio_eavb_init(void)
 {
-	place_marker("M - DRIVER EAVB FE Init");
+	LOG_EAVB(LEVEL_INFO, "M - DRIVER EAVB FE Init\n");
 	return register_virtio_driver(&virtio_eavb_driver);
 }
 
