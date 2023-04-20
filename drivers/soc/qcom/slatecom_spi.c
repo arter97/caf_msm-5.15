@@ -233,38 +233,17 @@ int slatecom_set_spi_state(enum slatecom_spi_state state)
 	ktime_t time_start, delta;
 	s64 time_elapsed;
 	struct slate_context clnt_handle;
-	int ret = 0, irq_gpio = 0;
-	struct device_node *node;
+	int ret = 0;
 
-	if (req_irq_flag) {
-		/* SLATECOM Interrupt probe */
-		node = slate_spi->spi->dev.of_node;
-		irq_gpio = of_get_named_gpio(node, "qcom,irq-gpio", 0);
-		if (!gpio_is_valid(irq_gpio)) {
-			pr_err("gpio %d found is not valid\n", irq_gpio);
-			goto err_ret;
-		}
-		ret = gpio_request(irq_gpio, "slatecom_gpio");
-		if (ret) {
-			pr_err("gpio %d request failed\n", irq_gpio);
-			goto err_ret;
-		}
-		ret = gpio_direction_input(irq_gpio);
-		if (ret) {
-			pr_err("gpio_direction_input not set: %d\n", ret);
-			goto err_ret;
-		}
-		slate_irq = gpio_to_irq(irq_gpio);
+	if (req_irq_flag && state == SLATECOM_SPI_FREE) {
 		ret = request_threaded_irq(slate_irq, NULL, slate_irq_tasklet_hndlr,
 		IRQF_TRIGGER_HIGH | IRQF_ONESHOT, "qcom-slate_spi", slate_spi);
 		if (ret) {
 			pr_err("qcom-slate_spi: failed to register IRQ:%d\n", ret);
-			goto err_ret;
 		}
 		ret = irq_set_irq_wake(slate_irq, true);
 		if (ret) {
 			pr_err("irq set as wakeup return: %d\n", ret);
-			goto err_ret;
 		}
 		req_irq_flag = 0;
 	}
@@ -307,10 +286,6 @@ int slatecom_set_spi_state(enum slatecom_spi_state state)
 	}
 
 	return 0;
-err_ret:
-	if (gpio_is_valid(irq_gpio))
-		gpio_free(irq_gpio);
-	return -EINVAL;
 }
 EXPORT_SYMBOL(slatecom_set_spi_state);
 
@@ -461,12 +436,8 @@ EXPORT_SYMBOL(slatecom_slatedown_handler);
 static void parse_fifo(uint8_t *data, union slatecom_event_data_type *event_data)
 {
 	uint16_t p_len;
-	uint8_t sub_id;
-	uint32_t evnt_tm;
 	uint16_t event_id;
 	void *evnt_data;
-	struct event *evnt;
-	struct event_list *data_list;
 
 	while (*data != '\0') {
 
@@ -475,23 +446,7 @@ static void parse_fifo(uint8_t *data, union slatecom_event_data_type *event_data
 		p_len = *((uint16_t *) data);
 		data = data + HED_EVENT_SIZE_LEN;
 
-		if (event_id == 0xFFFE) {
-
-			sub_id = *data;
-			evnt_tm = *((uint32_t *)(data+1));
-
-			evnt = kmalloc(sizeof(*evnt), GFP_KERNEL);
-			evnt->sub_id = sub_id;
-			evnt->evnt_tm = evnt_tm;
-			evnt->evnt_data =
-				*(int16_t *)(data + HED_EVENT_DATA_STRT_LEN);
-
-			data_list = kmalloc(sizeof(*data_list), GFP_KERNEL);
-			data_list->evnt = evnt;
-			spin_lock(&lst_setup_lock);
-			list_add_tail(&data_list->list, &pr_lst_hd);
-			spin_unlock(&lst_setup_lock);
-		} else if (event_id == 0x0001) {
+		if (event_id == 0x0001) {
 			evnt_data = kmalloc(p_len, GFP_KERNEL);
 			if (evnt_data != NULL) {
 				memcpy(evnt_data, data, p_len);
@@ -501,7 +456,11 @@ static void parse_fifo(uint8_t *data, union slatecom_event_data_type *event_data
 				send_event(SLATECOM_EVENT_TO_MASTER_FIFO_USED,
 						event_data);
 			}
+		} else if (event_id == 0xc8) {
+			data = data + 12;
+			pr_err("Packet Received = 0x%X, len = %u\n", event_id, p_len);
 		}
+
 		data = data + p_len;
 	}
 	if (!list_empty(&pr_lst_hd))
@@ -1570,6 +1529,8 @@ static int slate_spi_probe(struct spi_device *spi)
 {
 	struct slate_spi_priv *slate_spi;
 	int ret = 0;
+	struct device_node *node;
+	int irq_gpio = 0;
 
 	slate_spi = devm_kzalloc(&spi->dev, sizeof(*slate_spi),
 				   GFP_KERNEL | GFP_ATOMIC);
@@ -1581,6 +1542,26 @@ static int slate_spi_probe(struct spi_device *spi)
 	slate_spi->spi = spi;
 	spi_set_drvdata(spi, slate_spi);
 	slate_spi_init(slate_spi);
+
+	/* SLATECOM Interrupt probe */
+	node = slate_spi->spi->dev.of_node;
+	irq_gpio = of_get_named_gpio(node, "qcom,irq-gpio", 0);
+	if (!gpio_is_valid(irq_gpio)) {
+		pr_err("gpio %d found is not valid\n", irq_gpio);
+		goto err_ret;
+	}
+	ret = gpio_request(irq_gpio, "slatecom_gpio");
+	if (ret) {
+		pr_err("gpio %d request failed\n", irq_gpio);
+		goto err_ret;
+	}
+	ret = gpio_direction_input(irq_gpio);
+	if (ret) {
+		pr_err("gpio_direction_input not set: %d\n", ret);
+		goto err_ret;
+	}
+	slate_irq = gpio_to_irq(irq_gpio);
+
 	atomic_set(&slate_is_spi_active, 1);
 	dma_set_coherent_mask(&spi->dev, 0);
 
@@ -1603,6 +1584,8 @@ err_ret:
 	slate_com_drv = NULL;
 	mutex_destroy(&slate_spi->xfer_mutex);
 	spi_set_drvdata(spi, NULL);
+	if (gpio_is_valid(irq_gpio))
+		gpio_free(irq_gpio);
 	return -ENODEV;
 }
 

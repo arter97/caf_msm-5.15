@@ -376,6 +376,9 @@ static int msm_config_group_get(struct pinctrl_dev *pctldev,
 	int ret;
 	u32 val;
 
+	if (!gpiochip_line_is_valid(&msm_pinctrl_data->chip, group))
+		return -EINVAL;
+
 	g = &pctrl->soc->groups[group];
 
 	ret = msm_config_reg(pctrl, g, param, &mask, &bit);
@@ -1551,6 +1554,9 @@ static int msm_pinctrl_hibernation_suspend(void)
 
 	/* All normal gpios will have common registers, first save them */
 	for (i = 0; i < soc->ngpios; i++) {
+		if (msm_gpio_needs_valid_mask(pctrl) &&
+				!test_bit(i, pctrl->chip.valid_mask))
+			continue;
 		pgroup = &soc->groups[i];
 		pctrl->gpio_regs[i].ctl_reg =
 				msm_readl_ctl(pctrl, pgroup);
@@ -1595,6 +1601,9 @@ static void msm_pinctrl_hibernation_resume(void)
 
     /* Restore normal gpios */
 	for (i = 0; i < soc->ngpios; i++) {
+		if (msm_gpio_needs_valid_mask(pctrl) &&
+				!test_bit(i, pctrl->chip.valid_mask))
+			continue;
 		pgroup = &soc->groups[i];
 		msm_writel_ctl(pctrl->gpio_regs[i].ctl_reg, pctrl, pgroup);
 		msm_writel_io(pctrl->gpio_regs[i].io_reg, pctrl, pgroup);

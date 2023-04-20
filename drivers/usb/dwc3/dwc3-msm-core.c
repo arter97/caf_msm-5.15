@@ -52,6 +52,7 @@
 #include "debug-ipc.h"
 
 #define NUM_LOG_PAGES   12
+#define DWC3_MINIDUMP	0x10000
 
 /* time out to wait for USB cable status notification (in ms)*/
 #define SM_INIT_TIMEOUT 30000
@@ -700,14 +701,6 @@ static unsigned int dwc3_msm_set_max_speed(struct dwc3_msm *mdwc, enum usb_devic
 	dwc->maximum_speed = spd;
 
 	return 0;
-}
-
-static irqreturn_t dwc3_msm_core_irq(int irq, void *data)
-{
-	struct dwc3_msm *mdwc = data;
-
-	mdwc->irq_cnt++;
-	return IRQ_NONE;
 }
 
 /**
@@ -3579,8 +3572,7 @@ static void dwc3_set_ssphy_orientation_flag(struct dwc3_msm *mdwc)
 	dbg_event(0xFF, "ss_flag", mdwc->ss_phy->flags);
 }
 
-static void msm_dwc3_perf_vote_update(struct dwc3_msm *mdwc,
-						bool perf_mode);
+static void msm_dwc3_perf_vote_enable(struct dwc3_msm *mdwc, bool enable);
 
 static void configure_usb_wakeup_interrupt(struct dwc3_msm *mdwc,
 	struct usb_irq *uirq, unsigned int polarity, bool enable)
@@ -3649,12 +3641,14 @@ static void configure_usb_wakeup_interrupts(struct dwc3_msm *mdwc, bool enable)
 		 */
 		configure_usb_wakeup_interrupt(mdwc,
 			&mdwc->wakeup_irq[DP_HS_PHY_IRQ],
-			mdwc->in_host_mode ?
+			mdwc->in_host_mode && !(mdwc->use_pwr_event_for_wakeup
+			& PWR_EVENT_HS_WAKEUP) ?
 			(IRQF_TRIGGER_HIGH | IRQ_TYPE_LEVEL_HIGH) :
 			IRQ_TYPE_EDGE_RISING, true);
 		configure_usb_wakeup_interrupt(mdwc,
 			&mdwc->wakeup_irq[DM_HS_PHY_IRQ],
-			mdwc->in_host_mode ?
+			mdwc->in_host_mode && !(mdwc->use_pwr_event_for_wakeup
+			& PWR_EVENT_HS_WAKEUP) ?
 			(IRQF_TRIGGER_HIGH | IRQ_TYPE_LEVEL_HIGH) :
 			IRQ_TYPE_EDGE_RISING, true);
 	}
@@ -3869,9 +3863,8 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 		return 0;
 	}
 
-	cancel_delayed_work_sync(&mdwc->perf_vote_work);
-	msm_dwc3_perf_vote_update(mdwc, false);
-	if (dwc) {
+	msm_dwc3_perf_vote_enable(mdwc, false);
+	if (dwc != NULL) {
 		if (!mdwc->in_host_mode) {
 			evt = dwc->ev_buf;
 			if ((evt->flags & DWC3_EVENT_PENDING)) {
@@ -3922,7 +3915,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 	ret = dwc3_msm_prepare_suspend(mdwc, force_power_collapse);
 	if (ret) {
 		mutex_unlock(&mdwc->suspend_resume_mutex);
-		if (mdwc->in_host_mode)
+		if (mdwc->in_host_mode && dwc)
 			pm_request_resume(&dwc->xhci->dev);
 
 		return ret;
@@ -5419,24 +5412,35 @@ EXPORT_SYMBOL(dwc3_msm_release_ss_lane);
 
 static int dwc3_msm_debug_init(struct dwc3_msm *mdwc)
 {
+	char ipc_log_name[40];
 	char ipc_log_ctx_name[40];
+	int itr = 0;
+
+	snprintf(ipc_log_name, sizeof(ipc_log_name),
+				"%s", dev_name(mdwc->dev));
+
+	while (ipc_log_name[itr] != '\0') {
+		if (ipc_log_name[itr] == '.')
+			ipc_log_name[itr] = '_';
+		itr++;
+	}
 
 	mdwc->dwc_ipc_log_ctxt = ipc_log_context_create(NUM_LOG_PAGES,
-					dev_name(mdwc->dev), 0);
+					ipc_log_name, DWC3_MINIDUMP);
 	if (!mdwc->dwc_ipc_log_ctxt)
 		dev_err(mdwc->dev, "Error getting ipc_log_ctxt\n");
 
 	snprintf(ipc_log_ctx_name, sizeof(ipc_log_ctx_name),
-				"%s.ep_events", dev_name(mdwc->dev));
+				"%s_ep_events", ipc_log_name);
 	mdwc->dwc_dma_ipc_log_ctxt = ipc_log_context_create(2 * NUM_LOG_PAGES,
-					ipc_log_ctx_name, 0);
+					ipc_log_ctx_name, DWC3_MINIDUMP);
 	if (!mdwc->dwc_dma_ipc_log_ctxt)
 		dev_err(mdwc->dev, "Error getting ipc_log_ctxt for ep_events\n");
 
 	snprintf(ipc_log_ctx_name, sizeof(ipc_log_ctx_name),
-				"%s.trace", dev_name(mdwc->dev));
+				"%s_trace", ipc_log_name);
 	dwc_trace_ipc_log_ctxt = ipc_log_context_create(3 * NUM_LOG_PAGES,
-					ipc_log_ctx_name, 0);
+					ipc_log_ctx_name, DWC3_MINIDUMP);
 	if (!dwc_trace_ipc_log_ctxt)
 		dev_err(mdwc->dev, "Error getting trace_ipc_log_ctxt for ep_events\n");
 
@@ -5596,16 +5600,7 @@ static int dwc3_msm_parse_core_params(struct dwc3_msm *mdwc, struct device_node 
 	mdwc->dr_mode = (ret < 0) ? USB_DR_MODE_UNKNOWN : ret;
 
 	mdwc->core_irq = of_irq_get(dwc3_node, 0);
-	if (mdwc->core_irq > 0) {
-		ret = devm_request_irq(mdwc->dev, mdwc->core_irq, dwc3_msm_core_irq,
-					IRQF_SHARED, "dwc3-msm", mdwc);
-		if (ret) {
-			dev_err(mdwc->dev, "failed to request irq #%d --> %d\n",
-					mdwc->core_irq, ret);
-			return ret;
-		}
-		disable_irq(mdwc->core_irq);
-	}
+	disable_irq(mdwc->core_irq);
 
 	return ret;
 }
@@ -6022,8 +6017,7 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 		clk_prepare_enable(mdwc->bus_aggr_clk);
 	}
 
-	cancel_delayed_work_sync(&mdwc->perf_vote_work);
-	msm_dwc3_perf_vote_update(mdwc, false);
+	msm_dwc3_perf_vote_enable(mdwc, false);
 	cancel_delayed_work_sync(&mdwc->sm_work);
 
 	if (mdwc->hs_phy)
@@ -6190,8 +6184,6 @@ static void msm_dwc3_perf_vote_update(struct dwc3_msm *mdwc, bool perf_mode)
 {
 	int latency = mdwc->pm_qos_latency;
 
-	mdwc->irq_cnt = 0;
-
 	if ((mdwc->perf_mode == perf_mode) || !latency)
 		return;
 
@@ -6210,17 +6202,38 @@ static void msm_dwc3_perf_vote_work(struct work_struct *w)
 {
 	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
 						perf_vote_work.work);
+	struct irq_desc *irq_desc = irq_to_desc(mdwc->core_irq);
+	unsigned int new = irq_desc->tot_count;
 	bool in_perf_mode = false;
 
-	if (mdwc->irq_cnt >= PM_QOS_THRESHOLD)
+	if (new - mdwc->irq_cnt >= PM_QOS_THRESHOLD)
 		in_perf_mode = true;
 
 	pr_debug("%s: in_perf_mode:%u, interrupts in last sample:%u\n",
-		 __func__, in_perf_mode, mdwc->irq_cnt);
+		 __func__, in_perf_mode, new - mdwc->irq_cnt);
 
+	mdwc->irq_cnt = new;
 	msm_dwc3_perf_vote_update(mdwc, in_perf_mode);
 	schedule_delayed_work(&mdwc->perf_vote_work,
 			msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
+}
+
+static void msm_dwc3_perf_vote_enable(struct dwc3_msm *mdwc, bool enable)
+{
+	struct irq_desc *irq_desc = irq_to_desc(mdwc->core_irq);
+
+	if (enable) {
+		/* make sure when enable work, save a valid start irq count */
+		mdwc->irq_cnt = irq_desc->tot_count;
+
+		/* start in perf mode for better performance initially for host/device mode */
+		msm_dwc3_perf_vote_update(mdwc, true);
+		schedule_delayed_work(&mdwc->perf_vote_work,
+				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
+	} else {
+		cancel_delayed_work_sync(&mdwc->perf_vote_work);
+		msm_dwc3_perf_vote_update(mdwc, false);
+	}
 }
 
 /**
@@ -6338,15 +6351,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		pm_runtime_put_sync_autosuspend(mdwc->dev);
 		cpu_latency_qos_add_request(&mdwc->pm_qos_req_dma,
 					    PM_QOS_DEFAULT_VALUE);
-		/* start in perf mode for better performance initially */
-		msm_dwc3_perf_vote_update(mdwc, true);
-		schedule_delayed_work(&mdwc->perf_vote_work,
-				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
+		msm_dwc3_perf_vote_enable(mdwc, true);
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
-
-		cancel_delayed_work_sync(&mdwc->perf_vote_work);
-		msm_dwc3_perf_vote_update(mdwc, false);
+		msm_dwc3_perf_vote_enable(mdwc, false);
 		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 
 		ret = pm_runtime_resume_and_get(&mdwc->dwc3->dev);
@@ -6430,7 +6438,7 @@ static void dwc3_override_vbus_status(struct dwc3_msm *mdwc, bool vbus_present)
 static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 {
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
-	int timeout = 1000;
+	int timeout = 100;
 	int ret;
 
 	ret = pm_runtime_resume_and_get(mdwc->dev);
@@ -6493,14 +6501,10 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		cpu_latency_qos_add_request(&mdwc->pm_qos_req_dma,
 					    PM_QOS_DEFAULT_VALUE);
 		clk_set_rate(mdwc->core_clk, mdwc->core_clk_rate);
-		/* start in perf mode for better performance initially */
-		msm_dwc3_perf_vote_update(mdwc, true);
-		schedule_delayed_work(&mdwc->perf_vote_work,
-				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
+		msm_dwc3_perf_vote_enable(mdwc, true);
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off gadget\n", __func__);
-		cancel_delayed_work_sync(&mdwc->perf_vote_work);
-		msm_dwc3_perf_vote_update(mdwc, false);
+		msm_dwc3_perf_vote_enable(mdwc, false);
 		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 
 		dwc3_override_vbus_status(mdwc, false);
