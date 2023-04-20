@@ -2489,9 +2489,6 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
 
-	if (priv->plat->clk_ptp_ref)
-		clk_prepare_enable(priv->plat->clk_ptp_ref);
-
 	if (qcom_ethqos_is_phy_link_up(ethqos))
 		ethqos_update_clk_and_bus_cfg(ethqos, ethqos->speed, priv->plat->interface);
 	else
