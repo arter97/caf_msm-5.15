@@ -3993,12 +3993,6 @@ static int stmmac_open(struct net_device *dev)
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
 
-	if (priv->plat->pm_lite) {
-		ret = device_init_wakeup(priv->device, true);
-		if (ret < 0)
-			return ret;
-	}
-
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
 		pm_runtime_put_noidle(priv->device);
@@ -4213,12 +4207,6 @@ static int stmmac_release(struct net_device *dev)
 
 	/* Free the IRQ lines */
 	stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
-
-	if (priv->plat->pm_lite) {
-		ret = device_init_wakeup(priv->device, false);
-		if (ret < 0)
-			netdev_err(dev, "Failed to disable wakeup-capable: %d\n", ret);
-	}
 
 	if (priv->eee_enabled) {
 		priv->tx_path_in_lpi_mode = false;
