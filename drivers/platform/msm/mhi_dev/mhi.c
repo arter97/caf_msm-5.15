@@ -29,6 +29,7 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <linux/limits.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "mhi.h"
 #include "mhi_hwio.h"
@@ -1769,6 +1770,7 @@ static void mhi_hwc_cb(void *priv, enum mhi_dma_event_type event,
 		}
 
 		mhi_log(mhi_ctx->vf_id, MHI_MSG_INFO, "Device in M0 State\n");
+		update_marker("MHI - Device in M0 State\n");
 		break;
 	case MHI_DMA_EVENT_DATA_AVAILABLE:
 		rc = mhi_dev_notify_sm_event(mhi_ctx, MHI_DEV_EVENT_HW_ACC_WAKEUP);
