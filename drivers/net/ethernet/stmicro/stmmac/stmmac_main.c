@@ -698,6 +698,7 @@ static int stmmac_hwtstamp_set(struct net_device *dev, struct ifreq *ifr)
 	u32 ts_master_en = 0;
 	u32 ts_event_en = 0;
 	u32 av_8021asm_en = 0;
+	int ret = 0;
 
 	if (!(priv->dma_cap.time_stamp || priv->adv_ts)) {
 		netdev_alert(priv->dev, "No support for HW time stamping\n");
@@ -721,6 +722,11 @@ static int stmmac_hwtstamp_set(struct net_device *dev, struct ifreq *ifr)
 	if (config.tx_type != HWTSTAMP_TX_OFF &&
 	    config.tx_type != HWTSTAMP_TX_ON)
 		return -ERANGE;
+
+	if (config.rx_filter == HWTSTAMP_FILTER_ALL) {
+		netdev_alert(priv->dev, "Ignore HWTSTAMP_FILTER_ALL ioctl from userspace\n");
+		return -EOPNOTSUPP;
+	}
 
 	if (priv->adv_ts) {
 		switch (config.rx_filter) {
@@ -867,6 +873,11 @@ static int stmmac_hwtstamp_set(struct net_device *dev, struct ifreq *ifr)
 	 * device needs to be intact.
 	 */
 	priv->systime_flags |= STMMAC_HWTS_ACTIVE;
+
+	ret = stmmac_init_tstamp_counter(priv, priv->systime_flags);
+
+	if (ret)
+		return ret;
 
 	if (priv->hwts_tx_en || priv->hwts_rx_en) {
 		priv->systime_flags |= tstamp_all | ptp_v2 |

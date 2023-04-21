@@ -203,7 +203,7 @@ int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg)
 
 	sub_second_inc = pps_config_sub_second_increment
 			 (priv->ptpaddr, eth_pps_cfg->ptpclk_freq,
-			  priv->plat->has_gmac4);
+			  (priv->plat->has_gmac4 || priv->plat->has_xgmac));
 
 	temp = (u64)((u64)eth_pps_cfg->ptpclk_freq << 32);
 	priv->default_addend = div_u64(temp, priv->plat->clk_ptp_rate);
