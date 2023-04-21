@@ -33,6 +33,7 @@
 #include <linux/interconnect.h>
 #include <linux/pci_regs.h>
 #include <linux/nvmem-consumer.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "ep_pcie_com.h"
 #include <linux/dma-mapping.h>
@@ -2284,6 +2285,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		EP_PCIE_INFO(dev,
 			"PCIe V%d: link initialized for LE PCIe endpoint\n",
 			dev->rev);
+		pr_crit("PCIe - link initialized for LE PCIe endpoint\n");
+		update_marker(
+			"PCIe - link initialized for LE PCIe endpoint\n");
 	}
 
 checkbme:
