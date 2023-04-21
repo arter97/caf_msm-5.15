@@ -1618,7 +1618,7 @@ static const struct adsp_data sdxbaagha_mpss_resource = {
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
-	.ssctl_id = 0x12,
+	.ssctl_id = 0x22,
 };
 
 static const struct adsp_data slpi_resource_init = {
