@@ -117,10 +117,10 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
 		ss_data->ignore_ssr = true;
-		if (ss_data->supported_state == RPROC_SUSPEND)
-			ret = rproc_suspend(rproc);
-		else if (ss_data->supported_state == RPROC_SHUTDOWN)
-			rproc_shutdown(rproc);
+//		if (ss_data->supported_state == RPROC_SUSPEND)
+//			ret = rproc_suspend(rproc);
+//		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+//			rproc_shutdown(rproc);
 		ss_data->ignore_ssr = false;
 		break;
 	case SUBSYS_HIBERNATE:
@@ -144,10 +144,10 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
 		ss_data->ignore_ssr = true;
-		if (ss_data->supported_state == RPROC_SUSPEND)
-			ret = rproc_resume(rproc);
-		else if (ss_data->supported_state == RPROC_SHUTDOWN)
-			ret = rproc_boot(rproc);
+//		if (ss_data->supported_state == RPROC_SUSPEND)
+//			ret = rproc_resume(rproc);
+//		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+//			ret = rproc_boot(rproc);
 		ss_data->ignore_ssr = false;
 		break;
 	case SUBSYS_HIBERNATE:
