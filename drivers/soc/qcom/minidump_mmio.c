@@ -496,7 +496,7 @@ static int minidump_mmio_driver_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id minidump_mmio_device_tbl[] = {
-	{ .compatible = "qcom,minidump-mmio", },
+	{ .compatible = "qcom,virt-minidump", },
 	{},
 };
 
