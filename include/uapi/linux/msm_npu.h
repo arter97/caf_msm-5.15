@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_NPU_H_

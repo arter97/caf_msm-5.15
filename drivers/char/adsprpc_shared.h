@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef ADSPRPC_SHARED_H
 #define ADSPRPC_SHARED_H
@@ -891,7 +891,7 @@ struct fastrpc_channel_ctx {
 	int in_hib;
 	void *handle;
 	uint64_t prevssrcount;
-	int issubsystemup;
+	int subsystemstate;
 	int vmid;
 	struct secure_vm rhvm;
 	void *rh_dump_dev;
@@ -946,7 +946,7 @@ struct fastrpc_apps {
 	struct hlist_head frpc_drivers;
 	struct mutex mut_uid;
 	/* Indicates cdsp device status */
-	int remote_cdsp_status;
+	int fastrpc_cdsp_status;
 };
 
 struct fastrpc_mmap {

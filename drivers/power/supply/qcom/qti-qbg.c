@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"QBG_K: %s: " fmt, __func__
@@ -946,6 +946,31 @@ static int qbg_init_esr(struct qti_qbg *chip)
 	return rc;
 }
 
+#define QBG_VBAT_EMPTY_STEP_THRES_UV 49920
+static void qbg_init_vbatt_empty_threshold(struct qti_qbg *chip)
+{
+	int rc = 0;
+	u8 val = 0;
+	u32 vbatt_in_uv = 0;
+
+	/* Check for Vbatt empty threshold limits -- Should be b/w 0 to 6V */
+	if (chip->vbatt_empty_threshold_mv == 0 || chip->vbatt_empty_threshold_mv > 6000) {
+		pr_info("Invalid Vbatt_empty threshold, value: %d\n",
+				chip->vbatt_empty_threshold_mv);
+		return;
+	}
+
+	vbatt_in_uv = chip->vbatt_empty_threshold_mv * 1000;
+
+	val = (u8) (vbatt_in_uv / QBG_VBAT_EMPTY_STEP_THRES_UV);
+
+	rc = qbg_write(chip, QBG_MAIN_VBAT_EMPTY_THRESH,
+			&val, 1);
+	if (rc < 0)
+		pr_err("Failed to write QBG VBATT EMPTY THRESHOLD offset, rc=%d\n", rc);
+
+}
+
 static int qbg_force_fast_char(struct qti_qbg *chip, bool force)
 {
 	int rc = 0;
@@ -1077,6 +1102,16 @@ done:
 	mutex_unlock(&chip->fifo_lock);
 	return IRQ_HANDLED;
 }
+
+static irqreturn_t qbg_vbatt_empty_irq_handler(int irq, void *_chip)
+{
+	struct qti_qbg *chip = _chip;
+
+	qbg_dbg(chip, QBG_DEBUG_IRQ, "Vbatt empty IRQ Triggered\n");
+
+	return IRQ_HANDLED;
+}
+
 
 static int qbg_notifier_cb(struct notifier_block *nb,
 			unsigned long event, void *data)
@@ -1518,7 +1553,7 @@ static int qbg_get_battery_temp(struct qti_qbg *chip, int *temp)
 	return 0;
 }
 
-#define TENTH_FACTOR	10
+#define UAH_FACTOR	10
 static int qbg_get_charge_counter(struct qti_qbg *chip, int *charge_count)
 {
 
@@ -1527,7 +1562,8 @@ static int qbg_get_charge_counter(struct qti_qbg *chip, int *charge_count)
 		return 0;
 	}
 
-	*charge_count = chip->learned_capacity * chip->soc / TENTH_FACTOR;
+	*charge_count = chip->learned_capacity * chip->soc * UAH_FACTOR;
+
 	return 0;
 }
 
@@ -2188,6 +2224,7 @@ static long qbg_device_ioctl(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case QBGIOCXCFG:
+	case QBG_QBGIOCXCFG:
 		config_user = (struct qbg_config __user *)arg;
 
 		rc = qbg_get_sample_time_us(chip);
@@ -2244,6 +2281,7 @@ static long qbg_device_ioctl(struct file *file, unsigned int cmd,
 
 		break;
 	case QBGIOCXEPR:
+	case QBG_QBGIOCXEPR:
 		params_user = (struct qbg_essential_params __user *)arg;
 		rc = qbg_sdam_get_essential_params(chip,
 				(u8 *)&chip->essential_params);
@@ -2260,6 +2298,7 @@ static long qbg_device_ioctl(struct file *file, unsigned int cmd,
 
 		break;
 	case QBGIOCXEPW:
+	case QBG_QBGIOCXEPW:
 		params_user = (struct qbg_essential_params __user *)arg;
 		if (copy_from_user((void *)&chip->essential_params, params_user,
 					sizeof(chip->essential_params))) {
@@ -2280,6 +2319,7 @@ static long qbg_device_ioctl(struct file *file, unsigned int cmd,
 
 		break;
 	case QBGIOCXSTEPCHGCFG:
+	case QBG_QBGIOCXSTEPCHGCFG:
 		step_chg_params_user = (struct qbg_step_chg_jeita_params __user *)arg;
 
 		if (copy_to_user(step_chg_params_user, (void *)chip->step_chg_jeita_params,
@@ -2302,6 +2342,12 @@ static long qbg_device_ioctl(struct file *file, unsigned int cmd,
 	return rc;
 }
 
+static long qbg_device_compat_ioctl(struct file *file, unsigned int cmd,
+							unsigned long arg)
+{
+	return qbg_device_ioctl(file, _IOC_NR(cmd), arg);
+}
+
 static const struct file_operations qbg_fops = {
 	.owner		= THIS_MODULE,
 	.open		= qbg_device_open,
@@ -2310,7 +2356,7 @@ static const struct file_operations qbg_fops = {
 	.write		= qbg_device_write,
 	.poll		= qbg_device_poll,
 	.unlocked_ioctl	= qbg_device_ioctl,
-	.compat_ioctl	= qbg_device_ioctl,
+	.compat_ioctl	= qbg_device_compat_ioctl,
 };
 
 static int qbg_register_device(struct qti_qbg *chip)
@@ -2384,6 +2430,23 @@ static int qbg_register_interrupts(struct qti_qbg *chip)
 	if (rc < 0)
 		dev_err(chip->dev, "Failed to set IRQ(qbg-sdam) wake-able, rc=%d\n",
 			rc);
+
+	/* Register for Vbatt_empty INT only if valid value is defined in DT */
+	if (chip->vbatt_empty_threshold_mv != 0) {
+		rc = devm_request_threaded_irq(chip->dev, chip->vbatt_empty_irq, NULL,
+			qbg_vbatt_empty_irq_handler, IRQF_ONESHOT,
+			"qbg-vbatt-empty", chip);
+		if (rc < 0) {
+			dev_err(chip->dev, "Failed to request IRQ(qbg-vbatt-empty), rc=%d\n",
+				rc);
+			return rc;
+		}
+
+		rc = enable_irq_wake(chip->vbatt_empty_irq);
+		if (rc < 0)
+			dev_err(chip->dev, "Failed to set IRQ(qbg-vbatt-empty) wake-able, rc=%d\n",
+				rc);
+	}
 
 	return rc;
 }
@@ -2504,6 +2567,25 @@ static void get_qbg_debug_mask(struct qti_qbg *chip)
 	kfree(data[1]);
 }
 
+#define SOC_UPDATE_FREQUENCY_MS		60000
+static void soc_update_work(struct work_struct *work)
+{
+	struct qti_qbg *chip = container_of(work, struct qti_qbg, soc_update_work.work);
+	int rc = 0;
+
+	if (chip->sys_soc != INT_MIN) {
+		qbg_dbg(chip, QBG_DEBUG_STATUS, "write soc = %d to register\n",
+			chip->sys_soc);
+		rc = qbg_write_iio_chan(chip, SYS_SOC, chip->sys_soc);
+		if (rc < 0) {
+			pr_err("Failed to write battery sys_soc, rc=%d\n", rc);
+			return;
+		}
+	}
+
+	schedule_delayed_work(&chip->soc_update_work, msecs_to_jiffies(SOC_UPDATE_FREQUENCY_MS));
+}
+
 static int qbg_parse_sdam_dt(struct qti_qbg *chip, struct device_node *node)
 {
 	int rc;
@@ -2584,6 +2666,19 @@ static int qbg_parse_dt(struct qti_qbg *chip)
 	if (!rc)
 		chip->rconn_mohm = val;
 
+	chip->vbatt_empty_threshold_mv = 0;
+	rc = of_property_read_u32(node, "qcom,vbatt-empty-threshold-mv",
+					&val);
+
+	if (!rc)
+		chip->vbatt_empty_threshold_mv = val;
+
+	chip->vbatt_empty_irq = of_irq_get_byname(node, "qbg-vbatt-empty");
+	if (chip->vbatt_empty_irq < 0) {
+		pr_err("Failed to get Vbatt_empty IRQ, rc=%d\n", chip->vbatt_empty_irq);
+		return -EINVAL;
+	}
+
 	if (of_find_property(node, "nvmem-cells", NULL)) {
 		chip->debug_mask_nvmem_low = devm_nvmem_cell_get(chip->dev, "qbg_debug_mask_low");
 		if (IS_ERR(chip->debug_mask_nvmem_low)) {
@@ -2653,6 +2748,7 @@ static int qti_qbg_probe(struct platform_device *pdev)
 
 	INIT_WORK(&chip->status_change_work, status_change_work);
 	INIT_WORK(&chip->udata_work, process_udata_work);
+	INIT_DELAYED_WORK(&chip->soc_update_work, soc_update_work);
 	mutex_init(&chip->fifo_lock);
 	mutex_init(&chip->data_lock);
 	mutex_init(&chip->context_lock);
@@ -2768,11 +2864,15 @@ static int qti_qbg_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+	qbg_init_vbatt_empty_threshold(chip);
+
 	rc = qbg_register_interrupts(chip);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "Failed to register QBG interrupts, rc=%d\n", rc);
 		return rc;
 	}
+
+	schedule_delayed_work(&chip->soc_update_work, msecs_to_jiffies(SOC_UPDATE_FREQUENCY_MS));
 
 	dev_info(&pdev->dev, "QBG initialized! battery_profile=%s SOC=%d\n",
 			qbg_get_battery_type(chip), chip->soc);
@@ -2788,6 +2888,7 @@ static int qti_qbg_remove(struct platform_device *pdev)
 		rtc_class_close(chip->rtc);
 	cancel_work_sync(&chip->status_change_work);
 	cancel_work_sync(&chip->udata_work);
+	cancel_delayed_work_sync(&chip->soc_update_work);
 	mutex_destroy(&chip->fifo_lock);
 	mutex_destroy(&chip->data_lock);
 	mutex_destroy(&chip->context_lock);
@@ -2830,7 +2931,7 @@ static int qbg_restore(struct device *dev)
 static int qbg_suspend(struct device *dev)
 {
 #ifdef CONFIG_DEEPSLEEP
-	if (mem_sleep_current == PM_SUSPEND_MEM)
+	if (pm_suspend_via_firmware())
 		return qbg_freeze(dev);
 #endif
 	return 0;
@@ -2839,7 +2940,7 @@ static int qbg_suspend(struct device *dev)
 static int qbg_resume(struct device *dev)
 {
 #ifdef CONFIG_DEEPSLEEP
-	if (mem_sleep_current == PM_SUSPEND_MEM)
+	if (pm_suspend_via_firmware())
 		return qbg_restore(dev);
 #endif
 	return 0;

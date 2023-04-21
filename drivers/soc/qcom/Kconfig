@@ -307,6 +307,7 @@ config QCOM_RPMHPD
 
 config QCOM_RPMPD
 	tristate "Qualcomm RPM Power domain driver"
+	depends on PM
 	depends on QCOM_SMD_RPM
 	help
 	  QCOM RPM Power domain driver to support power-domains with
@@ -471,6 +472,16 @@ config QTI_ALTMODE_GLINK
 	  an interface for Type-C alternate mode clients to receive data such
 	  as Pin Assignment Notifications from the Type-C stack running on a
 	  remote subsystem (e.g. DSP) via the PMIC GLINK interface.
+
+config SPMI_QTI_GLINK_DEBUG
+	tristate "QTI Glink Debug SPMI Controller"
+	depends on QTI_PMIC_GLINK
+	help
+	  The Qualcomm Technologies, Inc. Glink debug SPMI controller driver
+	  provides an interface to read and write PMIC registers over PMIC
+	  Glink using a remote subsytem (e.g. DSP).  This allows for debugging
+	  PMIC peripherals that would typically only be accessible to the
+	  charger and fuel gauging firmware running on the remote subsystem.
 
 config QCOM_SECURE_BUFFER
 	tristate "Helper functions for secure buffers through TZ"
@@ -1072,6 +1083,15 @@ config QTI_HW_KEY_MANAGER
 	 HWKM hardware to perform key operations from the kernel which will
 	 be used for storage encryption.
 
+config QTI_HW_KEY_MANAGER_V1
+	tristate "Enable QTI Hardware Key Manager v1 for storage encryption"
+	default n
+	help
+	 Say 'Y' to enable the hardware key manager v1 driver used to operate
+	 and access key manager hardware block. This is used to interface with
+	 HWKM hardware to perform key operations from the kernel which will
+	 be used for storage encryption.
+
 config QCOM_MEM_OFFLINE
 	tristate "Dynamic Memory Region Offline driver"
 	depends on MEMORY_HOTPLUG
@@ -1345,5 +1365,15 @@ config QCOM_S2D_VENDOR_HOOK
 	  hibernation. Callbacks implemented here are called from the
           core kernel and help to do bootloader hibernation specific job.
 	  Enable this if bootloader hibernation is enabled.
+
+config QCOM_SECURE_HIBERNATION
+	tristate "Add security support to hibernation"
+	depends on HIBERNATION
+	help
+	  Secure the hibernation snapshot by encrypting
+	  the snapshot at kernel before saving to disk.
+	  This uses GCM-AES crypto algorithm to encrypt the
+	  pages at the kernel.
+	  If not sure, say N.
 
 endmenu

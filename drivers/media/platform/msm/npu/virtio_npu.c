@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cdev.h>
@@ -472,7 +473,7 @@ static struct virt_npu_msg *virt_alloc_msg(struct npu_device *npu_dev,
 
 	buf = get_tx_buf(npu_dev, &buf_num);
 	if (!buf) {
-		NPU_ERR("can't get tx buffer\n");
+		NPU_ERR("can't get tx  buffer\n");
 		kfree(msg);
 		return NULL;
 	}

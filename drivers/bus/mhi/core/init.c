@@ -77,7 +77,7 @@ static const char * const mhi_pm_state_str[] = {
 	[MHI_PM_STATE_LD_ERR_FATAL_DETECT] = "Linkdown or Error Fatal Detect",
 };
 
-const char *to_mhi_pm_state_str(enum mhi_pm_state state)
+const char *to_mhi_pm_state_str(u32 state)
 {
 	int index;
 
@@ -637,7 +637,7 @@ int mhi_init_chan_ctxt(struct mhi_controller *mhi_cntrl,
 
 	tre_ring->rp = tre_ring->wp = tre_ring->base;
 	buf_ring->rp = buf_ring->wp = buf_ring->base;
-	mhi_chan->db_cfg.db_mode = 1;
+	mhi_chan->db_cfg.db_mode = true;
 
 	/* Update to all cores */
 	smp_wmb();
@@ -1017,10 +1017,6 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 	/* Init wakeup source */
 	device_init_wakeup(&mhi_dev->dev, true);
 
-	ret = device_add(&mhi_dev->dev);
-	if (ret)
-		goto err_release_dev;
-
 	mhi_cntrl->mhi_dev = mhi_dev;
 
 	ret = mhi_misc_register_controller(mhi_cntrl);
@@ -1028,8 +1024,16 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 		dev_err(mhi_cntrl->cntrl_dev,
 			"Could not enable miscellaneous features\n");
 		mhi_cntrl->mhi_dev = NULL;
-		goto err_release_dev;
+		goto err_ida_free;
 	}
+
+	ret = device_add(&mhi_dev->dev);
+	if (ret)
+		goto err_misc_release;
+
+	ret = mhi_misc_sysfs_create(mhi_cntrl);
+	if (ret)
+		goto err_release_dev;
 
 	mhi_create_debugfs(mhi_cntrl);
 
@@ -1037,6 +1041,8 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 
 err_release_dev:
 	put_device(&mhi_dev->dev);
+err_misc_release:
+	mhi_misc_unregister_controller(mhi_cntrl);
 err_ida_free:
 	ida_free(&mhi_controller_ida, mhi_cntrl->index);
 err_destroy_wq:
@@ -1058,6 +1064,7 @@ void mhi_unregister_controller(struct mhi_controller *mhi_cntrl)
 	unsigned int i;
 
 	mhi_misc_unregister_controller(mhi_cntrl);
+	mhi_misc_sysfs_destroy(mhi_cntrl);
 
 	/* Free the memory controller wanted to preserve for BHIe images */
 	if (mhi_cntrl->img_pre_alloc) {
