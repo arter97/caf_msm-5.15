@@ -705,13 +705,18 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 		if (ir6.ifr6_prefixlen > 128)
 			ir6.ifr6_prefixlen = 0;
 	}
-	ret = inet6_ioctl(net->genl_sock->sk_socket,
-			  SIOCSIFADDR, (unsigned long)(void *)&ir6);
-		if (ret) {
-			ETHQOSDBG("Can't setup IPv6 address!\r\n");
-		} else {
-			ETHQOSDBG("Assigned IPv6 address: %s\r\n",
-				  ip_info->ipv6_addr_str);
+	if (net->genl_sock) {
+		ret = inet6_ioctl(net->genl_sock->sk_socket,
+				  SIOCSIFADDR, (unsigned long)(void *)&ir6);
+	} else {
+		ETHQOSERR("Sock is null, unable to assign ipv6 address\n");
+	}
+
+	if (ret) {
+		ETHQOSDBG("Can't setup IPv6 address!\r\n");
+	} else {
+		ETHQOSDBG("Assigned IPv6 address: %s\r\n",
+			  ip_info->ipv6_addr_str);
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Assigned IPv6 address");
 #endif
@@ -2237,10 +2242,10 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	}
 
 	/*Use legacy way of handling the interrupt*/
-	if ((priv->phydev && (priv->phydev->phy_id &
+	if ((priv->phydev && priv->phydev->drv && (priv->phydev->phy_id &
 	     priv->phydev->drv->phy_id_mask)
 	     == MICREL_PHY_ID) ||
-	    (priv->phydev && (priv->phydev->phy_id &
+	    (priv->phydev && priv->phydev->drv && (priv->phydev->phy_id &
 	     priv->phydev->drv->phy_id_mask)
 	     == PHY_ID_KSZ9131)) {
 		phy_intr_status = ethqos_mdio_read(priv,
@@ -2898,8 +2903,16 @@ static ssize_t read_rgmii_reg_dump(struct file *file,
 	char *buf;
 	int rgmii_data = 0;
 	ssize_t ret_cnt;
-	struct platform_device *pdev = ethqos->pdev;
-	struct net_device *dev = platform_get_drvdata(pdev);
+	struct platform_device *pdev;
+	struct net_device *dev;
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	pdev = ethqos->pdev;
+	dev = platform_get_drvdata(pdev);
 
 	if (!dev->phydev) {
 		ETHQOSERR("NULL Pointer\n");
@@ -4196,7 +4209,7 @@ static ssize_t ethqos_read_dev_emac(struct file *filp, char __user *buf,
 				    size_t count, loff_t *f_pos)
 {
 	unsigned int len = 0;
-	char *temp_buf;
+	char *temp_buf = NULL;
 	ssize_t ret_cnt = 0;
 
 	ret_cnt = simple_read_from_buffer(buf, count, f_pos, temp_buf, len);
@@ -4719,7 +4732,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII))
 		plat_dat->mdio_bus_data->has_xpcs = true;
 
-	if (plat_dat->mdio_bus_data->has_xpcs) {
+	if (plat_dat->mdio_bus_data && plat_dat->mdio_bus_data->has_xpcs) {
 		ret = ethqos_xpcs_init(ndev);
 		if (ret < 0)
 			goto err_clk;
