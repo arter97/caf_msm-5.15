@@ -30,6 +30,7 @@
 #include <linux/msm-sps.h>
 #include <linux/soc/qcom/smem.h>
 #include <linux/interconnect.h>
+#include <linux/suspend.h>
 
 #define PAGE_SIZE_2K 2048
 #define PAGE_SIZE_4K 4096
@@ -451,4 +452,12 @@ static inline bool is_buffer_in_page(const void *buf, size_t len)
 {
 	return !(((unsigned long) buf & ~PAGE_MASK) + len > PAGE_SIZE);
 }
+
+static void msm_nand_bam_free(struct msm_nand_info *nand_info);
+static int msm_nand_bam_init(struct msm_nand_info *nand_info);
+static int msm_nand_enable_dma(struct msm_nand_info *info);
+static int msm_nand_init_status_pipe(struct msm_nand_info *info);
+static int msm_nand_get_device(struct device *dev);
+static int msm_nand_put_device(struct device *dev);
+
 #endif /* __QPIC_NAND_H */
