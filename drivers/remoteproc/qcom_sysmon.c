@@ -45,6 +45,7 @@ struct qcom_sysmon {
 	const char *name;
 
 	int shutdown_irq;
+	int deepsleep_irq;
 	int ssctl_version;
 	int ssctl_instance;
 
@@ -59,6 +60,7 @@ struct qcom_sysmon {
 	struct completion ind_comp;
 	struct completion shutdown_comp;
 	struct completion ssctl_comp;
+	struct completion deepsleep_comp;
 	struct mutex lock;
 
 	bool ssr_ack;
@@ -772,6 +774,15 @@ static irqreturn_t sysmon_shutdown_interrupt(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t sysmon_deepsleep_interrupt(int irq, void *data)
+{
+	struct qcom_sysmon *sysmon = data;
+
+	complete(&sysmon->deepsleep_comp);
+
+	return IRQ_HANDLED;
+}
+
 #define QMI_SSCTL_GET_FAILURE_REASON_REQ	0x0022
 #define QMI_SSCTL_EMPTY_MSG_LENGTH		0
 #define QMI_SSCTL_ERROR_MSG_LENGTH		90
@@ -935,6 +946,7 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 	init_completion(&sysmon->ind_comp);
 	init_completion(&sysmon->shutdown_comp);
 	init_completion(&sysmon->ssctl_comp);
+	init_completion(&sysmon->deepsleep_comp);
 	timer_setup(&sysmon->timeout_data.timer, sysmon_notif_timeout_handler, 0);
 	mutex_init(&sysmon->lock);
 	mutex_init(&sysmon->state_lock);
@@ -959,6 +971,27 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 		if (ret) {
 			dev_err(sysmon->dev,
 				"failed to acquire shutdown-ack IRQ\n");
+			return ERR_PTR(ret);
+		}
+	}
+
+	sysmon->deepsleep_irq = of_irq_get_byname(sysmon->dev->of_node,
+						 "deepsleep-ack");
+	if (sysmon->deepsleep_irq < 0) {
+		if (sysmon->deepsleep_irq != -ENODATA) {
+			dev_err(sysmon->dev,
+				"failed to retrieve deepsleep-ack IRQ\n");
+			return ERR_PTR(sysmon->deepsleep_irq);
+		}
+	} else {
+		ret = devm_request_threaded_irq(sysmon->dev,
+						sysmon->deepsleep_irq,
+						NULL, sysmon_deepsleep_interrupt,
+						IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+						"q6v5 deepsleep-ack", sysmon);
+		if (ret) {
+			dev_err(sysmon->dev,
+				"failed to acquire deepsleep-ack IRQ\n");
 			return ERR_PTR(ret);
 		}
 	}
