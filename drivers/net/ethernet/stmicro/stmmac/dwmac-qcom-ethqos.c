@@ -4656,6 +4656,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	priv->plat->pm_lite = true;
 #endif
 
+	ret = device_init_wakeup(priv->device, true);
+	if (ret < 0)
+		ETHQOSERR("Failed to enable Device wakeup capable ret = %d\n",
+			  ret);
+
 	ethqos_create_debugfs(ethqos);
 	return ret;
 
@@ -4692,6 +4697,11 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		return -ENODEV;
 
 	priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = device_init_wakeup(priv->device, false);
+	if (ret < 0)
+		ETHQOSERR("Failed to Disable Device wakeup capable ret = %d\n",
+			  ret);
 
 	if (priv->hw->qxpcs) {
 		if (priv->hw->qxpcs->intr_en)
@@ -4773,13 +4783,7 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (!ndev)
 		return -EINVAL;
 
-	if (priv->plat->pm_lite) {
-		ret = device_init_wakeup(priv->device, false);
-		if (ret < 0) {
-			ETHQOSERR("Failed to disable wakeup-capable: %d\n", ret);
-			return ret;
-		}
-	}
+	device_set_wakeup_capable(priv->device, false);
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -4852,20 +4856,14 @@ static int qcom_ethqos_resume(struct device *dev)
 		return -EINVAL;
 	}
 
-	if (priv->plat->pm_lite) {
-		ret = device_init_wakeup(priv->device, true);
-		if (ret < 0) {
-			ETHQOSERR("Failed to enable wakeup-capable: %d\n", ret);
-			return ret;
-		}
-	}
+	qcom_ethqos_phy_resume_clks(ethqos);
+
+	device_set_wakeup_capable(priv->device, true);
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
 		ethqos_phy_power_on(ethqos);
 	}
-
-	qcom_ethqos_phy_resume_clks(ethqos);
 
 	if (ethqos->rgmii_clk) {
 		ret = clk_prepare_enable(ethqos->rgmii_clk);
