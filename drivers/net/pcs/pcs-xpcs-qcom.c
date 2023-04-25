@@ -278,12 +278,53 @@ out:
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_pcs_loopback);
 
-/* Stub function for now until PM effort begins. This is to prevent any side effects
- * during regular data path testing.
+/* KREEE: USXGMII 10GBase-R/KR mode
+ * KX4EEE: SGMII 10GBase-X/KX4 mode
  */
 int qcom_xpcs_config_eee(struct dw_xpcs_qcom *xpcs, int mult_fact_100ns, int enable)
 {
-	return 0;
+	int ret;
+
+	ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_EEE_ABL);
+	if (ret < 0)
+		goto out;
+
+	if (ret & KREEE_SUPPORT) {
+		XPCSINFO("EEE supported for 10GBase-R/KR mode\n");
+	} else if (ret & KX4EEE_SUPPORT) {
+		XPCSINFO("EEE supported for 10GBase-X/KX4 mode\n");
+	} else {
+		XPCSERR("EEE not supported for SGMII or USXGMII interfaces\n");
+		return -ENODEV;
+	}
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_XS_PCS_EEE_MCTRL0);
+	if (ret < 0)
+		goto out;
+
+	if (enable)
+		ret = DW_VR_MII_EEE_LTX_EN | DW_VR_MII_EEE_TX_EN_CTRL |
+			DW_VR_MII_EEE_LRX_EN | DW_VR_MII_EEE_RX_EN_CTRL |
+			mult_fact_100ns << DW_VR_MII_EEE_MULT_FACT_100NS_SHIFT;
+	else
+		ret &= ~(DW_VR_MII_EEE_LTX_EN | DW_VR_MII_EEE_TX_EN_CTRL |
+			DW_VR_MII_EEE_LRX_EN | DW_VR_MII_EEE_RX_EN_CTRL |
+			mult_fact_100ns << DW_VR_MII_EEE_MULT_FACT_100NS_SHIFT);
+
+	ret = qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL0, ret);
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_XS_PCS_EEE_MCTRL1);
+	if (ret < 0)
+		goto out;
+
+	if (enable)
+		return qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL1, ret | DW_VR_MII_EEE_TRN_LPI);
+
+	ret &= ~DW_VR_MII_EEE_TRN_LPI;
+	return qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL1, ret);
+out:
+	XPCSERR("Register read failed\n");
+	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_config_eee);
 
