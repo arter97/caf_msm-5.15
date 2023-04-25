@@ -75,7 +75,6 @@ struct stmmac_tx_queue {
 	struct dma_extended_desc *dma_etx ____cacheline_aligned_in_smp;
 	struct dma_edesc *dma_entx;
 	struct dma_desc *dma_tx;
-	struct dma_desc *dma_tx_ipa;
 	union {
 		struct sk_buff **tx_skbuff;
 		struct xdp_frame **xdpf;
@@ -86,7 +85,6 @@ struct stmmac_tx_queue {
 	unsigned int cur_tx;
 	unsigned int dirty_tx;
 	dma_addr_t dma_tx_phy;
-	dma_addr_t dma_tx_phy_ipa;
 	dma_addr_t tx_tail_addr;
 	u32 mss;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
@@ -96,7 +94,6 @@ struct stmmac_tx_queue {
 	struct sk_buff **tx_offload_skbuff;
 	dma_addr_t *tx_offload_skbuff_dma;
 	dma_addr_t buff_tx_phy;
-	dma_addr_t buff_tx_phy_ipa;
 	void *buffer_tx_va_addr;
 #endif
 };
@@ -124,13 +121,11 @@ struct stmmac_rx_queue {
 	struct stmmac_priv *priv_data;
 	struct dma_extended_desc *dma_erx;
 	struct dma_desc *dma_rx ____cacheline_aligned_in_smp;
-	struct dma_desc *dma_rx_ipa ____cacheline_aligned_in_smp;
 	unsigned int cur_rx;
 	unsigned int dirty_rx;
 	unsigned int buf_alloc_num;
 	u32 rx_zeroc_thresh;
 	dma_addr_t dma_rx_phy;
-	dma_addr_t dma_rx_phy_ipa;
 	u32 rx_tail_addr;
 	unsigned int state_saved;
 	struct {
@@ -142,7 +137,6 @@ struct stmmac_rx_queue {
 	struct sk_buff **rx_offload_skbuff;
 	dma_addr_t *rx_offload_skbuff_dma;
 	dma_addr_t buff_rx_phy;
-	dma_addr_t buff_rx_phy_ipa;
 	void *buffer_rx_va_addr;
 #endif
 };
@@ -245,7 +239,6 @@ struct stmmac_priv {
 	struct device *device;
 	struct mac_device_info *hw;
 	int (*hwif_quirks)(struct stmmac_priv *priv);
-	int (*reinit_sw_path)(struct stmmac_priv *priv);
 	struct mutex lock;
 	struct phy_device *phydev;
 
@@ -411,7 +404,6 @@ static inline unsigned int stmmac_rx_offset(struct stmmac_priv *priv)
 	return 0;
 }
 
-int stmmac_reinit(struct stmmac_priv *priv);
 void stmmac_disable_rx_queue(struct stmmac_priv *priv, u32 queue);
 void stmmac_enable_rx_queue(struct stmmac_priv *priv, u32 queue);
 void stmmac_disable_tx_queue(struct stmmac_priv *priv, u32 queue);
