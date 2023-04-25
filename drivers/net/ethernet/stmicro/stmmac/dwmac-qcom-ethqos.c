@@ -4817,15 +4817,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	return ret;
 
 err_clk:
-	if (ethqos->phyaux_clk)
-		clk_disable_unprepare(ethqos->phyaux_clk);
-
-	if (ethqos->sgmiref_clk)
-		clk_disable_unprepare(ethqos->sgmiref_clk);
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII)
+	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+	}
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
@@ -4877,15 +4874,11 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
 
-	if (ethqos->phyaux_clk)
-		clk_disable_unprepare(ethqos->phyaux_clk);
-
-	if (ethqos->sgmiref_clk)
-		clk_disable_unprepare(ethqos->sgmiref_clk);
-
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+	}
 
 	icc_put(ethqos->axi_icc_path);
 
@@ -4966,8 +4959,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 #endif
 
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII)
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+	}
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
 
@@ -5039,21 +5034,13 @@ static int qcom_ethqos_resume(struct device *dev)
 		}
 	}
 
-	if (ethqos->phyaux_clk) {
-		ret = clk_prepare_enable(ethqos->phyaux_clk);
-		if (ret)
-			return ret;
-	}
-
-	if (ethqos->sgmiref_clk) {
-		ret = clk_prepare_enable(ethqos->sgmiref_clk);
-		if (ret)
-			return ret;
-	}
-
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret)
+			return -EINVAL;
+
+		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
 			return -EINVAL;
 	}
