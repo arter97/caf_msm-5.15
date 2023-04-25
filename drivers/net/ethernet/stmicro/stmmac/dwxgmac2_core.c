@@ -289,11 +289,11 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 {
 	void __iomem *ioaddr = hw->pcsr;
 	int ret = 0;
-	u32 status;
+	u32 status, chan_status;
 
 	status = readl(ioaddr + XGMAC_MTL_INT_STATUS);
 	if (status & BIT(chan)) {
-		u32 chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
+		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 
 		if (chan_status & XGMAC_RXOVFIS)
 			ret |= CORE_IRQ_MTL_RX_OVERFLOW;
@@ -301,6 +301,13 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	if ((status & BIT(4)) && !chan) {
+		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(4));
+		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(4));
+		pr_info("%s Ch 4 Intr status = %u\n", __func__, chan_status);
+	}
+#endif
 	return ret;
 }
 
