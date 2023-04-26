@@ -94,6 +94,9 @@ static struct ep_pcie_clk_info_t
 	{NULL, "snoc_cnoc_gemnoc_pcie_south_qx_clk", 0, false},
 	{NULL, "snoc_cnoc_gemnoc_pcie_qx_clk", 0, false},
 	{NULL, "gemnoc_pcie_qx_clk", 0, false},
+	{NULL, "pcie_pipediv2_clk", 0, false},
+	{NULL, "pcie_phy_refgen_clk", 0, false},
+	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
 static struct ep_pcie_clk_info_t
