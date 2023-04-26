@@ -2710,6 +2710,10 @@ static int gsi_get_status(struct usb_function *f)
 {
 	struct f_gsi *gsi = func_to_gsi(f);
 
+	/* D0 and D1 bit set to 0 if device is not wakeup capable */
+	if (!(USB_CONFIG_ATT_WAKEUP & f->config->bmAttributes))
+		return 0;
+
 	/* Disable function remote wake-up for DPL interface */
 	if (gsi->prot_id == IPA_USB_DIAG)
 		return 0;
