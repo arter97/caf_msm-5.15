@@ -564,6 +564,7 @@ struct mac_device_info {
 	unsigned int promisc;
 	bool vlan_fail_q_en;
 	u8 vlan_fail_q;
+	bool crc_strip_en;
 };
 
 struct stmmac_rx_routing {
