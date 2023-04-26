@@ -816,6 +816,7 @@ ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
 			break;
 
 		case 0:
+			ethqos->rgmii_clk_rate = 0;
 			break;
 
 		default:
