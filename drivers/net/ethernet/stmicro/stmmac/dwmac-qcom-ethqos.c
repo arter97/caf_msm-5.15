@@ -2127,81 +2127,6 @@ static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
 		ETHQOSERR("HSR configuration has failed\n");
 }
 
-static int ethqos_mdio_read(struct stmmac_priv  *priv, int phyaddr, int phyreg)
-{
-	unsigned int mii_address = priv->hw->mii.addr;
-	unsigned int mii_data = priv->hw->mii.data;
-	u32 v;
-	int data;
-	u32 value = MII_BUSY;
-	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
-
-	if (ethqos->phy_state == PHY_IS_OFF) {
-		ETHQOSINFO("Phy is in off state reading is not possible\n");
-		return -EOPNOTSUPP;
-	}
-
-	value |= (phyaddr << priv->hw->mii.addr_shift)
-		& priv->hw->mii.addr_mask;
-	value |= (phyreg << priv->hw->mii.reg_shift) & priv->hw->mii.reg_mask;
-	value |= (priv->clk_csr << priv->hw->mii.clk_csr_shift)
-		& priv->hw->mii.clk_csr_mask;
-	if (priv->plat->has_gmac4)
-		value |= MII_GMAC4_READ;
-
-	if (readl_poll_timeout(priv->ioaddr + mii_address, v, !(v & MII_BUSY),
-			       100, 10000))
-		return -EBUSY;
-
-	writel_relaxed(value, priv->ioaddr + mii_address);
-
-	if (readl_poll_timeout(priv->ioaddr + mii_address, v, !(v & MII_BUSY),
-			       100, 10000))
-		return -EBUSY;
-
-	/* Read the data from the MII data register */
-	data = (int)readl_relaxed(priv->ioaddr + mii_data);
-
-	return data;
-}
-
-static int ethqos_mdio_write(struct stmmac_priv  *priv, int phyaddr, int phyreg,
-			     u16 phydata)
-{
-	unsigned int mii_address = priv->hw->mii.addr;
-	unsigned int mii_data = priv->hw->mii.data;
-	u32 v;
-	u32 value = MII_BUSY;
-	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
-
-	if (ethqos->phy_state == PHY_IS_OFF) {
-		ETHQOSINFO("Phy is in off state writing is not possible\n");
-		return -EOPNOTSUPP;
-	}
-	value |= (phyaddr << priv->hw->mii.addr_shift)
-		& priv->hw->mii.addr_mask;
-	value |= (phyreg << priv->hw->mii.reg_shift) & priv->hw->mii.reg_mask;
-
-	value |= (priv->clk_csr << priv->hw->mii.clk_csr_shift)
-		& priv->hw->mii.clk_csr_mask;
-	if (priv->plat->has_gmac4)
-		value |= MII_GMAC4_WRITE;
-	else
-		value |= MII_WRITE;
-
-	/* Wait until any existing MII operation is complete */
-	if (readl_poll_timeout(priv->ioaddr + mii_address, v, !(v & MII_BUSY),
-			       100, 10000))
-		return -EBUSY;
-
-	/* Set the MII address register to write */
-	writel_relaxed(phydata, priv->ioaddr + mii_data);
-	writel_relaxed(value, priv->ioaddr + mii_address);
-
-	/* Wait until any existing MII operation is complete */
-	return readl_poll_timeout(priv->ioaddr + mii_address, v,
-			!(v & MII_BUSY), 100, 10000);
-}
 
 static int ethqos_phy_intr_config(struct qcom_ethqos *ethqos)
 {
@@ -2248,14 +2173,21 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 	    (priv->phydev && priv->phydev->drv && (priv->phydev->phy_id &
 	     priv->phydev->drv->phy_id_mask)
 	     == PHY_ID_KSZ9131)) {
-		phy_intr_status = ethqos_mdio_read(priv,
-						   priv->plat->phy_addr,
-						   DWC_ETH_QOS_BASIC_STATUS);
+		if (priv->mii) {
+			phy_intr_status = priv->mii->read(priv->mii,
+							  priv->plat->phy_addr,
+							  DWC_ETH_QOS_BASIC_STATUS);
+		}
+
 		ETHQOSDBG("Basic Status Reg (%#x) = %#x\n",
 			  DWC_ETH_QOS_BASIC_STATUS, phy_intr_status);
-		micrel_intr_status = ethqos_mdio_read(priv,
-						      priv->plat->phy_addr,
-						      DWC_ETH_QOS_MICREL_PHY_INTCS);
+
+		if (priv->mii) {
+			micrel_intr_status = priv->mii->read(priv->mii,
+							     priv->plat->phy_addr,
+							     DWC_ETH_QOS_MICREL_PHY_INTCS);
+		}
+
 		ETHQOSDBG("MICREL PHY Intr EN Reg (%#x) = %#x\n",
 			  DWC_ETH_QOS_MICREL_PHY_INTCS, micrel_intr_status);
 
@@ -2278,9 +2210,11 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 			ETHQOSDBG("Intr for link down with auto-neg err\n");
 		}
 	} else {
-		phy_intr_status =
-		 ethqos_mdio_read(priv, priv->plat->phy_addr,
-				  DWC_ETH_QOS_PHY_INTR_STATUS);
+		if (priv->mii) {
+			phy_intr_status =
+			priv->mii->read(priv->mii, priv->plat->phy_addr,
+					DWC_ETH_QOS_PHY_INTR_STATUS);
+		}
 
 		if (!priv->plat->mac2mac_en) {
 			if (phy_intr_status & LINK_UP_STATE)
@@ -3205,8 +3139,8 @@ static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, in
 		ETHQOSERR("Invalid option\n");
 		return -EINVAL;
 	}
-	if (phydata != 0) {
-		ethqos_mdio_write(priv, priv->plat->phy_addr, MII_BMCR, phydata);
+	if (phydata != 0 && priv->mii) {
+		priv->mii->write(priv->mii, priv->plat->phy_addr, MII_BMCR, phydata);
 		ETHQOSINFO("write done for phy loopback\n");
 	}
 	return 0;
@@ -3547,10 +3481,10 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	}
 	/*Backup BMCR before Enabling Phy LoopbackLoopback */
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
-	    config == ENABLE_PHY_LOOPBACK)
-		ethqos->bmcr_backup = ethqos_mdio_read(priv,
-						       priv->plat->phy_addr,
-						       MII_BMCR);
+	    config == ENABLE_PHY_LOOPBACK && priv->mii)
+		ethqos->bmcr_backup = priv->mii->read(priv->mii,
+						      priv->plat->phy_addr,
+						      MII_BMCR);
 
 	if (config == DISABLE_LOOPBACK)
 		setup_config_registers(ethqos, ethqos->backup_speed,
@@ -5007,11 +4941,11 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		/*Backup phy related data*/
-		if (priv->phydev->autoneg == AUTONEG_DISABLE) {
+		if (priv->phydev->autoneg == AUTONEG_DISABLE && priv->mii) {
 			ethqos->backup_autoneg = priv->phydev->autoneg;
-			ethqos->backup_bmcr = ethqos_mdio_read(priv,
-							       plat->phy_addr,
-							       MII_BMCR);
+			ethqos->backup_bmcr = priv->mii->read(priv->mii,
+							      plat->phy_addr,
+							      MII_BMCR);
 		} else {
 			ethqos->backup_autoneg = AUTONEG_ENABLE;
 		}
@@ -5108,10 +5042,10 @@ static int qcom_ethqos_resume(struct device *dev)
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("reset phy after clock\n");
 		ethqos_reset_phy_enable_interrupt(ethqos);
-	if (ethqos->backup_autoneg == AUTONEG_DISABLE) {
+	if (ethqos->backup_autoneg == AUTONEG_DISABLE && priv->mii) {
 		priv->phydev->autoneg = ethqos->backup_autoneg;
-		ethqos_mdio_write(priv, priv->plat->phy_addr,
-				  MII_BMCR, ethqos->backup_bmcr);
+		priv->mii->write(priv->mii, priv->plat->phy_addr,
+				 MII_BMCR, ethqos->backup_bmcr);
 		}
 	}
 
