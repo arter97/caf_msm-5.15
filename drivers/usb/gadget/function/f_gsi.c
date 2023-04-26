@@ -2708,6 +2708,12 @@ static void gsi_resume(struct usb_function *f)
 
 static int gsi_get_status(struct usb_function *f)
 {
+	struct f_gsi *gsi = func_to_gsi(f);
+
+	/* Disable function remote wake-up for DPL interface */
+	if (gsi->prot_id == IPA_USB_DIAG)
+		return 0;
+
 	return (f->func_wakeup_armed ? USB_INTRF_STAT_FUNC_RW : 0) |
 		USB_INTRF_STAT_FUNC_RW_CAP;
 }
