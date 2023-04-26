@@ -346,8 +346,13 @@ static int __init psci_features(u32 psci_func_id)
 static int psci_suspend_finisher(unsigned long state)
 {
 	u32 power_state = state;
-	phys_addr_t pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume));
+	phys_addr_t pa_cpu_resume;
 
+#ifdef CONFIG_THUMB2_KERNEL
+		pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume_arm));
+#else
+		pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume));
+#endif
 	return psci_ops.cpu_suspend(power_state, pa_cpu_resume);
 }
 
@@ -371,8 +376,13 @@ int psci_cpu_suspend_enter(u32 state)
 
 static int psci_system_suspend(unsigned long unused)
 {
-	phys_addr_t pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume));
+	phys_addr_t pa_cpu_resume;
 
+#ifdef CONFIG_THUMB2_KERNEL
+		pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume_arm));
+#else
+		pa_cpu_resume = __pa_symbol(function_nocfi(cpu_resume));
+#endif
 	return invoke_psci_fn(PSCI_FN_NATIVE(1_0, SYSTEM_SUSPEND),
 			      pa_cpu_resume, 0, 0);
 }
