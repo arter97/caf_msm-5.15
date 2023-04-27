@@ -45,6 +45,7 @@ struct qcom_sysmon {
 	const char *name;
 
 	int shutdown_irq;
+	int deepsleep_irq;
 	int ssctl_version;
 	int ssctl_instance;
 
@@ -59,6 +60,7 @@ struct qcom_sysmon {
 	struct completion ind_comp;
 	struct completion shutdown_comp;
 	struct completion ssctl_comp;
+	struct completion deepsleep_comp;
 	struct mutex lock;
 
 	bool ssr_ack;
@@ -159,6 +161,45 @@ out_unlock:
 	return acked;
 }
 
+/**
+ * sysmon_request_deepsleep() - request graceful deepsleep of remote
+ * @sysmon:	sysmon context
+ *
+ * Return: Return: 0 on success, negative errno on failure
+ */
+static int sysmon_request_deepsleep(struct qcom_sysmon *sysmon)
+{
+	char *req = "ssr:deepsleep";
+	int ret = -EINVAL;
+
+	mutex_lock(&sysmon->lock);
+	reinit_completion(&sysmon->comp);
+	sysmon->ssr_ack = false;
+
+	ret = rpmsg_send(sysmon->ept, req, strlen(req) + 1);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "send sysmon deepsleep request failed\n");
+		goto out_unlock;
+	}
+
+	ret = wait_for_completion_timeout(&sysmon->comp,
+					  msecs_to_jiffies(5000));
+	if (!ret) {
+		dev_err(sysmon->dev, "timeout waiting for sysmon ack\n");
+		ret = -ETIMEDOUT;
+		goto out_unlock;
+	}
+
+	if (!sysmon->ssr_ack)
+		dev_err(sysmon->dev,
+			"unexpected response to sysmon deepsleep request\n");
+
+out_unlock:
+	mutex_unlock(&sysmon->lock);
+
+	return ret;
+}
+
 static int sysmon_callback(struct rpmsg_device *rpdev, void *data, int count,
 			   void *priv, u32 addr)
 {
@@ -181,6 +222,7 @@ static int sysmon_callback(struct rpmsg_device *rpdev, void *data, int count,
 #define SSCTL_SHUTDOWN_READY_IND	0x21
 #define SSCTL_SUBSYS_EVENT_REQ		0x23
 #define SSCTL_SUBSYS_EVENT_WITH_TID_REQ		0x25
+#define SSCTL_DS_ENTRY_REQ		0x26
 
 #define SSCTL_MAX_MSG_LEN		7
 
@@ -203,6 +245,23 @@ static struct qmi_elem_info ssctl_shutdown_resp_ei[] = {
 		.array_type	= NO_ARRAY,
 		.tlv_type	= 0x02,
 		.offset		= offsetof(struct ssctl_shutdown_resp, resp),
+		.ei_array	= qmi_response_type_v01_ei,
+	},
+	{}
+};
+
+struct ssctl_deepsleep_resp {
+	struct qmi_response_type_v01 resp;
+};
+
+static struct qmi_elem_info ssctl_deepsleep_resp_ei[] = {
+	{
+		.data_type	= QMI_STRUCT,
+		.elem_len	= 1,
+		.elem_size	= sizeof(struct qmi_response_type_v01),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x02,
+		.offset		= offsetof(struct ssctl_deepsleep_resp, resp),
 		.ei_array	= qmi_response_type_v01_ei,
 	},
 	{}
@@ -400,6 +459,19 @@ static bool ssctl_request_shutdown_wait(struct qcom_sysmon *sysmon)
 	return false;
 }
 
+static int ssctl_request_deepsleep_wait(struct qcom_sysmon *sysmon)
+{
+	int ret;
+
+	ret = wait_for_completion_timeout(&sysmon->deepsleep_comp, 10 * HZ);
+	if (!ret) {
+		dev_err(sysmon->dev, "timeout waiting for deepsleep ack\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
 /**
  * ssctl_request_shutdown() - request shutdown via SSCTL QMI service
  * @sysmon:	sysmon context
@@ -446,6 +518,55 @@ static bool ssctl_request_shutdown(struct qcom_sysmon *sysmon)
 		return ssctl_request_shutdown_wait(sysmon);
 
 	return acked;
+}
+
+/**
+ * ssctl_request_deepsleep() - request deepsleep via SSCTL QMI service
+ * @sysmon:	sysmon context
+ *
+ * Return: 0 on success, negative errno on failure
+ */
+static int ssctl_request_deepsleep(struct qcom_sysmon *sysmon)
+{
+	struct ssctl_deepsleep_resp resp;
+	struct qmi_txn txn;
+	int ret;
+
+	if (sysmon->ssctl_instance == -EINVAL)
+		return -EINVAL;
+
+	reinit_completion(&sysmon->deepsleep_comp);
+	ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_deepsleep_resp_ei, &resp);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to allocate QMI txn\n");
+		return ret;
+	}
+
+	ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
+			       SSCTL_DS_ENTRY_REQ, 0, NULL, NULL);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to send deep sleep request\n");
+		qmi_txn_cancel(&txn);
+		return ret;
+	}
+
+	ret = qmi_txn_wait(&txn, 5 * HZ);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed receiving QMI response\n");
+	} else if (resp.resp.result) {
+		ret = resp.resp.result;
+		dev_err(sysmon->dev, "deep sleep request failed\n");
+	} else {
+		dev_dbg(sysmon->dev, "deep sleep request completed\n");
+	}
+
+	if (ret < 0)
+		return ret;
+
+	if (sysmon->deepsleep_irq > 0)
+		return ssctl_request_deepsleep_wait(sysmon);
+
+	return 0;
 }
 
 /**
@@ -727,8 +848,7 @@ static void sysmon_stop(struct rproc_subdev *subdev, bool crashed)
 
 static void sysmon_unprepare(struct rproc_subdev *subdev)
 {
-	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon,
-						  subdev);
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
 
 	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME,
 			       "unprepare");
@@ -737,6 +857,98 @@ static void sysmon_unprepare(struct rproc_subdev *subdev)
 	sysmon->state = QCOM_SSR_AFTER_SHUTDOWN;
 	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
 	mutex_unlock(&sysmon->state_lock);
+}
+
+static int sysmon_resume_prepare(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+
+	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME,
+				"resume prepare");
+
+	mutex_lock(&sysmon->state_lock);
+	sysmon->state = QCOM_SSR_BEFORE_DS_EXIT;
+	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
+	mutex_unlock(&sysmon->state_lock);
+
+	return 0;
+}
+
+/**
+ * sysmon_resume() - resume callback for the sysmon remoteproc subdevice
+ * @subdev:	instance of the sysmon subdevice
+ *
+ * Inform all the listners of sysmon notifications that the rproc associated
+ * to @subdev has booted up. The rproc that booted up also needs to know
+ * which rprocs are already up and running, so send start notifications
+ * on behalf of all the online rprocs.
+ */
+static int sysmon_resume(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+	struct qcom_sysmon *target;
+
+	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME, "resume");
+
+	mutex_lock(&sysmon->state_lock);
+	sysmon->state = QCOM_SSR_AFTER_DS_EXIT;
+	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
+	mutex_unlock(&sysmon->state_lock);
+
+	mutex_lock(&sysmon_lock);
+	list_for_each_entry(target, &sysmon_list, node) {
+		mutex_lock(&target->state_lock);
+		if (target == sysmon || target->state != QCOM_SSR_AFTER_DS_EXIT) {
+			mutex_unlock(&target->state_lock);
+			continue;
+		}
+
+		send_event(sysmon, target);
+		mutex_unlock(&target->state_lock);
+	}
+	mutex_unlock(&sysmon_lock);
+
+	return 0;
+}
+
+static int sysmon_suspend(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+	int ret = -EINVAL;
+
+	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME, "suspend");
+
+	mutex_lock(&sysmon->state_lock);
+	sysmon->state = QCOM_SSR_BEFORE_DS_ENTER;
+
+	sysmon->transaction_id++;
+	dev_info(sysmon->dev, "Incrementing tid for %s to %d\n", sysmon->name,
+		 sysmon->transaction_id);
+
+	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
+	mutex_unlock(&sysmon->state_lock);
+
+	if (sysmon->ssctl_version)
+		ret = ssctl_request_deepsleep(sysmon);
+	else if (sysmon->ept)
+		ret = sysmon_request_deepsleep(sysmon);
+
+	return ret;
+}
+
+static int sysmon_suspend_unprepare(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+
+	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME,
+			       "suspend unprepare");
+
+	mutex_lock(&sysmon->state_lock);
+	sysmon->state = QCOM_SSR_AFTER_DS_ENTER;
+	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
+	mutex_unlock(&sysmon->state_lock);
+
+	return 0;
 }
 
 /**
@@ -768,6 +980,15 @@ static irqreturn_t sysmon_shutdown_interrupt(int irq, void *data)
 	struct qcom_sysmon *sysmon = data;
 
 	complete(&sysmon->shutdown_comp);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t sysmon_deepsleep_interrupt(int irq, void *data)
+{
+	struct qcom_sysmon *sysmon = data;
+
+	complete(&sysmon->deepsleep_comp);
 
 	return IRQ_HANDLED;
 }
@@ -935,6 +1156,7 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 	init_completion(&sysmon->ind_comp);
 	init_completion(&sysmon->shutdown_comp);
 	init_completion(&sysmon->ssctl_comp);
+	init_completion(&sysmon->deepsleep_comp);
 	timer_setup(&sysmon->timeout_data.timer, sysmon_notif_timeout_handler, 0);
 	mutex_init(&sysmon->lock);
 	mutex_init(&sysmon->state_lock);
@@ -963,6 +1185,27 @@ struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 		}
 	}
 
+	sysmon->deepsleep_irq = of_irq_get_byname(sysmon->dev->of_node,
+						 "deepsleep-ack");
+	if (sysmon->deepsleep_irq < 0) {
+		if (sysmon->deepsleep_irq != -ENODATA) {
+			dev_err(sysmon->dev,
+				"failed to retrieve deepsleep-ack IRQ\n");
+			return ERR_PTR(sysmon->deepsleep_irq);
+		}
+	} else {
+		ret = devm_request_threaded_irq(sysmon->dev,
+						sysmon->deepsleep_irq,
+						NULL, sysmon_deepsleep_interrupt,
+						IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+						"q6v5 deepsleep-ack", sysmon);
+		if (ret) {
+			dev_err(sysmon->dev,
+				"failed to acquire deepsleep-ack IRQ\n");
+			return ERR_PTR(ret);
+		}
+	}
+
 	ret = qmi_handle_init(&sysmon->qmi, SSCTL_MAX_MSG_LEN, &ssctl_ops,
 			      qmi_indication_handler);
 	if (ret < 0) {
@@ -978,6 +1221,10 @@ add_subdev_callbacks:
 	sysmon->subdev.start = sysmon_start;
 	sysmon->subdev.stop = sysmon_stop;
 	sysmon->subdev.unprepare = sysmon_unprepare;
+	sysmon->subdev.resume_prepare = sysmon_resume_prepare;
+	sysmon->subdev.resume = sysmon_resume;
+	sysmon->subdev.suspend = sysmon_suspend;
+	sysmon->subdev.suspend_unprepare = sysmon_suspend_unprepare;
 
 	rproc_add_subdev(rproc, &sysmon->subdev);
 

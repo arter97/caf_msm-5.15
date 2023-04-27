@@ -4,19 +4,27 @@
 struct notifier_block;
 
 /**
- * enum qcom_ssr_notify_type - Startup/Shutdown events related to a remoteproc
+ * enum qcom_ssr_notify_type - Startup/Shutdown/Deepsleep/Quickboot events related to a remoteproc
  * processor.
  *
  * @QCOM_SSR_BEFORE_POWERUP:	Remoteproc about to start (prepare stage)
  * @QCOM_SSR_AFTER_POWERUP:	Remoteproc is running (start stage)
  * @QCOM_SSR_BEFORE_SHUTDOWN:	Remoteproc crashed or shutting down (stop stage)
  * @QCOM_SSR_AFTER_SHUTDOWN:	Remoteproc is down (unprepare stage)
+ * @QCOM_SSR_BEFORE_DS_EXIT:	Remoteproc about to resume from deep sleep mode (prepare stage)
+ * @QCOM_SSR_AFTER_DS_EXIT:	Remoteproc is running (resume stage)
+ * @QCOM_SSR_BEFORE_DS_ENTER:	Remoteproc about to enter deep sleep mode (suspend stage)
+ * @QCOM_SSR_AFTER_DS_ENTER:	Remoteproc is in deepsleep mode (unprepare stage)
  */
 enum qcom_ssr_notify_type {
 	QCOM_SSR_BEFORE_POWERUP,
 	QCOM_SSR_AFTER_POWERUP,
 	QCOM_SSR_BEFORE_SHUTDOWN,
 	QCOM_SSR_AFTER_SHUTDOWN,
+	QCOM_SSR_BEFORE_DS_EXIT,
+	QCOM_SSR_AFTER_DS_EXIT,
+	QCOM_SSR_BEFORE_DS_ENTER,
+	QCOM_SSR_AFTER_DS_ENTER,
 };
 
 struct qcom_ssr_notify_data {

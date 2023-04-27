@@ -17,6 +17,10 @@ static const char * const subdevice_state_string[] = {
 	[QCOM_SSR_AFTER_POWERUP]	= "after_powerup",
 	[QCOM_SSR_BEFORE_SHUTDOWN]	= "before_shutdown",
 	[QCOM_SSR_AFTER_SHUTDOWN]	= "after_shutdown",
+	[QCOM_SSR_BEFORE_DS_EXIT]	= "before_ds_exit",
+	[QCOM_SSR_AFTER_DS_EXIT]	= "after_ds_exit",
+	[QCOM_SSR_BEFORE_DS_ENTER]	= "before_ds_enter",
+	[QCOM_SSR_AFTER_DS_ENTER]	= "after_ds_enter",
 };
 
 struct reg_info {
