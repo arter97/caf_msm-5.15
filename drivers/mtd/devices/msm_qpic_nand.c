@@ -4405,6 +4405,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	if (pm_runtime_suspended(chip->dev))
 		return NOTIFY_DONE;
 
+	mutex_lock(&info->lock);
 	err = msm_nand_get_device(chip->dev);
 	if (err)
 		goto out;
@@ -4417,6 +4418,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 			 0, 2);
 	err = msm_nand_put_device(chip->dev);
 out:
+	mutex_unlock(&info->lock);
 	if (err)
 		pr_err("Failed to get/put the device.\n");
 	return NOTIFY_DONE;
