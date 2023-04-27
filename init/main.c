@@ -114,6 +114,8 @@
 
 #include <kunit/test.h>
 
+#include <soc/qcom/boot_stats.h>
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -1527,6 +1529,10 @@ static int __ref kernel_init(void *unused)
 	numa_default_policy();
 
 	rcu_end_inkernel_boot();
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - DRIVER Kernel Boot Done");
+#endif
 
 	do_sysctl_args();
 
