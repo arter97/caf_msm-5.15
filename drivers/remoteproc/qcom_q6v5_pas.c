@@ -48,6 +48,7 @@ static int scm_pas_bw_count;
 static DEFINE_MUTEX(scm_pas_bw_mutex);
 bool timeout_disabled;
 static bool mpss_dsm_mem_setup;
+static bool mpss_tenx_mem_setup;
 
 struct adsp_data {
 	int crash_reason_smem;
@@ -62,6 +63,7 @@ struct adsp_data {
 	bool auto_boot;
 	bool dma_phys_below_32b;
 	bool needs_dsm_mem_setup;
+	bool needs_tenx_mem_setup;
 
 	char **active_pd_names;
 	char **proxy_pd_names;
@@ -1082,6 +1084,47 @@ static int setup_mpss_dsm_mem(struct platform_device *pdev)
 	return 0;
 }
 
+static int setup_mpss_tenx_mem(struct platform_device *pdev)
+{
+	struct device_node *node;
+	struct resource res;
+	int hlosvm[1] = {VMID_HLOS};
+	int mssvm[1] = {VMID_MSS_MSA};
+	int vmperm[1] = {PERM_READ | PERM_WRITE};
+	phys_addr_t mem_phys;
+	u64 mem_size;
+	int ret;
+	int i,count;
+
+	count = of_property_count_elems_of_size(pdev->dev.of_node, "mpss_tenx_mem_reg", sizeof(u32));
+	if (count <= 0) {
+		dev_err(&pdev->dev, "mpss tenx mem region is missing\n");
+		return -EINVAL;
+	}
+
+	for (i=0; i<count; i++) {
+		node = of_parse_phandle(pdev->dev.of_node, "mpss_tenx_mem_reg", i);
+		dev_err(&pdev->dev, "Yogesh: Loop for %s mem\n",node->name);
+
+		ret = of_address_to_resource(node, 0, &res);
+		if (ret) {
+			dev_err(&pdev->dev, "address to resource failed for %s mem\n",node->name);
+			return ret;
+		}
+
+		mem_phys = res.start;
+		mem_size = resource_size(&res);
+		ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
+		if (ret) {
+			dev_err(&pdev->dev, "hyp assign for %s mem failed\n",node->name);
+			return ret;
+		}
+	}
+		mpss_tenx_mem_setup = true;
+		dev_err(&pdev->dev, "Yogesh:mpss tenx mem region init successfull\n");
+		return 0;
+}
+
 static int adsp_probe(struct platform_device *pdev)
 {
 	const struct adsp_data *desc;
@@ -1111,6 +1154,15 @@ static int adsp_probe(struct platform_device *pdev)
 		ret = setup_mpss_dsm_mem(pdev);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to setup mpss dsm mem\n");
+			return -EINVAL;
+		}
+	}
+
+	if (desc->needs_tenx_mem_setup && !mpss_tenx_mem_setup &&
+			!strcmp(fw_name, "modem.mdt")) {
+		ret = setup_mpss_tenx_mem(pdev);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to setup mpss tenx mem\n");
 			return -EINVAL;
 		}
 	}
@@ -1622,6 +1674,7 @@ static const struct adsp_data cinder_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
+	.needs_tenx_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
