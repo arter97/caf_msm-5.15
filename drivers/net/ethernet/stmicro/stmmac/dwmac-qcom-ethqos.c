@@ -791,6 +791,7 @@ static void rgmii_dump(void *priv)
 #define RGMII_1000_NOM_CLK_FREQ			(250 * 1000 * 1000UL)
 #define RGMII_ID_MODE_100_LOW_SVS_CLK_FREQ	 (50 * 1000 * 1000UL)
 #define RGMII_ID_MODE_10_LOW_SVS_CLK_FREQ	  (5 * 1000 * 1000UL)
+#define GMII_EEE_CLK_FREQ			(100000 * 1000UL)
 
 static void
 ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
@@ -860,6 +861,11 @@ ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
 			"Invalid speed %d\n", ethqos->speed);
 		return;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->clk_eee)
+		clk_set_rate(ethqos->clk_eee, GMII_EEE_CLK_FREQ);
+#endif
 
 	if (ethqos->axi_icc_path && ethqos->emac_axi_icc) {
 		ret = icc_set_bw(ethqos->axi_icc_path,

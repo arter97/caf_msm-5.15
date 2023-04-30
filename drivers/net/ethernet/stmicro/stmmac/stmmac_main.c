@@ -547,7 +547,8 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 		}
 	}
 
-	if (priv->plat->has_gmac4 && priv->tx_lpi_timer <= STMMAC_ET_MAX) {
+	if ((priv->plat->has_gmac4 && priv->tx_lpi_timer <= STMMAC_ET_MAX) ||
+	    (priv->plat->has_xgmac && priv->tx_lpi_timer <= STMMAC_ET_MAX)) {
 		del_timer_sync(&priv->eee_ctrl_timer);
 		priv->tx_path_in_lpi_mode = false;
 		stmmac_lpi_entry_timer_config(priv, 1);
