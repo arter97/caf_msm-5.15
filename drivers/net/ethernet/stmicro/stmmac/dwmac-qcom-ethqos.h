@@ -457,6 +457,8 @@ struct qcom_ethqos {
 	bool probed;
 	bool ipa_enabled;
 
+	struct stmmac_priv *priv;
+
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
@@ -555,6 +557,8 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 #define PTP_INT_MOD 1
 
 #define PPS_19_2_FREQ 19200000
+
+#define ETH_MAX_NICS 2
 
 enum dwmac_qcom_queue_operating_mode {
 	DWMAC_QCOM_QDISABLED = 0X0,

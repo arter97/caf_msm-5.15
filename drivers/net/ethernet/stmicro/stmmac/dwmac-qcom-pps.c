@@ -22,7 +22,7 @@
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-ethqos.h"
 
-extern struct qcom_ethqos *pethqos;
+extern struct qcom_ethqos *pethqos[ETH_MAX_NICS];
 
 static bool avb_class_a_msg_wq_flag;
 static bool avb_class_b_msg_wq_flag;
@@ -293,6 +293,10 @@ static ssize_t pps_fops_read(struct file *filp, char __user *buf,
 	char *temp_buf;
 	ssize_t ret_cnt = 0;
 	struct pps_info *info;
+	struct qcom_ethqos *ethqos;
+
+	/*PPS functionality is only applicable for auto platform which supports single port */
+	ethqos = pethqos[0];
 
 	info = filp->private_data;
 
@@ -302,27 +306,27 @@ static ssize_t pps_fops_read(struct file *filp, char __user *buf,
 		if (!temp_buf)
 			return -ENOMEM;
 
-		if (pethqos)
+		if (ethqos)
 			len = scnprintf(temp_buf, buf_len,
-					"%ld\n", pethqos->avb_class_a_intr_cnt);
+					"%ld\n", ethqos->avb_class_a_intr_cnt);
 		else
 			len = scnprintf(temp_buf, buf_len, "0\n");
 
 		ret_cnt = simple_read_from_buffer(buf, count, f_pos,
 						  temp_buf, len);
 		kfree(temp_buf);
-		if (pethqos)
+		if (ethqos)
 			ETHQOSERR("poll pps2intr info=%d sent by kernel\n",
-				  pethqos->avb_class_a_intr_cnt);
+				  ethqos->avb_class_a_intr_cnt);
 	} else if (info->channel_no == AVB_CLASS_B_CHANNEL_NUM) {
 		avb_class_b_msg_wq_flag = false;
 		temp_buf = kzalloc(buf_len, GFP_KERNEL);
 		if (!temp_buf)
 			return -ENOMEM;
 
-		if (pethqos)
+		if (ethqos)
 			len = scnprintf(temp_buf, buf_len,
-					"%ld\n", pethqos->avb_class_b_intr_cnt);
+					"%ld\n", ethqos->avb_class_b_intr_cnt);
 		else
 			len = scnprintf(temp_buf, buf_len, "0\n");
 
