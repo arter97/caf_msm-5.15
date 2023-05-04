@@ -293,12 +293,16 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 		priority = dwmac_qcom_get_vlan_ucp(skb->data);
 
 		priority >>= VLAN_TAG_UCP_SHIFT;
-		if (priority == CLASS_A_TRAFFIC_UCP)
+		if (priority == CLASS_A_TRAFFIC_UCP) {
 			txqueue_select = CLASS_A_TRAFFIC_TX_CHANNEL;
-		else if (priority == CLASS_B_TRAFFIC_UCP)
+		} else if (priority == CLASS_B_TRAFFIC_UCP) {
 			txqueue_select = CLASS_B_TRAFFIC_TX_CHANNEL;
-		else
-			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
+		} else {
+			if (ethqos->ipa_enabled)
+				txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
+			else
+				txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
+		}
 	} else if (eth_type == ETH_P_1588) {
 		/*gPTP seelct tx queue 1*/
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
