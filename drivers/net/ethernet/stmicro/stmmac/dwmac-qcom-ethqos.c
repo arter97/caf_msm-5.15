@@ -5016,11 +5016,6 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	ret = stmmac_suspend(dev);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (ethqos->clk_eee)
-		clk_disable_unprepare(ethqos->clk_eee);
-#endif
-
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
