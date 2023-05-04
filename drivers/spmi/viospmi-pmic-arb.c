@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/bitmap.h>
 #include <linux/delay.h>
@@ -22,7 +22,8 @@
 #include <linux/virtio_spmi.h>
 #include <linux/scatterlist.h>
 
-#define VIRTIO_ID_SPMI			33
+/* Virtio ID of SPMI : 0xC003 */
+#define VIRTIO_ID_SPMI			49155
 
 /* Mapping Table */
 #define PMIC_ARB_MAX_PPID		BIT(12) /* PPID is 12bit */
@@ -787,9 +788,9 @@ static int virtio_spmi_probe(struct virtio_device *vdev)
 
 	ctrl->read_cmd = pmic_arb_read_cmd;
 	ctrl->write_cmd = pmic_arb_write_cmd;
-	ctrl->dev.of_node = (vdev->dev.parent)->of_node;
+	ctrl->dev.of_node = (vdev->dev.parent)->of_node->child;
 
-	pa->irq = of_irq_get_byname(ctrl->dev.of_node, "periph_irq");
+	pa->irq = of_irq_get_byname((vdev->dev.parent)->of_node, "periph_irq");
 	if (pa->irq < 0) {
 		err = pa->irq;
 		goto err_put_ctrl;
@@ -819,7 +820,7 @@ static int virtio_spmi_probe(struct virtio_device *vdev)
 	}
 
 	dev_dbg(&vdev->dev, "adding irq domain\n");
-	pa->domain = irq_domain_add_tree(ctrl->dev.of_node,
+	pa->domain = irq_domain_add_tree((vdev->dev.parent)->of_node,
 					 &pmic_arb_irq_domain_ops, pa);
 	if (!pa->domain) {
 		dev_err(&vdev->dev, "unable to create irq_domain\n");

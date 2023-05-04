@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/irqdomain.h>
 #include <linux/delay.h>
@@ -117,7 +117,16 @@ static void print_irq_stat(struct msm_watchdog_data *wdog_dd)
 	pr_info("(virq:irq_count)- ");
 	for (index = 0; index < NR_TOP_HITTERS; index++) {
 		info = &wdog_dd->irq_counts[index];
-		pr_cont("%u:%u ", info->irq, info->total_count);
+		if (info->name) {
+			if (info->chipname)
+				pr_cont("%s:%s(%u):%u ", info->chipname,
+					info->name, info->irq, info->total_count);
+			else
+				pr_cont("%s(%u):%u ", info->name,
+					info->irq, info->total_count);
+		} else {
+			pr_cont("%u:%u ", info->irq, info->total_count);
+		}
 	}
 	pr_cont("\n");
 
@@ -171,6 +180,10 @@ static void compute_irq_stat(struct work_struct *work)
 		if (index < arr_size) {
 			wdog_dd->irq_counts[index].irq = irq;
 			wdog_dd->irq_counts[index].total_count = count;
+			wdog_dd->irq_counts[index].name = (desc->action) ?
+					desc->action->name : NULL;
+			wdog_dd->irq_counts[index].chipname = (desc->irq_data.chip) ?
+					desc->irq_data.chip->name : NULL;
 			for_each_possible_cpu(cpu)
 				wdog_dd->irq_counts[index].irq_counter[cpu] =
 					*per_cpu_ptr(desc->kstat_irqs, cpu);
@@ -206,6 +219,10 @@ static void compute_irq_stat(struct work_struct *work)
 		if (pos) {
 			pos->irq = irq;
 			pos->total_count = count;
+			pos->name = (desc->action) ?
+				desc->action->name : NULL;
+			pos->chipname = (desc->irq_data.chip) ?
+				desc->irq_data.chip->name : NULL;
 			for_each_possible_cpu(cpu)
 				pos->irq_counter[cpu] =
 					*per_cpu_ptr(desc->kstat_irqs, cpu);
@@ -248,9 +265,11 @@ static void compute_irq_stat(struct work_struct *work) { }
 static int qcom_wdt_hibernation_notifier(struct notifier_block *nb,
 				unsigned long event, void *dummy)
 {
-	if (event == PM_HIBERNATION_PREPARE)
+	if (event == PM_HIBERNATION_PREPARE || ((event == PM_SUSPEND_PREPARE)
+				&& pm_suspend_via_firmware()))
 		wdog_data->hibernate = true;
-	else if (event == PM_POST_HIBERNATION)
+	else if (event == PM_POST_HIBERNATION || ((event == PM_POST_SUSPEND)
+				&& pm_suspend_via_firmware()))
 		wdog_data->hibernate = false;
 	return NOTIFY_OK;
 }
@@ -336,6 +355,8 @@ int qcom_wdt_pet_resume(struct device *dev)
 	spin_unlock(&wdog_data->freeze_lock);
 	if (wdog_data->wakeup_irq_enable) {
 		if (wdog_data->hibernate) {
+			wdog_data->ops->set_bark_time(wdog_data->bark_time, wdog_data);
+			wdog_data->ops->set_bite_time(wdog_data->bark_time + 3 * 1000, wdog_data);
 			val |= BIT(UNMASKED_INT_EN);
 			wdog_data->ops->enable_wdt(val, wdog_data);
 			wdog_data->enabled = true;

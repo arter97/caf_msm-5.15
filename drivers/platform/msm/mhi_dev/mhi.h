@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MHI_H
@@ -273,7 +273,8 @@ struct mhi_config {
 #define MHI_MASK_ROWS_CH_EV_DB		4
 #define TRB_MAX_DATA_SIZE		8192
 #define MHI_CTRL_STATE			100
-#define MHI_MAX_NUM_INSTANCES		16
+#define MHI_MAX_NUM_INSTANCES		17 /* 1PF and 16 VFs */
+#define MHI_DEFAULT_ERROR_LOG_ID	255
 
 /* maximum transfer completion events buffer */
 #define NUM_TR_EVENTS_DEFAULT			128
@@ -456,6 +457,7 @@ struct event_req {
 	void			(*msi_cb)(void *req);
 	struct list_head	list;
 	u32			flush_num;
+	u32			snd_cmpl;
 	bool		is_cmd_cpl;
 	bool		is_stale;
 };
@@ -514,6 +516,7 @@ struct mhi_dev_channel {
 	uint32_t			pend_wr_count;
 	uint32_t			msi_cnt;
 	uint32_t			flush_req_cnt;
+	uint32_t			snd_cmpl_cnt;
 	uint32_t			pend_flush_cnt;
 	bool				skip_td;
 	bool				db_pending;
@@ -609,13 +612,11 @@ struct mhi_dev {
 	bool				use_mhi_dma;
 
 	/* Denotes if the MHI instance is physcial or virtual */
-	bool				is_mhi_virtual;
+	bool				is_mhi_pf;
 
 	bool				is_flashless;
 
 	bool				mhi_has_smmu;
-
-	bool				is_mhi_pf;
 
 	/* iATU is required to map control and data region */
 	bool				config_iatu;
@@ -711,19 +712,36 @@ enum mhi_msg_level {
 extern uint32_t bhi_imgtxdb;
 extern enum mhi_msg_level mhi_msg_lvl;
 extern enum mhi_msg_level mhi_ipc_msg_lvl;
-extern void *mhi_ipc_log;
+extern enum mhi_msg_level mhi_ipc_err_msg_lvl;
+extern void *mhi_ipc_err_log;
+extern void *mhi_ipc_vf_log[MHI_MAX_NUM_INSTANCES];
+extern void *mhi_ipc_default_err_log;
 
-#define mhi_log(_msg_lvl, _msg, ...) do { \
+#define mhi_log(vf_id, _msg_lvl, _msg, ...) do { \
 	if (_msg_lvl >= mhi_msg_lvl) { \
 		pr_err("[0x%x %s] "_msg, bhi_imgtxdb, \
 				__func__, ##__VA_ARGS__); \
 	} \
-	if (mhi_ipc_log && (_msg_lvl >= mhi_ipc_msg_lvl)) { \
-		ipc_log_string(mhi_ipc_log,                     \
-		"[0x%x %s] " _msg, bhi_imgtxdb, __func__, ##__VA_ARGS__);     \
+	if (mhi_ipc_vf_log[vf_id] && (_msg_lvl >= mhi_ipc_msg_lvl)) { \
+		ipc_log_string(mhi_ipc_vf_log[vf_id],                     \
+		"[0x%x %s] " _msg, bhi_imgtxdb, __func__, ##__VA_ARGS__); \
+	} \
+	if (vf_id == MHI_DEFAULT_ERROR_LOG_ID && mhi_ipc_default_err_log &&       \
+			(_msg_lvl >= mhi_ipc_err_msg_lvl)) { \
+		ipc_log_string(mhi_ipc_default_err_log,                     \
+		"[0x%x %s] " _msg, bhi_imgtxdb, __func__, ##__VA_ARGS__); \
+	} \
+	else if (mhi_ipc_err_log && (_msg_lvl >= mhi_ipc_err_msg_lvl)) { \
+		if (vf_id == 0) {				\
+			ipc_log_string(mhi_ipc_err_log,			\
+			"[0x%x %s] PF = %x  " _msg, bhi_imgtxdb, __func__, vf_id, ##__VA_ARGS__); \
+		} \
+		if (vf_id != 0) { \
+			ipc_log_string(mhi_ipc_err_log,                 \
+			"[0x%x %s] VF = %x  " _msg, bhi_imgtxdb, __func__, vf_id, ##__VA_ARGS__); \
+		} \
 	} \
 } while (0)
-
 
 /* Use ID 0 for legacy /dev/mhi_ctrl. Channel 0 used for internal only */
 #define MHI_DEV_UEVENT_CTRL	0
@@ -1172,9 +1190,11 @@ int mhi_uci_init(void);
  * mhi_dev_net_interface_init() - Initializes the mhi device network interface
  *		which exposes the virtual network interface (mhi_dev_net0).
  *		data packets will transfer between MHI host interface (mhi_swip)
- *		and mhi_dev_net interface using software path
+ *		and mhi_dev_net interface using software path.
+ * @vf_id       MHI instance (physical or virtual) id.
+ * @num_vfs     Total number of vutual MHI instances supported on this target.
  */
-int mhi_dev_net_interface_init(void);
+int mhi_dev_net_interface_init(u32 vf_id, u32 num_vfs);
 
 void mhi_dev_notify_a7_event(struct mhi_dev *mhi);
 
@@ -1200,4 +1220,8 @@ int  mhi_edma_release(void);
 int  mhi_edma_status(void);
 
 int mhi_edma_init(struct device *dev);
+void free_coherent(struct mhi_dev *mhi, size_t size, void *virt,
+		   dma_addr_t phys);
+void *alloc_coherent(struct mhi_dev *mhi, size_t size, dma_addr_t *phys,
+		     gfp_t gfp);
 #endif /* _MHI_H */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "clk: %s: " fmt, __func__
@@ -39,7 +39,7 @@ static int apss_cc_debug_mux_pre_divs[] = {
 
 static struct clk_debug_mux apss_cc_debug_mux = {
 	.priv = &debug_mux_priv,
-	.debug_offset = 0xc,
+	.debug_offset = 0x1c,
 	.post_div_offset = 0x0,
 	.cbcr_offset = 0x0,
 	.src_sel_mask = 0x38,
@@ -61,6 +61,7 @@ static struct clk_debug_mux apss_cc_debug_mux = {
 static const char *const gcc_debug_mux_parent_names[] = {
 	"apss_cc_debug_mux",
 	"gcc_ahb_pcie_link_clk",
+	"gcc_boot_rom_ahb_clk",
 	"gcc_emac0_axi_clk",
 	"gcc_emac0_phy_aux_clk",
 	"gcc_emac0_ptp_clk",
@@ -102,12 +103,16 @@ static const char *const gcc_debug_mux_parent_names[] = {
 	"mc_cc_debug_mux",
 	"measure_only_ipa_2x_clk",
 	"measure_only_pcie_pipe_clk",
+	"measure_only_qpic_ahb_clk",
+	"measure_only_qpic_clk",
+	"measure_only_qpic_system_clk",
 	"measure_only_snoc_clk",
 };
 
 static int gcc_debug_mux_sels[] = {
 	0x89,		/* apss_cc_debug_mux */
 	0x71,		/* gcc_ahb_pcie_link_clk */
+	0x59,		/* gcc_boot_rom_ahb_clk */
 	0xE2,		/* gcc_emac0_axi_clk */
 	0xE4,		/* gcc_emac0_phy_aux_clk */
 	0xE5,		/* gcc_emac0_ptp_clk */
@@ -149,6 +154,9 @@ static int gcc_debug_mux_sels[] = {
 	0x77,		/* mc_cc_debug_mux */
 	0xC8,		/* measure_only_ipa_2x_clk */
 	0xA7,		/* measure_only_pcie_pipe_clk */
+	0xFB,		/* measure_only_qpic_ahb_clk */
+	0x109,		/* measure_only_qpic_clk */
+	0xFC,		/* measure_only_qpic_system_clk */
 	0xA,		/* measure_only_snoc_clk */
 };
 
@@ -224,6 +232,30 @@ static struct clk_dummy measure_only_pcie_pipe_clk = {
 	},
 };
 
+static struct clk_dummy measure_only_qpic_ahb_clk = {
+	.rrate = 1000,
+	.hw.init = &(const struct clk_init_data){
+		.name = "measure_only_qpic_ahb_clk",
+		.ops = &clk_dummy_ops,
+	},
+};
+
+static struct clk_dummy measure_only_qpic_clk = {
+	.rrate = 1000,
+	.hw.init = &(const struct clk_init_data){
+		.name = "measure_only_qpic_clk",
+		.ops = &clk_dummy_ops,
+	},
+};
+
+static struct clk_dummy measure_only_qpic_system_clk = {
+	.rrate = 1000,
+	.hw.init = &(const struct clk_init_data){
+		.name = "measure_only_qpic_system_clk",
+		.ops = &clk_dummy_ops,
+	},
+};
+
 static struct clk_dummy measure_only_snoc_clk = {
 	.rrate = 1000,
 	.hw.init = &(const struct clk_init_data){
@@ -237,6 +269,9 @@ static struct clk_hw *debugcc_sdxbaagha_hws[] = {
 	&measure_only_ipa_2x_clk.hw,
 	&measure_only_mccc_clk.hw,
 	&measure_only_pcie_pipe_clk.hw,
+	&measure_only_qpic_ahb_clk.hw,
+	&measure_only_qpic_clk.hw,
+	&measure_only_qpic_system_clk.hw,
 	&measure_only_snoc_clk.hw,
 };
 
@@ -273,6 +308,9 @@ static int clk_debug_sdxbaagha_probe(struct platform_device *pdev)
 				return ret;
 		}
 	}
+
+	/* Update the mux_sel value of apss_cc_debug_mux  */
+	regmap_write(mux_list[0].mux->regmap, 0x1c, 0x18);
 
 	for (i = 0; i < ARRAY_SIZE(debugcc_sdxbaagha_hws); i++) {
 		clk = devm_clk_register(&pdev->dev, debugcc_sdxbaagha_hws[i]);
