@@ -15,6 +15,9 @@
 #include <linux/delay.h>
 #include <linux/regmap.h>
 #include <linux/bitfield.h>
+#include <linux/ktime.h>
+#include <linux/slab.h>
+#include <linux/input.h>
 
 //#define ST_ASM330LHHX_ENABLE_DEBUG
 
@@ -193,6 +196,11 @@
 /* Timestamp Tick 25us/LSB */
 #define ST_ASM330LHHX_TS_DELTA_NS			25000ULL
 
+/* Define Custom events for FIFO flush */
+#define CUSTOM_IIO_EV_DIR_FIFO_EMPTY (IIO_EV_DIR_NONE + 1)
+#define CUSTOM_IIO_EV_DIR_FIFO_DATA (IIO_EV_DIR_NONE + 2)
+#define CUSTOM_IIO_EV_TYPE_FIFO_FLUSH (IIO_EV_TYPE_CHANGE + 1)
+
 /* Temperature in uC */
 #define ST_ASM330LHHX_TEMP_GAIN				256
 #define ST_ASM330LHHX_TEMP_OFFSET			6400
@@ -225,7 +233,7 @@
 }
 
 static const struct iio_event_spec st_asm330lhhx_flush_event = {
-	.type = IIO_EV_TYPE_FIFO_FLUSH,
+	.type = CUSTOM_IIO_EV_TYPE_FIFO_FLUSH,
 	.dir = IIO_EV_DIR_EITHER,
 };
 
@@ -244,6 +252,16 @@ static const struct iio_event_spec st_asm330lhhx_thr_event = {
 	.event_spec = &st_asm330lhhx_##etype##_event,	\
 	.num_event_specs = 1,				\
 }
+
+#ifdef CONFIG_ENABLE_ASMX_ACC_GYRO_BUFFERING
+#define ASM_MAXSAMPLE		4000
+#define G_MAX			23920640
+struct asm_sample {
+	int xyz[3];
+	unsigned int tsec;
+	unsigned long long tnsec;
+};
+#endif
 
 #define ST_ASM330LHHX_SHIFT_VAL(val, mask)	(((val) << __ffs(mask)) & (mask))
 
@@ -411,6 +429,17 @@ struct st_asm330lhhx_fs_table_entry {
 	struct st_asm330lhhx_fs fs_avl[6];
 };
 
+#define ST_ASM330LHH_ACC_FS_2G_GAIN	IIO_G_TO_M_S_2(61)
+#define ST_ASM330LHH_ACC_FS_4G_GAIN	IIO_G_TO_M_S_2(122)
+#define ST_ASM330LHH_ACC_FS_8G_GAIN	IIO_G_TO_M_S_2(244)
+#define ST_ASM330LHH_ACC_FS_16G_GAIN	IIO_G_TO_M_S_2(488)
+#define ST_ASM330LHH_GYRO_FS_125_GAIN	IIO_DEGREE_TO_RAD(4375)
+#define ST_ASM330LHH_GYRO_FS_250_GAIN	IIO_DEGREE_TO_RAD(8750)
+#define ST_ASM330LHH_GYRO_FS_500_GAIN	IIO_DEGREE_TO_RAD(17500)
+#define ST_ASM330LHH_GYRO_FS_1000_GAIN	IIO_DEGREE_TO_RAD(35000)
+#define ST_ASM330LHH_GYRO_FS_2000_GAIN	IIO_DEGREE_TO_RAD(70000)
+#define ST_ASM330LHH_GYRO_FS_4000_GAIN	IIO_DEGREE_TO_RAD(140000)
+
 enum st_asm330lhhx_sensor_id {
 	ST_ASM330LHHX_ID_GYRO = 0,
 	ST_ASM330LHHX_ID_ACC,
@@ -552,6 +581,19 @@ struct st_asm330lhhx_sensor {
 			enum st_asm330lhhx_fsm_mlc_enable_id status;
 		};
 	};
+#ifdef CONFIG_ENABLE_ASMX_ACC_GYRO_BUFFERING
+	bool read_boot_sample;
+	int bufsample_cnt;
+	bool buffer_asm_samples;
+	struct kmem_cache *asm_cachepool;
+	struct asm_sample *asm_samplist[ASM_MAXSAMPLE];
+	ktime_t timestamp;
+	int max_buffer_time;
+	struct input_dev *buf_dev;
+	int report_evt_cnt;
+	struct mutex sensor_buff;
+	bool enable;
+#endif
 };
 
 /**
@@ -633,6 +675,11 @@ struct st_asm330lhhx_hw {
 	s64 ts_offset_resume;
 
 	struct iio_dev *iio_devs[ST_ASM330LHHX_ID_MAX];
+	int enable_gpio;
+	bool asm330_hrtimer;
+	struct hrtimer st_asm330lhhx_hrtimer;
+
+	struct wakeup_source *ws;
 };
 
 extern const struct dev_pm_ops st_asm330lhhx_pm_ops;
@@ -831,6 +878,13 @@ int st_asm330lhhx_set_fifo_mode(struct st_asm330lhhx_hw *hw,
 			        enum st_asm330lhhx_fifo_mode fifo_mode);
 int st_asm330lhhx_update_batching(struct iio_dev *iio_dev, bool enable);
 int st_asm330lhhx_of_get_pin(struct st_asm330lhhx_hw *hw, int *pin);
+int st_asm330lhhx_update_fifo(struct iio_dev *iio_dev, bool enable);
+int asm330lhhx_check_acc_gyro_early_buff_enable_flag(
+		struct st_asm330lhhx_sensor *sensor);
+int asm330lhhx_check_sensor_enable_flag(
+		struct st_asm330lhhx_sensor *sensor, bool enable);
+void st_asm330lhhx_set_cpu_idle_state(bool value);
+void st_asm330lhhx_hrtimer_reset(struct st_asm330lhhx_hw *hw, s64 irq_delta_ts);
 int st_asm330lhhx_shub_probe(struct st_asm330lhhx_hw *hw);
 int st_asm330lhhx_shub_set_enable(struct st_asm330lhhx_sensor *sensor,
 				  bool enable);
