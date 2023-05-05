@@ -820,7 +820,7 @@ static int stmmac_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 		return -ENODEV;
 	}
 
-	if (!device_can_wakeup(priv->device))
+	if (!device_can_wakeup(priv->device) && priv->plat->pmt)
 		return -EOPNOTSUPP;
 
 	if (priv->plat->enable_wol)
