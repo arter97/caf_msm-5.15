@@ -1196,7 +1196,6 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
 
-	stmmac_mac_set(priv, priv->ioaddr, false);
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
 	priv->eee_enabled = stmmac_eee_init(priv);
