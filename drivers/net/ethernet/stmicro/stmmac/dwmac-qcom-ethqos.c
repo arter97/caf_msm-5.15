@@ -4688,7 +4688,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	/* Check partition if mac2mac configuration enabled using the same */
 	if (phyaddr_pt_param == 0xFF) {
 		if (fixed_phy_node) {
-			status_prop = kcalloc(1, sizeof(*status_prop), GFP_KERNEL);
+			status_prop = kzalloc(sizeof(*status_prop), GFP_KERNEL);
 
 			if (!status_prop) {
 				ETHQOSERR("kcalloc failed\n");
@@ -4704,8 +4704,6 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 				ETHQOSERR("Fixed-link prop update failed\n");
 				return -ENOENT;
 			}
-
-			kfree(status_prop);
 
 			plat_dat->fixed_phy_mode = true;
 
