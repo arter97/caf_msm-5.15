@@ -1460,6 +1460,7 @@ static int stmmac_init_phy(struct net_device *dev)
 			netdev_err(priv->dev, "no phy at addr %d\n", addr);
 			return -ENODEV;
 		}
+		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
 		if (priv->plat->phy_intr_en_extn_stm) {
 			priv->phydev->irq = PHY_MAC_INTERRUPT;
