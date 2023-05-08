@@ -4519,18 +4519,28 @@ void device_shutdown(void)
 		pm_runtime_barrier(dev);
 
 		if (dev->class && dev->class->shutdown_pre) {
-			if (initcall_debug)
+			if (1)
+			//if (initcall_debug)
 				dev_info(dev, "shutdown_pre\n");
-			dev->class->shutdown_pre(dev);
+			dev->class->shutdown_pre(dev);\
+			if (1)
+				dev_info(dev, "shutdown_pre end\n");
+
 		}
 		if (dev->bus && dev->bus->shutdown) {
-			if (initcall_debug)
+			//if (initcall_debug)
+			if (1)
 				dev_info(dev, "shutdown\n");
 			dev->bus->shutdown(dev);
+			if (1)
+				dev_info(dev, "dev->bus->shutdown end\n");
 		} else if (dev->driver && dev->driver->shutdown) {
-			if (initcall_debug)
+			//if (initcall_debug)
+			if (1)
 				dev_info(dev, "shutdown\n");
 			dev->driver->shutdown(dev);
+			if (1)
+				dev_info(dev, "dev->driver->shutdown end\n");
 		}
 
 		device_unlock(dev);

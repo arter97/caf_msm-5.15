@@ -8879,6 +8879,7 @@ static int __ufshcd_wl_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	enum ufs_pm_level pm_lvl;
 	enum ufs_dev_pwr_mode req_dev_pwr_mode;
 	enum uic_link_state req_link_state;
+	dev_err(hba->dev, "AAAA: %s %d", __func__, __LINE__);
 
 	hba->pm_op_in_progress = true;
 	if (pm_op != UFS_SHUTDOWN_PM) {
@@ -8887,6 +8888,7 @@ static int __ufshcd_wl_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 		req_dev_pwr_mode = ufs_get_pm_lvl_to_dev_pwr_mode(pm_lvl);
 		req_link_state = ufs_get_pm_lvl_to_link_pwr_state(pm_lvl);
 	} else {
+		dev_err(hba->dev, "AAAA: %s %d", __func__, __LINE__);
 		req_dev_pwr_mode = UFS_POWERDOWN_PWR_MODE;
 		req_link_state = UIC_LINK_OFF_STATE;
 	}
@@ -9023,6 +9025,7 @@ out:
 		ufshpb_resume(hba);
 	}
 	hba->pm_op_in_progress = false;
+	dev_err(hba->dev, "AAAA: %s %d %d", __func__, __LINE__, ret);
 	return ret;
 }
 
@@ -9220,6 +9223,8 @@ static void ufshcd_wl_shutdown(struct device *dev)
 	struct ufs_hba *hba;
 
 	hba = shost_priv(sdev->host);
+	dev_err(dev, "AAAA: %s %d", __func__, __LINE__);
+	//dump_stack();
 
 	down(&hba->host_sem);
 	hba->shutting_down = true;
@@ -9435,6 +9440,8 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 
 	hba->is_powered = false;
 	/* allow force shutdown even in case of errors */
+	dump_stack();
+	dev_err(hba->dev, "AAAA: %s %d", __func__, __LINE__);
 	return 0;
 }
 EXPORT_SYMBOL(ufshcd_shutdown);
@@ -9816,6 +9823,8 @@ static int ufshcd_wl_poweroff(struct device *dev)
 	struct scsi_device *sdev = to_scsi_device(dev);
 	struct ufs_hba *hba = shost_priv(sdev->host);
 
+	dev_err(dev, "AAAA: %s %d", __func__, __LINE__);
+	dump_stack();
 	__ufshcd_wl_suspend(hba, UFS_SHUTDOWN_PM);
 	return 0;
 }

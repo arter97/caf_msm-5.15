@@ -3601,6 +3601,8 @@ static void sd_shutdown(struct device *dev)
 {
 	struct scsi_disk *sdkp = dev_get_drvdata(dev);
 
+	dev_err(dev, "AAAA: %s %d", __func__, __LINE__);
+	//dump_stack();
 	if (!sdkp)
 		return;         /* this can happen */
 

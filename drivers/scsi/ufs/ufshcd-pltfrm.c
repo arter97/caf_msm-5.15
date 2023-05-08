@@ -191,6 +191,7 @@ out:
 
 void ufshcd_pltfrm_shutdown(struct platform_device *pdev)
 {
+	//dump_stack();
 	ufshcd_shutdown((struct ufs_hba *)platform_get_drvdata(pdev));
 }
 EXPORT_SYMBOL_GPL(ufshcd_pltfrm_shutdown);
