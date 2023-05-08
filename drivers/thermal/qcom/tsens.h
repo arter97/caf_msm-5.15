@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QCOM_TSENS_H__
@@ -18,6 +18,7 @@
 #define THRESHOLD_MAX_ADC_CODE	0x3ff
 #define THRESHOLD_MIN_ADC_CODE	0x0
 #define COLD_SENSOR_HW_ID	128
+#define MAX_SENSOR_HW_ID	129
 
 #include <linux/interrupt.h>
 #include <linux/thermal.h>
@@ -85,6 +86,7 @@ struct tsens_ops {
 	int (*resume)(struct tsens_priv *priv);
 	int (*get_trend)(struct tsens_sensor *s, enum thermal_trend *trend);
 	int (*get_cold_status)(const struct tsens_sensor *s, bool *cold_status);
+	int (*get_max_temp)(const struct tsens_sensor *s, int *temp);
 };
 
 #define REG_FIELD_FOR_EACH_SENSOR11(_name, _offset, _startbit, _stopbit) \
@@ -522,6 +524,11 @@ enum regfield_ids {
 	MAX_STATUS_14,
 	MAX_STATUS_15,
 	COLD_STATUS,		/* COLD interrupt status */
+
+	MAX_TEMP,		/* Max Temp */
+	MAX_TEMP_SENSOR_ID,
+	MAX_TEMP_VALID,
+
 	/* Keep last */
 	MAX_REGFIELDS
 };
@@ -544,6 +551,7 @@ struct tsens_features {
 	unsigned int srot_split:1;
 	unsigned int has_watchdog:1;
 	unsigned int cold_int:1;
+	unsigned int max_min_temp:1;
 	unsigned int max_sensors;
 };
 
@@ -621,6 +629,7 @@ struct tsens_priv {
 	/* add for save tsens data into minidump */
 	struct minidump_data		*tsens_md;
 	struct tsens_sensor		*cold_sensor;
+	struct tsens_sensor		*max_sensor;
 
 	struct tsens_sensor		sensor[];
 };
@@ -631,6 +640,7 @@ int init_common(struct tsens_priv *priv);
 int get_temp_tsens_valid(const struct tsens_sensor *s, int *temp);
 int get_temp_common(const struct tsens_sensor *s, int *temp);
 int get_cold_int_status(const struct tsens_sensor *s, bool *cold_status);
+int get_max_temp_tsens_valid(const struct tsens_sensor *s, int *temp);
 
 /* TSENS target */
 extern struct tsens_plat_data data_8960;

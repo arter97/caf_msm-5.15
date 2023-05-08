@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  * Copyright (c) 2018, Linaro Limited
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitops.h>
@@ -26,6 +26,7 @@
 #define TM_Sn_STATUS_OFF		0x00a0
 #define TM_TRDY_OFF			0x00e4
 #define TM_COLD_INT_STATUS_OFF		0x00e0
+#define TM_MAX_TEMP_OFF			0x00e8
 #define TM_WDOG_LOG_OFF		0x013c
 
 /* v2.x: 8996, 8998, sdm845 */
@@ -91,12 +92,17 @@ static const struct reg_field tsens_v2_regfields[MAX_REGFIELDS] = {
 	[COLD_STATUS] = REG_FIELD(TM_COLD_INT_STATUS_OFF, 0, 0),
 	/* TRDY: 1=ready, 0=in progress */
 	[TRDY] = REG_FIELD(TM_TRDY_OFF, 0, 0),
+
+	[MAX_TEMP_VALID] = REG_FIELD(TM_MAX_TEMP_OFF, 16, 16),
+	[MAX_TEMP_SENSOR_ID] = REG_FIELD(TM_MAX_TEMP_OFF, 12, 15),
+	[MAX_TEMP] = REG_FIELD(TM_MAX_TEMP_OFF, 0, 11),
 };
 
 static const struct tsens_ops ops_generic_v2 = {
 	.init		= init_common,
 	.get_temp	= get_temp_tsens_valid,
 	.get_cold_status  = get_cold_int_status,
+	.get_max_temp  = get_max_temp_tsens_valid,
 };
 
 struct tsens_plat_data data_tsens_v2 = {
