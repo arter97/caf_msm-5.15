@@ -1286,6 +1286,7 @@ static void rproc_unprepare_subdevices(struct rproc *rproc)
 	}
 }
 
+#ifdef CONFIG_RPROC_DEEPSLEEP
 static int rproc_resume_subdevices(struct rproc *rproc)
 {
 	struct rproc_subdev *subdev;
@@ -1345,6 +1346,7 @@ static int rproc_suspend_unprepare_subdevices(struct rproc *rproc)
 	}
 	return 0;
 }
+#endif
 
 /**
  * rproc_alloc_registered_carveouts() - allocate all carveouts registered
@@ -1984,6 +1986,7 @@ static int __rproc_detach(struct rproc *rproc)
 	return 0;
 }
 
+#ifdef CONFIG_RPROC_DEEPSLEEP
 /*
  * __rproc_suspend(): Does the opposite of __rproc_resume()
  */
@@ -2059,6 +2062,7 @@ static int __rproc_resume(struct rproc *rproc)
 
 	return 0;
 }
+#endif
 
 /**
  * rproc_trigger_recovery() - recover a remoteproc
@@ -2362,6 +2366,7 @@ out:
 }
 EXPORT_SYMBOL(rproc_detach);
 
+#ifdef CONFIG_RPROC_DEEPSLEEP
 /**
  * rproc_suspend() - Deep sleep the remote processor from the
  * remoteproc core
@@ -2437,6 +2442,7 @@ int rproc_resume(struct rproc *rproc)
 	return ret;
 }
 EXPORT_SYMBOL(rproc_resume);
+#endif
 
 /**
  * rproc_get_by_phandle() - find a remote processor by phandle
