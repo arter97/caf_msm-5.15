@@ -216,7 +216,7 @@ static struct ethqos_emac_driver_data emac_por_data = {
 
 struct emac_emb_smmu_cb_ctx emac_emb_smmu_ctx = {0};
 struct plat_stmmacenet_data *plat_dat;
-struct qcom_ethqos *pethqos;
+struct qcom_ethqos *pethqos[ETH_MAX_NICS];
 void *ipc_emac_log_ctxt;
 
 #ifdef MODULE
@@ -281,6 +281,8 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 {
 	u16 txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
 	unsigned int eth_type, priority;
+	struct stmmac_priv *priv = netdev_priv(dev);
+	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv->plat->bsp_priv;
 
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
@@ -301,7 +303,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
 	} else {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
-		if (pethqos->ipa_enabled)
+		if (ethqos->ipa_enabled)
 			txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
 		else
 			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
@@ -678,6 +680,8 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 	struct in6_ifreq ir6;
 	char *prefix;
 	struct net *net = dev_net(dev);
+	struct stmmac_priv *priv = netdev_priv(dev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 	/*For valid IPv6 address*/
 
 	if (!net || !net->genl_sock || !net->genl_sock->sk_socket) {
@@ -687,7 +691,7 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 
 	if (!net->ipv6.devconf_dflt) {
 		ETHQOSERR("ipv6.devconf_dflt is null, schedule wq\n");
-		schedule_delayed_work(&pethqos->ipv6_addr_assign_wq,
+		schedule_delayed_work(&ethqos->ipv6_addr_assign_wq,
 				      msecs_to_jiffies(1000));
 		return ret;
 	}
@@ -4222,13 +4226,17 @@ static ssize_t ethqos_write_dev_emac(struct file *file,
 {
 	unsigned char in_buf[300] = {0};
 	unsigned long ret;
-	struct qcom_ethqos *ethqos = pethqos;
-	struct stmmac_priv *priv = qcom_ethqos_get_priv(pethqos);
+	struct qcom_ethqos *ethqos;
+	struct stmmac_priv *priv;
 	struct vlan_filter_info vlan_filter_info;
 	char vlan_str[30] = {0};
 	char *prefix = NULL;
 	u32 err;
 	unsigned int number;
+
+	/*emac_cdev charecter device is applicable only for auto which supports single port */
+	ethqos = pethqos[0];
+	priv = qcom_ethqos_get_priv(ethqos);
 
 	if (sizeof(in_buf) < count) {
 		ETHQOSERR("emac string is too long - count=%u\n", count);
@@ -4417,7 +4425,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct stmmac_resources stmmac_res;
 	struct qcom_ethqos *ethqos = NULL;
-	int ret;
+	int i, ret;
 	struct resource	*rgmii_io_block;
 	struct net_device *ndev;
 	struct stmmac_priv *priv;
@@ -4708,9 +4716,16 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_clk;
 
-	pethqos = ethqos;
+	for (i = 0; i < ETH_MAX_NICS; i++) {
+		if (!pethqos[i]) {
+			pethqos[i] = ethqos;
+			break;
+		}
+	}
+
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
+	ethqos->priv = priv;
 
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
@@ -4844,7 +4859,7 @@ err_mem:
 static int qcom_ethqos_remove(struct platform_device *pdev)
 {
 	struct qcom_ethqos *ethqos;
-	int ret;
+	int i, ret;
 	struct stmmac_priv *priv;
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,emac-smmu-embedded")) {
@@ -4909,6 +4924,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
+
+	for (i = 0; i < ETH_MAX_NICS; i++) {
+		if (pethqos[i] == ethqos) {
+			pethqos[i] = NULL;
+			break;
+		}
+	}
 
 	platform_set_drvdata(pdev, NULL);
 	of_platform_depopulate(&pdev->dev);
