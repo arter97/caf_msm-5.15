@@ -802,20 +802,29 @@ static int adsp_init_regulator(struct qcom_adsp *adsp)
 	return 0;
 }
 
-static void adsp_init_bus_scaling(struct qcom_adsp *adsp)
+static int adsp_init_bus_scaling(struct qcom_adsp *adsp)
 {
 	if (scm_perf_client)
 		goto get_rproc_client;
 
 	scm_perf_client = of_icc_get(adsp->dev, "crypto_ddr");
-	if (IS_ERR(scm_perf_client))
-		dev_warn(adsp->dev, "Crypto scaling not setup\n");
+	if (IS_ERR(scm_perf_client)) {
+		if (PTR_ERR(scm_perf_client) != -EPROBE_DEFER)
+			dev_warn(adsp->dev, "Crypto scaling not setup\n");
+		else
+			return PTR_ERR(scm_perf_client);
+	}
 
 get_rproc_client:
 	adsp->bus_client = of_icc_get(adsp->dev, "rproc_ddr");
-	if (IS_ERR(adsp->bus_client))
-		dev_warn(adsp->dev, "%s: No bus client\n", __func__);
+	if (IS_ERR(adsp->bus_client)) {
+		if (PTR_ERR(adsp->bus_client) != -EPROBE_DEFER)
+			dev_warn(adsp->dev, "%s: No bus client\n", __func__);
+		else
+			return PTR_ERR(adsp->bus_client);
+	}
 
+	return 0;
 }
 
 static int adsp_pds_attach(struct device *dev, struct device **devs,
@@ -1066,7 +1075,9 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret)
 		goto deinit_wakeup_source;
 
-	adsp_init_bus_scaling(adsp);
+	ret = adsp_init_bus_scaling(adsp);
+	if (ret)
+		goto deinit_wakeup_source;
 
 	ret = adsp_pds_attach(&pdev->dev, adsp->active_pds,
 			      desc->active_pd_names);
