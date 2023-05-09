@@ -1494,6 +1494,18 @@ static int stmmac_init_phy(struct net_device *dev)
 	return ret;
 }
 
+static void stmmac_get_fixed_state(struct phylink_config *config,
+				   struct phylink_link_state *state)
+{
+	struct net_device *ndev = to_net_dev(config->dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+
+	if (!priv->plat->rx_clk_rdy)
+		state->link = 0;
+	else
+		state->link = 1;
+}
+
 static int stmmac_phy_setup(struct stmmac_priv *priv)
 {
 	struct stmmac_mdio_bus_data *mdio_bus_data = priv->plat->mdio_bus_data;
@@ -1504,6 +1516,10 @@ static int stmmac_phy_setup(struct stmmac_priv *priv)
 	priv->phylink_config.dev = &priv->dev->dev;
 	priv->phylink_config.type = PHYLINK_NETDEV;
 	priv->phylink_config.pcs_poll = true;
+
+	if (priv->plat->plat_wait_for_emac_rx_clk_en)
+		priv->phylink_config.get_fixed_state = stmmac_get_fixed_state;
+
 	if (priv->plat->mdio_bus_data)
 		priv->phylink_config.ovr_an_inband =
 			mdio_bus_data->xpcs_an_inband;
@@ -7941,6 +7957,9 @@ int stmmac_suspend(struct device *dev)
 		stmmac_mac_set(priv, priv->ioaddr, false);
 		pinctrl_pm_select_sleep_state(priv->device);
 	}
+
+	if (priv->plat->plat_wait_for_emac_rx_clk_en)
+		priv->plat->rx_clk_rdy = false;
 
 	mutex_unlock(&priv->lock);
 
