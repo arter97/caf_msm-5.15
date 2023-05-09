@@ -29,6 +29,7 @@
 #include <linux/route.h>
 #include <linux/if_arp.h>
 #include <linux/inet.h>
+#include <linux/panic_notifier.h>
 #include <net/inet_common.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include "stmmac.h"
@@ -4209,6 +4210,24 @@ static int ethqos_resume_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 }
 #endif
 
+static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
+				      unsigned long event, void *ptr)
+{
+	struct qcom_ethqos *ethqos;
+
+	ethqos = container_of(nb, struct qcom_ethqos, panic_nb);
+	if (!ethqos) {
+		ETHQOSERR("Ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	pr_info("qcom-ethqos: ethqos 0x%p\n", ethqos);
+
+	pr_info("qcom-ethqos: stmmac_priv 0x%p\n", ethqos->priv);
+
+	return NOTIFY_DONE;
+}
+
 static ssize_t ethqos_read_dev_emac(struct file *filp, char __user *buf,
 				    size_t count, loff_t *f_pos)
 {
@@ -4417,6 +4436,18 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 out:
 	of_node_put(fixed_phy_node);
+	return ret;
+}
+
+static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
+{
+	int ret;
+
+	ethqos->panic_nb.notifier_call	= qcom_ethqos_panic_notifier;
+	ethqos->panic_nb.priority = INT_MAX;
+
+	ret = atomic_notifier_chain_register(&panic_notifier_list,
+					     &ethqos->panic_nb);
 	return ret;
 }
 
@@ -4811,6 +4842,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		/*Set early eth parameters*/
 		ethqos_set_early_eth_param(priv, ethqos);
 	}
+
+	if (qcom_ethqos_register_panic_notifier(ethqos))
+		ETHQOSERR("Failed to register panic notifier");
 
 	if (ethqos->qoe_mode) {
 		ethqos_create_emac_device_node(&ethqos->emac_dev_t,
