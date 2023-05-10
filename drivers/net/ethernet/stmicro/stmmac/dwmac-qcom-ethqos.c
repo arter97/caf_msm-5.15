@@ -5108,16 +5108,35 @@ static int qcom_ethqos_resume(struct device *dev)
 		/* Temp Enable LOOPBACK_EN.
 		 * TX clock needed for reset As Phy is off
 		 */
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
+		/*Invoke SCM call */
+		if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
+			qcom_scm_call_loopback_configure(ethqos->rgmii_phy_base,
+							 ENABLE_IO_MACRO_LOOPBACK, 0);
+		}
+#else
 		rgmii_updatel(ethqos, RGMII_CONFIG_LOOPBACK_EN,
 			      RGMII_CONFIG_LOOPBACK_EN,
 			      RGMII_IO_MACRO_CONFIG);
+#endif
 		ETHQOSINFO("Loopback EN Enabled\n");
 	}
 	ret = stmmac_resume(dev);
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
 		//Disable  LOOPBACK_EN
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
+		/*Invoke SCM call */
+		if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
+			qcom_scm_call_loopback_configure(ethqos->rgmii_phy_base,
+							 ENABLE_IO_MACRO_LOOPBACK, 0);
+		}
+#else
+
 		rgmii_updatel(ethqos, RGMII_CONFIG_LOOPBACK_EN,
 			      0, RGMII_IO_MACRO_CONFIG);
+#endif
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
