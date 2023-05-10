@@ -5083,14 +5083,6 @@ static int qcom_ethqos_resume(struct device *dev)
 		ethqos_phy_power_on(ethqos);
 	}
 
-	if (ethqos->rgmii_clk) {
-		ret = clk_prepare_enable(ethqos->rgmii_clk);
-		if (ret) {
-			ETHQOSERR("Failed to resume RGMII clock\n");
-			return -EINVAL;
-		}
-	}
-
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
