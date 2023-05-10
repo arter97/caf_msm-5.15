@@ -19,6 +19,7 @@
 struct led_qcom_clk_priv {
 	struct led_classdev cdev;
 	struct clk *core;
+	struct clk *rf_clk5;
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *gpio_active;
 	struct pinctrl_state *gpio_sleep;
@@ -33,7 +34,7 @@ static int qcom_clk_led_set(struct led_classdev *led_cdev,
 {
 	struct led_qcom_clk_priv *led_priv =
 		container_of(led_cdev, struct led_qcom_clk_priv, cdev);
-	int rc;
+	int rc = 0;
 
 	if (brightness == LED_OFF) {
 		if (led_priv->clk_enabled) {
@@ -60,6 +61,14 @@ static int qcom_clk_led_set(struct led_classdev *led_cdev,
 					rc);
 			goto err_enable;
 		}
+		if (!IS_ERR_OR_NULL(led_priv->rf_clk5)) {
+			rc = clk_prepare_enable(led_priv->rf_clk5);
+			if (rc < 0) {
+				dev_err(led_cdev->dev, "Failed to enable clock rf rc=%d\n",
+					rc);
+				goto err_enable;
+			}
+		}
 
 		led_priv->clk_enabled = true;
 	}
@@ -71,10 +80,10 @@ static int qcom_clk_led_set(struct led_classdev *led_cdev,
 	 */
 	led_priv->duty_cycle = brightness;
 	rc = clk_set_duty_cycle(led_priv->core,
-			led_priv->duty_cycle, CLK_DUTY_DEN);
+		led_priv->duty_cycle, CLK_DUTY_DEN);
 	if (rc < 0) {
 		dev_err(led_cdev->dev, "Failed to set duty cycle rc=%d\n",
-				rc);
+			rc);
 		goto err_set_duty;
 	}
 
@@ -120,7 +129,7 @@ static int qcom_clk_led_parse_dt(struct device *dev,
 
 		return ret;
 	}
-
+	led->rf_clk5 = devm_clk_get(dev, "rf_clk5");
 	led->pinctrl = devm_pinctrl_get(dev);
 	if (IS_ERR_OR_NULL(led->pinctrl)) {
 		dev_err(dev, "No pinctrl config specified!\n");
