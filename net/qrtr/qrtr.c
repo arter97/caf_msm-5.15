@@ -443,6 +443,7 @@ static void __qrtr_node_release(struct kref *kref)
 	kthread_stop(node->task);
 	skb_queue_purge(&node->rx_queue);
 	wakeup_source_unregister(node->ws);
+	xa_destroy(&node->no_wake_svc);
 
 	/* Free tx flow counters */
 	mutex_lock(&node->qrtr_tx_lock);
@@ -988,6 +989,43 @@ static void qrtr_backup_deinit(void)
 	skb_queue_purge(&qrtr_backup_lo);
 	skb_queue_purge(&qrtr_backup_hi);
 }
+
+/**
+ * qrtr_get_header_size() - check header type to get header size
+ *
+ * @data: Starting address of the packet which points to router header.
+ *
+ * @returns: packet header size on success, < 0 on error.
+ *
+ * This function is used by the underlying transport abstraction layer to
+ * check header size expected for an incoming packet. This information
+ * is used to perform link layer fragmentation and re-assembly
+ */
+int qrtr_get_header_size(const void *data)
+{
+	const struct qrtr_hdr_v1 *v1;
+	const struct qrtr_hdr_v2 *v2;
+	unsigned int hdrlen;
+	unsigned int ver;
+
+	ver = *(u8 *)data;
+
+	switch (ver) {
+	case QRTR_PROTO_VER_1:
+		hdrlen = sizeof(*v1);
+		break;
+	case QRTR_PROTO_VER_2:
+		v2 = data;
+		hdrlen = sizeof(*v2) + v2->optlen;
+		break;
+	default:
+		pr_err("qrtr: %s:Invalid version %d\n", __func__, ver);
+		return -EINVAL;
+	}
+
+	return hdrlen;
+}
+EXPORT_SYMBOL(qrtr_get_header_size);
 
 /**
  * qrtr_endpoint_post() - post incoming data

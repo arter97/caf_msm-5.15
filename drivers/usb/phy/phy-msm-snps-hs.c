@@ -1153,7 +1153,15 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 		}
 		return;
 	case PORT_DISCONNECTED:
-		msm_hsphy_unprepare_chg_det(phy);
+		/*
+		 * If EUD is enabled, avoid resetting the phy after disconnect, as this will
+		 * reset the PHY regs back to its POR values, resulting in enumeration failure
+		 * of USB and EUD during next plug-in.
+		 */
+		if (!(phy->eud_enable_reg &&
+			readl_relaxed(phy->eud_enable_reg))) {
+			msm_hsphy_unprepare_chg_det(phy);
+		}
 		msm_hsphy_notify_charger(phy, POWER_SUPPLY_TYPE_UNKNOWN);
 		phy->port_state = PORT_UNKNOWN;
 		break;

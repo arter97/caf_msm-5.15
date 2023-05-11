@@ -161,12 +161,6 @@ do {\
 #define VOTE_IDX_5000MBPS 5
 #define VOTE_IDX_10000MBPS 6
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-enum ipa_queue_type {
-	IPA_QUEUE_BE = 0,
-};
-#endif
-
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
 #define XGMAC_CONFIG_LM			BIT(10)
@@ -174,6 +168,35 @@ enum ipa_queue_type {
 //Mac config
 #define XGMAC_RX_CONFIG		0x00000004
 #define XGMAC_CONFIG_LM			BIT(10)
+
+#define TLMM_BASE_ADDRESS (tlmm_central_base_addr)
+
+#define TLMM_MDC_HDRV_PULL_CTL_ADDRESS\
+	(((unsigned long *)\
+	  (TLMM_BASE_ADDRESS + 0xA1000)))
+
+#define TLMM_MDIO_HDRV_PULL_CTL_ADDRESS\
+	(((unsigned long *)\
+	  (TLMM_BASE_ADDRESS + 0xA0000)))
+
+#define TLMM_MDC_HDRV_PULL_CTL_RGWR(data)\
+	iowrite32(data, (void __iomem *)TLMM_MDC_HDRV_PULL_CTL_ADDRESS)
+#define TLMM_MDC_HDRV_PULL_CTL_RGRD(data)\
+	((data) = ioread32((void __iomem *)TLMM_MDC_HDRV_PULL_CTL_ADDRESS))
+
+#define TLMM_MDIO_HDRV_PULL_CTL_RGWR(data)\
+	iowrite32(data, (void __iomem *)TLMM_MDIO_HDRV_PULL_CTL_ADDRESS)
+#define TLMM_MDIO_HDRV_PULL_CTL_RGRD(data)\
+	((data) = ioread32((void __iomem *)TLMM_MDIO_HDRV_PULL_CTL_ADDRESS))
+
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_2MA ((unsigned long)(0x0))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_4MA ((unsigned long)(0x1))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_6MA ((unsigned long)(0x2))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_8MA ((unsigned long)(0x3))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_10MA ((unsigned long)(0x4))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_12MA ((unsigned long)(0x5))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_14MA ((unsigned long)(0x6))
+#define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_16MA ((unsigned long)(0x7))
 
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
@@ -371,6 +394,8 @@ struct qcom_ethqos {
 	struct regulator *reg_rgmii;
 	struct regulator *reg_emac_phy;
 	struct regulator *reg_rgmii_io_pads;
+	struct regulator *vreg_a_sgmii_1p2;
+	struct regulator *vreg_a_sgmii_0p9;
 
 	int pps_class_a_irq;
 	int pps_class_b_irq;
@@ -419,7 +444,6 @@ struct qcom_ethqos {
 	int curr_serdes_speed;
 	unsigned int emac_phy_off_suspend;
 	int loopback_speed;
-	enum loopback_mode current_loopback;
 	enum phy_power_mode current_phy_mode;
 	enum current_phy_state phy_state;
 	/*Backup variable for phy loopback*/
@@ -482,7 +506,7 @@ struct mac_params {
 	unsigned long link_speed;
 };
 
-int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
+int ethqos_init_regulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
 void ethqos_free_gpios(struct qcom_ethqos *ethqos);

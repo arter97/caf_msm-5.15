@@ -2,7 +2,7 @@
 /*
  * Copyright(C) 2016 Linaro Limited. All rights reserved.
  * Author: Mathieu Poirier <mathieu.poirier@linaro.org>
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -1110,10 +1110,18 @@ static int  __tmc_etr_enable_hw(struct tmc_drvdata *drvdata)
 		writel_relaxed(sts, drvdata->base + TMC_STS);
 	}
 
-	writel_relaxed(TMC_FFCR_EN_FMT | TMC_FFCR_EN_TI |
-		       TMC_FFCR_FON_FLIN | TMC_FFCR_FON_TRIG_EVT |
-		       TMC_FFCR_TRIGON_TRIGIN,
-		       drvdata->base + TMC_FFCR);
+	if (drvdata->stop_on_flush) {
+		writel_relaxed(TMC_FFCR_EN_FMT | TMC_FFCR_EN_TI |
+			       TMC_FFCR_FON_FLIN | TMC_FFCR_FON_TRIG_EVT |
+			       TMC_FFCR_TRIGON_TRIGIN | TMC_FFCR_STOP_ON_FLUSH,
+			       drvdata->base + TMC_FFCR);
+	} else {
+		writel_relaxed(TMC_FFCR_EN_FMT | TMC_FFCR_EN_TI |
+			       TMC_FFCR_FON_FLIN | TMC_FFCR_FON_TRIG_EVT |
+			       TMC_FFCR_TRIGON_TRIGIN,
+			       drvdata->base + TMC_FFCR);
+	}
+
 	writel_relaxed(drvdata->trigger_cntr, drvdata->base + TMC_TRG);
 	tmc_enable_hw(drvdata);
 
@@ -1188,9 +1196,18 @@ ssize_t tmc_etr_get_sysfs_trace(struct tmc_drvdata *drvdata,
 static struct etr_buf *
 tmc_etr_setup_sysfs_buf(struct tmc_drvdata *drvdata)
 {
+	struct device *parent = NULL;
+	int ret = -1;
+
+	parent = drvdata->csdev->dev.parent;
+
+	ret = of_property_read_u32(parent->of_node, "sw_usb_buf_size", &sw_usb_buf_size);
+	dev_info(&drvdata->csdev->dev,
+		"setting tmc etr sw usb buf size 0x%x\n", sw_usb_buf_size);
+
 	if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
 		drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)
-		return tmc_alloc_etr_buf(drvdata, TMC_ETR_SW_USB_BUF_SIZE,
+		return tmc_alloc_etr_buf(drvdata, sw_usb_buf_size,
 				0, cpu_to_node(0), NULL);
 	else
 		return tmc_alloc_etr_buf(drvdata, drvdata->size,
@@ -1228,6 +1245,7 @@ static void __tmc_etr_disable_hw(struct tmc_drvdata *drvdata)
 	CS_UNLOCK(drvdata->base);
 
 	tmc_flush_and_stop(drvdata);
+	tmc_disable_stop_on_flush(drvdata);
 	/*
 	 * When operating in sysFS mode the content of the buffer needs to be
 	 * read before the TMC is disabled.
@@ -1292,7 +1310,7 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 					&& sysfs_buf->size != drvdata->size)
 					|| (drvdata->out_mode == TMC_ETR_OUT_MODE_USB
 					&& drvdata->usb_data->usb_mode == TMC_ETR_USB_SW
-					&&  sysfs_buf->size != TMC_ETR_SW_USB_BUF_SIZE)) {
+					&&  sysfs_buf->size != sw_usb_buf_size)) {
 			spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
 			/* Allocate memory with the locks released */

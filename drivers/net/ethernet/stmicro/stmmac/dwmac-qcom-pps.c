@@ -32,18 +32,14 @@ static DECLARE_WAIT_QUEUE_HEAD(avb_class_b_msg_wq);
 
 static int strlcmp(const char *s, const char *t, size_t n)
 {
-	int ret;
-
 	while (n-- && *t != '\0') {
 		if (*s != *t) {
-			ret = ((unsigned char)*s - (unsigned char)*t);
-			n = 0;
+			return ((unsigned char)*s - (unsigned char)*t);
 		} else {
 			++s, ++t;
-			ret = (unsigned char)*s;
 		}
 	}
-	return ret;
+	return (unsigned char)*s;
 }
 
 static void align_target_time_reg(u32 ch, struct stmmac_priv *priv,
@@ -207,7 +203,7 @@ int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg)
 
 	sub_second_inc = pps_config_sub_second_increment
 			 (priv->ptpaddr, eth_pps_cfg->ptpclk_freq,
-			  priv->plat->has_gmac4);
+			  (priv->plat->has_gmac4 || priv->plat->has_xgmac));
 
 	temp = (u64)((u64)eth_pps_cfg->ptpclk_freq << 32);
 	priv->default_addend = div_u64(temp, priv->plat->clk_ptp_rate);
@@ -271,10 +267,9 @@ int ethqos_init_pps(void *priv_n)
 	/* Before we update ptp register please check if it has some information
 	 * in the register then we need to overwrite it.
 	 */
-	priv->systime_flags = readl(priv->ptpaddr + PTP_TCR);
-	value = (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
-	priv->systime_flags |= value;
-	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, priv->systime_flags);
+	value = readl(priv->ptpaddr + PTP_TCR);
+	value |= (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
+	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, value);
 	priv->hw->ptp->init_systime(priv->ptpaddr, 0, 0);
 	priv->hw->ptp->adjust_systime(priv->ptpaddr, 0, 0, 0, 1);
 

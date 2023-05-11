@@ -16,6 +16,7 @@
 #include <linux/sysfs.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/bitops.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
@@ -37,7 +38,15 @@
 #define EUD_REG_COM_RX_LEN	0x0010
 #define EUD_REG_COM_RX_DAT	0x0014
 #define EUD_REG_EUD_EN2		0x0000
+#define EUD_REG_INT0_EN_MASK	0x0020
 #define EUD_REG_INT1_EN_MASK	0x0024
+#define EUD_REG_INT2_EN_MASK	0x0028
+#define EUD_REG_INT3_EN_MASK	0x002C
+#define EUD_REG_INT4_EN_MASK	0x0030
+#define EUD_REG_INT5_EN_MASK	0x0034
+#define EUD_REG_INT6_EN_MASK	0x0038
+#define EUD_REG_INT7_EN_MASK	0x003C
+#define EUD_REG_INT_STATUS_0	0x0040
 #define EUD_REG_INT_STATUS_1	0x0044
 #define EUD_REG_CTL_OUT_1	0x0074
 #define EUD_REG_VBUS_INT_CLR	0x0080
@@ -68,6 +77,7 @@ struct eud_chip {
 	int				eud_irq;
 	unsigned int			extcon_id;
 	unsigned int			int_status;
+	unsigned int			intr_enable_mask_off;
 	bool				usb_attach;
 	bool				chgr_enable;
 	void __iomem			*eud_reg_base;
@@ -83,11 +93,23 @@ struct eud_chip {
 	bool				eud_clkref_enabled;
 };
 
+struct eud_config {
+	int intr_enable_mask_off;
+};
+
 static const unsigned int eud_extcon_cable[] = {
 	EXTCON_USB,
 	EXTCON_CHG_USB_SDP,
 	EXTCON_JIG,
 	EXTCON_NONE,
+};
+
+static const struct eud_config eud_intr_mask1 = {
+	.intr_enable_mask_off = EUD_REG_INT1_EN_MASK,
+};
+
+static const struct eud_config eud_intr_mask4 = {
+	.intr_enable_mask_off = EUD_REG_INT4_EN_MASK,
 };
 
 static int enable = EUD_DISABLE_CMD;
@@ -122,7 +144,7 @@ static inline void msm_eud_enable_irqs(struct eud_chip *chip)
 {
 	/* Enable vbus, chgr & safe mode warning interrupts */
 	writel_relaxed(EUD_INT_VBUS | EUD_INT_CHGR | EUD_INT_SAFE_MODE,
-			chip->eud_reg_base + EUD_REG_INT1_EN_MASK);
+			chip->eud_reg_base + chip->intr_enable_mask_off);
 }
 
 static int msm_eud_hw_is_enabled(struct platform_device *pdev)
@@ -561,8 +583,8 @@ static irqreturn_t handle_eud_irq(int irq, void *data)
 {
 	struct eud_chip *chip = data;
 	u8 reg;
-	u32 int_mask_en1 = readl_relaxed(chip->eud_reg_base +
-					EUD_REG_INT1_EN_MASK);
+	u32 int_mask_en = readl_relaxed(chip->eud_reg_base +
+				chip->intr_enable_mask_off);
 
 	/* read status register and find out which interrupt triggered */
 	reg = readb_relaxed(chip->eud_reg_base + EUD_REG_INT_STATUS_1);
@@ -575,7 +597,7 @@ static irqreturn_t handle_eud_irq(int irq, void *data)
 	}
 
 	if (reg & EUD_INT_TX) {
-		if (EUD_INT_TX & int_mask_en1) {
+		if (EUD_INT_TX & int_mask_en) {
 			dev_dbg(chip->dev, "EUD TX Interrupt is received\n");
 			eud_uart_tx(chip);
 		}
@@ -640,6 +662,7 @@ static int msm_eud_probe(struct platform_device *pdev)
 	struct eud_chip *chip;
 	struct uart_port *port;
 	struct resource *res;
+	const struct eud_config *eud_intr_mask_no;
 	int ret;
 	bool eud_tcsr_check_state;
 	phys_addr_t eud_tcsr_check;
@@ -677,6 +700,14 @@ static int msm_eud_probe(struct platform_device *pdev)
 		return PTR_ERR(chip->eud_reg_base);
 
 	chip->eud_irq = platform_get_irq_byname(pdev, "eud_irq");
+
+	eud_intr_mask_no = of_device_get_match_data(&pdev->dev);
+	if (!eud_intr_mask_no) {
+		dev_err(&pdev->dev, "No matching EUD configuration found\n");
+		return -ENODEV;
+	}
+
+	chip->intr_enable_mask_off = eud_intr_mask_no->intr_enable_mask_off;
 
 	chip->secure_eud_en = of_property_read_bool(pdev->dev.of_node,
 			      "qcom,secure-eud-en");
@@ -829,7 +860,8 @@ static int msm_eud_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id msm_eud_dt_match[] = {
-	{.compatible = "qcom,msm-eud"},
+	{.compatible = "qcom,msm-eud",		.data = &eud_intr_mask1 },
+	{.compatible = "qcom,msm-eud-sdxpinn",	.data = &eud_intr_mask4 },
 	{},
 };
 MODULE_DEVICE_TABLE(of, msm_eud_dt_match);

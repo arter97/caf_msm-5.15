@@ -273,12 +273,21 @@ static const struct stmmac_stats stmmac_mmc[] = {
 static const char stmmac_qstats_tx_string[][ETH_GSTRING_LEN] = {
 	"tx_pkt_n",
 	"tx_irq_n",
+	"fatal_bus_err_irq_n",
+	"txch_desc_list_laddr",
+	"txch_desc_ring_len",
+	"txch_desc_tail",
 #define STMMAC_TXQ_STATS ARRAY_SIZE(stmmac_qstats_tx_string)
 };
 
 static const char stmmac_qstats_rx_string[][ETH_GSTRING_LEN] = {
 	"rx_pkt_n",
 	"rx_irq_n",
+	"rx_buf_unav_irq_n",
+	"rx_process_stopped_irq",
+	"rxch_desc_list_laddr",
+	"rxch_desc_ring_len",
+	"rxch_desc_tail",
 #define STMMAC_RXQ_STATS ARRAY_SIZE(stmmac_qstats_rx_string)
 };
 
@@ -664,6 +673,11 @@ static void stmmac_get_ethtool_stats(struct net_device *dev,
 			stmmac_mac_debug(priv, priv->ioaddr,
 					(void *)&priv->xstats,
 					rx_queues_count, tx_queues_count);
+
+		if (priv->synopsys_id == DWXLGMAC_CORE_3_10)
+			stmmac_desc_stats(priv, priv->ioaddr, &priv->xstats,
+					  priv->plat->tx_queues_to_use,
+					  priv->plat->rx_queues_to_use);
 	}
 	for (i = 0; i < STMMAC_STATS_LEN; i++) {
 		char *p = (char *)priv + stmmac_gstrings_stats[i].stat_offset;
@@ -808,6 +822,9 @@ static int stmmac_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 
 	if (!device_can_wakeup(priv->device))
 		return -EOPNOTSUPP;
+
+	if (priv->plat->enable_wol)
+		return priv->plat->enable_wol(dev, wol);
 
 	if (!priv->plat->pmt) {
 		wol->cmd = ETHTOOL_SWOL;
