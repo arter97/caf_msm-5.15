@@ -514,6 +514,8 @@ struct mac_params {
 	unsigned long link_speed;
 };
 
+int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos);
+int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos);
 int ethqos_init_regulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
