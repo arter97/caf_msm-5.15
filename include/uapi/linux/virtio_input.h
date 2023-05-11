@@ -28,6 +28,10 @@
  * SUCH DAMAGE. */
 
 #include <linux/types.h>
+#include "input-event-codes.h"
+
+/* Feature bits */
+#define VIRTIO_INPUT_F_FLAT_CFG	      0	/* Indicates flat config space */
 
 enum virtio_input_config_select {
 	VIRTIO_INPUT_CFG_UNSET      = 0x00,
@@ -37,6 +41,26 @@ enum virtio_input_config_select {
 	VIRTIO_INPUT_CFG_PROP_BITS  = 0x10,
 	VIRTIO_INPUT_CFG_EV_BITS    = 0x11,
 	VIRTIO_INPUT_CFG_ABS_INFO   = 0x12,
+};
+
+#define VIRTIO_INPUT_CFG_UNIT_SIZE 128
+
+enum virtio_input_plat_config_select {
+	VIRTIO_INPUT_FLAT_CFG_ID_NAME     = 0,
+	VIRTIO_INPUT_FLAT_CFG_ID_SERIAL   = 1,
+	VIRTIO_INPUT_FLAT_CFG_ID_DEVIDS   = 2,
+	VIRTIO_INPUT_FLAT_CFG_PROP_BITS   = 3,
+	VIRTIO_INPUT_FLAT_CFG_EV          = 4,
+	VIRTIO_INPUT_FLAT_CFG_EV_KEY      = 5,
+	VIRTIO_INPUT_FLAT_CFG_EV_REL      = 6,
+	VIRTIO_INPUT_FLAT_CFG_EV_ABS      = 7,
+	VIRTIO_INPUT_FLAT_CFG_EV_MSC      = 8,
+	VIRTIO_INPUT_FLAT_CFG_EV_SW       = 9,
+	VIRTIO_INPUT_FLAT_CFG_EV_LED      = 10,
+	VIRTIO_INPUT_FLAT_CFG_EV_SND      = 11,
+	VIRTIO_INPUT_FLAT_CFG_EV_REP      = 12,
+	VIRTIO_INPUT_FLAT_CFG_ABS         = VIRTIO_INPUT_FLAT_CFG_EV + EV_CNT,
+	VIRTIO_INPUT_FLAT_CFG_MAX         = VIRTIO_INPUT_FLAT_CFG_ABS + ABS_CNT,
 };
 
 struct virtio_input_absinfo {
@@ -65,6 +89,13 @@ struct virtio_input_config {
 		struct virtio_input_absinfo abs;
 		struct virtio_input_devids ids;
 	} u;
+};
+
+struct virtio_input_flat_config {
+	__le32 sum_size;
+	__u8 size[VIRTIO_INPUT_FLAT_CFG_MAX];
+	__le16 offset[VIRTIO_INPUT_FLAT_CFG_MAX];
+	char payload[VIRTIO_INPUT_CFG_UNIT_SIZE * VIRTIO_INPUT_FLAT_CFG_MAX];
 };
 
 struct virtio_input_event {

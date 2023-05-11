@@ -135,6 +135,38 @@ static u8 virtinput_cfg_select(struct virtio_input *vi,
 	return size;
 }
 
+static void virtinput_plat_cfg_bits(struct virtio_input *vi, u8 bytes,
+					u16 offset, int subsel,
+					unsigned long *bits, u32 bitcount, bool is_evbits)
+{
+	unsigned int bit;
+	u8 *virtio_bits;
+
+	if (!bytes)
+		return;
+	if (bitcount > bytes * 8)
+		bitcount = bytes * 8;
+
+	/*
+	 * Bitmap in virtio config space is a simple stream of bytes,
+	 * with the first byte carrying bits 0-7, second bits 8-15 and
+	 * so on.
+	 */
+	virtio_bits = kzalloc(bytes, GFP_KERNEL);
+	if (!virtio_bits)
+		return;
+	virtio_cread_bytes(vi->vdev, offset,
+			   virtio_bits, bytes);
+	for (bit = 0; bit < bitcount; bit++) {
+		if (virtio_bits[bit / 8] & (1 << (bit % 8)))
+			__set_bit(bit, bits);
+	}
+	kfree(virtio_bits);
+
+	if (is_evbits)
+		__set_bit(subsel, vi->idev->evbit);
+}
+
 static void virtinput_cfg_bits(struct virtio_input *vi, int select, int subsel,
 			       unsigned long *bits, unsigned int bitcount)
 {
@@ -167,6 +199,25 @@ static void virtinput_cfg_bits(struct virtio_input *vi, int select, int subsel,
 
 	if (select == VIRTIO_INPUT_CFG_EV_BITS)
 		__set_bit(subsel, vi->idev->evbit);
+}
+
+static void virtinput_flat_cfg_abs(struct virtio_input *vi, unsigned int offset,
+									int abs)
+{
+	u32 mi, ma, re, fu, fl;
+
+	virtio_cread_bytes(vi->vdev, offset, &mi, sizeof(mi));
+	offset += sizeof(mi);
+	virtio_cread_bytes(vi->vdev, offset, &ma, sizeof(ma));
+	offset += sizeof(ma);
+	virtio_cread_bytes(vi->vdev, offset, &fu, sizeof(fu));
+	offset += sizeof(fu);
+	virtio_cread_bytes(vi->vdev, offset, &fl, sizeof(fl));
+	offset += sizeof(fl);
+	virtio_cread_bytes(vi->vdev, offset, &re, sizeof(re));
+
+	input_set_abs_params(vi->idev, abs, mi, ma, fu, fl);
+	input_abs_set_res(vi->idev, abs, re);
 }
 
 static void virtinput_cfg_abs(struct virtio_input *vi, int abs)
@@ -215,34 +266,10 @@ static void virtinput_fill_evt(struct virtio_input *vi)
 	spin_unlock_irqrestore(&vi->lock, flags);
 }
 
-static int virtinput_probe(struct virtio_device *vdev)
+static void virtinput_get_config(struct virtio_input *vi)
 {
-	struct virtio_input *vi;
-	unsigned long flags;
 	size_t size;
-	int abs, err, nslots;
-
-	if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1))
-		return -ENODEV;
-
-	vi = kzalloc(sizeof(*vi), GFP_KERNEL);
-	if (!vi)
-		return -ENOMEM;
-
-	vdev->priv = vi;
-	vi->vdev = vdev;
-	spin_lock_init(&vi->lock);
-
-	err = virtinput_init_vqs(vi);
-	if (err)
-		goto err_init_vq;
-
-	vi->idev = input_allocate_device();
-	if (!vi->idev) {
-		err = -ENOMEM;
-		goto err_input_alloc;
-	}
-	input_set_drvdata(vi->idev, vi);
+	int abs;
 
 	size = virtinput_cfg_select(vi, VIRTIO_INPUT_CFG_ID_NAME, 0);
 	virtio_cread_bytes(vi->vdev, offsetof(struct virtio_input_config,
@@ -252,11 +279,6 @@ static int virtinput_probe(struct virtio_device *vdev)
 	virtio_cread_bytes(vi->vdev, offsetof(struct virtio_input_config,
 					      u.string),
 			   vi->serial, min(size, sizeof(vi->serial)));
-	snprintf(vi->phys, sizeof(vi->phys),
-		 "virtio%d/input0", vdev->index);
-	vi->idev->name = vi->name;
-	vi->idev->phys = vi->phys;
-	vi->idev->uniq = vi->serial;
 
 	size = virtinput_cfg_select(vi, VIRTIO_INPUT_CFG_ID_DEVIDS, 0);
 	if (size >= sizeof(struct virtio_input_devids)) {
@@ -277,9 +299,6 @@ static int virtinput_probe(struct virtio_device *vdev)
 	size = virtinput_cfg_select(vi, VIRTIO_INPUT_CFG_EV_BITS, EV_REP);
 	if (size)
 		__set_bit(EV_REP, vi->idev->evbit);
-
-	vi->idev->dev.parent = &vdev->dev;
-	vi->idev->event = virtinput_status;
 
 	/* device -> kernel */
 	virtinput_cfg_bits(vi, VIRTIO_INPUT_CFG_EV_BITS, EV_KEY,
@@ -305,7 +324,146 @@ static int virtinput_probe(struct virtio_device *vdev)
 				continue;
 			virtinput_cfg_abs(vi, abs);
 		}
+	}
+}
 
+static void virtinput_get_flat_config(struct virtio_input *vi)
+{
+	u32 sum_size;
+	u8 size[VIRTIO_INPUT_FLAT_CFG_MAX];
+	u16 offset[VIRTIO_INPUT_FLAT_CFG_MAX];
+	int abs;
+	u8 index;
+	unsigned int head_size = sizeof(sum_size) + sizeof(size) + sizeof(offset);
+	unsigned int cell_offset;
+
+	virtio_cread_bytes(vi->vdev,
+			offsetof(struct virtio_input_flat_config, sum_size),
+			&sum_size, sizeof(size));
+	pr_info("The total input config data size is %d bytes.\n", sum_size);
+	virtio_cread_bytes(vi->vdev,
+			offsetof(struct virtio_input_flat_config, size),
+			size, sizeof(size));
+	virtio_cread_bytes(vi->vdev,
+			offsetof(struct virtio_input_flat_config, offset),
+			offset, sizeof(offset));
+
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_ID_NAME];
+	virtio_cread_bytes(vi->vdev, cell_offset, vi->name,
+		min((size_t)size[VIRTIO_INPUT_FLAT_CFG_ID_NAME], sizeof(vi->name)));
+
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_ID_SERIAL];
+	virtio_cread_bytes(vi->vdev, cell_offset, vi->serial,
+		min((size_t)size[VIRTIO_INPUT_FLAT_CFG_ID_SERIAL],
+			sizeof(vi->serial)));
+
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_ID_DEVIDS];
+	virtio_cread_bytes(vi->vdev, cell_offset, &vi->idev->id.bustype,
+			sizeof(vi->idev->id.bustype));
+	cell_offset += sizeof(vi->idev->id.bustype);
+	virtio_cread_bytes(vi->vdev, cell_offset, &vi->idev->id.product,
+			sizeof(vi->idev->id.product));
+	cell_offset += sizeof(vi->idev->id.product);
+	virtio_cread_bytes(vi->vdev, cell_offset, &vi->idev->id.vendor,
+			sizeof(vi->idev->id.vendor));
+	cell_offset += sizeof(vi->idev->id.vendor);
+	virtio_cread_bytes(vi->vdev, cell_offset, &vi->idev->id.version,
+			sizeof(vi->idev->id.version));
+
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_PROP_BITS];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_PROP_BITS],
+			cell_offset, 0,
+			vi->idev->propbit, INPUT_PROP_CNT, false);
+
+	if (size[VIRTIO_INPUT_FLAT_CFG_EV_REP])
+		__set_bit(EV_REP, vi->idev->evbit);
+
+	/* device -> kernel */
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_KEY];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_KEY],
+			cell_offset, EV_KEY,
+			vi->idev->keybit, KEY_CNT, true);
+
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_REL];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_REL],
+			cell_offset, EV_REL,
+			vi->idev->relbit, REL_CNT, true);
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_ABS];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_ABS],
+			cell_offset, EV_ABS,
+			vi->idev->absbit, ABS_CNT, true);
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_MSC];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_MSC],
+			cell_offset, EV_MSC,
+			vi->idev->mscbit, MSC_CNT, true);
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_SW];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_SW],
+			cell_offset, EV_SW,
+			vi->idev->swbit, SW_CNT, true);
+
+	/* kernel -> device */
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_LED];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_LED],
+			cell_offset, EV_LED,
+			vi->idev->ledbit, LED_CNT, true);
+	cell_offset = head_size + offset[VIRTIO_INPUT_FLAT_CFG_EV_SND];
+	virtinput_plat_cfg_bits(vi, size[VIRTIO_INPUT_FLAT_CFG_EV_SND],
+			cell_offset, EV_SND,
+			vi->idev->sndbit, SND_CNT, true);
+
+	if (test_bit(EV_ABS, vi->idev->evbit)) {
+		index = VIRTIO_INPUT_FLAT_CFG_ABS;
+		for (abs = 0; abs < ABS_CNT; abs++) {
+			if (test_bit(abs, vi->idev->absbit)) {
+				cell_offset = head_size + offset[index];
+				virtinput_flat_cfg_abs(vi, cell_offset, abs);
+			}
+			index += 1;
+		}
+	}
+}
+
+static int virtinput_probe(struct virtio_device *vdev)
+{
+	struct virtio_input *vi;
+	unsigned long flags;
+	int err, nslots;
+
+	if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1))
+		return -ENODEV;
+
+	vi = kzalloc(sizeof(*vi), GFP_KERNEL);
+	if (!vi)
+		return -ENOMEM;
+
+	vdev->priv = vi;
+	vi->vdev = vdev;
+	spin_lock_init(&vi->lock);
+
+	err = virtinput_init_vqs(vi);
+	if (err)
+		goto err_init_vq;
+
+	vi->idev = input_allocate_device();
+	if (!vi->idev) {
+		err = -ENOMEM;
+		goto err_input_alloc;
+	}
+	input_set_drvdata(vi->idev, vi);
+
+	if (virtio_has_feature(vdev, VIRTIO_INPUT_F_FLAT_CFG)) {
+		virtinput_get_flat_config(vi);
+	} else {
+		virtinput_get_config(vi);
+	}
+	snprintf(vi->phys, sizeof(vi->phys), "virtio%d/input0", vdev->index);
+	vi->idev->phys = vi->phys;
+	vi->idev->name = vi->name;
+	vi->idev->uniq = vi->serial;
+	vi->idev->dev.parent = &vdev->dev;
+	vi->idev->event = virtinput_status;
+
+	if (test_bit(EV_ABS, vi->idev->evbit)) {
 		if (test_bit(ABS_MT_SLOT, vi->idev->absbit)) {
 			nslots = input_abs_get_max(vi->idev, ABS_MT_SLOT) + 1;
 			err = input_mt_init_slots(vi->idev, nslots, 0);
@@ -385,7 +543,7 @@ static int virtinput_restore(struct virtio_device *vdev)
 #endif
 
 static unsigned int features[] = {
-	/* none */
+	VIRTIO_INPUT_F_FLAT_CFG,
 };
 static const struct virtio_device_id id_table[] = {
 	{ VIRTIO_ID_INPUT, VIRTIO_DEV_ANY_ID },
