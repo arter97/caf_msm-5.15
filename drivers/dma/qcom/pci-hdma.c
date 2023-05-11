@@ -563,7 +563,9 @@ static irqreturn_t handle_hdma_irq(int irq, void *data)
 	u32 wr_int_status, rd_int_status;
 	struct hdmac_dev *wr_hc_dev = hc_lane->wr;
 	struct hdmac_dev *rd_hc_dev = hc_lane->rd;
+#ifdef CONFIG_QCOM_PCI_HDMA_DEBUG
 	struct hdma_dev *h_dev = wr_hc_dev->h_dev;
+#endif
 
 	wr_int_status = readl_relaxed(wr_hc_dev->int_status_reg);
 	rd_int_status = readl_relaxed(rd_hc_dev->int_status_reg);
