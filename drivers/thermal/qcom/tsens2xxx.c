@@ -779,6 +779,7 @@ static const struct tsens_irqs tsens2xxx_irqs[] = {
 	{ "tsens-0C", tsens_tm_zeroc_irq_thread},
 };
 
+#if defined(CONFIG_DEEPSLEEP) || defined(CONFIG_HIBERNATION)
 static int tsens2xxx_tsens_suspend(struct tsens_device *tmdev)
 {
 	int i, irq;
@@ -834,6 +835,7 @@ static int tsens2xxx_tsens_resume(struct tsens_device *tmdev)
 					&tmdev->therm_fwk_notify);
 	return 0;
 }
+#endif
 
 static int tsens2xxx_register_interrupts(struct tsens_device *tmdev)
 {
@@ -881,8 +883,10 @@ static const struct tsens_ops ops_tsens2xxx = {
 	.interrupts_reg	= tsens2xxx_register_interrupts,
 	.dbg		= tsens2xxx_dbg,
 	.sensor_en	= tsens2xxx_hw_sensor_en,
+#if defined(CONFIG_DEEPSLEEP) || defined(CONFIG_HIBERNATION)
 	.suspend = tsens2xxx_tsens_suspend,
 	.resume = tsens2xxx_tsens_resume,
+#endif
 };
 
 const struct tsens_data data_tsens2xxx = {

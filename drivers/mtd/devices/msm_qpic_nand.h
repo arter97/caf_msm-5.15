@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QPIC_NAND_H
@@ -424,7 +424,7 @@ struct onfi_param_page {
 #define FLASH_PTABLE_V3		3
 #define FLASH_PTABLE_V4		4
 #define FLASH_PTABLE_MAX_PARTS_V3 16
-#define FLASH_PTABLE_MAX_PARTS_V4 64
+#define FLASH_PTABLE_MAX_PARTS_V4 80
 #define FLASH_PTABLE_HDR_LEN (4*sizeof(uint32_t))
 #define FLASH_PTABLE_ENTRY_NAME_SIZE 16
 

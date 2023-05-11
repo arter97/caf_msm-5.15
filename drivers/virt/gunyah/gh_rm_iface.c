@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -67,7 +67,7 @@ int gh_update_vm_prop_table(enum gh_vm_names vm_name,
 	if (!vm_prop)
 		return -EINVAL;
 
-	if (vm_prop->vmid < 0 || vm_name < GH_SELF_VM || vm_name > GH_VM_MAX)
+	if (vm_prop->vmid < 0 || vm_name < GH_SELF_VM || vm_name >= GH_VM_MAX)
 		return -EINVAL;
 
 	spin_lock(&gh_vm_table_lock);
@@ -130,7 +130,7 @@ int gh_rm_get_vmid(enum gh_vm_names vm_name, gh_vmid_t *vmid)
 	gh_vmid_t _vmid;
 	int ret = 0;
 
-	if (vm_name < GH_SELF_VM || vm_name > GH_VM_MAX)
+	if (vm_name < GH_SELF_VM || vm_name >= GH_VM_MAX)
 		return -EINVAL;
 
 
@@ -198,7 +198,7 @@ int gh_rm_get_vminfo(enum gh_vm_names vm_name, struct gh_vminfo *vm)
 		return -EINVAL;
 
 	spin_lock(&gh_vm_table_lock);
-	if (vm_name < GH_SELF_VM || vm_name > GH_VM_MAX) {
+	if (vm_name < GH_SELF_VM || vm_name >= GH_VM_MAX) {
 		spin_unlock(&gh_vm_table_lock);
 		return -EINVAL;
 	}
@@ -399,6 +399,41 @@ int gh_rm_vm_lookup(enum gh_vm_lookup_type type, const void *data, size_t size,
 
 	return ret;
 }
+
+/**
+ * gh_rm_get_this_vmid() - Retrieve VMID of this virtual machine
+ * @vmid: Filled with the VMID of this VM
+ */
+int gh_rm_get_this_vmid(gh_vmid_t *vmid)
+{
+	static gh_vmid_t cached_vmid = GH_VMID_INVAL;
+	int reply_err_code;
+	size_t resp_size;
+	__le32 *resp;
+	int ret;
+
+	if (cached_vmid != GH_VMID_INVAL) {
+		*vmid = cached_vmid;
+		return 0;
+	}
+
+	resp = (__le32 *)gh_rm_call(GH_RM_RPC_MSG_ID_CALL_VM_GET_VMID, NULL, 0, &resp_size,
+			&reply_err_code);
+
+	if (reply_err_code || IS_ERR_OR_NULL(resp)) {
+		ret = PTR_ERR(resp);
+		pr_err("%s: failed with err: %d\n", __func__, ret);
+		return ret;
+	}
+
+	if (resp_size != sizeof(*resp))
+		return -EBADMSG;
+
+	*vmid = cached_vmid = lower_16_bits(le32_to_cpu(*resp));
+	kfree(resp);
+	return 0;
+}
+EXPORT_SYMBOL(gh_rm_get_this_vmid);
 
 /**
  * gh_rm_vm_get_status: Get the status of a particular VM
@@ -944,7 +979,7 @@ int gh_rm_vm_alloc_vmid(enum gh_vm_names vm_name, int *vmid)
 	/* Look up for the vm_name<->vmid pair if already present.
 	 * If so, return.
 	 */
-	if (vm_name < GH_SELF_VM || vm_name > GH_VM_MAX)
+	if (vm_name < GH_SELF_VM || vm_name >= GH_VM_MAX)
 		return -EINVAL;
 
 	spin_lock(&gh_vm_table_lock);

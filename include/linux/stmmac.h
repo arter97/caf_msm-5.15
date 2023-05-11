@@ -136,6 +136,7 @@ struct stmmac_rxq_cfg {
 	u32 prio;
 	bool thresholdmode;
 	u32 threshold_byte;
+	bool skip_sw;
 };
 
 struct stmmac_txq_cfg {
@@ -149,6 +150,7 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
+	bool skip_sw;
 };
 
 /* FPE link state */
@@ -256,6 +258,7 @@ struct plat_stmmacenet_data {
 			   void *ctx);
 	void (*dump_debug_regs)(void *priv);
 	unsigned int (*get_eth_type)(unsigned char *buf);
+	int (*enable_wol)(struct net_device *ndev, struct ethtool_wolinfo *wol);
 	void *bsp_priv;
 	struct clk *stmmac_clk;
 	struct clk *pclk;
@@ -319,5 +322,8 @@ struct plat_stmmacenet_data {
 	void (*phy_irq_disable)(void *priv);
 	int port_num;
 	bool pcs_v3;
+	bool pm_lite;
+	bool fixed_phy_mode;
+	bool crc_strip_en;
 };
 #endif

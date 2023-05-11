@@ -79,6 +79,14 @@ enum qcom_scm_ice_cipher {
 	QCOM_SCM_ICE_CIPHER_AES_256_CBC = 4,
 };
 
+enum qcom_scm_custom_reset_type {
+	QCOM_SCM_RST_NONE,
+	QCOM_SCM_RST_SHUTDOWN_TO_RTC_MODE = 0x80000005,
+	QCOM_SCM_RST_SHUTDOWN_TO_TWM_MODE,
+	QCOM_SCM_RST_MAX
+};
+extern enum qcom_scm_custom_reset_type qcom_scm_custom_reset_type;
+
 #define QCOM_SCM_VMID_HLOS       0x3
 #define QCOM_SCM_VMID_MSS_MSA    0xF
 #define QCOM_SCM_VMID_WLAN       0x18
@@ -134,6 +142,7 @@ extern int qcom_scm_pas_mem_setup(u32 peripheral, phys_addr_t addr,
 extern int qcom_scm_pas_auth_and_reset(u32 peripheral);
 extern int qcom_scm_pas_shutdown(u32 peripheral);
 extern int qcom_scm_pas_shutdown_retry(u32 peripheral);
+extern int qcom_scm_pas_reset(u32 peripheral);
 extern bool qcom_scm_pas_supported(u32 peripheral);
 
 extern int qcom_scm_get_sec_dump_state(u32 *dump_state);
@@ -286,4 +295,15 @@ extern int qcom_scm_call_loopback_configure(u32 emac_base_addr, u32 loopback_mod
 extern int qcom_scm_call_iomacro_dump(u32 emac_base_addr, phys_addr_t buffer, u32 len);
 extern int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed);
 extern int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value);
+static inline int qcom_scm_paravirt_smmu_attach(u64 sid, u64 asid, u64 ste_pa,
+			u64 ste_size, u64 cd_pa, u64 cd_size)
+		{ return -ENODEV; }
+
+static inline int qcom_scm_paravirt_smmu_detach(u64 sid)
+		{ return -ENODEV; }
+
+static inline int qcom_scm_paravirt_tlb_inv(u64 asid)
+		{ return -ENODEV; }
+
+
 #endif

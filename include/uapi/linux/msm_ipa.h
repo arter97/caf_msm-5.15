@@ -153,6 +153,7 @@
 #define IPA_IOCTL_SET_EXT_ROUTER_MODE           97
 #define IPA_IOCTL_QUERY_CACHED_DRIVER_MSG       98
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
+#define IPA_IOCTL_ADD_VLAN_PRIORITY             100
 /**
  * max size of the header to be inserted
  */
@@ -200,7 +201,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 4
+#define IPA_MAX_NUM_IFACE_FLT 7
 
 
 /**
@@ -228,6 +229,11 @@
  */
 
 #define IPA_CV2X_SUPPORT
+
+/**
+ *  Max number of delegated IDUs for prefix delegation FR
+ */
+#define IPA_PREFIX_MAPPING_MAX 16
 
 /**
  * the attributes of the rule (routing or filtering)
@@ -511,7 +517,7 @@ enum ipa_client_type {
 	IPA_CLIENT_ETHERNET2_PROD = 116,
 	IPA_CLIENT_ETHERNET2_CONS = 117,
 
-	/* RESERVED PROD			= 118, */
+	IPA_CLIENT_WLAN1_PROD1			= 118,
 	IPA_CLIENT_WLAN2_CONS1			= 119,
 
 	IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_PROD	= 120,
@@ -997,8 +1003,13 @@ enum ipa_eth_pdu_evt {
 #define IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX
 };
 
+enum ipa_vlan_priority_evt {
+	IPA_VLAN_PRIORITY_UPDATE_EVENT = IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX,
+	IPA_VLAN_PRIORITY_EVENT_MAX
+#define IPA_VLAN_PRIORITY_EVENT_MAX IPA_VLAN_PRIORITY_EVENT_MAX
+};
 
-#define IPA_EVENT_MAX_NUM (IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX)
+#define IPA_EVENT_MAX_NUM (IPA_VLAN_PRIORITY_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -3541,14 +3552,20 @@ enum ipa_ext_router_mode {
  * struct ipa_ioc_ext_router_info - provide ext_router info
  * @ipa_ext_router_mode: prefix sharing, prefix delegation, or disabled mode
  * @pdn_name: PDN interface name
- * @ipv6_addr: the prefix addr used for dummy or delegated prefixes
+ * @ipv6_addr: the prefix addr used for the dummy prefix. (prefix sharing mode)
  * @ipv6_mask: the ipv6 mask used to mask above addr to get the correct prefix
+ * @num_of_del_prefix_mapping: number of delegated prefix to IDU IP mapping
+ * @idu_del_wan_ip: array of IDU WAN IP to be mapped to a delegated prefix
+ * @idu_del_client_prefix: Array of delegated prefixes
  */
 struct ipa_ioc_ext_router_info {
 	enum ipa_ext_router_mode mode;
 	char pdn_name[IPA_RESOURCE_NAME_MAX];
 	uint32_t ipv6_addr[4];
 	uint32_t ipv6_mask[4];
+	int num_of_idu_prefix_mapping;
+	uint32_t idu_wan_ip[IPA_PREFIX_MAPPING_MAX][4];
+	uint32_t idu_client_prefix[IPA_PREFIX_MAPPING_MAX][4];
 };
 
 /**
@@ -3561,6 +3578,26 @@ struct ipa_ioc_ext_router_info {
 struct ipa_ioc_dscp_pcp_map_info {
 	uint32_t add;
 	uint8_t dscp_pcp_map[IPA_UC_MAX_DSCP_VAL];
+};
+
+/**
+ * struct vlan_priority - provides info required for vlan prirority
+ * @vlan_name: vlan interface name
+ * @vlan_priority: priority of corresponding vlan
+ */
+struct vlan_priority_info {
+	char vlan_name[IPA_RESOURCE_NAME_MAX];
+	uint8_t vlan_priority;
+};
+
+/**
+ * struct ipa_ioc_vlan_priority - provide vlan priority values
+ * @no_of_vlans: Number of vlans passed
+ * @vlan_pri0_info: holds info required for vlan priority
+ */
+struct ipa_ioc_vlan_priority {
+	uint8_t num_of_vlans;
+	struct vlan_priority_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
 };
 
 /**
@@ -3899,6 +3936,10 @@ struct ipa_ioc_dscp_pcp_map_info {
 #define IPA_IOC_ADD_DEL_DSCP_PCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING, \
 				struct ipa_ioc_dscp_pcp_map_info)
+
+#define IPA_IOC_ADD_VLAN_PRIORITY _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_ADD_VLAN_PRIORITY, \
+				struct ipa_ioc_vlan_priority)
 
 /*
  * unique magic number of the Tethering bridge ioctls

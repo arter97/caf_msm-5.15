@@ -109,6 +109,7 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_PIL_PAS_SHUTDOWN	0x06
 #define QCOM_SCM_PIL_PAS_IS_SUPPORTED	0x07
 #define QCOM_SCM_PIL_PAS_MSS_RESET	0x0a
+#define QCOM_SCM_PIL_PAS_RESET		0x1b
 #define QCOM_SCM_SVC_UTIL			0x03
 #define QCOM_SCM_UTIL_GET_SEC_DUMP_STATE	0x10
 #define QCOM_SCM_UTIL_DUMP_TABLE_ASSIGN		0x13
@@ -212,6 +213,7 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 /* OEM Services and Function IDs */
 #define QCOM_SCM_SVC_OEM_POWER			0x09
 #define QCOM_SCM_OEM_POWER_REBOOT		0x22
+#define QCOM_SCM_OEM_POWER_CUSTOM_REBOOT	0x23
 
 /* TOS Services and Function IDs */
 #define QCOM_SCM_SVC_QSEELOG			0x01

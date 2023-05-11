@@ -2,6 +2,7 @@
 /*
  * Copyright(C) 2015 Linaro Limited. All rights reserved.
  * Author: Mathieu Poirier <mathieu.poirier@linaro.org>
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CORESIGHT_TMC_H
@@ -140,6 +141,8 @@ enum tmc_mem_intf_width {
 /* SW USB reserved memory size */
 #define TMC_ETR_SW_USB_BUF_SIZE SZ_64M
 
+static u32 sw_usb_buf_size = TMC_ETR_SW_USB_BUF_SIZE;
+
 enum etr_mode {
 	ETR_MODE_FLAT,		/* Uses contiguous flat buffer */
 	ETR_MODE_ETR_SG,	/* Uses in-built TMC ETR SG mechanism */
@@ -251,6 +254,7 @@ struct tmc_drvdata {
 	enum tmc_etr_out_mode	out_mode;
 	struct tmc_usb_data	*usb_data;
 	struct tmc_eth_data	*eth_data;
+	bool			stop_on_flush;
 };
 
 struct etr_buf_operations {
@@ -297,6 +301,7 @@ struct tmc_sg_table {
 /* Generic functions */
 int tmc_wait_for_tmcready(struct tmc_drvdata *drvdata);
 void tmc_flush_and_stop(struct tmc_drvdata *drvdata);
+void tmc_disable_stop_on_flush(struct tmc_drvdata *drvdata);
 void tmc_enable_hw(struct tmc_drvdata *drvdata);
 extern int tmc_etr_usb_init(struct amba_device *adev,
 		struct tmc_drvdata *drvdata);

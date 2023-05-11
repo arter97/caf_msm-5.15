@@ -395,6 +395,16 @@ struct net_device *alloc_etherdev_mqs(int sizeof_priv, unsigned int txqs,
 }
 EXPORT_SYMBOL(alloc_etherdev_mqs);
 
+#ifdef CONFIG_ARCH_QTI_VM
+struct net_device *alloc_vmtap_mqs(int sizeof_priv, unsigned int txqs,
+				   unsigned int rxqs)
+{
+	return alloc_netdev_mqs(sizeof_priv, "vmtap%d", NET_NAME_UNKNOWN,
+				ether_setup, txqs, rxqs);
+}
+EXPORT_SYMBOL(alloc_vmtap_mqs);
+#endif
+
 ssize_t sysfs_format_mac(char *buf, const unsigned char *addr, int len)
 {
 	return scnprintf(buf, PAGE_SIZE, "%*phC\n", len, addr);

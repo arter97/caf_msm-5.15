@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- *
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/platform_device.h>
@@ -125,6 +125,42 @@ struct llcc_drv_data {
 	struct llcc_slice_desc *desc;
 };
 
+/**
+ * llcc_tcm_data - Data associated with the llcc tcm driver
+ *
+ */
+struct llcc_tcm_data {
+	phys_addr_t phys_addr;
+	void __iomem *virt_addr;
+	size_t mem_size;
+};
+
+/**
+ * Enum describing the various staling modes available for clients to use.
+ */
+enum llcc_staling_mode {
+	LLCC_STALING_MODE_CAPACITY, /* Default option on reset */
+	LLCC_STALING_MODE_NOTIFY,
+	LLCC_STALING_MODE_MAX
+};
+
+enum llcc_staling_notify_op {
+	LLCC_NOTIFY_STALING_WRITEBACK,
+	/* LLCC_NOTIFY_STALING_NO_WRITEBACK, */
+	LLCC_NOTIFY_STALING_OPS_MAX
+};
+
+struct llcc_staling_mode_params {
+	enum llcc_staling_mode staling_mode;
+	union {
+		/* STALING_MODE_CAPACITY needs no params */
+		struct staling_mode_notify_params {
+			u8 staling_distance;
+			enum llcc_staling_notify_op op;
+		} notify_params;
+	};
+};
+
 #if IS_ENABLED(CONFIG_QCOM_LLCC)
 /**
  * llcc_slice_getd - get llcc slice descriptor
@@ -162,6 +198,31 @@ int llcc_slice_activate(struct llcc_slice_desc *desc);
  */
 int llcc_slice_deactivate(struct llcc_slice_desc *desc);
 
+/**
+ * llcc_tcm_activate - Activate llcc tcm
+ */
+struct llcc_tcm_data *llcc_tcm_activate(void);
+
+/**
+ * llcc_tcm_get_phys_addr - get the physical address of llcc tcm slice
+ */
+phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_get_virt_addr - get the virtual address of llcc tcm slice
+ */
+void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_get_slice_size - get the llcc tcm slice size
+ */
+size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data);
+
+/**
+ * llcc_tcm_deactivate - Deactivate the llcc tcm
+ */
+void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data);
+
 #else
 static inline struct llcc_slice_desc *llcc_slice_getd(u32 uid)
 {
@@ -182,6 +243,7 @@ static inline size_t llcc_get_slice_size(struct llcc_slice_desc *desc)
 {
 	return 0;
 }
+
 static inline int llcc_slice_activate(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
@@ -190,6 +252,41 @@ static inline int llcc_slice_activate(struct llcc_slice_desc *desc)
 static inline int llcc_slice_deactivate(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
+}
+static inline int llcc_configure_staling_mode(struct llcc_slice_desc *desc,
+				       struct llcc_staling_mode_params *p)
+{
+	return -EINVAL;
+}
+
+static inline int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
+{
+	return -EINVAL;
+}
+
+static inline struct llcc_tcm_data *llcc_tcm_activate(void)
+{
+	return NULL;
+}
+
+static inline phys_addr_t llcc_tcm_get_phys_addr(struct llcc_tcm_data *tcm_data)
+{
+	return 0;
+}
+
+static inline void __iomem *llcc_tcm_get_virt_addr(struct llcc_tcm_data *tcm_data)
+{
+	return NULL;
+}
+
+static inline size_t llcc_tcm_get_slice_size(struct llcc_tcm_data *tcm_data)
+{
+	return 0;
+}
+
+static inline void llcc_tcm_deactivate(struct llcc_tcm_data *tcm_data)
+{
+
 }
 #endif
 

@@ -185,10 +185,14 @@ int dwmac_dma_interrupt(void __iomem *ioaddr,
 		if (unlikely(intr_status & DMA_STATUS_OVF))
 			x->rx_overflow_irq++;
 
-		if (unlikely(intr_status & DMA_STATUS_RU))
+		if (unlikely(intr_status & DMA_STATUS_RU)) {
 			x->rx_buf_unav_irq++;
-		if (unlikely(intr_status & DMA_STATUS_RPS))
+			x->rxq_stats[chan].rx_buf_unav_irq++;
+		}
+		if (unlikely(intr_status & DMA_STATUS_RPS)) {
 			x->rx_process_stopped_irq++;
+			x->rxq_stats[chan].rx_process_stopped_irq++;
+		}
 		if (unlikely(intr_status & DMA_STATUS_RWT))
 			x->rx_watchdog_irq++;
 		if (unlikely(intr_status & DMA_STATUS_ETI))
@@ -199,6 +203,7 @@ int dwmac_dma_interrupt(void __iomem *ioaddr,
 		}
 		if (unlikely(intr_status & DMA_STATUS_FBI)) {
 			x->fatal_bus_error_irq++;
+			x->txq_stats[chan].fatal_bus_error_irq++;
 			ret = tx_hard_error;
 		}
 	}
@@ -210,11 +215,13 @@ int dwmac_dma_interrupt(void __iomem *ioaddr,
 			/* to schedule NAPI on real RIE event. */
 			if (likely(value & DMA_INTR_ENA_RIE)) {
 				x->rx_normal_irq_n++;
+				x->rxq_stats[chan].rx_normal_irq_n++;
 				ret |= handle_rx;
 			}
 		}
 		if (likely(intr_status & DMA_STATUS_TI)) {
 			x->tx_normal_irq_n++;
+			x->txq_stats[chan].tx_normal_irq_n++;
 			ret |= handle_tx;
 		}
 		if (unlikely(intr_status & DMA_STATUS_ERI))
@@ -258,14 +265,18 @@ EXPORT_SYMBOL_GPL(stmmac_set_mac_addr);
 /* Enable disable MAC RX/TX */
 void stmmac_set_mac(void __iomem *ioaddr, bool enable)
 {
-	u32 value = readl(ioaddr + MAC_CTRL_REG);
+	u32 old_val, value;
+
+	old_val = readl(ioaddr + MAC_CTRL_REG);
+	value = old_val;
 
 	if (enable)
 		value |= MAC_ENABLE_RX | MAC_ENABLE_TX;
 	else
 		value &= ~(MAC_ENABLE_TX | MAC_ENABLE_RX);
 
-	writel(value, ioaddr + MAC_CTRL_REG);
+	if (value != old_val)
+		writel(value, ioaddr + MAC_CTRL_REG);
 }
 
 void stmmac_get_mac_addr(void __iomem *ioaddr, unsigned char *addr,

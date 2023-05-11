@@ -79,8 +79,11 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	priv->hw->qxpcs = qxpcs;
 	priv->hw->xpcs = NULL;
 
-	if (priv->plat->mac2mac_en)
-		priv->hw->qxpcs->mac2mac_en = true;
+	if (priv->plat->mac2mac_speed)
+		priv->hw->qxpcs->mac2mac_speed = priv->plat->mac2mac_speed;
+
+	if (priv->plat->fixed_phy_mode && priv->hw->qxpcs)
+		priv->hw->qxpcs->fixed_phy_mode = true;
 
 	ret = ethqos_xpcs_intr_config(ndev);
 	if (!ret) {
@@ -92,7 +95,7 @@ int ethqos_xpcs_init(struct net_device *ndev)
 		}
 		priv->hw->qxpcs->intr_en = true;
 	} else {
-		ETHQOSINFO("Failed to configure XPCS interrupt, using non-interrupt mode\n");
+		ETHQOSINFO("No DTSI entry found for XPCS interrupt, using non-interrupt mode\n");
 		priv->hw->qxpcs->intr_en = false;
 	}
 

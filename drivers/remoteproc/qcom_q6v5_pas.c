@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2014 Sony Mobile Communications AB
  * Copyright (c) 2012-2013, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -704,6 +704,106 @@ static unsigned long adsp_panic(struct rproc *rproc)
 	return qcom_q6v5_panic(&adsp->q6v5);
 }
 
+static int adsp_suspend(struct rproc *rproc)
+{
+	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
+	int handover;
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_suspend", "enter");
+
+	adsp->q6v5.running = false;
+
+	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
+	handover = qcom_q6v5_unprepare(&adsp->q6v5);
+	if (handover)
+		qcom_pas_handover(&adsp->q6v5);
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_suspend", "exit");
+
+	return 0;
+}
+
+
+static int adsp_resume(struct rproc *rproc)
+{
+	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
+	int ret;
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_resume", "enter");
+
+	qcom_q6v5_prepare(&adsp->q6v5);
+
+	ret = do_bus_scaling(adsp, true);
+	if (ret < 0)
+		goto disable_irqs;
+
+	ret = adsp_pds_enable(adsp, adsp->active_pds, adsp->active_pd_count);
+	if (ret < 0)
+		goto unscale_bus;
+
+	ret = adsp_pds_enable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
+	if (ret < 0)
+		goto disable_active_pds;
+
+	if (adsp->qmp) {
+		ret = adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
+		if (ret)
+			goto disable_proxy_pds;
+	}
+
+	ret = clk_prepare_enable(adsp->xo);
+	if (ret)
+		goto disable_load_state;
+
+	ret = clk_prepare_enable(adsp->aggre2_clk);
+	if (ret)
+		goto disable_xo_clk;
+
+	ret = enable_regulators(adsp);
+	if (ret)
+		goto disable_aggre2_clk;
+
+	scm_pas_enable_bw();
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6 reset", "enter");
+
+	ret = qcom_scm_pas_reset(adsp->pas_id);
+	if (ret)
+		goto disable_aggre2_clk;
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6 reset", "exit");
+
+	if (!timeout_disabled) {
+		ret = qcom_q6v5_wait_for_start(&adsp->q6v5, msecs_to_jiffies(5000));
+		if (ret)
+			dev_err(adsp->dev, "start timed out\n");
+	}
+
+	scm_pas_disable_bw();
+	if (!ret)
+		goto exit;
+
+	disable_regulators(adsp);
+disable_aggre2_clk:
+	clk_disable_unprepare(adsp->aggre2_clk);
+disable_xo_clk:
+	clk_disable_unprepare(adsp->xo);
+disable_load_state:
+	if (adsp->qmp)
+		adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+disable_proxy_pds:
+	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
+disable_active_pds:
+	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
+unscale_bus:
+	do_bus_scaling(adsp, false);
+disable_irqs:
+	qcom_q6v5_unprepare(&adsp->q6v5);
+exit:
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_resume", "exit");
+	return ret;
+}
+
 static const struct rproc_ops adsp_ops = {
 	.attach = adsp_attach,
 	.start = adsp_start,
@@ -711,6 +811,8 @@ static const struct rproc_ops adsp_ops = {
 	.da_to_va = adsp_da_to_va,
 	.load = adsp_load,
 	.panic = adsp_panic,
+	.suspend = adsp_suspend,
+	.resume = adsp_resume,
 };
 
 static const struct rproc_ops adsp_minidump_ops = {
@@ -721,6 +823,8 @@ static const struct rproc_ops adsp_minidump_ops = {
 	.load = adsp_load,
 	.panic = adsp_panic,
 	.coredump = adsp_minidump,
+	.suspend = adsp_suspend,
+	.resume = adsp_resume,
 };
 
 static int adsp_init_clock(struct qcom_adsp *adsp)
@@ -1180,12 +1284,27 @@ static const struct adsp_data sm8150_adsp_resource = {
 		.crash_reason_smem = 423,
 		.firmware_name = "adsp.mdt",
 		.pas_id = 1,
+		.minidump_id = 5,
+		.uses_elf64 = true,
 		.has_aggre2_clk = false,
 		.auto_boot = true,
 		.ssr_name = "lpass",
 		.sysmon_name = "adsp",
 		.qmp_name = "adsp",
 		.ssctl_id = 0x14,
+};
+
+static const struct adsp_data sm8150_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.minidump_id = 3,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "mpss",
+	.qmp_name = "modem",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
 };
 
 static const struct adsp_data sm8250_adsp_resource = {
@@ -1499,7 +1618,7 @@ static const struct adsp_data sdxbaagha_mpss_resource = {
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
-	.ssctl_id = 0x12,
+	.ssctl_id = 0x22,
 };
 
 static const struct adsp_data slpi_resource_init = {
@@ -1787,6 +1906,42 @@ static const struct adsp_data lemans_gpdsp1_resource = {
 	.ssctl_id = 0x22,
 };
 
+static const struct adsp_data kona_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+static const struct adsp_data kona_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
+static const struct adsp_data kona_slpi_resource = {
+	.crash_reason_smem = 424,
+	.firmware_name = "slpi.mdt",
+	.pas_id = 12,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "dsps",
+	.sysmon_name = "slpi",
+	.qmp_name = "slpi",
+	.ssctl_id = 0x16,
+};
+
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &adsp_resource_init},
@@ -1806,7 +1961,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,sdx55-mpss-pas", .data = &sdx55_mpss_resource},
 	{ .compatible = "qcom,sm8150-adsp-pas", .data = &sm8150_adsp_resource},
 	{ .compatible = "qcom,sm8150-cdsp-pas", .data = &sm8150_cdsp_resource},
-	{ .compatible = "qcom,sm8150-mpss-pas", .data = &mpss_resource_init},
+	{ .compatible = "qcom,sm8150-mpss-pas", .data = &sm8150_mpss_resource},
 	{ .compatible = "qcom,sm8150-slpi-pas", .data = &sm8150_slpi_resource},
 	{ .compatible = "qcom,sm8250-adsp-pas", .data = &sm8250_adsp_resource},
 	{ .compatible = "qcom,sm8250-cdsp-pas", .data = &sm8250_cdsp_resource},

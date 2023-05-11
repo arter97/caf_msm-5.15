@@ -278,14 +278,86 @@ out:
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_pcs_loopback);
 
-/* Stub function for now until PM effort begins. This is to prevent any side effects
- * during regular data path testing.
+/* KREEE: USXGMII 10GBase-R/KR mode
+ * KX4EEE: SGMII 10GBase-X/KX4 mode
  */
 int qcom_xpcs_config_eee(struct dw_xpcs_qcom *xpcs, int mult_fact_100ns, int enable)
 {
-	return 0;
+	int ret;
+
+	ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_EEE_ABL);
+	if (ret < 0)
+		goto out;
+
+	if (ret & KREEE_SUPPORT) {
+		XPCSINFO("EEE supported for 10GBase-R/KR mode\n");
+	} else if (ret & KX4EEE_SUPPORT) {
+		XPCSINFO("EEE supported for 10GBase-X/KX4 mode\n");
+	} else {
+		XPCSERR("EEE not supported for SGMII or USXGMII interfaces\n");
+		return -ENODEV;
+	}
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_XS_PCS_EEE_MCTRL0);
+	if (ret < 0)
+		goto out;
+
+	if (enable)
+		ret = DW_VR_MII_EEE_LTX_EN | DW_VR_MII_EEE_TX_EN_CTRL |
+			DW_VR_MII_EEE_LRX_EN | DW_VR_MII_EEE_RX_EN_CTRL |
+			mult_fact_100ns << DW_VR_MII_EEE_MULT_FACT_100NS_SHIFT;
+	else
+		ret &= ~(DW_VR_MII_EEE_LTX_EN | DW_VR_MII_EEE_TX_EN_CTRL |
+			DW_VR_MII_EEE_LRX_EN | DW_VR_MII_EEE_RX_EN_CTRL |
+			mult_fact_100ns << DW_VR_MII_EEE_MULT_FACT_100NS_SHIFT);
+
+	ret = qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL0, ret);
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_XS_PCS_EEE_MCTRL1);
+	if (ret < 0)
+		goto out;
+
+	if (enable)
+		return qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL1, ret | DW_VR_MII_EEE_TRN_LPI);
+
+	ret &= ~DW_VR_MII_EEE_TRN_LPI;
+	return qcom_xpcs_write(xpcs, DW_VR_XS_PCS_EEE_MCTRL1, ret);
+out:
+	XPCSERR("Register read failed\n");
+	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_config_eee);
+
+int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs)
+{
+	unsigned int retries = LINK_STS_RETRY_COUNT;
+	int ret;
+
+	do {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_STS);
+		if (ret < 0)
+			return ret;
+
+		if (ret & DW_SR_MII_STS_LINK_STS)
+			break;
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_DIG_CTRL1);
+		if (ret < 0)
+			return ret;
+
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_DIG_CTRL1, ret | SOFT_RST);
+
+		usleep_range(500, 1000);
+	} while (--retries);
+
+	XPCSINFO("%s : Val = 0x%x retries = %ld\n",
+		 __func__,
+		ret,
+		(LINK_STS_RETRY_COUNT - retries));
+
+	return !(retries) ? -ETIMEDOUT : 0;
+}
+EXPORT_SYMBOL(qcom_xpcs_verify_lnk_status_usxgmii);
 
 /* Cannot sleep in interrupt-context, increase retries and remove usleep call. */
 static int qcom_xpcs_poll_reset_usxgmii(struct dw_xpcs_qcom *xpcs, unsigned int offset,
@@ -339,7 +411,7 @@ static int qcom_xpcs_unset_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	if (!xpcs->mac2mac_en) {
+	if (!xpcs->fixed_phy_mode) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
 		if (ret < 0)
 			return -EINVAL;
@@ -378,7 +450,7 @@ static int qcom_xpcs_set_2p5g_sgmii(struct dw_xpcs_qcom *xpcs, int duplex)
 	else
 		ret &= ~DW_FULL_DUPLEX;
 
-	ret |= DW_GMII_2500;
+	ret |= DW_GMII_1000;
 	ret = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, ret);
 
 	ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
@@ -576,7 +648,7 @@ static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 {
 	int ret;
 
-	if (!xpcs->mac2mac_en) {
+	if (!xpcs->fixed_phy_mode) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
 		if (ret < 0)
 			return -EINVAL;
@@ -589,7 +661,7 @@ static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *xpcs)
 	if (ret < 0)
 		return -EINVAL;
 
-	if (!xpcs->mac2mac_en)
+	if (!xpcs->fixed_phy_mode)
 		ret |= DW_VR_MII_TX_CONFIG_MASK;
 	ret |= DW_VR_MII_SGMII_LINK_STS;
 
@@ -726,8 +798,13 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 {
 	int mmd_ctrl, an_ctrl;
 	int ret = 0;
+	int pcs_speed = speed;
 
-	if (speed == SPEED_2500) {
+	if (xpcs->fixed_phy_mode && xpcs->mac2mac_speed) {
+		pcs_speed = xpcs->mac2mac_speed;
+	}
+
+	if (pcs_speed == SPEED_2500) {
 		ret = qcom_xpcs_set_2p5g_sgmii(xpcs, duplex);
 		if (ret < 0)
 			goto err;
@@ -748,7 +825,7 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 
 	mmd_ctrl &= ~DW_SGMII_SS_MASK;
 
-	switch (speed) {
+	switch (pcs_speed) {
 	case SPEED_1000:
 		an_ctrl |= DW_VR_MII_CTRL;
 		mmd_ctrl |= DW_GMII_1000;
@@ -764,7 +841,7 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 		XPCSINFO("10Mbps-SGMII enabled\n");
 		break;
 	default:
-		XPCSERR("Invalid speed mode: %d\n", speed);
+		XPCSERR("Invalid speed mode: %d\n", pcs_speed);
 		return;
 	}
 
@@ -775,6 +852,9 @@ void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
 	an_ctrl = qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, an_ctrl);
 
 out:
+	if (xpcs->fixed_phy_mode)
+		XPCSINFO("mac2mac mode: PCS link up speed = %d\n",
+			 pcs_speed);
 	XPCSINFO("SGMII link is up\n");
 	return;
 err:

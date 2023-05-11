@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2015 Sony Mobile Communications Inc
  * Copyright (c) 2012-2013, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/firmware.h>
@@ -551,7 +551,7 @@ void qcom_remove_smd_subdev(struct rproc *rproc, struct qcom_rproc_subdev *smd)
 }
 EXPORT_SYMBOL_GPL(qcom_remove_smd_subdev);
 
-static struct qcom_ssr_subsystem *qcom_ssr_get_subsys(const char *name)
+struct qcom_ssr_subsystem *qcom_ssr_get_subsys(const char *name)
 {
 	struct qcom_ssr_subsystem *info;
 
@@ -580,6 +580,7 @@ out:
 	mutex_unlock(&qcom_ssr_subsys_lock);
 	return info;
 }
+EXPORT_SYMBOL(qcom_ssr_get_subsys);
 
 void *qcom_register_early_ssr_notifier(const char *name, struct notifier_block *nb)
 {
@@ -666,6 +667,21 @@ int qcom_unregister_ssr_notifier(void *notify, struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(qcom_unregister_ssr_notifier);
 
+int qcom_notify_ssr_clients(struct qcom_ssr_subsystem *info, int state,
+			struct qcom_ssr_notify_data *data)
+{
+	struct qcom_ssr_subsystem *subsys = info;
+
+	if (!subsys)
+		return -EINVAL;
+
+	if (state < 0)
+		return -EINVAL;
+
+	return srcu_notifier_call_chain(&info->notifier_list, state, data);
+}
+EXPORT_SYMBOL(qcom_notify_ssr_clients);
+
 static inline void notify_ssr_clients(struct qcom_rproc_ssr *ssr, struct qcom_ssr_notify_data *data)
 {
 	unsigned long timeout;
@@ -734,6 +750,68 @@ static void ssr_notify_unprepare(struct rproc_subdev *subdev)
 	notify_ssr_clients(ssr, &data);
 }
 
+static int ssr_notify_resume_prepare(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "resume prepare");
+
+	ssr->notification = QCOM_SSR_BEFORE_DS_EXIT;
+	notify_ssr_clients(ssr, &data);
+	return 0;
+}
+
+static int ssr_notify_resume(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "resume");
+
+	ssr->notification = QCOM_SSR_AFTER_DS_EXIT;
+	notify_ssr_clients(ssr, &data);
+	return 0;
+}
+
+static int ssr_notify_suspend(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "suspend");
+
+	ssr->notification = QCOM_SSR_BEFORE_DS_ENTER;
+	notify_ssr_clients(ssr, &data);
+
+	return 0;
+}
+
+static int ssr_notify_suspend_unprepare(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "suspend unprepare");
+
+	ssr->notification = QCOM_SSR_AFTER_DS_ENTER;
+	notify_ssr_clients(ssr, &data);
+
+	return 0;
+}
+
 /**
  * qcom_add_ssr_subdev() - register subdevice as restart notification source
  * @rproc:	rproc handle
@@ -762,6 +840,10 @@ void qcom_add_ssr_subdev(struct rproc *rproc, struct qcom_rproc_ssr *ssr,
 	ssr->subdev.start = ssr_notify_start;
 	ssr->subdev.stop = ssr_notify_stop;
 	ssr->subdev.unprepare = ssr_notify_unprepare;
+	ssr->subdev.resume_prepare = ssr_notify_resume_prepare;
+	ssr->subdev.resume = ssr_notify_resume;
+	ssr->subdev.suspend = ssr_notify_suspend;
+	ssr->subdev.suspend_unprepare = ssr_notify_suspend_unprepare;
 
 	rproc_add_subdev(rproc, &ssr->subdev);
 }

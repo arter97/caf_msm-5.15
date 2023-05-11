@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -9,6 +9,7 @@
 
 #include <linux/pcs-xpcs-qcom.h>
 
+#define LINK_STS_RETRY_COUNT		50
 #define SYNOPSYS_XPCS_ID		0x7996ced0
 #define SYNOPSYS_XPCS_MASK		0xffffffff // Reset mask for Dev IDs
 
@@ -50,7 +51,7 @@
 #define DW_VR_MII_DIG_CTRL1_2G5_EN	BIT(2)
 /* EEE Mode Control Register */
 #define DW_VR_XS_PCS_EEE_MCTRL0		0x2018 /* SWI name: EMAC0_VR_XS_PCS_EEE_MCTRL0 */
-#define DW_VR_MII_EEE_MCTRL1		0x202c /* SWI name: EMAC0_VR_XS_PCS_EEE_MCTRL1 */
+#define DW_VR_XS_PCS_EEE_MCTRL1		0x202c /* SWI name: EMAC0_VR_XS_PCS_EEE_MCTRL1 */
 #define DW_VR_MII_DIG_CTRL2		0x2004 /* SWI name: EMAC0_VR_XS_PCS_DIG_CTRL2 */
 
 #define DW_SR_MII_PCS_CTRL1		0x0000 /* SWI name: EMAC0_SR_XS_PCS_CTRL1 */
@@ -201,6 +202,7 @@
 /* SR_MII_AN_ADV */
 #define DW_SR_MII_AN_ADV_FD			BIT(5)
 #define DW_SR_MII_AN_ADV_HD			BIT(6)
+#define DW_SR_MII_STS_LINK_STS			BIT(2)
 
 /* Required settings to enable 2.5G SGMII mode */
 #define LINK_TIMER_1P6MS			0x07a1
