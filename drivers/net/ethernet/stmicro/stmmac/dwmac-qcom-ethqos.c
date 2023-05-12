@@ -3198,25 +3198,23 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 	if (mode > DISABLE_LOOPBACK && !qcom_ethqos_is_phy_link_up(ethqos)) {
 		/*If Link is Down & need to enable Loopback*/
 		ETHQOSDBG("Enable Lower Up Flag & disable phy dev\n");
-		ETHQOSDBG("IRQ so that Rx/Tx can happen beforeee Link down\n");
 		netif_carrier_on(dev);
-		/*Disable phy interrupt by Link/Down by cable plug in/out*/
-		disable_irq(ethqos->phy_intr);
-	} else if (mode > DISABLE_LOOPBACK &&
-			qcom_ethqos_is_phy_link_up(ethqos)) {
-		ETHQOSDBG("Only disable phy irqqq Lin is UP\n");
-		/*Since link is up no need to set Lower UP flag*/
-		/*Disable phy interrupt by Link/Down by cable plug in/out*/
-		disable_irq(ethqos->phy_intr);
 	} else if (mode == DISABLE_LOOPBACK &&
 		!qcom_ethqos_is_phy_link_up(ethqos)) {
 		ETHQOSDBG("Disable Lower Up as Link is down\n");
 		netif_carrier_off(dev);
-		enable_irq(ethqos->phy_intr);
 	}
-	ETHQOSDBG("Old ctrl=%d  dupex full\n", ctrl);
+
+	/*Disable phy interrupt by Link/Down by cable plug in/out*/
+	if (mode > DISABLE_LOOPBACK)
+		disable_irq(ethqos->phy_intr);
+	else if (mode == DISABLE_LOOPBACK)
+		enable_irq(ethqos->phy_intr);
+	else
+		ETHQOSERR("Mode is invalid\n");
+
 	ctrl = readl_relaxed(priv->ioaddr + MAC_CTRL_REG);
-		ETHQOSDBG("Old ctrl=0x%x with mask with flow control\n", ctrl);
+	ETHQOSDBG("Old ctrl=0x%x with mask with flow control\n", ctrl);
 
 	ctrl |= priv->hw->link.duplex;
 	priv->dev->phydev->duplex = duplex;
@@ -3375,7 +3373,6 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	struct net_device *dev = NULL;
 	struct stmmac_priv *priv = NULL;
 	int speed = 0;
-	u32 sw_chan = 0;
 
 	ethqos = file->private_data;
 
@@ -3403,17 +3400,6 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	if (!priv) {
 		ETHQOSERR("priv is NULL\n");
 		return -EFAULT;
-	}
-
-	if (priv->plat) {
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	/*get the channel 0 mapping for BE traffic*/
-		if (ethqos->ipa_enabled)
-			sw_chan = priv->plat->rx_queues_cfg[IPA_QUEUE_BE].chan;
-#else
-	/*for all other targets channel 0 is BE which doesnot support IPA offload*/
-		sw_chan = priv->plat->rx_queues_cfg[0].chan;
-#endif
 	}
 
 	in_buf = kzalloc(buf_len, GFP_KERNEL);
@@ -3539,14 +3525,6 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		break;
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (config > 0 && ethqos->ipa_enabled)
-		stmmac_map_mtl_to_dma(priv, priv->hw, IPA_QUEUE_BE, sw_chan);
-	else
-		stmmac_map_mtl_to_dma(priv, priv->hw, IPA_QUEUE_BE, IPA_QUEUE_BE);
-#else
-	stmmac_map_mtl_to_dma(priv, priv->hw, 0x0, sw_chan);
-#endif
 	priv->current_loopback = config;
 	kfree(in_buf);
 	return count;
