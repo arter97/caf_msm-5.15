@@ -1026,7 +1026,7 @@ int mhi_transfer_host_to_device_mhi_dma(void *dev, uint64_t host_pa, uint32_t le
 	struct mhi_dev_ring *ring = NULL;
 	struct mhi_dev_channel *ch;
 
-	if (WARN_ON(!mhi || !dev || !host_pa || !mreq))
+	if (WARN_ON_ONCE(!mhi || !dev || !host_pa || !mreq))
 		return -EINVAL;
 
 	if (mhi->config_iatu) {
@@ -3816,6 +3816,9 @@ int mhi_dev_read_channel(struct mhi_req *mreq)
 		rc = mhi_ctx->host_to_device((void *) write_to_loc,
 				read_from_loc, bytes_to_read, mhi_ctx, mreq);
 		if (rc) {
+			mhi_log(mreq->vf_id, MHI_MSG_DBG,
+				"dest va = 0x%llx ; source pa = 0x%llx ; size = %lu\n",
+				write_to_loc, read_from_loc, bytes_to_read);
 			mhi_log(mreq->vf_id, MHI_MSG_ERROR,
 					"Error while reading ch_id:%d rc %d\n",
 					mreq->chan, rc);
