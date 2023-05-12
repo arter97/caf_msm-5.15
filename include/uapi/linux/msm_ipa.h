@@ -546,9 +546,18 @@ enum ipa_client_type {
 
 	IPA_CLIENT_APPS_WAN_ETH_PROD            = 136,
 	/* RESERVED CONS			            = 137, */
+
+	IPA_CLIENT_APPS_WAN_V2X_PROD			= 138,
+	IPA_CLIENT_APPS_WAN_V2X_CONS			= 139,
+
+	IPA_CLIENT_Q6_V2X_BROADCAST_PROD        = 140,
+	/* RESERVED CONS			            = 141, */
+
+	IPA_CLIENT_Q6_V2X_UNICAST_PROD          = 142
+	/* RESERVED CONS			            = 143, */
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_APPS_WAN_ETH_PROD + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_Q6_V2X_UNICAST_PROD + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -594,14 +603,16 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_APPS_WAN_CONS || \
 	(client) == IPA_CLIENT_APPS_WAN_COAL_CONS || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_CONS || \
-	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_CONS)
+	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_CONS || \
+	(client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_APPS_PROD(client) \
 	((client) == IPA_CLIENT_APPS_LAN_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_PROD || \
-	(client) == IPA_CLIENT_APPS_WAN_ETH_PROD)
+	(client) == IPA_CLIENT_APPS_WAN_ETH_PROD || \
+	(client) == IPA_CLIENT_APPS_WAN_V2X_PROD)
 
 #define IPA_CLIENT_IS_USB_CONS(client) \
 	((client) == IPA_CLIENT_USB_CONS || \
@@ -612,7 +623,8 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_WAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_WAN_CONS || \
-	 (client) == IPA_CLIENT_APPS_WAN_COAL_CONS)
+	 (client) == IPA_CLIENT_APPS_WAN_COAL_CONS || \
+	 (client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_LAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
@@ -620,7 +632,8 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_LAN_or_WAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
-	 (client) == IPA_CLIENT_APPS_WAN_CONS)
+	 (client) == IPA_CLIENT_APPS_WAN_CONS || \
+	 (client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_APPS_COAL_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_COAL_CONS || \
