@@ -224,6 +224,10 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
 			plat->rx_queues_cfg[queue].skip_sw = true;
 
+		/* Multicast and broadcast routing */
+		if (of_property_read_bool(q_node, "snps,route-multi-broad"))
+			plat->rx_queues_cfg[queue].mbcast_route = true;
+
 		queue++;
 	}
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
