@@ -260,6 +260,8 @@ static struct ip_params pparams;
 static struct mac_params mparams = {0};
 long phyaddr_pt_param;
 
+#define RX_CLK_SYSFS_DEV_ATTR_PERMS 0644
+
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf)
 {
 	return
@@ -2792,6 +2794,74 @@ static ssize_t pcs_reg_write(struct file *file,
 	return count;
 }
 
+static ssize_t read_ethqos_rx_clock(struct device *dev,
+				    struct device_attribute *attr,
+				    char *user_buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	unsigned int BUFF_SIZE = 2000;
+	struct plat_stmmacenet_data *plat;
+
+	if (!netdev) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	plat = priv->plat;
+
+	if (!plat->rx_clk_rdy)
+		return scnprintf(user_buf, BUFF_SIZE,
+				"Rx clock is not ready");
+	else
+		return scnprintf(user_buf, BUFF_SIZE,
+				"Rx clock is ready");
+}
+
+static ssize_t write_ethqos_rx_clock(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *user_buffer,
+				     size_t count)
+{
+	s8 input = 0;
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	struct plat_stmmacenet_data *plat;
+
+	if (!netdev) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	ethqos = priv->plat->bsp_priv;
+
+	plat = priv->plat;
+
+	if (kstrtos8(user_buffer, 0, &input))
+		return -EFAULT;
+
+	if (input != 1) {
+		ETHQOSERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	if (!plat->rx_clk_rdy) {
+		plat->rx_clk_rdy = true;
+		rtnl_lock();
+		phylink_resume(priv->phylink);
+		rtnl_unlock();
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(rx_clock_rdy, RX_CLK_SYSFS_DEV_ATTR_PERMS,
+		   read_ethqos_rx_clock,
+		   write_ethqos_rx_clock);
+
 static ssize_t read_phy_reg_dump(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
@@ -3973,11 +4043,14 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *icb_dump;
 	struct stmmac_priv *priv;
 	char dir_name[32];
+	struct net_device *netdev;
+	int ret;
 
 	if (!ethqos) {
 		ETHQOSERR("Null Param %s\n", __func__);
 		return -ENOMEM;
 	}
+	netdev = platform_get_drvdata(ethqos->pdev);
 
 	priv = qcom_ethqos_get_priv(ethqos);
 
@@ -4094,6 +4167,14 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 			  (long)loopback_enable_mode);
 		goto fail;
 	}
+
+	if (priv->plat->plat_wait_for_emac_rx_clk_en) {
+		ret = sysfs_create_file(&netdev->dev.kobj,
+					&dev_attr_rx_clock_rdy.attr);
+		if (ret)
+			ETHQOSERR(" Can't create rx_clock_rdy sysfs node");
+	}
+
 	return 0;
 
 fail:
@@ -4855,6 +4936,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII)
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
+
+	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");
+	plat_dat->rx_clk_rdy = false;
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,arm-smmu")) {
 		emac_emb_smmu_ctx.pdev_master = pdev;
