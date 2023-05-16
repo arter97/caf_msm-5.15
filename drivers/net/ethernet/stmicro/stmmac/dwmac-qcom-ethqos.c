@@ -3173,7 +3173,7 @@ static void ethqos_mac_loopback(struct qcom_ethqos *ethqos, int mode)
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	/*Invoke SCM call */
 	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
-		if (mode == ENABLE_MAC_LOOPBACK)
+		if (mode == 1)
 			qcom_scm_call_loopback_configure(ethqos->rgmii_phy_base,
 							 ENABLE_MAC_LOOPBACK, 0);
 		else
@@ -3312,6 +3312,16 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 
 	if (priv->dev->phydev->speed != SPEED_UNKNOWN)
 		ethqos_fix_mac_speed(ethqos, speed);
+
+	/*We need to reset the clks when speed change occurs on remote
+	 *this is because we need to align rgmii clocks with data else
+	 *the data would stall on speed change.
+	 */
+	if (priv->plat->rgmii_rst) {
+		reset_control_assert(priv->plat->rgmii_rst);
+		mdelay(100);
+		reset_control_deassert(priv->plat->rgmii_rst);
+	}
 
 	ETHQOSERR("End\n");
 }
