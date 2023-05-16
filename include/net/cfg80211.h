@@ -2360,11 +2360,13 @@ struct station_info {
 
 	u8 connected_to_as;
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	bool mlo_params_valid;
 	u8 assoc_link_id;
 	u8 mld_addr[ETH_ALEN] __aligned(2);
 	const u8 *assoc_resp_ies;
 	size_t assoc_resp_ies_len;
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -4149,7 +4151,9 @@ struct cfg80211_external_auth_params {
 	unsigned int key_mgmt_suite;
 	u16 status;
 	const u8 *pmkid;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	u8 mld_addr[ETH_ALEN] __aligned(2);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -4428,8 +4432,10 @@ struct cfg80211_update_owe_info {
 	u16 status;
 	const u8 *ie;
 	size_t ie_len;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	int assoc_link_id;
 	u8 peer_mld_addr[ETH_ALEN] __aligned(2);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
