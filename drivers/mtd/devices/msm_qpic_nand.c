@@ -4402,7 +4402,6 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	 * resource (clock and bus).
 	 */
 
-	return NOTIFY_DONE;
 	if (pm_runtime_suspended(chip->dev))
 		return NOTIFY_DONE;
 
