@@ -103,6 +103,7 @@ struct msm_hsphy {
 	struct regulator	*vdda33;
 	struct regulator	*vdda18;
 	int			vdd_levels[3]; /* none, low, high */
+	int			regulator_limit_control[3]; /* vdd vdda18 vdda33 */
 
 	bool			clocks_enabled;
 	bool			power_enabled;
@@ -180,17 +181,19 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 	if (!on)
 		goto disable_vdda33;
 
-	ret = regulator_set_load(phy->vdd, USB_HSPHY_VDD_HPM_LOAD);
-	if (ret < 0) {
-		dev_err(phy->phy.dev, "Unable to set HPM of vdd:%d\n", ret);
-		goto err_vdd;
-	}
+	if (!phy->regulator_limit_control[0]) {
+		ret = regulator_set_load(phy->vdd, USB_HSPHY_VDD_HPM_LOAD);
+		if (ret < 0) {
+			dev_err(phy->phy.dev, "Unable to set HPM of vdd:%d\n", ret);
+			goto err_vdd;
+		}
 
-	ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[1],
-				    phy->vdd_levels[2]);
-	if (ret) {
-		dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
-		goto put_vdd_lpm;
+		ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[1],
+					    phy->vdd_levels[2]);
+		if (ret) {
+			dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
+			goto put_vdd_lpm;
+		}
 	}
 
 	ret = regulator_enable(phy->vdd);
@@ -199,18 +202,20 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		goto unconfig_vdd;
 	}
 
-	ret = regulator_set_load(phy->vdda18, USB_HSPHY_1P8_HPM_LOAD);
-	if (ret < 0) {
-		dev_err(phy->phy.dev, "Unable to set HPM of vdda18:%d\n", ret);
-		goto disable_vdd;
-	}
+	if (!phy->regulator_limit_control[1]) {
+		ret = regulator_set_load(phy->vdda18, USB_HSPHY_1P8_HPM_LOAD);
+		if (ret < 0) {
+			dev_err(phy->phy.dev, "Unable to set HPM of vdda18:%d\n", ret);
+			goto disable_vdd;
+		}
 
-	ret = regulator_set_voltage(phy->vdda18, USB_HSPHY_1P8_VOL_MIN,
-						USB_HSPHY_1P8_VOL_MAX);
-	if (ret) {
-		dev_err(phy->phy.dev,
-				"Unable to set voltage for vdda18:%d\n", ret);
-		goto put_vdda18_lpm;
+		ret = regulator_set_voltage(phy->vdda18, USB_HSPHY_1P8_VOL_MIN,
+							USB_HSPHY_1P8_VOL_MAX);
+		if (ret) {
+			dev_err(phy->phy.dev,
+					"Unable to set voltage for vdda18:%d\n", ret);
+			goto put_vdda18_lpm;
+		}
 	}
 
 	ret = regulator_enable(phy->vdda18);
@@ -219,18 +224,20 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		goto unset_vdda18;
 	}
 
-	ret = regulator_set_load(phy->vdda33, USB_HSPHY_3P3_HPM_LOAD);
-	if (ret < 0) {
-		dev_err(phy->phy.dev, "Unable to set HPM of vdda33:%d\n", ret);
-		goto disable_vdda18;
-	}
+	if (!phy->regulator_limit_control[2]) {
+		ret = regulator_set_load(phy->vdda33, USB_HSPHY_3P3_HPM_LOAD);
+		if (ret < 0) {
+			dev_err(phy->phy.dev, "Unable to set HPM of vdda33:%d\n", ret);
+			goto disable_vdda18;
+		}
 
-	ret = regulator_set_voltage(phy->vdda33, USB_HSPHY_3P3_VOL_MIN,
-						USB_HSPHY_3P3_VOL_MAX);
-	if (ret) {
-		dev_err(phy->phy.dev,
-				"Unable to set voltage for vdda33:%d\n", ret);
-		goto put_vdda33_lpm;
+		ret = regulator_set_voltage(phy->vdda33, USB_HSPHY_3P3_VOL_MIN,
+							USB_HSPHY_3P3_VOL_MAX);
+		if (ret) {
+			dev_err(phy->phy.dev,
+					"Unable to set voltage for vdda33:%d\n", ret);
+			goto put_vdda33_lpm;
+		}
 	}
 
 	ret = regulator_enable(phy->vdda33);
@@ -250,15 +257,19 @@ disable_vdda33:
 		dev_err(phy->phy.dev, "Unable to disable vdda33:%d\n", ret);
 
 unset_vdd33:
-	ret = regulator_set_voltage(phy->vdda33, 0, USB_HSPHY_3P3_VOL_MAX);
-	if (ret)
-		dev_err(phy->phy.dev,
-			"Unable to set (0) voltage for vdda33:%d\n", ret);
+	if (!phy->regulator_limit_control[2]) {
+		ret = regulator_set_voltage(phy->vdda33, 0, USB_HSPHY_3P3_VOL_MAX);
+		if (ret)
+			dev_err(phy->phy.dev,
+				"Unable to set (0) voltage for vdda33:%d\n", ret);
+	}
 
 put_vdda33_lpm:
-	ret = regulator_set_load(phy->vdda33, 0);
-	if (ret < 0)
-		dev_err(phy->phy.dev, "Unable to set (0) HPM of vdda33\n");
+	if (!phy->regulator_limit_control[2]) {
+		ret = regulator_set_load(phy->vdda33, 0);
+		if (ret < 0)
+			dev_err(phy->phy.dev, "Unable to set (0) HPM of vdda33\n");
+	}
 
 disable_vdda18:
 	ret = regulator_disable(phy->vdda18);
@@ -266,15 +277,19 @@ disable_vdda18:
 		dev_err(phy->phy.dev, "Unable to disable vdda18:%d\n", ret);
 
 unset_vdda18:
-	ret = regulator_set_voltage(phy->vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
-	if (ret)
-		dev_err(phy->phy.dev,
-			"Unable to set (0) voltage for vdda18:%d\n", ret);
+	if (!phy->regulator_limit_control[1]) {
+		ret = regulator_set_voltage(phy->vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
+		if (ret)
+			dev_err(phy->phy.dev,
+				"Unable to set (0) voltage for vdda18:%d\n", ret);
+	}
 
 put_vdda18_lpm:
-	ret = regulator_set_load(phy->vdda18, 0);
-	if (ret < 0)
-		dev_err(phy->phy.dev, "Unable to set LPM of vdda18\n");
+	if (!phy->regulator_limit_control[1]) {
+		ret = regulator_set_load(phy->vdda18, 0);
+		if (ret < 0)
+			dev_err(phy->phy.dev, "Unable to set LPM of vdda18\n");
+	}
 
 disable_vdd:
 	ret = regulator_disable(phy->vdd);
@@ -282,15 +297,20 @@ disable_vdd:
 		dev_err(phy->phy.dev, "Unable to disable vdd:%d\n", ret);
 
 unconfig_vdd:
-	ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[0],
-				    phy->vdd_levels[2]);
-	if (ret)
-		dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
+	if (!phy->regulator_limit_control[0]) {
+		ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[0],
+					    phy->vdd_levels[2]);
+		if (ret)
+			dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
+	}
 
 put_vdd_lpm:
-	ret = regulator_set_load(phy->vdd, 0);
-	if (ret < 0)
-		dev_err(phy->phy.dev, "Unable to set LPM of vdd\n");
+	if (!phy->regulator_limit_control[0]) {
+		ret = regulator_set_load(phy->vdd, 0);
+		if (ret < 0)
+			dev_err(phy->phy.dev, "Unable to set LPM of vdd\n");
+	}
+
 err_vdd:
 	phy->power_enabled = false;
 	dev_dbg(phy->phy.dev, "HSUSB PHY's regulators are turned OFF.\n");
@@ -879,6 +899,15 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		goto err_ret;
 	}
 
+	ret = of_property_read_u32_array(dev->of_node, "qcom,regulator-limit-control",
+					 (u32 *) phy->regulator_limit_control,
+					 ARRAY_SIZE(phy->regulator_limit_control));
+	if (ret) {
+		dev_err(dev, "Error reading the regulator-limit-control property\n");
+		phy->regulator_limit_control[0] = 0;
+		phy->regulator_limit_control[1] = 0;
+		phy->regulator_limit_control[2] = 0;
+	}
 
 	phy->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(phy->vdd)) {
