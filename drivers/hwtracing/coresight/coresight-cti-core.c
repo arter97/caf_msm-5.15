@@ -1152,26 +1152,12 @@ static int cti_suspend(struct device *dev)
 
 	if (pm_suspend_via_firmware()
 		&& drvdata->config.hw_enabled) {
-		drvdata->config.hw_enabled_store = drvdata->config.hw_enabled;
 		rc = cti_disable(drvdata->csdev);
 	}
 	return rc;
 }
 
-static int cti_resume(struct device *dev)
-{
-	int rc = 0;
-	struct cti_drvdata *drvdata = dev_get_drvdata(dev);
-
-	if (pm_suspend_via_firmware()
-		&& drvdata->config.hw_enabled_store) {
-		rc = cti_enable(drvdata->csdev);
-		drvdata->config.hw_enabled_store = false;
-	}
-	return rc;
-}
 #endif
-
 #ifdef CONFIG_HIBERNATION
 static int cti_freeze(struct device *dev)
 {
@@ -1179,21 +1165,7 @@ static int cti_freeze(struct device *dev)
 	struct cti_drvdata *drvdata = dev_get_drvdata(dev);
 
 	if (drvdata->config.hw_enabled) {
-		drvdata->config.hw_enabled_store = drvdata->config.hw_enabled;
 		rc = cti_disable(drvdata->csdev);
-	}
-
-	return rc;
-}
-
-static int cti_restore(struct device *dev)
-{
-	int rc = 0;
-	struct cti_drvdata *drvdata = dev_get_drvdata(dev);
-
-	if (drvdata->config.hw_enabled_store) {
-		rc = cti_enable(drvdata->csdev);
-		drvdata->config.hw_enabled_store = false;
 	}
 
 	return rc;
@@ -1203,11 +1175,9 @@ static int cti_restore(struct device *dev)
 static const struct dev_pm_ops cti_dev_pm_ops = {
 #ifdef CONFIG_DEEPSLEEP
 	.suspend = cti_suspend,
-	.resume  = cti_resume,
 #endif
 #ifdef CONFIG_HIBERNATION
 	.freeze  = cti_freeze,
-	.restore = cti_restore,
 #endif
 };
 static struct amba_cs_uci_id uci_id_cti[] = {
