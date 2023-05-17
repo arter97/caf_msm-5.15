@@ -20,6 +20,7 @@
 
 #define REG_BASE 0x100000
 #define REG_SIZE 0x1000
+#define REG_DIRCONN 0xB7000
 #define PINGROUP(id, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, wake_off, bit)	 \
 	{				\
 	.name = "gpio" #id, .pins = gpio##id##_pins,	 \
@@ -40,6 +41,8 @@
 			 msm_mux_##f5, msm_mux_##f6, msm_mux_##f7, msm_mux_##f8,	 \
 			 msm_mux_##f9, msm_mux_##f10},	 \
 	.nfuncs = 11,		\
+	.dir_conn_reg = REG_BASE + REG_DIRCONN,						\
+	.dir_conn_en_bit = 8,		\
 	}
 
 #define SDC_QDSD_PINGROUP(pg_name, ctl, pull, drv)	 \
@@ -1544,6 +1547,11 @@ static const struct msm_gpio_wakeirq_map sdxpinn_pdc_map[] = {
 	{ 128, 82 }, { 129, 83 }, { 130, 85 }, { 132, 86 },
 };
 
+static struct msm_dir_conn sdxpinn_dir_conn[] = {
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}, {-1, 0},
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}
+};
+
 static const struct msm_pinctrl_soc_data sdxpinn_pinctrl = {
 	.pins = sdxpinn_pins,
 	.npins = ARRAY_SIZE(sdxpinn_pins),
@@ -1556,6 +1564,33 @@ static const struct msm_pinctrl_soc_data sdxpinn_pinctrl = {
 	.nwakeirq_map = ARRAY_SIZE(sdxpinn_pdc_map),
 };
 
+static int sdxpinn_pinctrl_dirconn_list_probe(struct platform_device *pdev)
+{
+	int ret, n, dirconn_list_count, m;
+	struct device_node *np = pdev->dev.of_node;
+
+	n = of_property_count_elems_of_size(np, "qcom,dirconn-list", sizeof(u32));
+	if (n <= 0 || n % 2)
+		return -EINVAL;
+
+	m = ARRAY_SIZE(sdxpinn_dir_conn) - 1;
+	dirconn_list_count = n / 2;
+
+	for (n = 0; n < dirconn_list_count; n++) {
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+					n * 2 + 0, &sdxpinn_dir_conn[m].gpio);
+		if (ret)
+			return ret;
+
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+					n * 2 + 1, &sdxpinn_dir_conn[m].irq);
+		if (ret)
+			return ret;
+		m--;
+	}
+	return 0;
+}
+
 static const struct msm_pinctrl_soc_data sdxpinn_vm_pinctrl = {
 	.pins = sdxpinn_pins,
 	.npins = ARRAY_SIZE(sdxpinn_pins),
@@ -1564,6 +1599,7 @@ static const struct msm_pinctrl_soc_data sdxpinn_vm_pinctrl = {
 	.groups = sdxpinn_groups,
 	.ngroups = ARRAY_SIZE(sdxpinn_groups),
 	.ngpios = 133,
+	.dir_conn = sdxpinn_dir_conn,
 };
 
 static const struct of_device_id sdxpinn_pinctrl_of_match[] = {
@@ -1575,11 +1611,19 @@ static int sdxpinn_pinctrl_probe(struct platform_device *pdev)
 {
 	const struct msm_pinctrl_soc_data *pinctrl_data;
 	struct device *dev = &pdev->dev;
+	int len, ret;
 
 	pinctrl_data = of_device_get_match_data(dev);
 	if (!pinctrl_data)
 		return -EINVAL;
 
+	if (of_find_property(pdev->dev.of_node, "qcom,dirconn-list", &len)) {
+		ret = sdxpinn_pinctrl_dirconn_list_probe(pdev);
+		if (ret) {
+			dev_err(&pdev->dev, "Unable to parse Direct Connect List\n");
+			return ret;
+		}
+	}
 	return msm_pinctrl_probe(pdev, pinctrl_data);
 }
 
