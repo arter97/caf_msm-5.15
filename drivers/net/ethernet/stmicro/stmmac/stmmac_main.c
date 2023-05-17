@@ -1361,15 +1361,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		mdelay(100);
 		reset_control_deassert(priv->plat->rgmii_rst);
 	}
-
-	/*Disable LPI interrupt in the mac and enable it during Power management*/
-	if (priv->lpi_irq < 0 && priv->plat->has_xgmac) {
-		int status = 0;
-
-		status = readl(priv->ioaddr + XGMAC_INT_EN);
-		status &= ~(XGMAC_LPIIS);
-		writel(status, priv->ioaddr + XGMAC_INT_EN);
-	}
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
