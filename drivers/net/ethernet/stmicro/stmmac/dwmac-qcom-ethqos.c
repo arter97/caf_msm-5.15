@@ -3211,6 +3211,16 @@ static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, in
 			phydata = PHY_LOOPBACK_100;
 			break;
 		case SPEED_10:
+			/*KSZ9131RNX_LBR = 0x11*/
+			if (!priv->plat->fixed_phy_mode &&
+			    ((priv->phydev->phy_id &
+			    priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
+				phydata = priv->mii->read(priv->mii,
+							  priv->plat->phy_addr, 0x11);
+				phydata = phydata | (1 << 2);
+				priv->mii->write(priv->mii,
+						 priv->plat->phy_addr, 0x11, phydata);
+			}
 			phydata = PHY_LOOPBACK_10;
 			break;
 		default:
