@@ -615,6 +615,10 @@ static int usb_cser_get_remote_wakeup_capable(struct usb_function *f,
 
 static int usb_cser_get_status(struct usb_function *f)
 {
+	/* D0 and D1 bit set to 0 if device is not wakeup capable */
+	if (!(USB_CONFIG_ATT_WAKEUP & f->config->bmAttributes))
+		return 0;
+
 	return (f->func_wakeup_armed ? USB_INTRF_STAT_FUNC_RW : 0) |
 		USB_INTRF_STAT_FUNC_RW_CAP;
 }

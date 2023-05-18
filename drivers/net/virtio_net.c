@@ -3227,7 +3227,11 @@ static int virtnet_probe(struct virtio_device *vdev)
 		max_queue_pairs = 1;
 
 	/* Allocate ourselves a network device with room for our info */
+#ifdef CONFIG_ARCH_QTI_VM
+	dev = alloc_vmtap_mq(sizeof(struct virtnet_info), max_queue_pairs);
+#else
 	dev = alloc_etherdev_mq(sizeof(struct virtnet_info), max_queue_pairs);
+#endif
 	if (!dev)
 		return -ENOMEM;
 

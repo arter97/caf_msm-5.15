@@ -21,6 +21,10 @@
 
 #include "u_os_desc.h"
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+#include <soc/qcom/boot_stats.h>
+#endif
+
 /**
  * struct usb_os_string - represents OS String to be reported by a gadget
  * @bLength: total length of the entire descritor, always 0x12
@@ -943,6 +947,10 @@ static int set_config(struct usb_composite_dev *cdev,
 
 	usb_gadget_set_state(gadget, USB_STATE_CONFIGURED);
 	cdev->config = c;
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - USB device is enumerated");
+#endif
 
 	/* Initialize all interfaces by setting them to altsetting zero. */
 	for (tmp = 0; tmp < MAX_CONFIG_INTERFACES; tmp++) {

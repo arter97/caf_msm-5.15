@@ -1286,6 +1286,68 @@ static void rproc_unprepare_subdevices(struct rproc *rproc)
 	}
 }
 
+#ifdef CONFIG_RPROC_DEEPSLEEP
+static int rproc_resume_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->resume) {
+			ret = subdev->resume(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
+static int rproc_suspend_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->suspend) {
+			ret = subdev->suspend(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
+static int rproc_resume_prepare_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->resume_prepare) {
+			ret = subdev->resume_prepare(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
+static int rproc_suspend_unprepare_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->suspend_unprepare) {
+			ret = subdev->suspend_unprepare(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+#endif
+
 /**
  * rproc_alloc_registered_carveouts() - allocate all carveouts registered
  * in the list
@@ -1924,6 +1986,84 @@ static int __rproc_detach(struct rproc *rproc)
 	return 0;
 }
 
+#ifdef CONFIG_RPROC_DEEPSLEEP
+/*
+ * __rproc_suspend(): Does the opposite of __rproc_resume()
+ */
+static int __rproc_suspend(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	/* No need to continue if a suspend() operation has not been provided */
+	if (!rproc->ops->suspend)
+		return -EINVAL;
+
+	/* Suspend any subdevices for the remote processor */
+	ret = rproc_suspend_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "subdevice is failed to suspend: %d\n", ret);
+		return ret;
+	}
+
+	/* Tell the remote processor the core isn't available anymore */
+	ret = rproc->ops->suspend(rproc);
+	if (ret) {
+		dev_err(dev, "can't suspend from rproc: %d\n", ret);
+		return ret;
+	}
+
+	rproc_suspend_unprepare_subdevices(rproc);
+
+	rproc->state = RPROC_SUSPENDED;
+
+	dev_info(dev, "suspend remote processor %s\n", rproc->name);
+
+	return 0;
+}
+
+/*
+ * __rproc_resume(): Does the opposite of __rproc_suspend()
+ */
+static int __rproc_resume(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	/* No need to continue if a resume() operation has not been provided */
+	if (!rproc->ops->resume)
+		return -EINVAL;
+
+	ret = rproc_resume_prepare_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "resume failed to prepare subdevices for %s: %d\n",
+			rproc->name, ret);
+		return ret;
+	}
+
+	/* Resume to the remote processor */
+	ret = rproc->ops->resume(rproc);
+	if (ret) {
+		dev_err(dev, "can't resume from rproc: %d\n", ret);
+		return ret;
+	}
+
+	/* Resume any subdevices for the remote processor */
+	ret = rproc_resume_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to resume subdevices for %s: %d\n",
+			rproc->name, ret);
+		return ret;
+	}
+
+	rproc->state = RPROC_RUNNING;
+
+	dev_info(dev, "remote processor %s is now running\n", rproc->name);
+
+	return 0;
+}
+#endif
+
 /**
  * rproc_trigger_recovery() - recover a remoteproc
  * @rproc: the remote processor
@@ -2032,6 +2172,9 @@ int rproc_boot(struct rproc *rproc)
 	char rproc_end[80] = {'\0'};
 	int ret;
 
+	if (rproc->state == RPROC_SUSPENDED)
+		return 0;
+
 	if (!rproc) {
 		pr_err("invalid rproc handle\n");
 		return -EINVAL;
@@ -2123,6 +2266,9 @@ void rproc_shutdown(struct rproc *rproc)
 	struct device *dev = &rproc->dev;
 	int ret;
 
+	if (rproc->state == RPROC_SUSPENDED)
+		return;
+
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
@@ -2181,6 +2327,9 @@ int rproc_detach(struct rproc *rproc)
 	struct device *dev = &rproc->dev;
 	int ret;
 
+	if (rproc->state == RPROC_SUSPENDED)
+		return 0;
+
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
@@ -2216,6 +2365,84 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(rproc_detach);
+
+#ifdef CONFIG_RPROC_DEEPSLEEP
+/**
+ * rproc_suspend() - Deep sleep the remote processor from the
+ * remoteproc core
+ *
+ * @rproc: the remote processor
+ *
+ * Deepsleep a remote processor (previously booted to with rproc_boot()).
+ *
+ * In case @rproc is still being used by an additional user(s), then
+ * this function will just decrement the power refcount and exit,
+ * without disconnecting the device.
+ *
+ * Function rproc_suspend() calls __rproc_suspend() in order to let a remote
+ * processor know that services provided by the application processor are
+ * no longer available.  From there it should be possible to remove the
+ * platform driver and even power cycle the application processor (if the HW
+ * supports it) without needing to switch off the remote processor.
+ *
+ * Return: 0 on success, and an appropriate error value otherwise
+ */
+int rproc_suspend(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = mutex_lock_interruptible(&rproc->lock);
+	if (ret) {
+		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
+		return ret;
+	}
+
+	ret = __rproc_suspend(rproc);
+	mutex_unlock(&rproc->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(rproc_suspend);
+
+/**
+ * rproc_resume() - Resume the remote processor from the
+ * remoteproc core
+ *
+ * @rproc: the remote processor
+ *
+ * Resume a remote processor (previously attached to with rproc_suspend()).
+ *
+ * In case @rproc is still being used by an additional user(s), then
+ * this function will just decrement the power refcount and exit,
+ * without disconnecting the device.
+ *
+ * Function rproc_resume() calls __rproc_resume() in order to let a remote
+ * processor know that services provided by the application processor are
+ * no longer available.  From there it should be possible to remove the
+ * platform driver and even power cycle the application processor (if the HW
+ * supports it) without needing to switch off the remote processor.
+ *
+ * Return: 0 on success, and an appropriate error value otherwise
+ */
+int rproc_resume(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = mutex_lock_interruptible(&rproc->lock);
+	if (ret) {
+		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
+		return ret;
+	}
+
+	ret = __rproc_resume(rproc);
+	mutex_unlock(&rproc->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(rproc_resume);
+#endif
 
 /**
  * rproc_get_by_phandle() - find a remote processor by phandle

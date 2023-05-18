@@ -16,6 +16,101 @@
 #define EMAC_VREG_RGMII_NAME "vreg_rgmii"
 #define EMAC_VREG_EMAC_PHY_NAME "vreg_emac_phy"
 #define EMAC_VREG_RGMII_IO_PADS_NAME "vreg_rgmii_io_pads"
+#define EMAC_VREG_A_SGMII_1P2_NAME "vreg_a_sgmii_1p2"
+#define EMAC_VREG_A_SGMII_0P9_NAME "vreg_a_sgmii_0p9"
+
+static u32 A_SGMII_1P2_MAX_VOLT = 1200000;
+static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
+static u32 A_SGMII_0P9_MAX_VOLT = 912000;
+static u32 A_SGMII_0P9_MIN_VOLT = 880000;
+static u32 A_SGMII_1P2_LOAD_CURR = 25000;
+static u32 A_SGMII_0P9_LOAD_CURR = 132000;
+
+int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+
+	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
+		ETHQOSERR("SerDes power consumers not enabled\n");
+		return -EINVAL;
+	}
+
+	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_MIN_VOLT,
+				    A_SGMII_1P2_MAX_VOLT);
+	if (ret) {
+		ETHQOSERR("Failed to set voltage for %s\n", EMAC_VREG_A_SGMII_1P2_NAME);
+		return ret;
+	}
+
+	ret = regulator_set_load(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_LOAD_CURR);
+	if (ret) {
+		ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_1P2_NAME);
+		return ret;
+	}
+
+	ret = regulator_enable(ethqos->vreg_a_sgmii_1p2);
+	if (ret) {
+		ETHQOSERR("Cannot enable <%s>\n", EMAC_VREG_A_SGMII_1P2_NAME);
+		return ret;
+	}
+
+	ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_1P2_NAME);
+
+	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, A_SGMII_0P9_MIN_VOLT,
+				    A_SGMII_0P9_MAX_VOLT);
+	if (ret) {
+		ETHQOSERR("Failed to set voltage for %s\n", EMAC_VREG_A_SGMII_0P9_NAME);
+		return ret;
+	}
+
+	ret = regulator_set_load(ethqos->vreg_a_sgmii_0p9, A_SGMII_0P9_LOAD_CURR);
+	if (ret) {
+		ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_0P9_NAME);
+		return ret;
+	}
+
+	ret = regulator_enable(ethqos->vreg_a_sgmii_0p9);
+	if (ret) {
+		ETHQOSERR("Cannot enable <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
+		return ret;
+	}
+
+	ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
+
+	return ret;
+}
+EXPORT_SYMBOL(ethqos_enable_serdes_consumers);
+
+int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+
+	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
+		ETHQOSERR("SerDes power consumers not enabled\n");
+		return -EINVAL;
+	}
+
+	regulator_disable(ethqos->vreg_a_sgmii_0p9);
+
+	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, 0, INT_MAX);
+	if (ret < 0) {
+		ETHQOSERR("Failed to remove %s voltage request: %d\n", EMAC_VREG_A_SGMII_0P9_NAME,
+			  ret);
+		return ret;
+	}
+
+	regulator_disable(ethqos->vreg_a_sgmii_1p2);
+
+	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, 0, INT_MAX);
+	if (ret < 0) {
+		ETHQOSERR("Failed to remove %s voltage request: %d\n", EMAC_VREG_A_SGMII_1P2_NAME,
+			  ret);
+		return ret;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(ethqos_disable_serdes_consumers);
 
 static int setup_gpio_input_common
 	(struct device *dev, const char *name, int *gpio)
@@ -55,7 +150,7 @@ static int setup_gpio_input_common
 	return ret;
 }
 
-int ethqos_init_reqgulators(struct qcom_ethqos *ethqos)
+int ethqos_init_regulators(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
@@ -136,6 +231,26 @@ int ethqos_init_reqgulators(struct qcom_ethqos *ethqos)
 		ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_RGMII_IO_PADS_NAME);
 	}
 
+	/* Bot power supplies are required to be present together */
+	if (of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_1p2-supply") &&
+	    of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_0p9-supply")) {
+		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get(&ethqos->pdev->dev,
+							      EMAC_VREG_A_SGMII_1P2_NAME);
+		if (IS_ERR(ethqos->vreg_a_sgmii_1p2)) {
+			ETHQOSERR("Can not get <%s>\n", EMAC_VREG_A_SGMII_1P2_NAME);
+			return PTR_ERR(ethqos->vreg_a_sgmii_1p2);
+		}
+
+		ethqos->vreg_a_sgmii_0p9 = devm_regulator_get(&ethqos->pdev->dev,
+							      EMAC_VREG_A_SGMII_0P9_NAME);
+		if (IS_ERR(ethqos->vreg_a_sgmii_0p9)) {
+			ETHQOSERR("Can not get <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
+			return PTR_ERR(ethqos->vreg_a_sgmii_0p9);
+		}
+
+		ethqos_enable_serdes_consumers(ethqos);
+	}
+
 	return ret;
 
 reg_error:
@@ -143,28 +258,45 @@ reg_error:
 	ethqos_disable_regulators(ethqos);
 	return ret;
 }
-EXPORT_SYMBOL(ethqos_init_reqgulators);
+EXPORT_SYMBOL(ethqos_init_regulators);
 
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 {
+	int ret = 0;
+
 	if (ethqos->reg_rgmii) {
 		regulator_disable(ethqos->reg_rgmii);
+		devm_regulator_put(ethqos->reg_rgmii);
 		ethqos->reg_rgmii = NULL;
 	}
 
 	if (ethqos->reg_emac_phy) {
 		regulator_disable(ethqos->reg_emac_phy);
+		devm_regulator_put(ethqos->reg_emac_phy);
 		ethqos->reg_emac_phy = NULL;
 	}
 
 	if (ethqos->reg_rgmii_io_pads) {
 		regulator_disable(ethqos->reg_rgmii_io_pads);
+		devm_regulator_put(ethqos->reg_rgmii_io_pads);
 		ethqos->reg_rgmii_io_pads = NULL;
 	}
 
 	if (ethqos->gdsc_emac) {
 		regulator_disable(ethqos->gdsc_emac);
+		devm_regulator_put(ethqos->gdsc_emac);
 		ethqos->gdsc_emac = NULL;
+	}
+
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		ret = ethqos_disable_serdes_consumers(ethqos);
+		if (ret < 0)
+			ETHQOSERR("Failed to disable SerDes consumers\n");
+
+		devm_regulator_put(ethqos->vreg_a_sgmii_1p2);
+		ethqos->vreg_a_sgmii_1p2 = NULL;
+		devm_regulator_put(ethqos->vreg_a_sgmii_0p9);
+		ethqos->vreg_a_sgmii_0p9 = NULL;
 	}
 }
 EXPORT_SYMBOL(ethqos_disable_regulators);

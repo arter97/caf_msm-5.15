@@ -655,7 +655,7 @@ static int dwc3_alloc_trb_pool(struct dwc3_ep *dep)
 
 	dep->trb_pool = dma_alloc_coherent(dwc->sysdev,
 			sizeof(struct dwc3_trb) * DWC3_TRB_NUM,
-			&dep->trb_pool_dma, GFP_KERNEL);
+			&dep->trb_pool_dma, GFP_ATOMIC);
 	if (!dep->trb_pool) {
 		dev_err(dep->dwc->dev, "failed to allocate trb pool for %s\n",
 				dep->name);
@@ -2148,7 +2148,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 	len = req->buf_len * req->num_bufs;
 	req->buf_base_addr = dma_alloc_coherent(dwc->sysdev, len, &req->dma,
-					GFP_KERNEL);
+					GFP_ATOMIC);
 	if (!req->buf_base_addr)
 		return -ENOMEM;
 
@@ -2162,7 +2162,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 	/* Allocate and configure TRBs */
 	dep->trb_pool = dma_alloc_coherent(dwc->sysdev,
 				num_trbs * sizeof(struct dwc3_trb),
-				&dep->trb_pool_dma, GFP_KERNEL);
+				&dep->trb_pool_dma, GFP_ATOMIC);
 
 	if (!dep->trb_pool)
 		goto free_trb_buffer;
@@ -2424,14 +2424,18 @@ int usb_gsi_ep_op(struct usb_ep *ep, void *op_data, enum gsi_ep_op op)
 			return -ESHUTDOWN;
 		}
 
+		spin_lock_irqsave(&dwc->lock, flags);
 		dwc3_free_trb_pool(dep);
 		request = (struct usb_gsi_request *)op_data;
 		ret = gsi_prepare_trbs(ep, request);
+		spin_unlock_irqrestore(&dwc->lock, flags);
 		break;
 	case GSI_EP_OP_FREE_TRBS:
 		request = (struct usb_gsi_request *)op_data;
+		spin_lock_irqsave(&dwc->lock, flags);
 		gsi_free_trbs(ep, request);
 		dwc3_alloc_trb_pool(dep);
+		spin_unlock_irqrestore(&dwc->lock, flags);
 		break;
 	case GSI_EP_OP_CONFIG:
 		if (!dwc->pullups_connected) {
@@ -6290,9 +6294,13 @@ static void msm_dwc3_perf_vote_work(struct work_struct *w)
 	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
 						perf_vote_work.work);
 	struct irq_desc *irq_desc = irq_to_desc(mdwc->core_irq);
-	unsigned int new = irq_desc->tot_count;
+	unsigned int new;
 	bool in_perf_mode = false;
 
+	if (!irq_desc)
+		return;
+
+	new = irq_desc->tot_count;
 	if (new - mdwc->irq_cnt >= PM_QOS_THRESHOLD)
 		in_perf_mode = true;
 
@@ -6308,6 +6316,9 @@ static void msm_dwc3_perf_vote_work(struct work_struct *w)
 static void msm_dwc3_perf_vote_enable(struct dwc3_msm *mdwc, bool enable)
 {
 	struct irq_desc *irq_desc = irq_to_desc(mdwc->core_irq);
+
+	if (!irq_desc)
+		return;
 
 	if (enable) {
 		/* make sure when enable work, save a valid start irq count */

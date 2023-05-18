@@ -33,6 +33,7 @@
 #include <linux/interconnect.h>
 #include <linux/pci_regs.h>
 #include <linux/nvmem-consumer.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "ep_pcie_com.h"
 #include <linux/dma-mapping.h>
@@ -65,7 +66,7 @@ static u32 clkreq_irq;
 struct ep_pcie_dev_t ep_pcie_dev = {0};
 
 static struct ep_pcie_vreg_info_t ep_pcie_vreg_info[EP_PCIE_MAX_VREG] = {
-	{NULL, "vreg-1p8", 1200000, 1200000, 30000, true},
+	{NULL, "vreg-1p2", 1200000, 1200000, 30000, true},
 	{NULL, "vreg-0p9", 912000, 912000, 132000, true},
 	{NULL, "vreg-cx", 0, 0, 0, false},
 	{NULL, "vreg-mx", 0, 0, 0, false}
@@ -2284,6 +2285,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		EP_PCIE_INFO(dev,
 			"PCIe V%d: link initialized for LE PCIe endpoint\n",
 			dev->rev);
+		pr_crit("PCIe - link initialized for LE PCIe endpoint\n");
+		update_marker(
+			"PCIe - link initialized for LE PCIe endpoint\n");
 	}
 
 checkbme:

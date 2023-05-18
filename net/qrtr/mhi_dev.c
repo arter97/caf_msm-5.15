@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,7 +18,7 @@
 #include <linux/msm_mhi_dev.h>
 #include "qrtr.h"
 
-#define QRTR_MAX_PKT_SIZE SZ_32K
+#define QRTR_MAX_PKT_SIZE (31 * 1024)
 
 /* MHI DEV Enums are defined from Host perspective */
 #define QRTR_MHI_DEV_OUT MHI_CLIENT_IPCR_IN

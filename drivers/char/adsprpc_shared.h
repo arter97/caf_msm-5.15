@@ -946,7 +946,7 @@ struct fastrpc_apps {
 	struct hlist_head frpc_drivers;
 	struct mutex mut_uid;
 	/* Indicates cdsp device status */
-	int remote_cdsp_status;
+	int fastrpc_cdsp_status;
 };
 
 struct fastrpc_mmap {
@@ -975,6 +975,7 @@ struct fastrpc_mmap {
 	/* Mapping for fastrpc shell */
 	bool is_filemap;
 	char *servloc_name;			/* Indicate which daemon mapped this */
+	unsigned int ctx_refs; /* Indicates reference count for context map */
 };
 
 enum fastrpc_perfkeys {

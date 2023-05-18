@@ -48,8 +48,15 @@ int eth_validate_addr(struct net_device *dev);
 
 struct net_device *alloc_etherdev_mqs(int sizeof_priv, unsigned int txqs,
 					    unsigned int rxqs);
+#ifdef CONFIG_ARCH_QTI_VM
+struct net_device *alloc_vmtap_mqs(int sizeof_priv, unsigned int txqs,
+					 unsigned int rxqs);
+#endif
 #define alloc_etherdev(sizeof_priv) alloc_etherdev_mq(sizeof_priv, 1)
 #define alloc_etherdev_mq(sizeof_priv, count) alloc_etherdev_mqs(sizeof_priv, count, count)
+#ifdef CONFIG_ARCH_QTI_VM
+#define alloc_vmtap_mq(sizeof_priv, count) alloc_vmtap_mqs(sizeof_priv, count, count)
+#endif
 
 struct net_device *devm_alloc_etherdev_mqs(struct device *dev, int sizeof_priv,
 					   unsigned int txqs,

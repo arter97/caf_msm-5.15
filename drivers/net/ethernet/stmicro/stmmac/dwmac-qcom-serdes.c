@@ -10,6 +10,46 @@
 
 #include "dwmac-qcom-serdes.h"
 
+void qcom_ethqos_reset_serdes_speed(struct qcom_ethqos *ethqos)
+{
+	ethqos->curr_serdes_speed = 0;
+}
+EXPORT_SYMBOL(qcom_ethqos_reset_serdes_speed);
+
+void qcom_ethqos_disable_serdes_clocks(struct qcom_ethqos *ethqos)
+{
+	if (ethqos->phyaux_clk)
+		clk_disable_unprepare(ethqos->phyaux_clk);
+
+	if (ethqos->sgmiref_clk)
+		clk_disable_unprepare(ethqos->sgmiref_clk);
+}
+EXPORT_SYMBOL(qcom_ethqos_disable_serdes_clocks);
+
+int qcom_ethqos_enable_serdes_clocks(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+
+	if (ethqos->phyaux_clk) {
+		ret = clk_prepare_enable(ethqos->phyaux_clk);
+		if (ret) {
+			ETHQOSERR("Failed to enable phyaux clock: %d\n", ret);
+			return ret;
+		}
+	}
+
+	if (ethqos->sgmiref_clk) {
+		ret = clk_prepare_enable(ethqos->sgmiref_clk);
+		if (ret) {
+			ETHQOSERR("Failed to enable SerDes reference clock: %d\n", ret);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(qcom_ethqos_enable_serdes_clocks);
+
 static int qcom_ethqos_serdes3_sgmii_1Gb(struct qcom_ethqos *ethqos)
 {
 	int retry = 500;
@@ -1356,6 +1396,7 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 	struct platform_device *pdev = ethqos->pdev;
 	int ret;
 	u32 mode = 0;
+	struct device_node *serdes_node = NULL;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "serdes");
 	ethqos->sgmii_base = devm_ioremap_resource(&pdev->dev, res);
@@ -1379,8 +1420,9 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 	}
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		if (of_property_read_bool(ethqos->pdev->dev.of_node, "usxgmii-mode")) {
-			ret = of_property_read_u32(ethqos->pdev->dev.of_node, "usxgmii-mode",
+		serdes_node = of_get_child_by_name(pdev->dev.of_node, "serdes-config");
+		if (serdes_node) {
+			ret = of_property_read_u32(serdes_node, "usxgmii-mode",
 						   &mode);
 			switch (mode) {
 			case 10000:
@@ -1398,17 +1440,14 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 				goto err_mem;
 			}
 		} else {
-			ETHQOSINFO("Unable to find USXGMII mode from device tree\n");
+			ETHQOSERR("Unable to find Serdes node from device tree\n");
 			ethqos->usxgmii_mode = USXGMII_MODE_NA;
 			goto err_mem;
 		}
+		of_node_put(serdes_node);
 	}
 
-	ret = clk_prepare_enable(ethqos->sgmiref_clk);
-	if (ret)
-		goto err_mem;
-
-	ret = clk_prepare_enable(ethqos->phyaux_clk);
+	ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 	if (ret)
 		goto err_mem;
 

@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QPIC_NAND_H
@@ -30,6 +30,7 @@
 #include <linux/msm-sps.h>
 #include <linux/soc/qcom/smem.h>
 #include <linux/interconnect.h>
+#include <linux/suspend.h>
 
 #define PAGE_SIZE_2K 2048
 #define PAGE_SIZE_4K 4096
@@ -424,7 +425,7 @@ struct onfi_param_page {
 #define FLASH_PTABLE_V3		3
 #define FLASH_PTABLE_V4		4
 #define FLASH_PTABLE_MAX_PARTS_V3 16
-#define FLASH_PTABLE_MAX_PARTS_V4 64
+#define FLASH_PTABLE_MAX_PARTS_V4 80
 #define FLASH_PTABLE_HDR_LEN (4*sizeof(uint32_t))
 #define FLASH_PTABLE_ENTRY_NAME_SIZE 16
 
@@ -451,4 +452,12 @@ static inline bool is_buffer_in_page(const void *buf, size_t len)
 {
 	return !(((unsigned long) buf & ~PAGE_MASK) + len > PAGE_SIZE);
 }
+
+static void msm_nand_bam_free(struct msm_nand_info *nand_info);
+static int msm_nand_bam_init(struct msm_nand_info *nand_info);
+static int msm_nand_enable_dma(struct msm_nand_info *info);
+static int msm_nand_init_status_pipe(struct msm_nand_info *info);
+static int msm_nand_get_device(struct device *dev);
+static int msm_nand_put_device(struct device *dev);
+
 #endif /* __QPIC_NAND_H */

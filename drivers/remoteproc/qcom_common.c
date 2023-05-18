@@ -750,6 +750,68 @@ static void ssr_notify_unprepare(struct rproc_subdev *subdev)
 	notify_ssr_clients(ssr, &data);
 }
 
+static int ssr_notify_resume_prepare(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "resume prepare");
+
+	ssr->notification = QCOM_SSR_BEFORE_DS_EXIT;
+	notify_ssr_clients(ssr, &data);
+	return 0;
+}
+
+static int ssr_notify_resume(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "resume");
+
+	ssr->notification = QCOM_SSR_AFTER_DS_EXIT;
+	notify_ssr_clients(ssr, &data);
+	return 0;
+}
+
+static int ssr_notify_suspend(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "suspend");
+
+	ssr->notification = QCOM_SSR_BEFORE_DS_ENTER;
+	notify_ssr_clients(ssr, &data);
+
+	return 0;
+}
+
+static int ssr_notify_suspend_unprepare(struct rproc_subdev *subdev)
+{
+	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
+	struct qcom_ssr_notify_data data = {
+		.name = ssr->info->name,
+		.crashed = false,
+	};
+
+	trace_rproc_qcom_event(ssr->info->name, SSR_SUBDEV_NAME, "suspend unprepare");
+
+	ssr->notification = QCOM_SSR_AFTER_DS_ENTER;
+	notify_ssr_clients(ssr, &data);
+
+	return 0;
+}
+
 /**
  * qcom_add_ssr_subdev() - register subdevice as restart notification source
  * @rproc:	rproc handle
@@ -778,6 +840,10 @@ void qcom_add_ssr_subdev(struct rproc *rproc, struct qcom_rproc_ssr *ssr,
 	ssr->subdev.start = ssr_notify_start;
 	ssr->subdev.stop = ssr_notify_stop;
 	ssr->subdev.unprepare = ssr_notify_unprepare;
+	ssr->subdev.resume_prepare = ssr_notify_resume_prepare;
+	ssr->subdev.resume = ssr_notify_resume;
+	ssr->subdev.suspend = ssr_notify_suspend;
+	ssr->subdev.suspend_unprepare = ssr_notify_suspend_unprepare;
 
 	rproc_add_subdev(rproc, &ssr->subdev);
 }

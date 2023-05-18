@@ -34,17 +34,6 @@ static ssize_t xbl_log_show(struct file *fp,
 static struct bin_attribute attribute =
 __BIN_ATTR(xbl_log, 0444, xbl_log_show, NULL, 0);
 
-static void free_xbl_log_buf(phys_addr_t paddr, size_t size)
-{
-	unsigned long pfn_start = 0, pfn_end = 0, pfn_idx = 0;
-
-	memblock_free(paddr, size);
-	pfn_start = paddr >> PAGE_SHIFT;
-	pfn_end = (paddr + size) >> PAGE_SHIFT;
-	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
-		free_reserved_page(pfn_to_page(pfn_idx));
-}
-
 static int __init dump_boot_log_init(void)
 {
 	int err = 1;
@@ -105,8 +94,6 @@ static int __init dump_boot_log_init(void)
 		memcpy(xbl_log_buf, addr, xbl_log_size);
 		xbl_log_buf[xbl_log_size-1] = '\0';
 		memunmap(addr);
-		if (xbl_log_size)
-			free_xbl_log_buf(xbl_log_paddr, xbl_log_size);
 		return 0;
 	}
 

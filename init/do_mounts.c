@@ -25,6 +25,7 @@
 #include <linux/nfs_mount.h>
 #include <linux/raid/detect.h>
 #include <uapi/linux/mount.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "do_mounts.h"
 
@@ -363,6 +364,10 @@ static int __init do_mount_root(const char *name, const char *fs,
 	char *data_page = NULL;
 	int ret;
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - DRIVER F/S Init");
+#endif
+
 	if (data) {
 		/* init_mount() requires a full page as fifth argument */
 		p = alloc_page(GFP_KERNEL);
@@ -385,6 +390,10 @@ static int __init do_mount_root(const char *name, const char *fs,
 	       s->s_type->name,
 	       sb_rdonly(s) ? " readonly" : "",
 	       MAJOR(ROOT_DEV), MINOR(ROOT_DEV));
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - DRIVER F/S Ready");
+#endif
 
 out:
 	if (p)
