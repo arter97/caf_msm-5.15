@@ -231,7 +231,19 @@ int ethqos_init_regulators(struct qcom_ethqos *ethqos)
 		ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_RGMII_IO_PADS_NAME);
 	}
 
-	/* Bot power supplies are required to be present together */
+	return ret;
+
+reg_error:
+	ETHQOSERR("%s failed\n", __func__);
+	ethqos_disable_regulators(ethqos);
+	return ret;
+}
+EXPORT_SYMBOL(ethqos_init_regulators);
+
+int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+	/* Both power supplies are required to be present together */
 	if (of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_1p2-supply") &&
 	    of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_0p9-supply")) {
 		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get(&ethqos->pdev->dev,
@@ -248,17 +260,11 @@ int ethqos_init_regulators(struct qcom_ethqos *ethqos)
 			return PTR_ERR(ethqos->vreg_a_sgmii_0p9);
 		}
 
-		ethqos_enable_serdes_consumers(ethqos);
+		return ethqos_enable_serdes_consumers(ethqos);
 	}
-
-	return ret;
-
-reg_error:
-	ETHQOSERR("%s failed\n", __func__);
-	ethqos_disable_regulators(ethqos);
 	return ret;
 }
-EXPORT_SYMBOL(ethqos_init_regulators);
+EXPORT_SYMBOL(ethqos_init_sgmii_regulators);
 
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 {

@@ -4858,6 +4858,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_mem;
 	} else if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 		   plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_init_sgmii_regulators(ethqos);
+		if (ret)
+			goto err_mem;
 		ret = ethqos_enable_sgmii_usxgmii_clks(ethqos, plat_dat->interface);
 		if (ret)
 			goto err_mem;
