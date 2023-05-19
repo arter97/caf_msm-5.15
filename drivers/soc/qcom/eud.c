@@ -862,6 +862,7 @@ static int msm_eud_remove(struct platform_device *pdev)
 static const struct of_device_id msm_eud_dt_match[] = {
 	{.compatible = "qcom,msm-eud",		.data = &eud_intr_mask1 },
 	{.compatible = "qcom,msm-eud-sdxpinn",	.data = &eud_intr_mask4 },
+	{.compatible = "qcom,msm-eud-sdxbaagha",	.data = &eud_intr_mask4 },
 	{},
 };
 MODULE_DEVICE_TABLE(of, msm_eud_dt_match);
