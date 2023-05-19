@@ -1215,10 +1215,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
-	int mac_speed = speed;
-
-	if (priv->plat->fixed_phy_mode && priv->plat->mac2mac_speed)
-		mac_speed = priv->plat->mac2mac_speed;
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1233,7 +1229,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	ctrl &= ~priv->hw->link.speed_mask;
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_10000:
 			ctrl |= priv->hw->link.xgmii.speed10000;
 			break;
@@ -1256,7 +1252,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else if (interface == PHY_INTERFACE_MODE_XLGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_100000:
 			ctrl |= priv->hw->link.xlgmii.speed100000;
 			break;
@@ -1282,7 +1278,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_2500:
 			ctrl |= priv->hw->link.speed2500;
 			break;
@@ -1300,7 +1296,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	priv->speed = mac_speed;
+	priv->speed = speed;
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
@@ -1312,7 +1308,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, mac_speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1329,7 +1325,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->plat->mac2mac_link = true;
 		netdev_info(priv->dev,
 			    "mac2mac mode: Mac link up speed = %d\n",
-			    mac_speed);
+			    speed);
 	}
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
