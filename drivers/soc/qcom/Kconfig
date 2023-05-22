@@ -482,6 +482,7 @@ config QTI_PMIC_GLINK_DEBUG
 	  Glink using a remote subsytem (e.g. DSP).  This allows for debugging
 	  PMIC peripherals that would typically only be accessible to the
 	  charger and fuel gauging firmware running on the remote subsystem.
+	  The PMIC peripherals bus access can be either SPMI or I2C.
 
 config SPMI_QTI_GLINK_DEBUG
 	tristate "QTI Glink Debug SPMI Controller"

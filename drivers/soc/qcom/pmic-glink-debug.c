@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2020, The Linux Foundation. All rights reserved. */
-/* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved. */
+/*
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
 
 #include <linux/bitops.h>
+#include <linux/i2c.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/rpmsg.h>
 #include <linux/slab.h>
 #include <linux/spmi.h>
 #include <linux/string.h>
 
 #include <linux/soc/qcom/pmic_glink.h>
+#include <asm-generic/unaligned.h>
 
 #define MSG_OWNER_REG_DUMP		32783
 #define MSG_TYPE_REQ_RESP		1
@@ -22,14 +27,14 @@
 
 #define REG_DUMP_WAIT_TIME_MS		1000
 
-#define SPMI_GLINK_MAX_READ_BYTES	256
-#define SPMI_GLINK_MAX_WRITE_BYTES	1
+#define REG_DUMP_GLINK_MAX_READ_BYTES	256
+#define REG_DUMP_GLINK_MAX_WRITE_BYTES	1
 
 #define PERIPH_MASK			GENMASK(7, 0)
 
 struct reg_dump_read_req_msg {
 	struct pmic_glink_hdr		hdr;
-	u32				spmi_bus_id;
+	u32				bus_id;
 	u32				pmic_sid;
 	u32				address;
 	u32				byte_count;
@@ -37,16 +42,16 @@ struct reg_dump_read_req_msg {
 
 struct reg_dump_read_resp_msg {
 	struct pmic_glink_hdr		hdr;
-	u32				spmi_bus_id;
+	u32				bus_id;
 	u32				pmic_sid;
 	u32				address;
 	u32				byte_count;
-	u8				data[SPMI_GLINK_MAX_READ_BYTES];
+	u8				data[REG_DUMP_GLINK_MAX_READ_BYTES];
 };
 
 struct reg_dump_write_req_msg {
 	struct pmic_glink_hdr		hdr;
-	u32				spmi_bus_id;
+	u32				bus_id;
 	u32				pmic_sid;
 	u32				address;
 	u32				data;
@@ -57,28 +62,35 @@ struct reg_dump_write_resp_msg {
 	u32				return_status;
 };
 
-struct spmi_glink_ctrl;
+struct pmic_glink_debug_dev;
 
-struct spmi_glink_dev {
+struct spmi_glink_ctrl {
+	struct pmic_glink_debug_dev	*gd;
+	struct spmi_controller		*spmi;
+	u32				bus_id;
+};
+
+struct i2c_glink_ctrl {
+	struct pmic_glink_debug_dev	*gd;
+	struct i2c_adapter		i2c;
+	u32				bus_id;
+};
+
+struct pmic_glink_debug_dev {
 	struct pmic_glink_client	*client;
 	struct device			*dev;
 	struct mutex			lock;
 	struct completion		ack;
 	struct reg_dump_read_resp_msg	read_msg;
-	struct spmi_glink_ctrl		**gctrl;
-	int				bus_count;
+	struct spmi_glink_ctrl		**spmi_gctrl;
+	struct i2c_glink_ctrl		**i2c_gctrl;
+	u32				spmi_bus_count;
+	u32				i2c_bus_count;
 };
 
-struct spmi_glink_ctrl {
-	struct spmi_glink_dev		*gd;
-	struct spmi_controller		*ctrl;
-	u32				bus_id;
-};
-
-static int spmi_glink_write(struct spmi_glink_ctrl *gctrl, void *data,
+static int pmic_glink_debug_write(struct pmic_glink_debug_dev *gd, void *data,
 				size_t len)
 {
-	struct spmi_glink_dev *gd = gctrl->gd;
 	int ret;
 
 	reinit_completion(&gd->ack);
@@ -89,130 +101,14 @@ static int spmi_glink_write(struct spmi_glink_ctrl *gctrl, void *data,
 	ret = wait_for_completion_timeout(&gd->ack,
 				msecs_to_jiffies(REG_DUMP_WAIT_TIME_MS));
 	if (!ret) {
-		dev_err(&gctrl->ctrl->dev, "Error, timed out sending message\n");
+		dev_err(gd->dev, "Error, timed out sending message\n");
 		return -ETIMEDOUT;
 	}
 
 	return 0;
 }
 
-/* Non-data SPMI command */
-static int spmi_glink_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid)
-{
-	return -EOPNOTSUPP;
-}
-
-static int spmi_glink_read_reg(struct spmi_glink_ctrl *gctrl, u8 sid, u16 addr,
-				u8 *buf, size_t len)
-{
-	struct spmi_glink_dev *gd = gctrl->gd;
-	struct reg_dump_read_req_msg msg = {{0}};
-	int ret;
-
-	if (len > SPMI_GLINK_MAX_READ_BYTES)
-		return -EINVAL;
-
-	msg.hdr.owner = MSG_OWNER_REG_DUMP;
-	msg.hdr.type = MSG_TYPE_REQ_RESP;
-	msg.hdr.opcode = REG_DUMP_REG_READ_REQ;
-
-	msg.spmi_bus_id = gctrl->bus_id;
-	msg.pmic_sid = sid;
-	msg.address = addr;
-	msg.byte_count = len;
-
-	ret = spmi_glink_write(gctrl, &msg, sizeof(msg));
-	if (ret)
-		return ret;
-
-	if (gd->read_msg.byte_count != len)
-		return -EINVAL;
-
-	memcpy(buf, gd->read_msg.data, len);
-
-	return 0;
-}
-
-static int spmi_glink_read_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid,
-			     u16 addr, u8 *buf, size_t len)
-{
-	struct spmi_glink_ctrl *gctrl = spmi_controller_get_drvdata(ctrl);
-	struct spmi_glink_dev *gd = gctrl->gd;
-	int ret, count;
-
-	mutex_lock(&gd->lock);
-	do {
-		count = min_t(size_t, len, SPMI_GLINK_MAX_READ_BYTES);
-		/* Ensure transactions are divided across peripherals */
-		if ((addr & PERIPH_MASK) + count > PERIPH_MASK + 1)
-			count = PERIPH_MASK + 1 - (addr & PERIPH_MASK);
-
-		ret = spmi_glink_read_reg(gctrl, sid, addr, buf, count);
-		if (ret)
-			goto done;
-
-		/* Handle a transaction split across SIDs */
-		if ((u16)(addr + count) < addr)
-			sid++;
-		addr += count;
-		buf += count;
-		len -= count;
-	} while (len > 0);
-
-done:
-	mutex_unlock(&gd->lock);
-	return ret;
-}
-
-static int spmi_glink_write_reg(struct spmi_glink_ctrl *gctrl, u8 sid, u16 addr,
-				u8 val)
-{
-	struct reg_dump_write_req_msg msg = {{0}};
-
-	msg.hdr.owner = MSG_OWNER_REG_DUMP;
-	msg.hdr.type = MSG_TYPE_REQ_RESP;
-	msg.hdr.opcode = REG_DUMP_REG_WRITE_REQ;
-
-	msg.spmi_bus_id = gctrl->bus_id;
-	msg.pmic_sid = sid;
-	msg.address = addr;
-	msg.data = val;
-
-	return spmi_glink_write(gctrl, &msg, sizeof(msg));
-}
-
-static int spmi_glink_write_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid,
-			     u16 addr, const u8 *buf, size_t len)
-{
-	struct spmi_glink_ctrl *gctrl = spmi_controller_get_drvdata(ctrl);
-	struct spmi_glink_dev *gd = gctrl->gd;
-	int ret, count;
-
-	mutex_lock(&gd->lock);
-	do {
-		count = min_t(size_t, len, SPMI_GLINK_MAX_WRITE_BYTES);
-		/* Ensure transactions are divided across peripherals */
-		if ((addr & PERIPH_MASK) + count > PERIPH_MASK + 1)
-			count = PERIPH_MASK + 1 - (addr & PERIPH_MASK);
-
-		ret = spmi_glink_write_reg(gctrl, sid, addr, *buf);
-		if (ret)
-			goto done;
-
-		/* Handle a transaction split across SIDs */
-		if ((u16)(addr + count) < addr)
-			sid++;
-		addr += count;
-		buf += count;
-		len -= count;
-	} while (len > 0);
-
-done:
-	mutex_unlock(&gd->lock);
-	return ret;
-}
-
-static void spmi_glink_handle_read_resp(struct spmi_glink_dev *gd,
+static void pmic_glink_debug_handle_read_resp(struct pmic_glink_debug_dev *gd,
 			struct reg_dump_read_resp_msg *read_resp, size_t len)
 {
 	if (len != sizeof(*read_resp)) {
@@ -232,7 +128,7 @@ static void spmi_glink_handle_read_resp(struct spmi_glink_dev *gd,
 	complete(&gd->ack);
 }
 
-static void spmi_glink_handle_write_resp(struct spmi_glink_dev *gd,
+static void pmic_glink_debug_handle_write_resp(struct pmic_glink_debug_dev *gd,
 			struct reg_dump_write_resp_msg *write_resp, size_t len)
 {
 	if (len != sizeof(*write_resp)) {
@@ -250,9 +146,9 @@ static void spmi_glink_handle_write_resp(struct spmi_glink_dev *gd,
 	complete(&gd->ack);
 }
 
-static int spmi_glink_callback(void *priv, void *data, size_t len)
+static int pmic_glink_debug_callback(void *priv, void *data, size_t len)
 {
-	struct spmi_glink_dev *gd = priv;
+	struct pmic_glink_debug_dev *gd = priv;
 	struct pmic_glink_hdr *hdr = data;
 
 	dev_dbg(gd->dev, "owner: %u type: %u opcode: %#x len: %zu\n",
@@ -260,10 +156,10 @@ static int spmi_glink_callback(void *priv, void *data, size_t len)
 
 	switch (hdr->opcode) {
 	case REG_DUMP_REG_READ_REQ:
-		spmi_glink_handle_read_resp(gd, data, len);
+		pmic_glink_debug_handle_read_resp(gd, data, len);
 		break;
 	case REG_DUMP_REG_WRITE_REQ:
-		spmi_glink_handle_write_resp(gd, data, len);
+		pmic_glink_debug_handle_write_resp(gd, data, len);
 		break;
 	default:
 		dev_err(gd->dev, "Unknown opcode %u\n", hdr->opcode);
@@ -273,16 +169,304 @@ static int spmi_glink_callback(void *priv, void *data, size_t len)
 	return 0;
 }
 
-static int spmi_glink_remove(struct platform_device *pdev)
+static int pmic_glink_read_regs(struct pmic_glink_debug_dev *gd, u32 bus_id,
+				u8 sid, u16 addr, u8 *buf, size_t len)
 {
-	struct spmi_glink_dev *gd = platform_get_drvdata(pdev);
+	struct reg_dump_read_req_msg msg = {{0}};
+	int ret;
+
+	if (len > REG_DUMP_GLINK_MAX_READ_BYTES)
+		return -EINVAL;
+
+	msg.hdr.owner = MSG_OWNER_REG_DUMP;
+	msg.hdr.type = MSG_TYPE_REQ_RESP;
+	msg.hdr.opcode = REG_DUMP_REG_READ_REQ;
+
+	msg.bus_id = bus_id;
+	msg.pmic_sid = sid;
+	msg.address = addr;
+	msg.byte_count = len;
+
+	ret = pmic_glink_debug_write(gd, &msg, sizeof(msg));
+	if (ret)
+		return ret;
+
+	if (gd->read_msg.byte_count != len)
+		return -EINVAL;
+
+	memcpy(buf, gd->read_msg.data, len);
+
+	return 0;
+}
+
+static int pmic_glink_write_reg(struct pmic_glink_debug_dev *gd, u32 bus_id,
+				u8 sid, u16 addr, u8 val)
+{
+	struct reg_dump_write_req_msg msg = {{0}};
+
+	msg.hdr.owner = MSG_OWNER_REG_DUMP;
+	msg.hdr.type = MSG_TYPE_REQ_RESP;
+	msg.hdr.opcode = REG_DUMP_REG_WRITE_REQ;
+
+	msg.bus_id = bus_id;
+	msg.pmic_sid = sid;
+	msg.address = addr;
+	msg.data = val;
+
+	return pmic_glink_debug_write(gd, &msg, sizeof(msg));
+}
+
+static int pmic_glink_debug_read_regs(struct pmic_glink_debug_dev *gd, u32 bus_id,
+			u8 sid, u16 addr, u8 *buf, size_t len)
+{
+	int ret, count;
+
+	mutex_lock(&gd->lock);
+	do {
+		count = min_t(size_t, len, REG_DUMP_GLINK_MAX_READ_BYTES);
+		/* Ensure transactions are divided across peripherals */
+		if ((addr & PERIPH_MASK) + count > PERIPH_MASK + 1)
+			count = PERIPH_MASK + 1 - (addr & PERIPH_MASK);
+
+		ret = pmic_glink_read_regs(gd, bus_id, sid, addr, buf, count);
+		if (ret)
+			goto done;
+
+		/* Handle a transaction split across SIDs */
+		if ((u16)(addr + count) < addr)
+			sid++;
+		addr += count;
+		buf += count;
+		len -= count;
+	} while (len > 0);
+
+done:
+	mutex_unlock(&gd->lock);
+	return ret;
+}
+
+static int pmic_glink_debug_write_regs(struct pmic_glink_debug_dev *gd, u32 bus_id,
+			u8 sid, u16 addr, const u8 *buf, size_t len)
+{
+	int ret, count;
+
+	mutex_lock(&gd->lock);
+	do {
+		count = min_t(size_t, len, REG_DUMP_GLINK_MAX_WRITE_BYTES);
+		/* Ensure transactions are divided across peripherals */
+		if ((addr & PERIPH_MASK) + count > PERIPH_MASK + 1)
+			count = PERIPH_MASK + 1 - (addr & PERIPH_MASK);
+
+		ret = pmic_glink_write_reg(gd, bus_id, sid, addr, *buf);
+		if (ret)
+			goto done;
+
+		/* Handle a transaction split across SIDs */
+		if ((u16)(addr + count) < addr)
+			sid++;
+		addr += count;
+		buf += count;
+		len -= count;
+	} while (len > 0);
+
+done:
+	mutex_unlock(&gd->lock);
+	return ret;
+}
+
+/* Non-data SPMI command */
+static int spmi_glink_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid)
+{
+	return -EOPNOTSUPP;
+}
+
+static int spmi_glink_read_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid,
+			     u16 addr, u8 *buf, size_t len)
+{
+	struct spmi_glink_ctrl *spmi_gctrl = spmi_controller_get_drvdata(ctrl);
+	int ret;
+
+	ret = pmic_glink_debug_read_regs(spmi_gctrl->gd,
+			spmi_gctrl->bus_id, sid, addr, buf, len);
+	if (ret < 0)
+		return ret;
+
+	dev_dbg(spmi_gctrl->gd->dev, "%s: bus id %#x, sid %#x, reg %#x, data %*ph, len =%d\n",
+			__func__, spmi_gctrl->bus_id, sid, addr, len, buf, len);
+	return 0;
+}
+
+static int spmi_glink_write_cmd(struct spmi_controller *ctrl, u8 opc, u8 sid,
+			     u16 addr, const u8 *buf, size_t len)
+{
+	struct spmi_glink_ctrl *spmi_gctrl = spmi_controller_get_drvdata(ctrl);
+	int ret;
+
+	ret = pmic_glink_debug_write_regs(spmi_gctrl->gd,
+			spmi_gctrl->bus_id, sid, addr, buf, len);
+	if (ret < 0)
+		return ret;
+
+	dev_dbg(spmi_gctrl->gd->dev, "%s: bus id %#x, sid %#x, reg %#x, data %*ph, len =%d\n",
+			__func__, spmi_gctrl->bus_id, sid, addr, len, buf, len);
+	return 0;
+}
+
+static int i2c_glink_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
+{
+	struct i2c_glink_ctrl *i2c_gctrl = i2c_get_adapdata(adap);
+	struct pmic_glink_debug_dev *gd = i2c_gctrl->gd;
+	u8 sid, *buf;
+	u16 reg;
+	u32 bus_id;
+	size_t len;
+	bool read = false;
+	int ret;
+
+	if (!i2c_gctrl)
+		return -ENODEV;
+
+	bus_id = i2c_gctrl->bus_id;
+	sid = (u8) msgs[0].addr;
+	/*
+	 * For I2C write operation, only one i2c_msg data block is present.
+	 * I2c_msg[0].buf contains 2 bytes register address following the
+	 * data buffer, i2c_msg[0].len is the sum of register length (2 bytes)
+	 * and data length.
+	 * For I2C read, there are 2 i2c_msg data blocks. I2c_msg[0].buf has
+	 * the register address and i2c_msg[0].len is the register length.
+	 * I2c_msg[1].flags will be armed with I2C_M_RD, and i2c_msg[1].buf
+	 * is the data buffer and msg[1].len is the data length.
+	 */
+	reg = get_unaligned_be16(msgs[0].buf);
+	len = (size_t) msgs[0].len - 2;
+	buf = msgs[0].buf + 2;
+
+	if (num > 0 && msgs[1].flags == I2C_M_RD) {
+		read = true;
+		len = (size_t) msgs[1].len;
+		buf = msgs[1].buf;
+	}
+
+	if (read)
+		ret = pmic_glink_debug_read_regs(gd, bus_id, sid, reg, buf, len);
+	else
+		ret = pmic_glink_debug_write_regs(gd, bus_id, sid, reg, buf, len);
+
+	if (ret) {
+		dev_err(gd->dev, "%s failed\n", __func__);
+		return ret;
+	}
+
+	dev_dbg(gd->dev, "%s: %s:  bus id %#x, sid %#x, reg %#x, data %*ph, len =%d\n",
+			__func__, read ? "read" : "write", bus_id, sid, reg, len, buf, len);
+	return num;
+}
+
+static u32 i2c_glink_func(struct i2c_adapter *adap)
+{
+	return I2C_FUNC_I2C;
+}
+
+static const struct i2c_algorithm glink_i2c_algo = {
+	.master_xfer	= i2c_glink_xfer,
+	.functionality	= i2c_glink_func,
+};
+
+static int pmic_glink_debug_add_i2c_bus(struct pmic_glink_debug_dev *gd,
+				struct fwnode_handle *fwnode)
+{
+	int ret;
+	struct i2c_glink_ctrl *i2c_gctrl;
+	struct i2c_adapter *adap;
+
+	if (!gd->i2c_gctrl)
+		return -ENODEV;
+
+	i2c_gctrl = devm_kzalloc(gd->dev, sizeof(*i2c_gctrl), GFP_KERNEL);
+	if (!i2c_gctrl)
+		return -ENOMEM;
+
+	ret = fwnode_property_read_u32(fwnode, "reg", &i2c_gctrl->bus_id);
+	if (ret) {
+		dev_err(gd->dev, "Could not find reg property, ret=%d\n",
+			ret);
+		return ret;
+	}
+
+	i2c_gctrl->gd = gd;
+	adap = &i2c_gctrl->i2c;
+	adap->algo = &glink_i2c_algo;
+	adap->dev.parent = gd->dev;
+	adap->dev.of_node = to_of_node(fwnode);
+	strscpy(adap->name, "glink-i2c", sizeof(adap->name));
+	i2c_set_adapdata(adap, i2c_gctrl);
+
+	ret = i2c_add_adapter(adap);
+	if (ret) {
+		dev_err(gd->dev, "Add i2c adapter failed, ret=%d\n", ret);
+		return ret;
+	}
+
+	gd->i2c_gctrl[gd->i2c_bus_count++] = i2c_gctrl;
+	return devm_of_platform_populate(gd->dev);
+}
+
+static int pmic_glink_debug_add_spmi_bus(struct pmic_glink_debug_dev *gd,
+				struct fwnode_handle *fwnode)
+{
+	struct spmi_controller *ctrl;
+	struct spmi_glink_ctrl *spmi_gctrl;
+	int ret;
+
+	if (!gd->spmi_gctrl)
+		return -ENODEV;
+
+	ctrl = spmi_controller_alloc(gd->dev, sizeof(*spmi_gctrl));
+	if (!ctrl)
+		return -ENOMEM;
+
+	spmi_gctrl = spmi_controller_get_drvdata(ctrl);
+	spmi_gctrl->spmi = ctrl;
+	spmi_gctrl->gd = gd;
+	ret = fwnode_property_read_u32(fwnode, "reg", &spmi_gctrl->bus_id);
+	if (ret) {
+		dev_err(gd->dev, "Could not find reg property, ret=%d\n",
+			ret);
+		spmi_controller_put(ctrl);
+		return ret;
+	}
+
+	ctrl->cmd = spmi_glink_cmd;
+	ctrl->read_cmd = spmi_glink_read_cmd;
+	ctrl->write_cmd = spmi_glink_write_cmd;
+	ctrl->dev.of_node = to_of_node(fwnode);
+
+	ret = spmi_controller_add(ctrl);
+	if (ret) {
+		spmi_controller_put(ctrl);
+		return ret;
+	}
+
+	gd->spmi_gctrl[gd->spmi_bus_count++] = spmi_gctrl;
+	return 0;
+}
+
+static int pmic_glink_debug_remove(struct platform_device *pdev)
+{
+	struct pmic_glink_debug_dev *gd = platform_get_drvdata(pdev);
 	int i;
 
-	for (i = 0; i < gd->bus_count; i++) {
-		if (gd->gctrl[i]) {
-			spmi_controller_remove(gd->gctrl[i]->ctrl);
-			spmi_controller_put(gd->gctrl[i]->ctrl);
+	for (i = 0; i < gd->spmi_bus_count; i++) {
+		if (gd->spmi_gctrl[i]) {
+			spmi_controller_remove(gd->spmi_gctrl[i]->spmi);
+			spmi_controller_put(gd->spmi_gctrl[i]->spmi);
 		}
+	}
+
+	for (i = 0; i < gd->i2c_bus_count; i++) {
+		if (gd->i2c_gctrl[i])
+			i2c_del_adapter(&gd->i2c_gctrl[i]->i2c);
 	}
 
 	pmic_glink_unregister_client(gd->client);
@@ -290,14 +474,14 @@ static int spmi_glink_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int spmi_glink_probe(struct platform_device *pdev)
+static int pmic_glink_debug_probe(struct platform_device *pdev)
 {
-	struct spmi_glink_dev *gd;
-	struct spmi_controller *ctrl;
+	struct pmic_glink_debug_dev *gd;
 	struct pmic_glink_client_data client_data = { };
-	struct spmi_glink_ctrl *gctrl;
-	struct device_node *node;
-	int ret, i;
+	struct fwnode_handle *child;
+	const char *bus = NULL;
+	u32 spmi_bus_count = 0, i2c_bus_count = 0;
+	int ret;
 
 	gd = devm_kzalloc(&pdev->dev, sizeof(*gd), GFP_KERNEL);
 	if (!gd)
@@ -308,21 +492,37 @@ static int spmi_glink_probe(struct platform_device *pdev)
 	init_completion(&gd->ack);
 	platform_set_drvdata(pdev, gd);
 
-	for_each_available_child_of_node(pdev->dev.of_node, node)
-		gd->bus_count++;
-	if (!gd->bus_count) {
-		dev_err(&pdev->dev, "SPMI bus child nodes missing\n");
+	device_for_each_child_node(&pdev->dev, child) {
+		ret = fwnode_property_read_string(child, "qcom,bus-type", &bus);
+		if (ret) {
+			if (ret == -EINVAL) {
+				spmi_bus_count++;
+				continue;
+			}
+			fwnode_handle_put(child);
+			dev_err(gd->dev, "Get qcom,bus-type failed, ret=%d\n", ret);
+			return ret;
+		}
+
+		if (!strcmp(bus, "i2c")) {
+			i2c_bus_count++;
+		} else if (!strcmp(bus, "spmi")) {
+			spmi_bus_count++;
+		} else  {
+			dev_err(gd->dev, "unsupported bus type: %s\n", bus);
+			fwnode_handle_put(child);
+			return -EINVAL;
+		}
+	}
+
+	if (!spmi_bus_count && !i2c_bus_count) {
+		dev_err(&pdev->dev, "pmic bus child nodes missing\n");
 		return -ENODEV;
 	}
 
-	gd->gctrl = devm_kcalloc(&pdev->dev, gd->bus_count, sizeof(*gd->gctrl),
-				GFP_KERNEL);
-	if (!gd->gctrl)
-		return -ENOMEM;
-
 	client_data.id = MSG_OWNER_REG_DUMP;
-	client_data.name = "spmi_register_debug";
-	client_data.msg_cb = spmi_glink_callback;
+	client_data.name = "pmic_register_dump";
+	client_data.msg_cb = pmic_glink_debug_callback;
 	client_data.priv = gd;
 
 	gd->client = pmic_glink_register_client(&pdev->dev, &client_data);
@@ -334,65 +534,58 @@ static int spmi_glink_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	i = 0;
-	for_each_available_child_of_node(pdev->dev.of_node, node) {
-		ctrl = spmi_controller_alloc(&pdev->dev, sizeof(*gctrl));
-		if (!ctrl) {
-			ret = -ENOMEM;
-			of_node_put(node);
-			goto err_remove_ctrl;
-		}
+	if (spmi_bus_count) {
+		gd->spmi_gctrl = devm_kcalloc(&pdev->dev, spmi_bus_count,
+				sizeof(*gd->spmi_gctrl), GFP_KERNEL);
+		if (!gd->spmi_gctrl)
+			return -ENOMEM;
+	}
 
-		gctrl = spmi_controller_get_drvdata(ctrl);
-		gctrl->ctrl = ctrl;
-		gctrl->gd = gd;
-		ret = of_property_read_u32(node, "reg", &gctrl->bus_id);
+	if (i2c_bus_count) {
+		gd->i2c_gctrl = devm_kcalloc(&pdev->dev, i2c_bus_count,
+				sizeof(*gd->i2c_gctrl), GFP_KERNEL);
+		if (!gd->i2c_gctrl)
+			return -ENOMEM;
+	}
+
+	device_for_each_child_node(&pdev->dev, child) {
+		bus = NULL;
+		ret = fwnode_property_read_string(child, "qcom,bus-type", &bus);
+		if (!ret && !strcmp(bus, "i2c"))
+			ret = pmic_glink_debug_add_i2c_bus(gd, child);
+		else
+			ret = pmic_glink_debug_add_spmi_bus(gd, child);
 		if (ret) {
-			dev_err(&pdev->dev, "Could not find reg property, ret=%d\n",
-				ret);
-			spmi_controller_put(ctrl);
-			of_node_put(node);
+			fwnode_handle_put(child);
 			goto err_remove_ctrl;
 		}
-
-		ctrl->cmd = spmi_glink_cmd;
-		ctrl->read_cmd = spmi_glink_read_cmd;
-		ctrl->write_cmd = spmi_glink_write_cmd;
-		ctrl->dev.of_node = node;
-
-		ret = spmi_controller_add(ctrl);
-		if (ret) {
-			spmi_controller_put(ctrl);
-			of_node_put(node);
-			goto err_remove_ctrl;
-		}
-
-		gd->gctrl[i++] = gctrl;
 	}
 
 	return 0;
 
 err_remove_ctrl:
-	spmi_glink_remove(pdev);
+	pmic_glink_debug_remove(pdev);
 
 	return ret;
 }
 
-static const struct of_device_id spmi_glink_match_table[] = {
+static const struct of_device_id pmic_glink_debug_match_table[] = {
+	{ .compatible = "qcom,pmic-glink-debug", },
 	{ .compatible = "qcom,spmi-glink-debug", },
-	{},
+	{ .compatible = "qcom,i2c-glink-debug", },
+	{}
 };
-MODULE_DEVICE_TABLE(of, spmi_glink_match_table);
+MODULE_DEVICE_TABLE(of, pmic_glink_debug_match_table);
 
-static struct platform_driver spmi_glink_driver = {
+static struct platform_driver pmic_glink_debug_driver = {
 	.driver = {
-		.name = "spmi_glink",
-		.of_match_table = spmi_glink_match_table,
+		.name = "pmic_glink_debug",
+		.of_match_table = pmic_glink_debug_match_table,
 	},
-	.probe = spmi_glink_probe,
-	.remove = spmi_glink_remove,
+	.probe = pmic_glink_debug_probe,
+	.remove = pmic_glink_debug_remove,
 };
-module_platform_driver(spmi_glink_driver);
+module_platform_driver(pmic_glink_debug_driver);
 
-MODULE_DESCRIPTION("SPMI Glink Debug Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("PMIC Glink Debug Driver");
+MODULE_LICENSE("GPL");
