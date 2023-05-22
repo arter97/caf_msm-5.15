@@ -5770,6 +5770,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
+	/* Use phy_addr passed from the partition only when the address
+	 * is a valid one and when "snps,phy-addr" is not present in the dtsi
+	 */
+	if (ethqos->early_eth_enabled && phyaddr_pt_param != -1 &&
+	    plat_dat->phy_addr == -1)
+		plat_dat->phy_addr = phyaddr_pt_param;
+
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
 		ethqos->ipa_enabled = true;
