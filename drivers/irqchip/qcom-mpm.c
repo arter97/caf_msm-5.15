@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -428,12 +428,16 @@ static inline void msm_mpm_timer_write(void)
 {
 	u32 lo = ~0U, hi = ~0U, ctrl;
 
+	if (system_state == SYSTEM_SUSPEND)
+		goto exit;
+
 	ctrl = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTV_CTL);
 	if (ctrl & MPM_ARCH_TIMER_CTRL_ENABLE) {
 		lo = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_LO);
 		hi = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_HI);
 	}
 
+exit:
 	writel_relaxed(lo, msm_mpm_dev_data.mpm_request_reg_base);
 	writel_relaxed(hi, msm_mpm_dev_data.mpm_request_reg_base + 0x4);
 }
@@ -557,9 +561,7 @@ static int msm_mpm_init(struct device_node *node)
 	}
 	dev->ipc_irq = irq;
 
-	ret = request_irq(dev->ipc_irq, msm_mpm_irq,
-		IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, "mpm",
-		msm_mpm_irq);
+	ret = request_irq(dev->ipc_irq, msm_mpm_irq, IRQF_TRIGGER_RISING, "mpm", msm_mpm_irq);
 	if (ret) {
 		pr_err("request_irq failed errno: %d\n", ret);
 		goto ipc_irq_err;
@@ -595,6 +597,16 @@ const struct mpm_pin mpm_khaje_gic_chip_data[] = {
 	{-1},
 };
 
+const struct mpm_pin mpm_qcs405_gic_chip_data[] = {
+	{2, 184}, /*tsens0_tsens_upper_lower_int */
+	{35, 318}, /* dmse_hv, usb20 -> hs_phy_irq */
+	{36, 318}, /* dpse_hv, usb20 -> hs_phy_irq */
+	{38, 319}, /* dmse_hv, usb30 -> hs_phy_irq */
+	{39, 319}, /* dpse_hv, usb30 -> hs_phy_irq */
+	{62, 190}, /* mpm_wake,spmi_m */
+	{-1},
+};
+
 const struct mpm_pin mpm_sa410m_gic_chip_data[] = {
 	{2, 275}, /*tsens0_tsens_upper_lower_int */
 	{5, 296}, /* lpass_irq_out_sdc */
@@ -615,6 +627,15 @@ const struct mpm_pin mpm_monaco_gic_chip_data[] = {
 	{-1},
 };
 
+const struct mpm_pin mpm_trinket_gic_chip_data[] = {
+	{2, 190},
+	{12, 422}, /* b3_lfps_rxterm_irq */
+	{86, 183}, /* mpm_wake,spmi_m */
+	{90, 260}, /* eud_p0_dpse_int_mx */
+	{91, 260}, /* eud_p0_dmse_int_mx */
+	{-1},
+};
+
 static const struct of_device_id mpm_gic_chip_data_table[] = {
 	{
 		.compatible = "qcom,mpm-khaje",
@@ -625,8 +646,16 @@ static const struct of_device_id mpm_gic_chip_data_table[] = {
 		.data = mpm_monaco_gic_chip_data,
 	},
 	{
+		.compatible = "qcom,mpm-qcs405",
+		.data = mpm_qcs405_gic_chip_data,
+	},
+	{
 		.compatible = "qcom,mpm-sa410m",
 		.data = mpm_sa410m_gic_chip_data,
+	},
+	{
+		.compatible = "qcom,mpm-trinket",
+		.data = mpm_trinket_gic_chip_data,
 	},
 	{}
 };

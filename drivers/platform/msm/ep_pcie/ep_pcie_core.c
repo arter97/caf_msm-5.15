@@ -63,7 +63,7 @@ static u32 clkreq_irq;
 struct ep_pcie_dev_t ep_pcie_dev = {0};
 
 static struct ep_pcie_vreg_info_t ep_pcie_vreg_info[EP_PCIE_MAX_VREG] = {
-	{NULL, "vreg-1p8", 1200000, 1200000, 30000, true},
+	{NULL, "vreg-1p2", 1200000, 1200000, 30000, true},
 	{NULL, "vreg-0p9", 912000, 912000, 132000, true},
 	{NULL, "vreg-cx", 0, 0, 0, false},
 	{NULL, "vreg-mx", 0, 0, 0, false}
@@ -94,6 +94,10 @@ static struct ep_pcie_clk_info_t
 	{NULL, "snoc_cnoc_gemnoc_pcie_south_qx_clk", 0, false},
 	{NULL, "snoc_cnoc_gemnoc_pcie_qx_clk", 0, false},
 	{NULL, "gemnoc_pcie_qx_clk", 0, false},
+	{NULL, "pcie_ddrss_sf_tbu_clk", 0, false},
+	{NULL, "pcie_aggre_noc_0_axi_clk", 0, false},
+	{NULL, "gcc_cnoc_pcie_sf_axi_clk", 0, false},
+	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
 static struct ep_pcie_clk_info_t
