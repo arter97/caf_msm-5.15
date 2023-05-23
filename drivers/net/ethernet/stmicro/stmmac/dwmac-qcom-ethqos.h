@@ -511,7 +511,7 @@ struct ip_params {
 struct mac_params {
 	phy_interface_t eth_intf;
 	bool is_valid_eth_intf;
-	unsigned long link_speed;
+	unsigned int link_speed;
 };
 
 int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos);

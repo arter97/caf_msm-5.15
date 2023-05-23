@@ -559,7 +559,7 @@ static int set_ethernet_speed(char *eth_speed)
 	if (!eth_speed)
 		return 1;
 
-	if (kstrtoul(eth_speed, 0, &mparams.link_speed))
+	if (kstrtou32(eth_speed, 0, &mparams.link_speed))
 		goto fail;
 
 	switch (mparams.link_speed) {
@@ -4691,8 +4691,10 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 {
 	struct device_node *fixed_phy_node;
 	struct property *status_prop;
+	struct property *speed_prop;
 	int mac2mac_speed;
 	int ret = 0;
+	static u32 speed;
 
 	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
 	if (of_device_is_available(fixed_phy_node)) {
@@ -4711,7 +4713,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 			status_prop = kzalloc(sizeof(*status_prop), GFP_KERNEL);
 
 			if (!status_prop) {
-				ETHQOSERR("kcalloc failed\n");
+				ETHQOSERR("kzalloc failed\n");
 				ret = -ENOMEM;
 			}
 
@@ -4721,7 +4723,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
 				kfree(status_prop);
-				ETHQOSERR("Fixed-link prop update failed\n");
+				ETHQOSERR("Fixed-link status update failed\n");
 				return -ENOENT;
 			}
 
@@ -4729,8 +4731,27 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			ETHQOSINFO("mac2mac mode: Fixed-link enabled from Partition\n");
 
-			if (mparams.link_speed)
-				plat_dat->mac2mac_speed = (int)mparams.link_speed;
+			speed_prop = kzalloc(sizeof(*speed_prop), GFP_KERNEL);
+
+			if (!speed_prop) {
+				ETHQOSERR("kzalloc failed\n");
+				ret = -ENOMEM;
+			}
+
+			speed = cpu_to_be32(mparams.link_speed);
+
+			speed_prop->name = kstrdup("speed", GFP_KERNEL);
+			speed_prop->value = &speed;
+			speed_prop->length = sizeof(u32);
+
+			if (!(of_update_property(fixed_phy_node, speed_prop) == 0)) {
+				kfree(speed_prop);
+				ETHQOSERR("Fixed-link speed update failed\n");
+				return -ENOENT;
+			}
+
+			ETHQOSINFO("mac2mac mode: Fixed-link speed updated from partition: %u\n",
+				   mparams.link_speed);
 		}
 	}
 
