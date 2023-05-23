@@ -4096,8 +4096,11 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 				state, mhi_reset);
 
 		rc = mhi_dev_mmio_read(mhi, BHI_INTVEC, &bhi_intvec);
-		if (rc)
+		if (rc) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+					"BHI_INTVEC read failed\n");
 			return rc;
+		}
 
 		while (bhi_intvec == 0xffffffff &&
 				bhi_max_cnt < MHI_BHI_INTVEC_MAX_CNT) {
@@ -4124,8 +4127,18 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 			/* Indicate the host that the device is ready */
 			rc = ep_pcie_trigger_msi(mhi->mhi_hw_ctx->phandle, bhi_intvec, mhi->vf_id);
 			if (rc) {
-				mhi_log(mhi->vf_id, MHI_MSG_ERROR, "error sending msi\n");
-				return rc;
+				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+						"error sending msi, trying to resend\n");
+				/*
+				 * Try to resend msi, in case if there is a delay in setting the MSI
+				 * capability bit after setting BME during initial boot up, by the
+				 * host.
+				 */
+				rc = ep_pcie_trigger_msi(mhi->mhi_hw_ctx->phandle, bhi_intvec, mhi->vf_id);
+				if(rc) {
+					mhi_log(mhi->vf_id, MHI_MSG_ERROR, "error sending msi\n");
+					return rc;
+				}
 			}
 		}
 
@@ -4874,13 +4887,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 		}
 	}
 
-	rc = mhi_dev_recover(mhi_ctx);
-	if (rc) {
-		mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR, "get mhi state failed\n");
-		mutex_unlock(&mhi_ctx->mhi_lock);
-		return rc;
-	}
-
 	rc = mhi_init(mhi_ctx, MHI_INIT);
 	if (rc) {
 		mutex_unlock(&mhi_ctx->mhi_lock);
@@ -5035,6 +5041,23 @@ static void mhi_dev_pcie_handle_event(struct work_struct *work)
 {
 	int rc = 0;
 	struct mhi_dev *mhi = container_of(work, struct mhi_dev, pcie_event);
+
+	if (mhi->is_mhi_pf) {
+		mhi->mhi_hw_ctx->phandle = ep_pcie_get_phandle(mhi->mhi_hw_ctx->ifc_id);
+		if (!mhi->mhi_hw_ctx->phandle) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "PCIe driver get handle failed.\n");
+			return;
+		}
+	}
+
+	if (mhi_dev_pcie_notify_event == MHI_INIT && !mhi->recover) {
+		rc = mhi_dev_recover(mhi);
+		if (rc) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "MHI recover failed\n");
+			return;
+		}
+		mhi->recover = true;
+	}
 
 	if (!mhi_dma_fun_ops && !mhi->use_edma) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "MHI DMA fun ops missing, defering\n");
