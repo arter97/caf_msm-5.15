@@ -6255,8 +6255,8 @@ static int dwc3_msm_check_extcon_prop(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (of_property_read_bool(node, "qcom,msm-probe-core-init"))
-		dwc3_ext_event_notify(mdwc);
+//	if (of_property_read_bool(node, "qcom,msm-probe-core-init"))
+//		dwc3_ext_event_notify(mdwc);
 
 	return ret;
 }
