@@ -5243,6 +5243,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		qcom_xpcs_destroy(priv->hw->qxpcs);
 	}
 
+	ethqos_remove_sysfs(ethqos);
+
 	ret = stmmac_pltfr_remove(pdev);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
@@ -5270,7 +5272,6 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
-	ethqos_remove_sysfs(ethqos);
 
 	debugfs_remove_recursive(ethqos->debugfs_dir);
 
