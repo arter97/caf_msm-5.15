@@ -214,6 +214,27 @@ struct stmmac_rfs_entry {
 	int tc;
 };
 
+struct l4_filter_info {
+	u8 l4_proto_number;
+	u16 src_port;
+	u16 dest_port;
+};
+
+struct l3_l4_ipv4_filter {
+	u32 src_addr;
+	u8 src_addr_mask;
+	u32 dest_addr;
+	u8 dest_addr_mask;
+	struct l4_filter_info l4_filter;
+};
+
+struct l3_l4_ipv6_filter {
+	bool src_or_dest_ip;
+	unsigned char src_or_dest_addr[16];
+	unsigned char src_or_dest_addr_mask;
+	struct l4_filter_info l4_filter;
+};
+
 struct stmmac_priv {
 	/* Frequently used values are kept adjacent for cache effect */
 	u32 tx_coal_frames[MTL_MAX_TX_QUEUES];
