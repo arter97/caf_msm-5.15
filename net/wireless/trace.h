@@ -2519,6 +2519,7 @@ TRACE_EVENT(rdev_del_pmk,
 		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(aa))
 );
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 TRACE_EVENT(rdev_external_auth,
 	    TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
 		     struct cfg80211_external_auth_params *params),
@@ -2544,6 +2545,32 @@ TRACE_EVENT(rdev_external_auth,
 		      WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->bssid,
 		      __entry->ssid, __entry->status, __entry->mld_addr)
 );
+
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+TRACE_EVENT(rdev_external_auth,
+	    TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
+		     struct cfg80211_external_auth_params *params),
+	    TP_ARGS(wiphy, netdev, params),
+	    TP_STRUCT__entry(WIPHY_ENTRY
+			     NETDEV_ENTRY
+			     MAC_ENTRY(bssid)
+			     __array(u8, ssid, IEEE80211_MAX_SSID_LEN + 1)
+			     __field(u16, status)
+	    ),
+	    TP_fast_assign(WIPHY_ASSIGN;
+			   NETDEV_ASSIGN;
+			   MAC_ASSIGN(bssid, params->bssid);
+			   memset(__entry->ssid, 0, IEEE80211_MAX_SSID_LEN + 1);
+			   memcpy(__entry->ssid, params->ssid.ssid,
+				  params->ssid.ssid_len);
+			   __entry->status = params->status;
+	    ),
+	    TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", bssid: " MAC_PR_FMT
+		      ", ssid: %s, status: %u",
+		      WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->bssid,
+		      __entry->ssid, __entry->status)
+);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 TRACE_EVENT(rdev_start_radar_detection,
 	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
@@ -3751,6 +3778,7 @@ TRACE_EVENT(cfg80211_pmsr_complete,
 		  (unsigned long long)__entry->cookie)
 );
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 TRACE_EVENT(cfg80211_update_owe_info_event,
 	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
 		 struct cfg80211_update_owe_info *owe_info),
@@ -3777,6 +3805,30 @@ TRACE_EVENT(cfg80211_update_owe_info_event,
 		  WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->peer,
 		  __entry->assoc_link_id, __entry->peer_mld_addr)
 );
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+TRACE_EVENT(cfg80211_update_owe_info_event,
+	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
+		 struct cfg80211_update_owe_info *owe_info),
+	TP_ARGS(wiphy, netdev, owe_info),
+	TP_STRUCT__entry(
+		WIPHY_ENTRY
+		NETDEV_ENTRY
+		MAC_ENTRY(peer)
+		__dynamic_array(u8, ie, owe_info->ie_len)
+	),
+	TP_fast_assign(
+		WIPHY_ASSIGN;
+		NETDEV_ASSIGN;
+		MAC_ASSIGN(peer, owe_info->peer);
+		memcpy(__get_dynamic_array(ie), owe_info->ie,
+		       owe_info->ie_len);
+	),
+	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", peer: %pM,"
+	          " assoc_link_id: %d, peer_mld_addr: %pM",
+		  WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->peer)
+);
+
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 TRACE_EVENT(cfg80211_bss_color_notify,
 	TP_PROTO(struct net_device *netdev,

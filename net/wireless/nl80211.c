@@ -6641,6 +6641,7 @@ static int nl80211_send_station(struct sk_buff *msg, u32 cmd, u32 portid,
 		    sinfo->assoc_req_ies))
 		goto nla_put_failure;
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	if (sinfo->assoc_resp_ies_len &&
 	    nla_put(msg, NL80211_ATTR_RESP_IE, sinfo->assoc_resp_ies_len,
 		    sinfo->assoc_resp_ies))
@@ -6656,6 +6657,7 @@ static int nl80211_send_station(struct sk_buff *msg, u32 cmd, u32 portid,
 			    sinfo->mld_addr))
 			goto nla_put_failure;
 	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	cfg80211_sinfo_release_content(sinfo);
 	genlmsg_end(msg, hdr);
@@ -19884,9 +19886,12 @@ int cfg80211_external_auth_request(struct net_device *dev,
 	    nla_put(msg, NL80211_ATTR_BSSID, ETH_ALEN, params->bssid) ||
 	    (params->ssid.ssid_len &&
 	     nla_put(msg, NL80211_ATTR_SSID, params->ssid.ssid_len,
-		     params->ssid.ssid)) ||
-	    (!is_zero_ether_addr(params->mld_addr) &&
-	     nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, params->mld_addr)))
+		     params->ssid.ssid))
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	    || (!is_zero_ether_addr(params->mld_addr) &&
+	     nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, params->mld_addr))
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+	   )
 		goto nla_put_failure;
 
 	genlmsg_end(msg, hdr);
@@ -19928,6 +19933,7 @@ void cfg80211_update_owe_info_event(struct net_device *netdev,
 	    nla_put(msg, NL80211_ATTR_IE, owe_info->ie_len, owe_info->ie))
 		goto nla_put_failure;
 
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 	if (owe_info->assoc_link_id != -1) {
 		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID,
 			       owe_info->assoc_link_id))
@@ -19938,6 +19944,7 @@ void cfg80211_update_owe_info_event(struct net_device *netdev,
 			    owe_info->peer_mld_addr))
 			goto nla_put_failure;
 	}
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	genlmsg_end(msg, hdr);
 
