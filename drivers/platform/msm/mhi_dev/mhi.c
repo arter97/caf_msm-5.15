@@ -152,6 +152,8 @@ int mhi_dma_provide_ops(const struct mhi_dma_ops *ops)
 	}
 	mhi->mhi_hw_ctx->phandle = ep_pcie_get_phandle(mhi->mhi_hw_ctx->ifc_id);
 	if (mhi->mhi_hw_ctx->phandle) {
+		/* Get EP PCIe capabilities to check if it supports SRIOV capability */
+		ep_pcie_core_get_capability(mhi_hw_ctx->phandle, &mhi_hw_ctx->ep_cap);
 		/* PCIe link is already up */
 		mhi_dev_pcie_notify_event = MHI_INIT;
 		mhi_dev_setup_virt_device(mhi->mhi_hw_ctx);
@@ -4056,6 +4058,16 @@ exit:
 }
 EXPORT_SYMBOL(mhi_dev_write_channel);
 
+struct mhi_dev_ops dev_ops = {
+	.register_state_cb	= mhi_vf_register_state_cb,
+	.ctrl_state_info	= mhi_vf_ctrl_state_info,
+	.open_channel		= mhi_dev_vf_open_channel,
+	.close_channel		= mhi_dev_close_channel,
+	.write_channel		= mhi_dev_write_channel,
+	.read_channel		= mhi_dev_read_channel,
+	.is_channel_empty	= mhi_dev_channel_isempty,
+};
+
 static int mhi_dev_recover(struct mhi_dev *mhi)
 {
 	int rc = 0;
@@ -4141,23 +4153,6 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 		if (!mhi_reset) {
 			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "Host failed to set reset\n");
 			return -EINVAL;
-		}
-
-		mhi_dev_mmio_masked_read(mhi, MHISTATUS, MHISTATUS_MHISTATE_MASK,
-					MHISTATUS_MHISTATE_SHIFT, &state);
-		/*
-		 * In warm reboot path, boot loaders doesn't clear error state
-		 * in MHI-STATUS. So if MHI reset is set by, update status also
-		 * to RESET state.
-		 */
-		if (mhi->vf_id && state == MHI_DEV_SYSERR_STATE) {
-			mhi_log(mhi->vf_id, MHI_MSG_DBG,
-				"Set MHISTATE in MHISTATUS to Reset state for vf=%d\n",
-				mhi->vf_id);
-			mhi_dev_mmio_masked_write(mhi, MHISTATUS,
-					MHISTATUS_MHISTATE_MASK,
-					MHISTATUS_MHISTATE_SHIFT,
-					MHI_DEV_RESET_STATE);
 		}
 
 	}
@@ -4263,7 +4258,7 @@ static void mhi_dev_enable(struct work_struct *work)
 		mhi_update_state_info(mhi, MHI_STATE_CONFIGURED);
 
 	/* Enable MHI dev network stack Interface */
-	rc = mhi_dev_net_interface_init(mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
+	rc = mhi_dev_net_interface_init(&dev_ops, mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
 	if (rc)
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"Failed to initialize mhi_dev_net iface\n");
@@ -4664,8 +4659,17 @@ static int mhi_init(struct mhi_dev *mhi, bool init_state)
 		return rc;
 	}
 
-	if (init_state == MHI_REINIT)
+	/*
+	 * In warm reboot path, boot loaders doesn't clear error state
+	 * in MHI-STATUS, MHI-CTRL. So if MHI reset is set by, update status also
+	 * to RESET state.
+	 */
+	if (init_state == MHI_REINIT || mhi->vf_id) {
+		mhi_log(mhi->vf_id, MHI_MSG_DBG,
+			"Set MHISTATUS/MHICTRL to Reset, init_state:%d for vf=%d\n",
+			init_state, mhi->vf_id);
 		mhi_dev_mmio_reset(mhi);
+	}
 
 	/*
 	 * mhi_init is also called during device reset, in
@@ -5195,6 +5199,8 @@ static int mhi_dev_probe(struct platform_device *pdev)
 	if (mhi_hw_ctx->phandle) {
 		/* PCIe link is already up */
 		mhi_dev_pcie_notify_event = MHI_INIT;
+		/* Get EP PCIe capabilities to check if it supports SRIOV capability */
+		ep_pcie_core_get_capability(mhi_hw_ctx->phandle, &mhi_hw_ctx->ep_cap);
 		/*
 		 * Setup all virtual device prior to PF Mission mode
 		 * completion to make sure VF's are initialized in mission

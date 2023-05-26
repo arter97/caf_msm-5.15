@@ -1273,6 +1273,22 @@ static const struct adsp_data kalama_adsp_resource = {
 	.ssctl_id = 0x14,
 };
 
+static const struct adsp_data crow_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.dtb_firmware_name = "adsp_dtb.mdt",
+	.pas_id = 1,
+	.dtb_pas_id = 0x24,
+	.minidump_id = 5,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
 static const struct adsp_data khaje_adsp_resource = {
 	.crash_reason_smem = 423,
 	.firmware_name = "adsp.mdt",
@@ -1391,6 +1407,22 @@ static const struct adsp_data kalama_cdsp_resource = {
 	.ssctl_id = 0x17,
 };
 
+static const struct adsp_data crow_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.dtb_firmware_name = "cdsp_dtb.mdt",
+	.pas_id = 18,
+	.dtb_pas_id = 0x25,
+	.minidump_id = 7,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
 static const struct adsp_data khaje_cdsp_resource = {
 	.crash_reason_smem = 601,
 	.firmware_name = "cdsp.mdt",
@@ -1450,6 +1482,24 @@ static const struct adsp_data kalama_mpss_resource = {
 	.has_aggre2_clk = false,
 	.auto_boot = false,
 	.needs_dsm_mem_setup = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x12,
+	.dma_phys_below_32b = true,
+};
+
+static const struct adsp_data crow_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.dtb_firmware_name = "modem_dtb.mdt",
+	.pas_id = 4,
+	.dtb_pas_id = 0x26,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
@@ -1708,7 +1758,7 @@ static const struct adsp_data scuba_auto_lpass_resource = {
 };
 
 static const struct adsp_data lemans_adsp_resource = {
-	.crash_reason_smem = 2,
+	.crash_reason_smem = 423,
 	.firmware_name = "adsp.mdt",
 	.pas_id = 1,
 	.uses_elf64 = true,
@@ -1861,6 +1911,9 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,kona-adsp-pas", .data = &kona_adsp_resource},
 	{ .compatible = "qcom,kona-cdsp-pas", .data = &kona_cdsp_resource},
 	{ .compatible = "qcom,kona-slpi-pas", .data = &kona_slpi_resource},
+	{ .compatible = "qcom,crow-adsp-pas", .data = &crow_adsp_resource},
+	{ .compatible = "qcom,crow-cdsp-pas", .data = &crow_cdsp_resource},
+	{ .compatible = "qcom,crow-modem-pas", .data = &crow_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
