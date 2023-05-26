@@ -3,6 +3,8 @@
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#define pr_fmt(fmt) "minidump-mmio: " fmt
+
 #include <linux/init.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
@@ -59,6 +61,7 @@ static struct md_table minidump_table;
 static struct md_global_toc *md_global_toc;
 static struct md_ss_toc *md_ss_toc;
 static int first_removed_entry = INT_MAX;
+static int vm_id = -1;
 
 static bool md_mmio_get_toc_init(void)
 {
@@ -212,6 +215,27 @@ static void md_mmio_add_ss_toc(const struct md_region *entry)
 	md_mmio_set_ss_region_count(reg_cnt + 1);
 }
 
+void md_mmio_update_regions_name(char *name)
+{
+	struct device_node *hab_node = NULL;
+	int result;
+	char new_name[MAX_REGION_NAME_LENGTH] = {0};
+
+	/* parse device tree*/
+	hab_node = of_find_compatible_node(NULL, NULL, "qcom,hab");
+	if (!hab_node)
+		pr_err("no hab device tree node\n");
+
+	/* read the local vmid of this VM */
+	result = of_property_read_u32(hab_node, "vmid", &vm_id);
+	if (result)
+		pr_err("failed to read local vmid, result = %d\n", result);
+
+	scnprintf(new_name, MAX_REGION_NAME_LENGTH, "%d_%s", vm_id, name);
+	strlcpy(name, new_name, MAX_REGION_NAME_LENGTH);
+}
+
+
 static int md_mmio_add_pending_entry(struct list_head *pending_list)
 {
 	unsigned int region_number;
@@ -227,6 +251,7 @@ static int md_mmio_add_pending_entry(struct list_head *pending_list)
 	region_number = 0;
 	list_for_each_entry_safe(pending_region, tmp, pending_list, list) {
 		/* Add pending entry to minidump table and ss toc */
+		md_mmio_update_regions_name((char *)pending_region->entry.name);
 		minidump_table.entry[region_number] =
 			pending_region->entry;
 		md_mmio_add_ss_toc(&minidump_table.entry[region_number]);
@@ -242,9 +267,12 @@ static int md_mmio_add_pending_entry(struct list_head *pending_list)
 static void md_mmio_reg_kelfhdr_entry(unsigned int elfh_size)
 {
 	struct md_ss_region *mdreg;
+	char elf_name[MAX_REGION_NAME_LENGTH] = "KELF_HDR";
+
+	md_mmio_update_regions_name(elf_name);
 
 	mdreg = &minidump_table.md_regions[0];
-	strscpy(mdreg->name, "KELF_HDR", sizeof(mdreg->name));
+	strscpy(mdreg->name, elf_name, sizeof(mdreg->name));
 	mdreg->region_base_address = virt_to_phys(minidump_elfheader.ehdr);
 	mdreg->region_size = elfh_size;
 
@@ -339,6 +367,8 @@ static int md_mmio_add_region(const struct md_region *entry, struct list_head *p
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	md_mmio_update_regions_name((char *)entry->name);
 
 	toc_init = 0;
 	if (minidump_table.md_ss_toc &&
