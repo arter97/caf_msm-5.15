@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2012-2021 InvenSense, Inc.
  *
@@ -38,12 +39,13 @@ s64 get_time_ns(void)
 #else
 s64 get_time_ns(void)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
+#if KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE
 	/* kernel ~4.18 */
 	struct timespec ts;
+
 	get_monotonic_boottime(&ts);
 	return timespec_to_ns(&ts);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 3, 0)
+#elif KERNEL_VERSION(5, 3, 0) > LINUX_VERSION_CODE
 	/* kernel 4.19~5.2 */
 	return ktime_get_boot_ns();
 #else
@@ -983,7 +985,7 @@ int inv_check_sensor_on(struct inv_mpu_state *st)
 				 || st->chip_config.pick_up_enable
 				 || st->chip_config.tilt_enable))
 			|| st->chip_config.stationary_detect_enable
-			||st->chip_config.motion_detect_enable)
+			|| st->chip_config.motion_detect_enable)
 		st->sensor_l[SENSOR_L_GESTURE_ACCEL].on = true;
 	else
 		st->sensor_l[SENSOR_L_GESTURE_ACCEL].on = false;
@@ -1165,6 +1167,117 @@ int inv_check_sensor_on(struct inv_mpu_state *st)
 		st->sensor[SENSOR_ACCEL].rate =
 			max(st->sensor[SENSOR_ACCEL].rate,
 			inv_get_apex_odr(st));
+	}
+
+	/* set rate for corresponding wake-up and non wake-up sensors */
+	for (i = 0; i < ARRAY_SIZE(wake); i++)
+		inv_check_wake_non_wake(st, wake[i], non_wake[i]);
+
+	/* calculate decimation rate for each sensor */
+	for (i = 0; i < SENSOR_L_NUM_MAX; i++) {
+		if (st->sensor_l[i].on) {
+			if (st->sensor_l[i].rate)
+				st->sensor_l[i].div =
+				    st->sensor[st->sensor_l[i].base].rate
+							/ st->sensor_l[i].rate;
+			else
+				st->sensor_l[i].div = 0xffff;
+			pr_debug("sensor= %d, div= %d\n",
+						i, st->sensor_l[i].div);
+		}
+	}
+
+	/* set decimation rate for corresponding wake-up and non wake-up sensors */
+	for (i = 0; i < ARRAY_SIZE(wake); i++)
+		inv_check_wake_non_wake_divider(st, wake[i], non_wake[i]);
+
+	return 0;
+}
+#elif defined(CONFIG_INV_MPU_IIO_ICM45600)
+int inv_check_sensor_on(struct inv_mpu_state *st)
+{
+	int i;
+	enum SENSOR_L wake[] = {SENSOR_L_GYRO_WAKE, SENSOR_L_ACCEL_WAKE,
+					SENSOR_L_MAG_WAKE};
+	enum SENSOR_L non_wake[] = {SENSOR_L_GYRO, SENSOR_L_ACCEL,
+					SENSOR_L_MAG};
+
+	/* initialize rates */
+	st->sensor_l[SENSOR_L_GESTURE_ACCEL].rate = GESTURE_ACCEL_RATE;
+	for (i = 0; i < SENSOR_NUM_MAX; i++)
+		st->sensor[i].on = false;
+
+#if defined(SUPPORT_ACCEL_LPM)
+	for (i = 0; i < SENSOR_NUM_MAX; i++)
+		st->sensor[i].rate = MPU_INIT_SENSOR_RATE_LPM;
+	st->sensor[SENSOR_GYRO].rate = MPU_INIT_SENSOR_RATE_LNM;
+#else
+	for (i = 0; i < SENSOR_NUM_MAX; i++)
+		st->sensor[i].rate = MPU_INIT_SENSOR_RATE_LNM;
+#endif /* SUPPORT_ACCEL_LPM */
+
+	/* set GESTURE_ACCEL on to support gestures at HAL
+	 * if Apex is supported inside sensor, gesture accel is false
+	 */
+	if (st->apex_supported)
+		st->sensor_l[SENSOR_L_GESTURE_ACCEL].on = false;
+	else
+		st->sensor_l[SENSOR_L_GESTURE_ACCEL].on = true;
+
+	/* set wake_on according to enabled sensors */
+	st->chip_config.wake_on = false;
+	for (i = 0; i < SENSOR_L_NUM_MAX; i++) {
+		if (st->sensor_l[i].on && st->sensor_l[i].rate) {
+			st->sensor[st->sensor_l[i].base].on = true;
+			st->chip_config.wake_on |= st->sensor_l[i].wake_on;
+		}
+	}
+	/* set wake_on when DMP/HW wake-up gestures are enabled */
+	if (st->step_detector_wake_l_on ||
+			st->step_counter_wake_l_on ||
+			st->chip_config.pick_up_enable ||
+			st->chip_config.tilt_enable ||
+			st->chip_config.tap_enable ||
+			st->smd.on)
+		st->chip_config.wake_on = true;
+
+	/* only gesture accel is enabled? */
+	if (inv_get_apex_enabled(st) &&
+			(!st->sensor[SENSOR_ACCEL].on) &&
+			(!st->sensor[SENSOR_GYRO].on) &&
+			(!st->sensor[SENSOR_COMPASS].on) &&
+			(!st->sensor[SENSOR_PRESSURE].on))
+		st->gesture_only_on = true;
+	else
+		st->gesture_only_on = false;
+
+	/* update rate to user side for sensors which are affected by gesture */
+	if (st->sensor_l[SENSOR_L_GESTURE_ACCEL].on) {
+		for (i = 0; i < SENSOR_L_NUM_MAX; i++) {
+			if (st->sensor_l[i].on &&
+					st->sensor_l[SENSOR_L_GESTURE_ACCEL].base ==
+					st->sensor_l[i].base) {
+				st->sensor_l[i].rate =
+					max(st->sensor_l[i].rate,
+							st->sensor_l[SENSOR_L_GESTURE_ACCEL].rate);
+			}
+		}
+	}
+
+	/* set rate for each sensor */
+	for (i = 0; i < SENSOR_L_NUM_MAX; i++) {
+		if (st->sensor_l[i].on) {
+			st->sensor[st->sensor_l[i].base].rate =
+			    max(st->sensor[st->sensor_l[i].base].rate,
+							st->sensor_l[i].rate);
+		}
+	}
+	if (st->chip_config.eis_enable)
+		st->sensor_l[SENSOR_L_EIS_GYRO].rate = ESI_GYRO_RATE;
+	if (st->sensor_l[SENSOR_L_GESTURE_ACCEL].on) {
+		st->sensor[SENSOR_ACCEL].rate =
+			max(st->sensor[SENSOR_ACCEL].rate,
+			st->sensor_l[SENSOR_L_GESTURE_ACCEL].rate);
 	}
 
 	/* set rate for corresponding wake-up and non wake-up sensors */
