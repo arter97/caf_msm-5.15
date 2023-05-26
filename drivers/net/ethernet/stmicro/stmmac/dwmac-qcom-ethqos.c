@@ -5572,22 +5572,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
-	if (of_property_read_bool(pdev->dev.of_node,
-				  "emac-phy-off-suspend")) {
-		ret = of_property_read_u32(pdev->dev.of_node,
-					   "emac-phy-off-suspend",
-					   &ethqos->current_phy_mode);
-		if (ret) {
-			ETHQOSDBG(":resource emac-phy-off-suspend! ");
-			ETHQOSDBG("not in dtsi\n");
-			ethqos->current_phy_mode = 0;
-		}
-	}
-	ETHQOSINFO("emac-phy-off-suspend = %d\n",
-		   ethqos->current_phy_mode);
-
-	ethqos->ioaddr = (&stmmac_res)->addr;
-
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
 		ethqos->ipa_enabled = true;
