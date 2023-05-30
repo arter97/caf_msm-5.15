@@ -45,6 +45,16 @@
 #define ADSP_DOWN_EVENT_TO_SLATE_TIMEOUT 3000
 #define MAX_APP_NAME_SIZE 100
 #define COMPAT_PTR(val) ((void *)((uint64_t)val & 0xffffffffUL))
+<<<<<<< HEAD   (f56211 net: stmmac: Disabling/Enabling GDSC regulators on Suspend/R)
+=======
+#define __QAPI_VERSION_MAJOR_SHIFT (24)
+#define __QAPI_VERSION_MINOR_SHIFT (16)
+#define __QAPI_VERSION_NIT_SHIFT (0)
+#define __QAPI_VERSION_MAJOR_MASK (0xff000000)
+#define __QAPI_VERSION_MINOR_MASK (0x00ff0000)
+#define __QAPI_VERSION_NIT_MASK (0x0000ffff)
+#define SCOM_GLINK_INTENT_SIZE 308
+>>>>>>> CHANGE (8a271e soc: qcom: add buffer overflow check on AON rx_buffer)
 
 /*pil_slate_intf.h*/
 #define RESULT_SUCCESS 0
@@ -112,7 +122,11 @@ struct slatedaemon_priv {
 	bool slate_resp_cmplt;
 	void *lhndl;
 	wait_queue_head_t link_state_wait;
+<<<<<<< HEAD   (f56211 net: stmmac: Disabling/Enabling GDSC regulators on Suspend/R)
 	char rx_buf[20];
+=======
+	char rx_buf[SCOM_GLINK_INTENT_SIZE];
+>>>>>>> CHANGE (8a271e soc: qcom: add buffer overflow check on AON rx_buffer)
 	struct work_struct slatecom_up_work;
 	struct work_struct slatecom_down_work;
 	struct mutex glink_mutex;
@@ -217,6 +231,10 @@ void slatecom_rx_msg(void *data, int len)
 	struct slatedaemon_priv *dev =
 		container_of(slatecom_intf_drv, struct slatedaemon_priv, lhndl);
 
+	if (len > SCOM_GLINK_INTENT_SIZE) {
+		pr_err("Invalid slatecom_intf glink intent size\n");
+		return;
+	}
 	dev->slate_resp_cmplt = true;
 	wake_up(&dev->link_state_wait);
 	memcpy(dev->rx_buf, data, len);
