@@ -6299,11 +6299,6 @@ static int qcom_ethqos_suspend(struct device *dev)
 			ret = ethqos_disable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
-
-			/* Reset the speed in suspend so that SerDes gets reinitialized
-			 * during resume.
-			 */
-			qcom_ethqos_reset_serdes_speed(ethqos);
 		}
 	}
 
@@ -6363,19 +6358,22 @@ static int qcom_ethqos_resume(struct device *dev)
 
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
-		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
-		if (ret)
-			return -EINVAL;
-
-		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
-		if (ret)
-			return -EINVAL;
-
 		if (priv->plat->pm_lite) {
 			ret = ethqos_enable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
 		}
+
+		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
+		if (ret)
+			return -EINVAL;
+
+		qcom_ethqos_serdes_soft_reset(ethqos);
+
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret)
+			return -EINVAL;
+
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
