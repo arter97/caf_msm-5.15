@@ -1187,6 +1187,11 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+	if (priv->plat->fix_mac_speed) {
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
+		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
+	}
+
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
