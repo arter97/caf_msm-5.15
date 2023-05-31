@@ -1910,15 +1910,15 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		}
 	}
 
-	gi2c->tx_sg = dmam_alloc_coherent(gi2c->dev, 5 * sizeof(struct scatterlist),
-					 &gi2c->tx_sg_dma, GFP_KERNEL);
+	gi2c->tx_sg = dmam_alloc_coherent(gi2c->dev, 5*sizeof(struct scatterlist),
+					  &gi2c->tx_sg_dma, GFP_KERNEL);
 	if (!gi2c->tx_sg) {
 		dev_err(&pdev->dev, "could not allocate for tx_sg\n");
 		return -ENOMEM;
 	}
 
 	gi2c->rx_sg = dmam_alloc_coherent(gi2c->dev, sizeof(struct scatterlist),
-					 &gi2c->rx_sg_dma, GFP_KERNEL);
+					  &gi2c->rx_sg_dma, GFP_KERNEL);
 	if (!gi2c->rx_sg) {
 		dev_err(&pdev->dev, "could not allocate for rx_sg\n");
 		return -ENOMEM;
