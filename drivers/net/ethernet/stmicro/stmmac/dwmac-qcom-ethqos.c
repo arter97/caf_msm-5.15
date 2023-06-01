@@ -4814,17 +4814,21 @@ static int ethqos_enable_wol(struct net_device *ndev, struct ethtool_wolinfo *wo
 			return ret;
 
 		if (wol->wolopts) {
-			ret = enable_irq_wake(ethqos->phy_intr);
+			if (!priv->dev->wol_enabled)
+				ret = enable_irq_wake(ethqos->phy_intr);
+
 			priv->dev->wol_enabled = true;
 			ETHQOSINFO("Enabled WoL\n");
 		} else {
-			ret = disable_irq_wake(ethqos->phy_intr);
+			if (priv->dev->wol_enabled)
+				ret = disable_irq_wake(ethqos->phy_intr);
+
 			priv->dev->wol_enabled = false;
 			ETHQOSINFO("Disabled WoL\n");
 		}
 
 		if (ret) {
-			ETHQOSERR("Failed to configure WoL\n");
+			ETHQOSERR("Failed to configure WoL IRQ\n");
 			return ret;
 		}
 	} else {
