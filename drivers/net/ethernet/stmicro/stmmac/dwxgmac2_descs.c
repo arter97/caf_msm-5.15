@@ -22,9 +22,10 @@ static int dwxgmac2_get_tx_status(void *data, struct stmmac_extra_stats *x,
 	return ret;
 }
 
-static int dwxgmac2_get_rx_status(void *data, struct stmmac_extra_stats *x,
-				  struct dma_desc *p)
+static int dwxgmac2_get_rx_status_err(void *data, struct stmmac_extra_stats *x,
+				      struct dma_desc *p, int *status)
 {
+	struct net_device_stats *stats = (struct net_device_stats *)data;
 	unsigned int rdes3 = le32_to_cpu(p->des3);
 
 	if (unlikely(rdes3 & XGMAC_RDES3_OWN))
@@ -33,10 +34,45 @@ static int dwxgmac2_get_rx_status(void *data, struct stmmac_extra_stats *x,
 		return discard_frame;
 	if (likely(!(rdes3 & XGMAC_RDES3_LD)))
 		return rx_not_ls;
-	if (unlikely((rdes3 & XGMAC_RDES3_ES) && (rdes3 & XGMAC_RDES3_LD)))
+	if (unlikely((rdes3 & XGMAC_RDES3_ES) && (rdes3 & XGMAC_RDES3_LD))) {
+		if (unlikely(((rdes3 & XGMAC_RDES3_ET) >> 16) == XGMAC_RDES3_WDT)) {
+			x->rx_watchdog++;
+			*status = WDT_ERR;
+		}
+
+		if (unlikely(((rdes3 & XGMAC_RDES3_ET) >> 16) == XGMAC_RDES3_OVERFLOW)) {
+			x->rx_gmac_overflow++;
+			*status = OVERFLOW_ERR;
+		}
+
+		if (unlikely(((rdes3 & XGMAC_RDES3_ET) >> 16) == XGMAC_RDES3_CRC)) {
+			x->rx_crc_errors++;
+			stats->rx_crc_errors++;
+			*status = CRC_ERR;
+		}
+
+		if (unlikely(((rdes3 & XGMAC_RDES3_ET) >> 16) == XGMAC_RDES3_DRIBBLE)) {
+			x->dribbling_bit++;
+			*status = DRIBBLE_ERR;
+		}
+
+		if (unlikely(((rdes3 & XGMAC_RDES3_ET) >> 16) == XGMAC_RDES3_RECEIVE_ERROR)) {
+			x->rx_mii++;
+			*status = RECEIVE_ERR;
+		}
+
 		return discard_frame;
+	}
 
 	return good_frame;
+}
+
+static int dwxgmac2_get_rx_status(void *data, struct stmmac_extra_stats *x,
+				  struct dma_desc *p)
+{
+	int status;
+
+	return dwxgmac2_get_rx_status_err(data, x, p, &status);
 }
 
 static int dwxgmac2_get_tx_len(struct dma_desc *p)
@@ -412,6 +448,7 @@ static void dwxgmac2_display_ring(void *head, unsigned int size, bool rx,
 const struct stmmac_desc_ops dwxgmac210_desc_ops = {
 	.tx_status = dwxgmac2_get_tx_status,
 	.rx_status = dwxgmac2_get_rx_status,
+	.rx_status_err = dwxgmac2_get_rx_status_err,
 	.get_tx_len = dwxgmac2_get_tx_len,
 	.get_tx_owner = dwxgmac2_get_tx_owner,
 	.set_tx_owner = dwxgmac2_set_tx_owner,
