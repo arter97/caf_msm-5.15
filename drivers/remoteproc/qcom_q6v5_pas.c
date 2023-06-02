@@ -1602,6 +1602,7 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
+	.needs_dsm_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
