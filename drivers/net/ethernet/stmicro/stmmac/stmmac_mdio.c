@@ -88,11 +88,17 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	u32 tmp, addr, value = MII_XGMAC_BUSY;
 	int ret;
 
+	if (atomic_read(&priv->plat->phy_clks_suspended))
+		return -EBUSY;
+
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
 		pm_runtime_put_noidle(priv->device);
 		return ret;
 	}
+
+	priv->plat->mdio_op_busy = true;
+	reinit_completion(&priv->plat->mdio_op);
 
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
@@ -143,6 +149,9 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 err_disable_clks:
 	pm_runtime_put(priv->device);
 
+	priv->plat->mdio_op_busy = false;
+	complete_all(&priv->plat->mdio_op);
+
 	return ret;
 }
 
@@ -156,11 +165,17 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 	u32 addr, tmp, value = MII_XGMAC_BUSY;
 	int ret;
 
+	if (atomic_read(&priv->plat->phy_clks_suspended))
+		return -EBUSY;
+
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
 		pm_runtime_put_noidle(priv->device);
 		return ret;
 	}
+
+	priv->plat->mdio_op_busy = true;
+	reinit_completion(&priv->plat->mdio_op);
 
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
@@ -205,6 +220,9 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 
 err_disable_clks:
 	pm_runtime_put(priv->device);
+
+	priv->plat->mdio_op_busy = false;
+	complete_all(&priv->plat->mdio_op);
 
 	return ret;
 }
@@ -516,6 +534,8 @@ int stmmac_mdio_register(struct net_device *ndev)
 		if (priv->plat->phy_addr > MII_XGMAC_MAX_C22ADDR)
 			dev_err(dev, "Unsupported phy_addr (max=%d)\n",
 					MII_XGMAC_MAX_C22ADDR);
+
+		init_completion(&priv->plat->mdio_op);
 	} else {
 		new_bus->read = &stmmac_mdio_read;
 		new_bus->write = &stmmac_mdio_write;

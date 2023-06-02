@@ -330,5 +330,8 @@ struct plat_stmmacenet_data {
 	bool plat_wait_for_emac_rx_clk_en;
 	bool rx_clk_rdy;
 	bool mac_err_rec;
+	bool mdio_op_busy;
+	atomic_t phy_clks_suspended;
+	struct completion mdio_op;
 };
 #endif
