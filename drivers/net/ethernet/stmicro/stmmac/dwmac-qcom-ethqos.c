@@ -5809,7 +5809,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
-	ethqos->passthrough_en = 0;
+	if (ethqos->early_eth_enabled)
+		ethqos->passthrough_en = 1;
+	else
+		ethqos->passthrough_en = 0;
 #else
 	ethqos->cv2x_priority = 0;
 #endif
