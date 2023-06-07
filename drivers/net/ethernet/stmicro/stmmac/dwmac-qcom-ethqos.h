@@ -449,6 +449,7 @@ struct qcom_ethqos {
 	int curr_serdes_speed;
 	unsigned int emac_phy_off_suspend;
 	int loopback_speed;
+	u32 max_speed_enforce;
 	enum phy_power_mode current_phy_mode;
 	enum current_phy_state phy_state;
 	/*Backup variable for phy loopback*/

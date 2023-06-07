@@ -3960,6 +3960,60 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	return count;
 }
 
+static ssize_t speed_chg_handling_config(struct file *file, const char __user *user_buffer,
+					 size_t count, loff_t *position)
+{
+	char *in_buf;
+	int buf_len = 200;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+	int speed = 0;
+
+	in_buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!in_buf)
+		return -ENOMEM;
+
+	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		goto fail;
+	}
+
+	ret = sscanf(in_buf, "%d", &speed);
+	if (ret != 1) {
+		ETHQOSERR("Max speed param is needed\n");
+		goto fail;
+	}
+
+	switch (speed) {
+	case SPEED_5000:
+	case SPEED_2500:
+	case 0:
+		ethqos->max_speed_enforce = speed;
+		break;
+
+	default:
+		ETHQOSINFO("Invalid speed\n");
+		goto fail;
+	}
+
+	ETHQOSINFO("Set debugfs speed to %dMbps\n", speed);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
+	/*Invoke SMC call */
+	if (ethqos->emac_ver == EMAC_HW_v4_0_0)
+		qcom_scm_call_ethqos_configure(ethqos->rgmii_phy_base, speed, 0xFFFFFF,
+					       ethqos->shm_rgmii_hsr.paddr, 0x200);
+#endif
+
+	kfree(in_buf);
+	return count;
+
+fail:
+	kfree(in_buf);
+	return -EIO;
+}
+
 static ssize_t read_loopback_config(struct file *file,
 				    char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -3987,6 +4041,19 @@ static ssize_t read_loopback_config(struct file *file,
 				 "Invalid LOOPBACK Config\n");
 	if (len > buf_len)
 		len = buf_len;
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static ssize_t read_speed_config(struct file *file,
+				 char __user *user_buf,
+				 size_t count, loff_t *ppos)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	unsigned int len = 0, buf_len = 1000;
+
+	len += scnprintf(buf, buf_len,
+			 "Speed enforced: %d\n", ethqos->max_speed_enforce);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
@@ -4089,6 +4156,14 @@ static const struct file_operations fops_phy_off = {
 static const struct file_operations fops_loopback_config = {
 	.read = read_loopback_config,
 	.write = loopback_handling_config,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_enforce_speed = {
+	.read = read_speed_config,
+	.write = speed_chg_handling_config,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -4372,6 +4447,7 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *ipc_stmmac_log_low;
 	static struct dentry *phy_off;
 	static struct dentry *loopback_enable_mode;
+	static struct dentry *enforce_max_speed;
 	static struct dentry *mac_dump;
 	static struct dentry *mac_pcs_dump;
 	static struct dentry *mac_iomacro_dump;
@@ -4523,6 +4599,14 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		}
 	}
 
+	enforce_max_speed = debugfs_create_file("enforce_max_speed", 0400,
+						ethqos->debugfs_dir, ethqos,
+						&fops_enforce_speed);
+	if (!enforce_max_speed || IS_ERR(enforce_max_speed)) {
+		ETHQOSERR("Can't create enforce_max_speed %d\n",
+			  (long)enforce_max_speed);
+		goto fail;
+	}
 	return 0;
 
 fail:
