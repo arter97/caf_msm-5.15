@@ -1056,6 +1056,17 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
 
+	if (!priv->phydev->autoneg && !priv->plat->early_eth) {
+		linkmode_copy(state->advertising, priv->adv_old);
+		/* If PCS is supported, check which modes it supports. */
+		if (priv->hw->xpcs)
+			xpcs_validate(priv->hw->xpcs, supported, state);
+		if (priv->hw->qxpcs)
+			qcom_xpcs_validate(priv->hw->qxpcs, supported, state);
+
+		return;
+	}
+
 	/* Cut down 1G if asked to */
 	if ((max_speed > 0) && (max_speed < 1000)) {
 		phylink_set(mask, 1000baseT_Full);
@@ -7989,7 +8000,7 @@ int stmmac_suspend(struct device *dev)
 
 	mutex_unlock(&priv->lock);
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->phylink_disconnected) {
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
@@ -8106,7 +8117,7 @@ int stmmac_resume(struct device *dev)
 			return ret;
 	}
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->phylink_disconnected) {
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);

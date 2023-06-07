@@ -316,6 +316,7 @@ struct stmmac_priv {
 	bool boot_kpi;
 	bool early_eth_config_set;
 	int current_loopback;
+	int phylink_disconnected;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dbgfs_dir;
 #endif
@@ -354,6 +355,7 @@ struct stmmac_priv {
 	bool phy_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 };
 
 enum stmmac_state {

@@ -412,6 +412,7 @@ stmmac_ethtool_set_link_ksettings(struct net_device *dev,
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct phy_device *phy = dev->phydev;
+	int rc = 0;
 
 	if (!phy) {
 		pr_err("%s: %s: PHY is not registered\n",
@@ -441,10 +442,13 @@ stmmac_ethtool_set_link_ksettings(struct net_device *dev,
 		return 0;
 	}
 
-	if (!priv->plat->mac2mac_en)
-		return phylink_ethtool_ksettings_set(priv->phylink, cmd);
-	else
+	if (!priv->plat->mac2mac_en) {
+		rc = phylink_ethtool_ksettings_set(priv->phylink, cmd);
+		linkmode_copy(priv->adv_old, phy->advertising);
+		return rc;
+	} else {
 		return 0;
+	}
 
 }
 

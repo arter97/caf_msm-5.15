@@ -548,7 +548,6 @@ void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos);
 int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg);
 int ethqos_phy_power_on(struct qcom_ethqos *ethqos);
 void  ethqos_phy_power_off(struct qcom_ethqos *ethqos);
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos);
 
 u16 dwmac_qcom_select_queue(struct net_device *dev,
 			    struct sk_buff *skb,
@@ -609,7 +608,7 @@ struct dwmac_qcom_avb_algorithm {
 };
 
 void qcom_ethqos_request_phy_wol(void *plat_n);
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos);
+void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status);
 void  ethqos_phy_power_off(struct qcom_ethqos *ethqos);
 int ethqos_phy_power_on(struct qcom_ethqos *ethqos);
 void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
