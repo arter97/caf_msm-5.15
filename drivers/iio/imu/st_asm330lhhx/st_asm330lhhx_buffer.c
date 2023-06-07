@@ -61,7 +61,7 @@ static inline int st_asm330lhhx_reset_hwts(struct st_asm330lhhx_hw *hw)
 {
 	u8 data = 0xaa;
 
-	hw->ts = iio_get_time_ns(hw->iio_devs[0]);
+	hw->ts = st_asm330lhhx_get_time_ns();
 	hw->ts_offset = hw->ts;
 	hw->val_ts_old = 0;
 	hw->hw_ts_high = 0;
@@ -335,7 +335,7 @@ int st_asm330lhhx_read_fifo(struct st_asm330lhhx_hw *hw, int notify)
 
 	if (hw->resuming && notify) {
 		/* take approx wake-up timestamp event */
-		hw->ts_offset_resume = iio_get_time_ns(hw->iio_devs[0]);
+		hw->ts_offset_resume = st_asm330lhhx_get_time_ns();
 		hw->ts_offset_resume -= ((fifo_depth >> hw->resume_sample_in_packet) *
 				         hw->resume_sample_tick_ns);
 	}
@@ -497,7 +497,7 @@ ssize_t st_asm330lhhx_flush_fifo(struct device *dev,
 	s64 ts;
 
 	mutex_lock(&hw->fifo_lock);
-	ts = iio_get_time_ns(iio_dev);
+	ts = st_asm330lhhx_get_time_ns();
 	hw->delta_ts = ts - hw->ts;
 	hw->ts = ts;
 	set_bit(ST_ASM330LHHX_HW_FLUSH, &hw->state);
@@ -623,7 +623,7 @@ out:
 static irqreturn_t st_asm330lhhx_handler_irq(int irq, void *private)
 {
 	struct st_asm330lhhx_hw *hw = (struct st_asm330lhhx_hw *)private;
-	s64 ts = iio_get_time_ns(hw->iio_devs[0]);
+	s64 ts = st_asm330lhhx_get_time_ns();
 
 	hw->delta_ts = ts - hw->ts;
 	hw->ts = ts;
