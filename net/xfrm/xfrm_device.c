@@ -243,15 +243,15 @@ int xfrm_dev_state_add(struct net *net, struct xfrm_state *x,
 	if (!x->type_offload)
 		return -EINVAL;
 
-	/* We don't yet support UDP encapsulation and TFC padding. */
-	if (x->encap || x->tfcpad)
+	is_packet_offload = xuo->flags & XFRM_OFFLOAD_PACKET;
+
+	/* We don't yet support UDP encapsulation in crypto mode and TFC padding. */
+	if ((!is_packet_offload && x->encap) || x->tfcpad)
 		return -EINVAL;
 
 	if (xuo->flags &
-	    ~(XFRM_OFFLOAD_IPV6 | XFRM_OFFLOAD_INBOUND | XFRM_OFFLOAD_PACKET))
+		~(XFRM_OFFLOAD_IPV6 | XFRM_OFFLOAD_INBOUND | XFRM_OFFLOAD_PACKET))
 		return -EINVAL;
-
-	is_packet_offload = xuo->flags & XFRM_OFFLOAD_PACKET;
 	dev = dev_get_by_index(net, xuo->ifindex);
 	if (!dev) {
 		if (!(xuo->flags & XFRM_OFFLOAD_INBOUND)) {
@@ -388,7 +388,7 @@ bool xfrm_dev_offload_ok(struct sk_buff *skb, struct xfrm_state *x)
 	struct xfrm_dst *xdst = (struct xfrm_dst *)dst;
 	struct net_device *dev = x->xso.dev;
 
-	if (!x->type_offload || x->encap)
+	if (!x->type_offload || ((x->xso.type != XFRM_DEV_OFFLOAD_PACKET) && x->encap))
 		return false;
 
 	if (x->xso.type == XFRM_DEV_OFFLOAD_PACKET ||
