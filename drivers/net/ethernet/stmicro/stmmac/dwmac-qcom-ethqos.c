@@ -37,6 +37,7 @@
 #include "dwmac-qcom-ethqos.h"
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-serdes.h"
+#include "dwmac-qcom-msgq-pvm.h"
 
 #define PHY_LOOPBACK_1000 0x4140
 #define PHY_LOOPBACK_100 0x6100
@@ -5201,6 +5202,46 @@ static ssize_t ethqos_write_dev_emac(struct file *file,
 	return count;
 }
 
+void qcom_ethsvm_command_req(enum msg_type command, void *buf, int len, void *user_data)
+{
+	struct stmmac_priv *priv = (struct stmmac_priv *)user_data;
+	u8 *buffer = (u8 *)buf;
+
+	pr_info("%s GVM command = %d priv = %p %pM\n", __func__, command, priv, buffer);
+
+	switch (command) {
+	case VLAN_ADD:
+		/* Last 12 bits are the vlan id */
+		priv->dev->netdev_ops->ndo_vlan_rx_add_vid(priv->dev,
+							   htons(ETH_P_8021Q),
+							   (*((u32 *)buffer) & 0xFFF));
+
+		/* Disable the MAC Rx/Tx */
+		stmmac_mac_set(priv, priv->ioaddr, false);
+
+		/* Enable queue 4 for SVM and set priority based routing */
+		writel(0x4, priv->ioaddr + 0x1034);
+		stmmac_rx_queue_enable(priv, priv->hw, MTL_QUEUE_DCB, 4);
+		stmmac_rx_queue_prio(priv, priv->hw, (0x1 << 7), 0x4);
+
+		/* Enable the MAC Rx/Tx */
+		stmmac_mac_set(priv, priv->ioaddr, true);
+		break;
+
+	case VLAN_DEL:
+		stmmac_rx_queue_prio(priv, priv->hw, 0, 0x4);
+		break;
+
+	case UNICAST_DEL:
+	case MULTICAST_DEL:
+	case UNICAST_ADD:
+	case MULTICAST_ADD:
+	default:  /* Implement handling for SVM requests */
+		pr_err("%s Command 0x%x not implemented\n", __func__, command);
+		break;
+	}
+}
+
 static void ethqos_get_qoe_dt(struct qcom_ethqos *ethqos,
 			      struct device_node *np)
 {
@@ -5807,19 +5848,22 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->enable_wol = ethqos_enable_wol;
 #endif
 
-
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
 	ethqos->passthrough_en = 0;
 #else
 	ethqos->cv2x_priority = 0;
 #endif
 
+	ret = qcom_ethmsgq_init(priv->device);
+	if (ret < 0)
+		goto err_clk;
+
+	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	ethqos_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
 	return ret;
 
 err_clk:
-
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
@@ -5874,6 +5918,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		ethqos->shm_rgmii_local.vaddr = NULL;
 	}
 #endif
+
+	qcom_ethmsgq_deinit(priv->device);
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
