@@ -224,6 +224,10 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
 			plat->rx_queues_cfg[queue].skip_sw = true;
 
+		/* Multicast and broadcast routing */
+		if (of_property_read_bool(q_node, "snps,route-multi-broad"))
+			plat->rx_queues_cfg[queue].mbcast_route = true;
+
 		queue++;
 	}
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
@@ -654,19 +658,6 @@ stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac)
 		if (IS_ERR(plat->rgmii_rst)) {
 			ret = plat->rgmii_rst;
 			dev_err(&pdev->dev, "Cannot get emac0_rgmii_clk_ares\n");
-			goto error_hw_init;
-		}
-	}
-
-	if (of_property_read_bool(np, "snps,phy1_reset-gpio")) {
-		plat->reset_phy1_gpio = devm_gpiod_get(&pdev->dev,
-						       "snps,phy1_reset",
-							GPIOD_OUT_LOW);
-
-		if (IS_ERR(plat->reset_phy1_gpio)) {
-			ret = plat->reset_phy1_gpio;
-			dev_err(&pdev->dev, "Cannot get snps,phy1_reset-gpio\n");
-			plat->reset_phy1_gpio = NULL;
 			goto error_hw_init;
 		}
 	}

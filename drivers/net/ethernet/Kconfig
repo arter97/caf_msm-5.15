@@ -186,4 +186,39 @@ source "drivers/net/ethernet/wiznet/Kconfig"
 source "drivers/net/ethernet/xilinx/Kconfig"
 source "drivers/net/ethernet/xircom/Kconfig"
 
+config ETHQOS_QCOM_PVM
+	tristate "Enable PVM only ETHQOS features"
+	depends on (ARCH_SA525)
+	help
+	  This selects the ETHQOS features which are only
+	  required for Primary Virtual Machine. These features
+	  won't be required for HOSTVM and Secondary VMs.
+
+config ETHQOS_QCOM_HOSTVM
+	tristate "Enable HOSTVM only ETHQOS features"
+	depends on (ARCH_SA525_HOSTVM)
+	help
+	  This selects the ETHQOS features which are only
+	  required for Host Virtual Machine. These features
+	  won't be required for PVM and Secondary VMs.
+
+config ETHQOS_QCOM_SVM
+	tristate "Enable SVM only ETHQOS features"
+	depends on (ARCH_QTI_VM)
+	help
+	  This selects the ETHQOS features which are only
+	  required for Secondary Virtual Machines. These features
+	  won't be required for HOSTVM and PVM.
+
+config EMAC_SHIM
+	tristate "Enable EMAC SHIM driver for GVM"
+	depends on (HAS_IOMEM && HAS_DMA && ARCH_QTI_VM)
+	select PAGE_POOL
+	select CRC32
+	select RESET_CONTROLLER
+	help
+	  This selects the EMAC Thin driver support for
+	  multi VM builds. Enable this config only for Secondary
+	  Virtual Machines.
+
 endif # ETHERNET

@@ -10,6 +10,12 @@
 
 #include "dwmac-qcom-serdes.h"
 
+void qcom_ethqos_reset_serdes_speed(struct qcom_ethqos *ethqos)
+{
+	ethqos->curr_serdes_speed = 0;
+}
+EXPORT_SYMBOL(qcom_ethqos_reset_serdes_speed);
+
 void qcom_ethqos_disable_serdes_clocks(struct qcom_ethqos *ethqos)
 {
 	if (ethqos->phyaux_clk)

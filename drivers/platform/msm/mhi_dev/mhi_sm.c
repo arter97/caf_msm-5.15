@@ -21,7 +21,7 @@
 	mhi_log(vf_id, MHI_MSG_DBG, fmt, ##args)
 
 #define MHI_SM_CONSOLE_DBG(vf_id, fmt, args...) \
-	mhi_log(vf_id, MHI_MSG_CRITICAL, fmt, ##args)
+	mhi_log(vf_id, MHI_MSG_DBG, fmt, ##args)
 
 #define MHI_SM_ERR(vf_id, fmt, args...) \
 	mhi_log(vf_id, MHI_MSG_ERROR, fmt, ##args)

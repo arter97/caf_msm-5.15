@@ -1196,7 +1196,6 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
 
-	stmmac_mac_set(priv, priv->ioaddr, false);
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
 	priv->eee_enabled = stmmac_eee_init(priv);
@@ -1216,10 +1215,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
-	int mac_speed = speed;
-
-	if (priv->plat->fixed_phy_mode && priv->plat->mac2mac_speed)
-		mac_speed = priv->plat->mac2mac_speed;
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1234,7 +1229,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	ctrl &= ~priv->hw->link.speed_mask;
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_10000:
 			ctrl |= priv->hw->link.xgmii.speed10000;
 			break;
@@ -1257,7 +1252,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else if (interface == PHY_INTERFACE_MODE_XLGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_100000:
 			ctrl |= priv->hw->link.xlgmii.speed100000;
 			break;
@@ -1283,7 +1278,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_2500:
 			ctrl |= priv->hw->link.speed2500;
 			break;
@@ -1301,7 +1296,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	priv->speed = mac_speed;
+	priv->speed = speed;
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
@@ -1313,7 +1308,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, mac_speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1330,7 +1325,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->plat->mac2mac_link = true;
 		netdev_info(priv->dev,
 			    "mac2mac mode: Mac link up speed = %d\n",
-			    mac_speed);
+			    speed);
 	}
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
@@ -1361,15 +1356,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		reset_control_assert(priv->plat->rgmii_rst);
 		mdelay(100);
 		reset_control_deassert(priv->plat->rgmii_rst);
-	}
-
-	/*Disable LPI interrupt in the mac and enable it during Power management*/
-	if (priv->lpi_irq < 0 && priv->plat->has_xgmac) {
-		int status = 0;
-
-		status = readl(priv->ioaddr + XGMAC_INT_EN);
-		status &= ~(XGMAC_LPIIS);
-		writel(status, priv->ioaddr + XGMAC_INT_EN);
 	}
 }
 
@@ -1461,6 +1447,7 @@ static int stmmac_init_phy(struct net_device *dev)
 			netdev_err(priv->dev, "no phy at addr %d\n", addr);
 			return -ENODEV;
 		}
+		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
 		if (priv->plat->phy_intr_en_extn_stm) {
 			priv->phydev->irq = PHY_MAC_INTERRUPT;
@@ -1494,6 +1481,18 @@ static int stmmac_init_phy(struct net_device *dev)
 	return ret;
 }
 
+static void stmmac_get_fixed_state(struct phylink_config *config,
+				   struct phylink_link_state *state)
+{
+	struct net_device *ndev = to_net_dev(config->dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+
+	if (!priv->plat->rx_clk_rdy)
+		state->link = 0;
+	else
+		state->link = 1;
+}
+
 static int stmmac_phy_setup(struct stmmac_priv *priv)
 {
 	struct stmmac_mdio_bus_data *mdio_bus_data = priv->plat->mdio_bus_data;
@@ -1504,6 +1503,10 @@ static int stmmac_phy_setup(struct stmmac_priv *priv)
 	priv->phylink_config.dev = &priv->dev->dev;
 	priv->phylink_config.type = PHYLINK_NETDEV;
 	priv->phylink_config.pcs_poll = true;
+
+	if (priv->plat->plat_wait_for_emac_rx_clk_en)
+		priv->phylink_config.get_fixed_state = stmmac_get_fixed_state;
+
 	if (priv->plat->mdio_bus_data)
 		priv->phylink_config.ovr_an_inband =
 			mdio_bus_data->xpcs_an_inband;
@@ -3465,6 +3468,10 @@ static void stmmac_mac_config_rx_queues_routing(struct stmmac_priv *priv)
 
 		packet = priv->plat->rx_queues_cfg[queue].pkt_route;
 		stmmac_rx_queue_routing(priv, priv->hw, packet, queue);
+
+		/* Configure Multicast and broadcast additionally if enabled */
+		if (priv->plat->rx_queues_cfg[queue].mbcast_route)
+			stmmac_rx_queue_routing(priv, priv->hw, PACKET_MCBCQ, queue);
 	}
 }
 
@@ -7942,12 +7949,18 @@ int stmmac_suspend(struct device *dev)
 		pinctrl_pm_select_sleep_state(priv->device);
 	}
 
+	if (priv->plat->plat_wait_for_emac_rx_clk_en)
+		priv->plat->rx_clk_rdy = false;
+
 	mutex_unlock(&priv->lock);
 
 	if (!priv->plat->mac2mac_en) {
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
+		} else if (priv->phydev->mac_managed_pm) {
+			if (!priv->dev->wol_enabled)
+				phylink_suspend(priv->phylink, false);
 		} else {
 			if (device_may_wakeup(priv->device))
 				phylink_speed_down(priv->phylink, false);
@@ -8046,7 +8059,7 @@ int stmmac_resume(struct device *dev)
 	} else {
 		pinctrl_pm_select_default_state(priv->device);
 		/* reset the phy so that it's ready */
-		if (priv->mii)
+		if (priv->mii && !priv->plat->pm_lite)
 			stmmac_mdio_reset(priv->mii);
 	}
 
@@ -8062,6 +8075,9 @@ int stmmac_resume(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
+		} else if (priv->phydev->mac_managed_pm) {
+			if (!priv->dev->wol_enabled)
+				phylink_resume(priv->phylink);
 		} else {
 			phylink_resume(priv->phylink);
 			if (device_may_wakeup(priv->device))

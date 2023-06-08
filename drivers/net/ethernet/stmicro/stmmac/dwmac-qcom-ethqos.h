@@ -456,10 +456,18 @@ struct qcom_ethqos {
 	unsigned backup_autoneg:1;
 	bool probed;
 	bool ipa_enabled;
+	struct notifier_block panic_nb;
+
+	struct stmmac_priv *priv;
 
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	s8 passthrough_en;
+#else
+	s8 cv2x_priority;
+#endif
 };
 
 struct pps_cfg {
@@ -503,9 +511,12 @@ struct ip_params {
 struct mac_params {
 	phy_interface_t eth_intf;
 	bool is_valid_eth_intf;
-	unsigned long link_speed;
+	unsigned int link_speed;
 };
 
+int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos);
+int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos);
+int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos);
 int ethqos_init_regulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
@@ -555,6 +566,8 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 #define PTP_INT_MOD 1
 
 #define PPS_19_2_FREQ 19200000
+
+#define ETH_MAX_NICS 2
 
 enum dwmac_qcom_queue_operating_mode {
 	DWMAC_QCOM_QDISABLED = 0X0,

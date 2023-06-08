@@ -215,20 +215,67 @@ static void msm_nand_print_rpm_info(struct device *dev)
 static int msm_nand_suspend(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
+	struct msm_nand_chip *chip = &info->nand_chip;
+
+	/* Returns true for Deep sleep/Quick boot case else false */
+	if (pm_suspend_via_firmware()) {
+		mutex_lock(&info->lock);
+
+		/* sps_deregister_bam_device  is accessing bam registers so enable clocks*/
+		ret = msm_nand_get_device(chip->dev);
+		if (ret)
+			goto out;
+		msm_nand_bam_free(info);
+		ret = sps_deregister_bam_device(info->sps.bam_handle);
+		if (ret) {
+			pr_err("%s: sps_deregister_bam_device() failed with %d\n",
+				__func__, ret);
+			msm_nand_put_device(chip->dev);
+			goto out;
+		}
+		ret = msm_nand_put_device(chip->dev);
+		if (ret)
+			goto out;
+	}
 
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_suspend(dev);
 
+out:
+	if (pm_suspend_via_firmware())
+		mutex_unlock(&info->lock);
 	return ret;
 }
 
 static int msm_nand_resume(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
 
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_resume(dev);
 
+	/* Returns true for Deep sleep/Quick boot case else false */
+	if (pm_suspend_via_firmware()) {
+		ret = msm_nand_bam_init(info);
+		if (ret) {
+			pr_err("msm_nand_bam_init() failed %d\n", ret);
+			goto out;
+		}
+
+		ret = msm_nand_enable_dma(info);
+		if (ret) {
+			pr_err("Failed to enable DMA in NANDc\n");
+			goto out;
+		}
+		if (info->nand_chip.qpic_version >= 2 &&
+			info->nand_chip.qpic_min_version >= 1) {
+			ret = msm_nand_init_status_pipe(info);
+		}
+	}
+
+out:
 	return ret;
 }
 #else
@@ -800,7 +847,8 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 
 	/* Lookup the partition to which apps has access to */
 	for (i = 0; i < FLASH_PTABLE_MAX_PARTS_V4; i++) {
-		if (mtd_part[i].name && !strcmp("boot", mtd_part[i].name)) {
+		if (mtd_part[i].name &&
+			!strncmp("boot", mtd_part[i].name, 4)) {
 			page_address = mtd_part[i].offset << 6;
 			break;
 		}
@@ -4198,6 +4246,19 @@ static int msm_nand_bam_init(struct msm_nand_info *nand_info)
 	 * and thus the flag SPS_BAM_MGR_MULTI_EE is set.
 	 */
 	bam.manage = SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE;
+
+	/* In normal bootup, TZ/UEFI does pipe reset/initialization. And later
+	 * BAM driver don’t reconfigure pipes based on the flag
+	 * SPS_BAM_MGR_DEVICE_REMOTE being set.
+	 * When system is going to DeepSleep and QuickBoot UEFI is not present,
+	 * and we need to reconfigure the BAM Pipes during QuickBoot.
+	 * Clear the flag SPS_BAM_MGR_DEVICE_REMOTE for HLOS BAM driver to
+	 * configure the BAM pipes and reinitialize the BAM hw registers
+	 * during QuickBoot.
+	 */
+	if (pm_suspend_via_firmware())
+		bam.manage &= ~SPS_BAM_MGR_DEVICE_REMOTE;
+
 	bam.ipc_loglevel = QPIC_BAM_DEFAULT_IPC_LOGLVL;
 	mutex_lock(&nand_info->lock);
 	rc = msm_nand_get_device(chip->dev);
@@ -4389,6 +4450,35 @@ out:
 	return -EINVAL;
 }
 
+/*
+ * This function allocates, configures, connects Staus pipe end point (Pipe#3)
+ * and also registers event notification for that end point. It also
+ * allocates DMA memory for descriptor FIFO of that pipe.
+ */
+static int msm_nand_init_status_pipe(struct msm_nand_info *info)
+{
+	int err;
+
+	mutex_lock(&info->lock);
+	err = msm_nand_get_device(info->nand_chip.dev);
+	if (err) {
+		pr_err("Failed to get the device err=%d\n", err);
+		goto out;
+	}
+	err = msm_nand_init_endpoint(info,
+		&info->sps.data_prod_stat,
+		SPS_DATA_PROD_STAT_PIPE_INDEX);
+	if (err)
+		pr_err("Failed to configure read status pipe err=%d\n",
+			err);
+
+	err = msm_nand_put_device(info->nand_chip.dev);
+
+out:
+	mutex_unlock(&info->lock);
+	return err;
+}
+
 static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 					unsigned long event, void *ptr)
 {
@@ -4402,10 +4492,10 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	 * resource (clock and bus).
 	 */
 
-	return NOTIFY_DONE;
 	if (pm_runtime_suspended(chip->dev))
 		return NOTIFY_DONE;
 
+	mutex_lock(&info->lock);
 	err = msm_nand_get_device(chip->dev);
 	if (err)
 		goto out;
@@ -4418,6 +4508,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 			 0, 2);
 	err = msm_nand_put_device(chip->dev);
 out:
+	mutex_unlock(&info->lock);
 	if (err)
 		pr_err("Failed to get/put the device.\n");
 	return NOTIFY_DONE;
@@ -4608,25 +4699,7 @@ static int msm_nand_probe(struct platform_device *pdev)
 	if (info->nand_chip.qpic_version >= 2 &&
 			info->nand_chip.qpic_min_version >= 1) {
 		info->nand_chip.caps = MSM_NAND_CAP_PAGE_SCOPE_READ;
-		mutex_lock(&info->lock);
-		err = msm_nand_get_device(info->nand_chip.dev);
-		if (err) {
-			pr_err("Failed to get the device err=%d\n", err);
-			mutex_unlock(&info->lock);
-			goto free_bam;
-		}
-		err = msm_nand_init_endpoint(info,
-			&info->sps.data_prod_stat,
-			SPS_DATA_PROD_STAT_PIPE_INDEX);
-		if (err) {
-			pr_err("Failed to configure read status pipe err=%d\n",
-				err);
-			msm_nand_put_device(info->nand_chip.dev);
-			mutex_unlock(&info->lock);
-			goto free_bam;
-		}
-		err = msm_nand_put_device(info->nand_chip.dev);
-		mutex_unlock(&info->lock);
+		err = msm_nand_init_status_pipe(info);
 		if (err)
 			goto free_bam;
 	}

@@ -46,6 +46,7 @@
 #include "st_asm330lhhx_preload_mlc.h"
 #endif /* CONFIG_IIO_ST_ASM330LHHX_MLC_PRELOAD */
 
+#define UCF_STR_LEN				256
 #define FSM_PAGE(__addr) 			((u8)(((__addr >> 8) << 4) | \
 						       0x01))
 #define FSM_PAGE_MASK(__addr) 			((u8)(__addr >> 8))
@@ -414,8 +415,31 @@ static int st_asm330lhhx_program_mlc(const struct firmware *fw,
 	mutex_lock(&hw->page_lock);
 
 	while (i < fw->size) {
+#ifdef CONFIG_IIO_ST_ASM330LHHX_MLC_PRELOAD
 		reg = fw->data[i++];
 		val = fw->data[i++];
+#else
+		int j = 0;
+		unsigned char buff[2];
+		char str[UCF_STR_LEN];
+
+		memset(str, 0, UCF_STR_LEN);
+
+		while (fw->data[i] != '\n') {
+			str[j++] = fw->data[i++];
+			if (j >= UCF_STR_LEN) {
+				mutex_unlock(&hw->page_lock);
+				return ret;
+			}
+		}
+		i++;
+		ret = sscanf(str, "Ac %x %x", &buff[0], &buff[1]);
+		if (ret != 2)
+			continue;
+
+		reg = buff[0];
+		val = buff[1];
+#endif
 
 		if (reg == 0x01 && val == 0x80) {
 			stmc_page = true;
@@ -1059,7 +1083,7 @@ static int st_asm330lhhx_mlc_flush_all(struct st_asm330lhhx_hw *hw)
 	struct iio_dev *iio_dev;
 	int ret = 0, id, i;
 
-	for (i = 0; i < sizeof(st_asm330lhhx_mlc_sensor_list); i++) {
+	for (i = 0; i < 8; i++) {
 		id = st_asm330lhhx_mlc_sensor_list[i];
 		iio_dev = hw->iio_devs[id];
 		if (!iio_dev)
@@ -1076,7 +1100,7 @@ static int st_asm330lhhx_mlc_flush_all(struct st_asm330lhhx_hw *hw)
 		hw->iio_devs[id] = NULL;
 	}
 
-	for (i = 0; i < sizeof(st_asm330lhhx_fsm_sensor_list); i++) {
+	for (i = 0; i < 16; i++) {
 		id = st_asm330lhhx_fsm_sensor_list[i];
 		iio_dev = hw->iio_devs[id];
 		if (!iio_dev)
@@ -1160,7 +1184,7 @@ static int st_asm330lhhx_read_mlc_fifo_raw(struct iio_dev *iio_dev,
 	struct st_asm330lhhx_sensor *sensor = iio_priv(iio_dev);
 	struct st_asm330lhhx_hw *hw = sensor->hw;
 	struct st_asm330lhhx_sensor *sensor_acc;
-	int ret;
+	int ret = 0;
 
 	sensor_acc = iio_priv(hw->iio_devs[ST_ASM330LHHX_ID_ACC]);
 
@@ -1438,7 +1462,7 @@ struct iio_dev *st_asm330lhhx_mlc_alloc_iio_dev(struct st_asm330lhhx_hw *hw,
 	if (id == ST_ASM330LHHX_ID_MLC)
 		iio_dev = devm_iio_device_alloc(hw->dev, sizeof(*sensor));
 	else
-		iio_dev = iio_device_alloc(sizeof(*sensor));
+		iio_dev = iio_device_alloc(hw->dev, sizeof(*sensor));
 
 	if (!iio_dev)
 		return NULL;
@@ -1700,7 +1724,7 @@ int st_asm330lhhx_mlc_probe(struct st_asm330lhhx_hw *hw)
 	if (!hw->iio_devs[ST_ASM330LHHX_ID_FIFO_MLC])
 		return -ENOMEM;
 
-	buffer = devm_iio_kfifo_allocate(hw->dev);
+	buffer = iio_kfifo_allocate();
 	if (!buffer)
 		return -ENOMEM;
 

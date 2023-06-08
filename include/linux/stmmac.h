@@ -137,6 +137,7 @@ struct stmmac_rxq_cfg {
 	bool thresholdmode;
 	u32 threshold_byte;
 	bool skip_sw;
+	bool mbcast_route;
 };
 
 struct stmmac_txq_cfg {
@@ -325,5 +326,7 @@ struct plat_stmmacenet_data {
 	bool pm_lite;
 	bool fixed_phy_mode;
 	bool crc_strip_en;
+	bool plat_wait_for_emac_rx_clk_en;
+	bool rx_clk_rdy;
 };
 #endif
