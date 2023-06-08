@@ -91,4 +91,13 @@ config QRTR_BPF_FILTER
 	  functionality in ipc router. It prevents unauthorized users of a
 	  QMI service from accessing it. It also prevents broadcasting local QMI
 	  services to connected SoCs. Say Y here to enable this for auto targets.
+
+config QRTR_ETHERNET
+	tristate "Ethernet IPC Router channel"
+	help
+	  Say Y here to support Ethernet based ipcrouter channels. Ethernet
+	  is the physical transport used for external auto connections for
+	  IPC router in EAP+MDM mode. This has an out-of-tree dependency on
+	  ethernet adaption layer. Ethernet based ipcrouter is capable of
+	  handling byte stream data.
 endif # QRTR

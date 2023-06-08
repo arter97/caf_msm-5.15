@@ -298,9 +298,6 @@ static void dwxgmac2_dma_stop_tx(void __iomem *ioaddr, u32 chan)
 	value &= ~XGMAC_TXST;
 	writel(value, ioaddr + XGMAC_DMA_CH_TX_CONTROL(chan));
 
-	value = readl(ioaddr + XGMAC_TX_CONFIG);
-	value &= ~XGMAC_CONFIG_TE;
-	writel(value, ioaddr + XGMAC_TX_CONFIG);
 }
 
 static void dwxgmac2_dma_start_rx(void __iomem *ioaddr, u32 chan)
@@ -344,7 +341,8 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 	if (unlikely(intr_status & XGMAC_AIS)) {
 		if (unlikely(intr_status & XGMAC_RBU)) {
 			x->rx_buf_unav_irq++;
-			ret |= handle_rx;
+			x->rxq_stats[chan].rx_buf_unav_irq++;
+			ret |= (handle_rx | RBU_ERR);
 		}
 		if (unlikely(intr_status & XGMAC_TPS)) {
 			x->tx_process_stopped_irq++;
@@ -352,6 +350,7 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 		}
 		if (unlikely(intr_status & XGMAC_FBE)) {
 			x->fatal_bus_error_irq++;
+			x->txq_stats[chan].fatal_bus_error_irq++;
 			ret |= tx_hard_error;
 		}
 	}
@@ -362,10 +361,12 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 
 		if (likely(intr_status & XGMAC_RI)) {
 			x->rx_normal_irq_n++;
+			x->rxq_stats[chan].rx_normal_irq_n++;
 			ret |= handle_rx;
 		}
 		if (likely(intr_status & (XGMAC_TI | XGMAC_TBU))) {
 			x->tx_normal_irq_n++;
+			x->txq_stats[chan].tx_normal_irq_n++;
 			ret |= handle_tx;
 		}
 	}
@@ -557,6 +558,32 @@ static int dwxgmac2_enable_tbs(void __iomem *ioaddr, bool en, u32 chan)
 	return 0;
 }
 
+static void dwxgmac2_desc_stats(void __iomem *ioaddr,
+				struct stmmac_extra_stats *xstats,
+				u32 tx_queues,
+				u32 rx_queues)
+{
+	u32 chno;
+
+	for (chno = 0; chno < tx_queues; chno++) {
+		xstats->txq_stats[chno].txch_desc_list_laddr =
+			readl(ioaddr + XGMAC_DMA_CH_TxDESC_LADDR(chno));
+		xstats->txq_stats[chno].txch_desc_ring_len =
+			readl(ioaddr + XGMAC_DMA_CH_TxDESC_RING_LEN(chno)) & (XGMAC_TDRL);
+		xstats->txq_stats[chno].txch_desc_tail =
+			readl(ioaddr + XGMAC_DMA_CH_TxDESC_TAIL_LPTR(chno));
+	}
+
+	for (chno = 0; chno <  rx_queues; chno++) {
+		xstats->rxq_stats[chno].rxch_desc_list_laddr =
+			readl(ioaddr + XGMAC_DMA_CH_RxDESC_LADDR(chno));
+		xstats->rxq_stats[chno].rxch_desc_ring_len =
+			readl(ioaddr + XGMAC_DMA_CH_RxDESC_RING_LEN(chno)) & (XGMAC_RDRL);
+		xstats->rxq_stats[chno].rxch_desc_tail =
+			readl(ioaddr + XGMAC_DMA_CH_RxDESC_TAIL_LPTR(chno));
+	}
+}
+
 const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.reset = dwxgmac2_dma_reset,
 	.init = dwxgmac2_dma_init,
@@ -585,4 +612,5 @@ const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.set_bfsize = dwxgmac2_set_bfsize,
 	.enable_sph = dwxgmac2_enable_sph,
 	.enable_tbs = dwxgmac2_enable_tbs,
+	.desc_stats = dwxgmac2_desc_stats,
 };

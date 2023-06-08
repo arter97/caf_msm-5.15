@@ -41,6 +41,8 @@
 #define DWMAC_CORE_5_20		0x52
 #define DWXGMAC_CORE_2_10	0x21
 #define DWXLGMAC_CORE_2_00	0x20
+#define DWXLGMAC_CORE_3_10	0x31
+
 
 /* Device ID */
 #define DWXGMAC_ID		0x76
@@ -66,11 +68,22 @@
 struct stmmac_txq_stats {
 	unsigned long tx_pkt_n;
 	unsigned long tx_normal_irq_n;
+	unsigned long fatal_bus_error_irq;
+	unsigned long txch_desc_list_laddr;
+	unsigned long txch_desc_ring_len;
+	unsigned long txch_desc_tail;
+
 };
 
 struct stmmac_rxq_stats {
 	unsigned long rx_pkt_n;
 	unsigned long rx_normal_irq_n;
+	unsigned long rx_buf_unav_irq;
+	unsigned long rx_process_stopped_irq;
+	unsigned long rxch_desc_list_laddr;
+	unsigned long rxch_desc_ring_len;
+	unsigned long rxch_desc_tail;
+
 };
 
 /* Extra statistic and debug information exposed by ethtool */
@@ -330,6 +343,7 @@ enum dma_irq_status {
 	tx_hard_error_bump_tc = 0x2,
 	handle_rx = 0x4,
 	handle_tx = 0x8,
+	rbu_err = 0x10,
 };
 
 enum dma_irq_dir {
@@ -551,6 +565,7 @@ struct mac_device_info {
 	unsigned int promisc;
 	bool vlan_fail_q_en;
 	u8 vlan_fail_q;
+	bool crc_strip_en;
 };
 
 struct stmmac_rx_routing {
@@ -586,4 +601,17 @@ extern const struct stmmac_mode_ops ring_mode_ops;
 extern const struct stmmac_mode_ops chain_mode_ops;
 extern const struct stmmac_desc_ops dwmac4_desc_ops;
 
+enum mac_err_type {
+	PHY_RW_ERR = 0,
+	PHY_DET_ERR,
+	CRC_ERR,
+	RECEIVE_ERR,
+	OVERFLOW_ERR,
+	FBE_ERR,
+	RBU_ERR,
+	TDU_ERR,
+	DRIBBLE_ERR,
+	WDT_ERR,
+	MAC_ERR_CNT,
+};
 #endif /* __COMMON_H__ */

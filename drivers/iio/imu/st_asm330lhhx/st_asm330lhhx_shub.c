@@ -12,6 +12,7 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <asm/unaligned.h>
+#include <linux/slab.h>
 
 #include "st_asm330lhhx.h"
 
@@ -654,7 +655,12 @@ st_asm330lhhx_shub_read_oneshot(struct st_asm330lhhx_sensor *sensor,
 				int *val)
 {
 	int err, delay, len = ch->scan_type.realbits >> 3;
-	u8 data[len];
+	u8 *data = NULL;
+
+	data = kmalloc_array(len, sizeof(u8), GFP_KERNEL);
+
+	if (data == NULL)
+		return -EINVAL;
 
 	err = st_asm330lhhx_shub_set_enable(sensor, true);
 	if (err < 0)
@@ -679,7 +685,7 @@ st_asm330lhhx_shub_read_oneshot(struct st_asm330lhhx_sensor *sensor,
 	default:
 		return -EINVAL;
 	}
-
+	kfree(data);
 	return IIO_VAL_INT;
 }
 

@@ -374,12 +374,25 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 			return PTR_ERR(reset_gpio);
 		}
 
+		if (of_property_read_bool(priv->device->of_node, "snps,phy1_reset-gpio")) {
+			priv->plat->reset_phy1_gpio = devm_gpiod_get_optional(priv->device,
+									      "snps,phy1_reset",
+									      GPIOD_OUT_LOW);
+
+			if (IS_ERR(priv->plat->reset_phy1_gpio)) {
+				dev_err(priv->device, "error reset GPIO is %d\n",
+					PTR_ERR(priv->plat->reset_phy1_gpio));
+				return PTR_ERR(priv->plat->reset_phy1_gpio);
+			}
+		}
+
 		device_property_read_u32_array(priv->device,
 					       "snps,reset-delays-us",
 					       delays, ARRAY_SIZE(delays));
 
 		if (priv->plat->reset_phy1_gpio) {
 			if (priv->plat->is_valid_eth_intf) {
+				devm_gpiod_put(priv->device, reset_gpio);
 				reset_gpio = priv->plat->reset_phy1_gpio;
 				gpiod_set_value(reset_gpio, 1);
 
@@ -388,6 +401,7 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 								delays, ARRAY_SIZE(delays));
 			} else {
 				gpiod_set_value(priv->plat->reset_phy1_gpio, 1);
+				devm_gpiod_put(priv->device, priv->plat->reset_phy1_gpio);
 			}
 		}
 
@@ -401,6 +415,7 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 		gpiod_set_value(reset_gpio, 0);
 		if (delays[2])
 			msleep(DIV_ROUND_UP(delays[2], 1000));
+		devm_gpiod_put(priv->device, reset_gpio);
 	}
 #endif
 

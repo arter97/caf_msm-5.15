@@ -74,6 +74,11 @@
 #define PCIE20_PARF_CLKREQ_IN_OVERRIDE_ENABLE_EN	1
 #define PCIE20_PARF_CLKREQ_OE_OVERRIDE_ENABLE	BIT(0)
 
+#define PCIE20_PARF_DEBUG_CNT_IN_L0S (0xc10)
+#define PCIE20_PARF_DEBUG_CNT_IN_L1 (0xc0c)
+#define PCIE20_PARF_DEBUG_CNT_IN_L1SUB_L1 (0xc84)
+#define PCIE20_PARF_DEBUG_CNT_IN_L1SUB_L2 (0xc88)
+
 #define PCIE20_PARF_SLV_ADDR_MSB_CTRL  0x2C0
 #define PCIE20_PARF_DBI_BASE_ADDR      0x350
 #define PCIE20_PARF_DBI_BASE_ADDR_HI   0x354
@@ -483,6 +488,10 @@ struct ep_pcie_dev_t {
 	struct clk		     *ref_clk_src;
 
 	bool				override_disable_sriov;
+	u32				tcsr_perst_separation_en_offset;
+	u32				tcsr_reset_separation_offset;
+	u32				tcsr_perst_enable_offset;
+	u32				perst_raw_rst_status_mask;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;

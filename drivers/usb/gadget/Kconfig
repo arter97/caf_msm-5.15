@@ -239,6 +239,25 @@ config USB_F_GSI
 config USB_F_DIAG
 	tristate
 
+config USB_LOW_MEM_VARIANT
+	bool "USB low memory variant"
+	depends on USB_CONFIGFS_F_GSI
+	help
+	  This config is used when the memory footprint of USB
+	  nneds to be minimized. It reduces the memory usage of
+	  GSI interfaces by limiting the buffer sizes allocated
+	  for the IN endpoints.
+
+config USB_DEFAULT_MEM_VARIANT
+	bool "USB Normal memory variant"
+	depends on USB_CONFIGFS_F_GSI
+	help
+	  This allows the GSI interfaces to use the default
+	  buffer sizes. This config is mainly used when you have
+	  multiple variants of a target, and a particular variant
+	  needs to reduce the buffer sizes and there isn't any
+	  config to distinguish between the different variants.
+
 config USB_F_FS_IPC_LOGGING
         tristate "Enable IPC logging for FunctionFS via f_fs_ipc_log"
 	depends on IPC_LOGGING

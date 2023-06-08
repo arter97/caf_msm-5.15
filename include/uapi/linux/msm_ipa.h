@@ -201,7 +201,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 4
+#define IPA_MAX_NUM_IFACE_FLT 29
 
 
 /**
@@ -229,6 +229,11 @@
  */
 
 #define IPA_CV2X_SUPPORT
+
+/**
+ *  Max number of delegated IDUs for prefix delegation FR
+ */
+#define IPA_PREFIX_MAPPING_MAX 16
 
 /**
  * the attributes of the rule (routing or filtering)
@@ -541,9 +546,18 @@ enum ipa_client_type {
 
 	IPA_CLIENT_APPS_WAN_ETH_PROD            = 136,
 	/* RESERVED CONS			            = 137, */
+
+	IPA_CLIENT_APPS_WAN_V2X_PROD			= 138,
+	IPA_CLIENT_APPS_WAN_V2X_CONS			= 139,
+
+	IPA_CLIENT_Q6_V2X_BROADCAST_PROD        = 140,
+	/* RESERVED CONS			            = 141, */
+
+	IPA_CLIENT_Q6_V2X_UNICAST_PROD          = 142
+	/* RESERVED CONS			            = 143, */
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_APPS_WAN_ETH_PROD + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_Q6_V2X_UNICAST_PROD + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -589,14 +603,16 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_APPS_WAN_CONS || \
 	(client) == IPA_CLIENT_APPS_WAN_COAL_CONS || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_CONS || \
-	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_CONS)
+	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_CONS || \
+	(client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_APPS_PROD(client) \
 	((client) == IPA_CLIENT_APPS_LAN_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_PROD || \
 	(client) == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_PROD || \
-	(client) == IPA_CLIENT_APPS_WAN_ETH_PROD)
+	(client) == IPA_CLIENT_APPS_WAN_ETH_PROD || \
+	(client) == IPA_CLIENT_APPS_WAN_V2X_PROD)
 
 #define IPA_CLIENT_IS_USB_CONS(client) \
 	((client) == IPA_CLIENT_USB_CONS || \
@@ -607,7 +623,8 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_WAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_WAN_CONS || \
-	 (client) == IPA_CLIENT_APPS_WAN_COAL_CONS)
+	 (client) == IPA_CLIENT_APPS_WAN_COAL_CONS || \
+	 (client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_LAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
@@ -615,7 +632,8 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_LAN_or_WAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
-	 (client) == IPA_CLIENT_APPS_WAN_CONS)
+	 (client) == IPA_CLIENT_APPS_WAN_CONS || \
+	 (client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
 #define IPA_CLIENT_IS_APPS_COAL_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_COAL_CONS || \
@@ -3547,14 +3565,20 @@ enum ipa_ext_router_mode {
  * struct ipa_ioc_ext_router_info - provide ext_router info
  * @ipa_ext_router_mode: prefix sharing, prefix delegation, or disabled mode
  * @pdn_name: PDN interface name
- * @ipv6_addr: the prefix addr used for dummy or delegated prefixes
+ * @ipv6_addr: the prefix addr used for the dummy prefix. (prefix sharing mode)
  * @ipv6_mask: the ipv6 mask used to mask above addr to get the correct prefix
+ * @num_of_del_prefix_mapping: number of delegated prefix to IDU IP mapping
+ * @idu_del_wan_ip: array of IDU WAN IP to be mapped to a delegated prefix
+ * @idu_del_client_prefix: Array of delegated prefixes
  */
 struct ipa_ioc_ext_router_info {
 	enum ipa_ext_router_mode mode;
 	char pdn_name[IPA_RESOURCE_NAME_MAX];
 	uint32_t ipv6_addr[4];
 	uint32_t ipv6_mask[4];
+	int num_of_idu_prefix_mapping;
+	uint32_t idu_wan_ip[IPA_PREFIX_MAPPING_MAX][4];
+	uint32_t idu_client_prefix[IPA_PREFIX_MAPPING_MAX][4];
 };
 
 /**

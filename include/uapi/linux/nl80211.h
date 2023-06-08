@@ -1169,6 +1169,23 @@
  *	%NL80211_ATTR_STATUS_CODE attribute in %NL80211_CMD_EXTERNAL_AUTH
  *	command interface.
  *
+ *	Host driver sends MLD address of the AP with %NL80211_ATTR_MLD_ADDR in
+ *	%NL80211_CMD_EXTERNAL_AUTH event to indicate user space to enable MLO
+ *	during the authentication offload in STA mode while connecting to MLD
+ *	APs. Host driver should check %NL80211_ATTR_MLO_SUPPORT flag capability
+ *	in %NL80211_CMD_CONNECT to know whether the user space supports enabling
+ *	MLO during the authentication offload or not.
+ *	User space should enable MLO during the authentication only when it
+ *	receives the AP MLD address in authentication offload request. User
+ *	space shouldn't enable MLO when the authentication offload request
+ *	doesn't indicate the AP MLD address even if the AP is MLO capable.
+ *	User space should use %NL80211_ATTR_MLD_ADDR as peer's MLD address and
+ *	interface address identified by %NL80211_ATTR_IFINDEX as self MLD
+ *	address. User space and host driver to use MLD addresses in RA, TA and
+ *	BSSID fields of the frames between them, and host driver translates the
+ *	MLD addresses to/from link addresses based on the link chosen for the
+ *	authentication.
+ *
  *	Host driver reports this status on an authentication failure to the
  *	user space through the connect result as the user space would have
  *	initiated the connection through the connect request.
@@ -2742,12 +2759,19 @@ enum nl80211_commands {
  * @NL80211_ATTR_MLO_SUPPORT: Flag attribute to indicate user space supports MLO
  *	connection. Used with %NL80211_CMD_CONNECT. If this attribute is not
  *	included in NL80211_CMD_CONNECT drivers must not perform MLO connection.
+ * @NL80211_ATTR_TD_BITMAP: Transition Disable bitmap, for subsequent
+ *	(re)associations.
  *
  * @NL80211_ATTR_MLD_MAC: MLD MAC address.
  * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
  * @NL80211_ATTR_MLD_LINK_IDS: nested attribute to hold MLD link-ids.
  * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
  * @NL80211_ATTR_RECONFIG: whether the operation is reconfiguration or not
+ *
+ * @NL80211_ATTR_PUNCT_BITMAP: (u32) Preamble puncturing bitmap, lowest
+ *	bit corresponds to the lowest 20 MHz channel. Each bit set to 1
+ *	indicates that the sub-channel is punctured. Higher 16 bits are
+ *	reserved.
  *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
@@ -3276,9 +3300,9 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_TX_HW_TIMESTAMP,
 	NL80211_ATTR_RX_HW_TIMESTAMP,
+	NL80211_ATTR_TD_BITMAP,
+	NL80211_ATTR_PUNCT_BITMAP,
 
-	NL80211_ATTR_RESERVED_DO_NOT_USE_10 = 321,
-	NL80211_ATTR_RESERVED_DO_NOT_USE_11 = 322,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_12 = 323,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_13 = 324,
 	NL80211_ATTR_RESERVED_DO_NOT_USE_14 = 325,
@@ -6356,6 +6380,8 @@ enum nl80211_feature_flags {
  * @NL80211_EXT_FEATURE_AUTH_TX_RANDOM_TA: Device supports randomized TA
  *	for authentication frames in @NL80211_CMD_FRAME.
  *
+ * @NL80211_EXT_FEATURE_PUNCT: Driver supports preamble puncturing in AP mode.
+ *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
  */
@@ -6424,7 +6450,7 @@ enum nl80211_ext_feature_index {
 	NL80211_EXT_FEATURE_FILS_CRYPTO_OFFLOAD,
 	NL80211_EXT_FEATURE_RADAR_BACKGROUND,
 	NL80211_EXT_FEATURE_POWERED_ADDR_CHANGE,
-	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_2 = 63,
+	NL80211_EXT_FEATURE_PUNCT,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_3 = 64,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_4 = 65,
 	NL80211_EXT_FEATURE_RESERVED_DO_NOT_USE_5 = 66,

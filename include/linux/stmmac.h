@@ -136,6 +136,8 @@ struct stmmac_rxq_cfg {
 	u32 prio;
 	bool thresholdmode;
 	u32 threshold_byte;
+	bool skip_sw;
+	bool mbcast_route;
 };
 
 struct stmmac_txq_cfg {
@@ -149,6 +151,7 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
+	bool skip_sw;
 };
 
 /* FPE link state */
@@ -307,6 +310,7 @@ struct plat_stmmacenet_data {
 		 struct net_device *sb_dev);
 	unsigned int (*get_plat_tx_coal_frames)
 		(struct sk_buff *skb);
+	int (*handle_mac_err)(void *priv, int type, int chan);
 	int (*handle_prv_ioctl)(struct net_device *dev, struct ifreq *ifr,
 		int cmd);
 	void (*request_phy_wol)(void *plat);
@@ -322,5 +326,9 @@ struct plat_stmmacenet_data {
 	bool pcs_v3;
 	bool pm_lite;
 	bool fixed_phy_mode;
+	bool crc_strip_en;
+	bool plat_wait_for_emac_rx_clk_en;
+	bool rx_clk_rdy;
+	bool mac_err_rec;
 };
 #endif

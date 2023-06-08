@@ -14,7 +14,7 @@
  * This driver is based on idea from Hafnium Hypervisor Linux Driver,
  * but modified to work with Gunyah Hypervisor as needed.
  *
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"gh_proxy_sched: " fmt
@@ -37,12 +37,13 @@
 
 #include <linux/gunyah/gh_errno.h>
 #include <linux/gunyah/gh_rm_drv.h>
+#include <linux/gunyah/gh_common.h>
 #include "gh_proxy_sched.h"
 
 #define CREATE_TRACE_POINTS
 #include "gh_proxy_sched_trace.h"
 
-#define GH_MAX_VMS 5
+#define GH_MAX_VMS GH_VM_MAX
 #define GH_MAX_VCPUS_PER_VM 8
 #define GH_MAX_SYSTEM_VCPUS (GH_MAX_VMS * GH_MAX_VCPUS_PER_VM)
 
@@ -275,17 +276,10 @@ static int gh_populate_vm_vcpu_info(gh_vmid_t vmid, gh_label_t cpu_idx,
 	struct gh_proxy_vm *vm;
 	int ret = 0;
 	char *vcpu_irq_name;
-	gh_vmid_t temp_vmid;
 
 	if (!init_done) {
 		pr_err("Driver probe failed\n");
 		ret = -ENXIO;
-		goto out;
-	}
-
-	if ((!gh_rm_get_vmid(GH_TRUSTED_VM, &temp_vmid) && temp_vmid != vmid) &&
-	    (!gh_rm_get_vmid(GH_OEM_VM, &temp_vmid) && temp_vmid != vmid)) {
-		pr_info("Skip populating VCPU affinity info for VM=%d\n", vmid);
 		goto out;
 	}
 

@@ -265,6 +265,8 @@ static void arm_smmu_interrupt_selftest(struct arm_smmu_device *smmu)
 				dev_err(smmu->dev, "SCTLR  = 0x%08x\n",
 					arm_smmu_cb_read(smmu, cb,
 							 ARM_SMMU_CB_SCTLR));
+			else
+				arm_smmu_cb_write(smmu, cb, ARM_SMMU_CB_FSR, fsr);
 		}
 
 		/* Make sure ARM_SMMU_CB_FSRRESTORE is written to */
@@ -1375,7 +1377,7 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 			if (smmu->options & ARM_SMMU_OPT_3LVL_TABLES)
 				ias = min(ias, 39UL);
 		} else if (cfg->fmt == ARM_SMMU_CTX_FMT_AARCH32_L) {
-			fmt = ARM_32_LPAE_S1;
+			fmt = QCOM_ARM_32_LPAE_S1;
 			ias = min(ias, 32UL);
 			oas = min(oas, 40UL);
 		} else {

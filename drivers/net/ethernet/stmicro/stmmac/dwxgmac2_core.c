@@ -16,7 +16,8 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 			       struct net_device *dev)
 {
 	void __iomem *ioaddr = hw->pcsr;
-	u32 tx, rx;
+	struct stmmac_priv *priv = netdev_priv(dev);
+	u32 tx, rx, intr_en;
 
 	tx = readl(ioaddr + XGMAC_TX_CONFIG);
 	rx = readl(ioaddr + XGMAC_RX_CONFIG);
@@ -42,9 +43,17 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 		}
 	}
 
+	if (hw->crc_strip_en)
+		rx |= XGMAC_CONFIG_CST;
+
 	writel(tx, ioaddr + XGMAC_TX_CONFIG);
 	writel(rx, ioaddr + XGMAC_RX_CONFIG);
-	writel(XGMAC_INT_DEFAULT_EN, ioaddr + XGMAC_INT_EN);
+
+	if (!(priv->lpi_irq < 0)) {
+		intr_en = readl(ioaddr + XGMAC_INT_EN);
+		intr_en |= XGMAC_LPIIE;
+		writel(intr_en, ioaddr + XGMAC_INT_EN);
+	}
 }
 
 static void dwxgmac2_set_mac(void __iomem *ioaddr, bool enable)
@@ -411,6 +420,34 @@ static void dwxgmac2_set_eee_timer(struct mac_device_info *hw, int ls, int tw)
 
 	value = (tw & 0xffff) | ((ls & 0x3ff) << 16);
 	writel(value, ioaddr + XGMAC_LPI_TIMER_CTRL);
+}
+
+static void dwxgmac2_set_eee_lpi_entry_timer(struct mac_device_info *hw, int et)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+
+	/* 1us tic counter */
+	value = XGMAC_LPI_TIC_COUNTER;
+	writel(value, ioaddr + XGMAC_LPI_1US_TIC_COUNTER);
+
+	/* LPI auto entry timer */
+	value = XGMAC_LPI_AUTO_RETRY_TIMER;
+	writel(value, ioaddr + XGMAC_LPI_AUTO_ENTRY_TIMER);
+
+	/* LPI auto timer enable */
+	value = readl(ioaddr + XGMAC_LPI_CTRL);
+	if (et)
+		value |= XGMAC_LPIATE;
+	else
+		value &= ~XGMAC_LPIATE;
+
+	value |= XGMAC_LPITXA;
+	writel(value, ioaddr + XGMAC_LPI_CTRL);
+
+	value = readl(ioaddr + XGMAC_LPI_CTRL);
+	value |= XGMAC_LPITXEN | XGMAC_TXCGE;
+	writel(value, ioaddr + XGMAC_LPI_CTRL);
 }
 
 static void dwxgmac2_set_mchash(void __iomem *ioaddr, u32 *mcfilterbits,
@@ -1590,6 +1627,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.reset_eee_mode = dwxgmac2_reset_eee_mode,
 	.set_eee_timer = dwxgmac2_set_eee_timer,
 	.set_eee_pls = dwxgmac2_set_eee_pls,
+	.set_eee_lpi_entry_timer = dwxgmac2_set_eee_lpi_entry_timer,
 	.pcs_ctrl_ane = NULL,
 	.pcs_rane = NULL,
 	.pcs_get_adv_lp = NULL,
@@ -1651,6 +1689,7 @@ const struct stmmac_ops dwxlgmac2_ops = {
 	.reset_eee_mode = dwxgmac2_reset_eee_mode,
 	.set_eee_timer = dwxgmac2_set_eee_timer,
 	.set_eee_pls = dwxgmac2_set_eee_pls,
+	.set_eee_lpi_entry_timer = dwxgmac2_set_eee_lpi_entry_timer,
 	.pcs_ctrl_ane = NULL,
 	.pcs_rane = NULL,
 	.pcs_get_adv_lp = NULL,

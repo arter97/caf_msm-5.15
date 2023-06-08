@@ -229,7 +229,12 @@ struct spi_geni_master {
 	bool master_cross_connect;
 	bool is_deep_sleep; /* For deep sleep restore the config similar to the probe. */
 	u32 xfer_timeout_offset;
+	bool vm_wo_pm; /* VM usecase w/o PM support */
 };
+
+/*TODO: This is temp change, to bypass LVM clk voting issue*/
+static int spi_geni_runtime_resume(struct device *dev);
+static int spi_geni_runtime_suspend(struct device *dev);
 
 /**
  * geni_spi_se_dump_dbg_regs() - Print relevant registers that capture most
@@ -1469,8 +1474,11 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 	 * Not required for LE as below intializations are specific
 	 * to usecases. For LE, client takes care of get_sync.
 	 */
-	if (mas->is_le_vm)
+	if (mas->is_le_vm) {
+		if (mas->vm_wo_pm)
+			return spi_geni_runtime_resume(mas->dev);
 		return 0;
+	}
 
 	 mas->is_xfer_in_progress = true;
 
@@ -1540,6 +1548,8 @@ static int spi_geni_unprepare_transfer_hardware(struct spi_master *spi)
 
 	if (mas->shared_ee || mas->is_le_vm) {
 		mas->is_xfer_in_progress = false;
+		if (mas->vm_wo_pm)
+			return spi_geni_runtime_suspend(mas->dev);
 		return 0;
 	}
 
@@ -1796,10 +1806,13 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 	 * can keep driver to forced suspend, hence it's client's responsibility
 	 * to not allow system suspend to trigger.
 	 */
-	if (pm_runtime_status_suspended(mas->dev)) {
-		SPI_LOG_ERR(mas->ipc, true, mas->dev,
-			"%s: device is PM suspended\n", __func__);
-		return -EACCES;
+	/* TBD: Temporary change */
+	if (!mas->vm_wo_pm) {
+		if (pm_runtime_status_suspended(mas->dev)) {
+			SPI_LOG_ERR(mas->ipc, true, mas->dev,
+				"%s: device is PM suspended\n", __func__);
+			return -EACCES;
+		}
 	}
 
 	xfer_timeout = (1000 * xfer->len * BITS_PER_BYTE) / xfer->speed_hz;
@@ -2154,6 +2167,12 @@ static void spi_get_dt_property(struct platform_device *pdev,
 		of_property_read_bool(pdev->dev.of_node, "qcom,shared_ee");
 	}
 
+	/* This is VM use case with no PM support*/
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,vm-no-pm")) {
+		geni_mas->vm_wo_pm = true;
+		dev_info(&pdev->dev, "VM usecase no PM support\n");
+	}
+
 	geni_mas->slave_cross_connected =
 	of_property_read_bool(pdev->dev.of_node, "slv-cross-connected");
 }
@@ -2472,6 +2491,22 @@ static int spi_geni_gpi_suspend_resume(struct spi_geni_master *geni_mas, bool is
 	return 0;
 }
 
+static int spi_geni_levm_suspend_proc(struct spi_geni_master *geni_mas, struct spi_master *spi)
+{
+	int ret = 0;
+
+	spi_geni_unlock_bus(spi);
+
+	if (geni_mas->gsi_mode) {
+		ret = spi_geni_gpi_suspend_resume(geni_mas, true);
+		if (ret) {
+			GENI_SE_DBG(geni_mas->ipc, false, geni_mas->dev, "%s failed\n", __func__);
+			return ret;
+		}
+	}
+	return 0;
+}
+
 static int spi_geni_runtime_suspend(struct device *dev)
 {
 	int ret = 0;
@@ -2481,21 +2516,13 @@ static int spi_geni_runtime_suspend(struct device *dev)
 	SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev, "%s: %d\n", __func__, ret);
 
 	disable_irq(geni_mas->irq);
-	if (geni_mas->is_le_vm) {
-		spi_geni_unlock_bus(spi);
-		return 0;
-	}
+	if (geni_mas->is_le_vm)
+		return spi_geni_levm_suspend_proc(geni_mas, spi);
 
-	if (geni_mas->shared_se) {
-		if (geni_mas->tx != NULL) {
-			ret = dmaengine_pause(geni_mas->tx);
-			if (ret) {
-				SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
-				"%s dmaengine_pause failed: %d\n", __func__, ret);
-			}
-			SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
-			"%s: Shared_SE dma_pause\n", __func__);
-		}
+	if (geni_mas->gsi_mode) {
+		ret = spi_geni_gpi_suspend_resume(geni_mas, true);
+		if (ret)
+			return ret;
 	}
 
 	/* For tui usecase LA should control clk/gpio/icb */
@@ -2530,6 +2557,19 @@ static int spi_geni_levm_resume_proc(struct spi_geni_master *geni_mas, struct sp
 {
 	int ret = 0;
 
+	if (!geni_mas->setup) {
+		/* It will take care of all GPI /DMA initialization and generic SW/HW
+		 * initializations required for a spi transfer. Gets called once per
+		 * Bootup session.
+		 */
+		ret = spi_geni_mas_setup(spi);
+		if (ret) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+				    "%s mas_setup failed: %d\n", __func__, ret);
+			return ret;
+		}
+	}
+
 	if (geni_mas->gsi_mode) {
 		/* Required after spi_geni_mas_setup for each LE VM suspend/resume.
 		 * Very first time not required when master setup is not completed
@@ -2540,19 +2580,6 @@ static int spi_geni_levm_resume_proc(struct spi_geni_master *geni_mas, struct sp
 		if (ret) {
 			SPI_LOG_ERR(geni_mas->ipc, false, geni_mas->dev,
 				    "%s:\n", __func__);
-			return ret;
-		}
-	}
-
-	if (!geni_mas->setup) {
-		/* It will take care of all GPI /DMA initialization and generic SW/HW
-		 * initializations required for a spi transfer. Gets called once per
-		 * Bootup session.
-		 */
-		ret = spi_geni_mas_setup(spi);
-		if (ret) {
-			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
-				    "%s mas_setup failed: %d\n", __func__, ret);
 			return ret;
 		}
 	}
@@ -2578,19 +2605,7 @@ static int spi_geni_runtime_resume(struct device *dev)
 	if (geni_mas->is_le_vm)
 		return spi_geni_levm_resume_proc(geni_mas, spi);
 
-	if (geni_mas->shared_se) {
-		/* very first time mas->tx channel is not getting updated */
-		if (geni_mas->tx != NULL) {
-			ret = dmaengine_resume(geni_mas->tx);
-			if (ret) {
-				SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
-				"%s dmaengine_resume failed: %d\n", __func__, ret);
-			}
-			SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
-			"%s: Shared_SE dma_resume call\n", __func__);
-		}
-	}
-
+	/*dma engine resume is performed under exit_rt_resume block*/
 	if (geni_mas->shared_ee || geni_mas->is_la_vm)
 		goto exit_rt_resume;
 
@@ -2603,10 +2618,13 @@ static int spi_geni_runtime_resume(struct device *dev)
 		}
 		ret = geni_se_common_clks_on(geni_mas->spi_rsc.clk, geni_mas->m_ahb_clk,
 						geni_mas->s_ahb_clk);
-		if (ret)
+		if (ret) {
 			SPI_LOG_ERR(geni_mas->ipc, false, geni_mas->dev,
 			"%s: Error %d turning on clocks\n", __func__, ret);
-		return ret;
+			return ret;
+		}
+
+		return spi_geni_gpi_suspend_resume(geni_mas, false);
 	}
 
 exit_rt_resume:

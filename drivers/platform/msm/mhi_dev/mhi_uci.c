@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015,2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -414,6 +414,16 @@ struct mhi_uci_ctxt_t {
 
 #define CHAN_TO_CLIENT(_CHAN_NR) (_CHAN_NR / 2)
 #define CLIENT_TO_CHAN(_CLIENT_NR) (_CLIENT_NR * 2)
+
+#define uci_log_ratelimit(_msg_lvl, _msg, ...) do { \
+	if (_msg_lvl >= mhi_uci_msg_lvl) { \
+		pr_err_ratelimited("[%s] "_msg, __func__, ##__VA_ARGS__); \
+	} \
+	if (mhi_uci_ipc_log && (_msg_lvl >= mhi_uci_ipc_log_lvl)) { \
+		ipc_log_string(mhi_uci_ipc_log,                     \
+			"[%s] " _msg, __func__, ##__VA_ARGS__);     \
+	} \
+} while (0)
 
 #define uci_log(_msg_lvl, _msg, ...) do { \
 	if (_msg_lvl >= mhi_uci_msg_lvl) { \
@@ -1332,7 +1342,7 @@ static int __mhi_uci_client_read(struct uci_client *uci_handle,
 
 	while (!uci_handle->pkt_loc) {
 		if (!mhi_uci_are_channels_connected(uci_handle)) {
-			uci_log(UCI_DBG_ERROR, "Channels are not connected\n");
+			uci_log_ratelimit(UCI_DBG_ERROR, "Channels are not connected\n");
 			return -ENODEV;
 		}
 
@@ -1453,7 +1463,7 @@ static ssize_t mhi_uci_client_read(struct file *file, char __user *ubuf,
 error:
 	mutex_unlock(mutex);
 
-	uci_log(UCI_DBG_ERROR, "Returning %d\n", ret_val);
+	uci_log_ratelimit(UCI_DBG_ERROR, "Returning %d\n", ret_val);
 	return ret_val;
 }
 

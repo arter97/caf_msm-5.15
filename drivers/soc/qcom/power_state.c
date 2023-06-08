@@ -6,6 +6,7 @@
 
 #define pr_fmt(fmt) "%s: %s: " fmt, KBUILD_MODNAME, __func__
 
+#include <linux/arm-smccc.h>
 #include <linux/cdev.h>
 #include <linux/compat.h>
 #include <linux/device.h>
@@ -21,10 +22,33 @@
 #include <linux/remoteproc.h>
 #include <linux/remoteproc/qcom_rproc.h>
 #include <linux/suspend.h>
+#include <linux/syscore_ops.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
+#if IS_ENABLED(CONFIG_MSM_RPM_SMD)
+#include <soc/qcom/rpm-smd.h>
+#endif
 
 #include "linux/power_state.h"
+#include <dt-bindings/soc/qcom,power-state.h>
+
+#if IS_ENABLED(CONFIG_ARCH_MONACO)
+#define DS_ENTRY_SMC_ID		0xC3000924
+#else
+#define DS_ENTRY_SMC_ID		0xC3000923
+#endif
+
+#if IS_ENABLED(CONFIG_MSM_RPM_SMD)
+#define RPM_XO_DS_REQ		0x73646f78
+#define RPM_XO_DS_ID		0x0
+#define RPM_XO_DS_KEY		0x62616e45
+#define RPM_XO_DS_ENTER_VALUE		0x0
+#define RPM_XO_DS_EXIT_VALUE		0x1
+#endif
+
+#define DS_NUM_PARAMETERS	1
+#define DS_ENTRY		1
+#define DS_EXIT			0
 
 #define POWER_STATS_BASEMINOR		0
 #define POWER_STATS_MAX_MINOR		1
@@ -63,8 +87,10 @@ struct subsystem_data {
 	bool ignore_ssr;
 	enum ps_event_type enter;
 	enum ps_event_type exit;
+	u32 supported_state;
 	phandle rproc_handle;
 	void *ssr_handle;
+	struct notifier_block ps_ssr_nb;
 };
 
 struct power_state_drvdata {
@@ -76,7 +102,7 @@ struct power_state_drvdata {
 	struct kobj_attribute ps_ka;
 	struct wakeup_source *ps_ws;
 	struct notifier_block ps_pm_nb;
-	struct notifier_block ps_ssr_nb;
+	struct syscore_ops ps_ops;
 	enum power_states current_state;
 	u32 subsys_count;
 	struct list_head sub_sys_list;
@@ -90,6 +116,13 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
+		ss_data->ignore_ssr = true;
+		if (ss_data->supported_state == RPROC_SUSPEND)
+			ret = rproc_suspend(rproc);
+		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+			rproc_shutdown(rproc);
+		ss_data->ignore_ssr = false;
+		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
 		rproc_shutdown(rproc);
@@ -110,6 +143,13 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 
 	switch (state) {
 	case SUBSYS_DEEPSLEEP:
+		ss_data->ignore_ssr = true;
+		if (ss_data->supported_state == RPROC_SUSPEND)
+			ret = rproc_resume(rproc);
+		else if (ss_data->supported_state == RPROC_SHUTDOWN)
+			ret = rproc_boot(rproc);
+		ss_data->ignore_ssr = false;
+		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
 		ret = rproc_boot(rproc);
@@ -184,6 +224,30 @@ static int ps_open(struct inode *inode, struct file *file)
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_MSM_RPM_SMD)
+static int send_deep_sleep_vote(int state)
+{
+	u32 val;
+	struct msm_rpm_kvp req;
+
+	if (state == DS_ENTRY)
+		val = RPM_XO_DS_ENTER_VALUE;
+	else
+		val = RPM_XO_DS_EXIT_VALUE;
+
+	req.key = RPM_XO_DS_KEY;
+	req.data = (void *)&val;
+	req.length = sizeof(val);
+
+	return msm_rpm_send_message(MSM_RPM_CTX_SLEEP_SET, RPM_XO_DS_REQ, RPM_XO_DS_ID, &req, 1);
+}
+#else
+static int send_deep_sleep_vote(int state)
+{
+	return 0;
+}
+#endif
 
 static long ps_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -272,7 +336,6 @@ static int send_uevent(struct power_state_drvdata *drv, enum ps_event_type event
 
 static int ps_ssr_cb(struct notifier_block *nb, unsigned long opcode, void *data)
 {
-	struct power_state_drvdata *drv = container_of(nb, struct power_state_drvdata, ps_ssr_nb);
 	struct qcom_ssr_notify_data *notify_data = data;
 	struct subsystem_data *ss_data;
 	bool ss_present = false;
@@ -307,11 +370,15 @@ static int ps_ssr_cb(struct notifier_block *nb, unsigned long opcode, void *data
 static int ps_pm_cb(struct notifier_block *nb, unsigned long event, void *unused)
 {
 	struct power_state_drvdata *drv = container_of(nb, struct power_state_drvdata, ps_pm_nb);
+	int ret;
 
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
 		if (drv->current_state == DEEPSLEEP) {
 			pr_debug("Deep Sleep entry\n");
+			ret = send_deep_sleep_vote(DS_ENTRY);
+			if (ret)
+				return NOTIFY_BAD;
 			pm_set_suspend_via_firmware();
 		} else {
 			pr_debug("RBSC Suspend\n");
@@ -322,6 +389,9 @@ static int ps_pm_cb(struct notifier_block *nb, unsigned long event, void *unused
 		if (pm_suspend_via_firmware()) {
 			pr_debug("Deep Sleep exit\n");
 
+			ret = send_deep_sleep_vote(DS_EXIT);
+			if (ret)
+				BUG_ON(1);
 			__pm_stay_awake(drv->ps_ws);
 			send_uevent(drv, EXIT_DEEP_SLEEP);
 		} else {
@@ -352,6 +422,27 @@ static int ps_pm_cb(struct notifier_block *nb, unsigned long event, void *unused
 	}
 
 	return NOTIFY_DONE;
+}
+
+static void power_state_resume(void)
+{
+	struct arm_smccc_res res;
+
+	if (pm_suspend_via_firmware())
+		arm_smccc_smc(DS_ENTRY_SMC_ID, DS_NUM_PARAMETERS, DS_EXIT, 0, 0, 0, 0, 0, &res);
+}
+
+static int power_state_suspend(void)
+{
+	struct arm_smccc_res res;
+
+	if (pm_suspend_via_firmware()) {
+		arm_smccc_smc(DS_ENTRY_SMC_ID, DS_NUM_PARAMETERS, DS_ENTRY, 0, 0, 0, 0, 0, &res);
+		if (res.a0)
+			return res.a0;
+	}
+
+	return 0;
 }
 
 static ssize_t state_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
@@ -427,6 +518,7 @@ static int power_state_probe(struct platform_device *pdev)
 	struct device_node *dn = pdev->dev.of_node;
 	struct subsystem_data *ss_data;
 	int ret, i, j;
+	u32 supported_state;
 	const char *name;
 	phandle rproc_handle;
 
@@ -448,8 +540,6 @@ static int power_state_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_ws;
 
-	drv->ps_ssr_nb.notifier_call = ps_ssr_cb;
-	drv->ps_ssr_nb.priority = PS_SSR_NOTIFIER_PRIORITY;
 	INIT_LIST_HEAD(&drv->sub_sys_list);
 
 	drv->subsys_count = of_property_count_strings(dn, "qcom,subsys-name");
@@ -457,6 +547,10 @@ static int power_state_probe(struct platform_device *pdev)
 		of_property_read_string_index(dn, "qcom,subsys-name", i, &name);
 
 		ret = of_property_read_u32_index(dn, "qcom,rproc-handle", i, &rproc_handle);
+		if (ret)
+			goto remove_ss;
+
+		ret = of_property_read_u32_index(dn, "qcom,rproc-state", i, &supported_state);
 		if (ret)
 			goto remove_ss;
 
@@ -468,7 +562,11 @@ static int power_state_probe(struct platform_device *pdev)
 
 		ss_data->name = name;
 		ss_data->rproc_handle = rproc_handle;
-		ss_data->ssr_handle = qcom_register_ssr_notifier(name, &drv->ps_ssr_nb);
+		ss_data->supported_state = supported_state;
+		ss_data->ps_ssr_nb.notifier_call = ps_ssr_cb;
+		ss_data->ps_ssr_nb.priority = PS_SSR_NOTIFIER_PRIORITY;
+		ss_data->ignore_ssr = false;
+		ss_data->ssr_handle = qcom_register_ssr_notifier(name, &ss_data->ps_ssr_nb);
 		if (IS_ERR(ss_data->ssr_handle)) {
 			ret = PTR_ERR(ss_data->ssr_handle);
 			goto remove_ss;
@@ -488,12 +586,16 @@ static int power_state_probe(struct platform_device *pdev)
 		list_add_tail(&ss_data->list, &drv->sub_sys_list);
 	}
 
+	drv->ps_ops.suspend = power_state_suspend;
+	drv->ps_ops.resume = power_state_resume;
+	register_syscore_ops(&drv->ps_ops);
+
 	dev_set_drvdata(&pdev->dev, drv);
 	return ret;
 
 remove_ss:
 	list_for_each_entry(ss_data, &drv->sub_sys_list, list) {
-		qcom_unregister_ssr_notifier(ss_data->ssr_handle, &drv->ps_ssr_nb);
+		qcom_unregister_ssr_notifier(ss_data->ssr_handle, &ss_data->ps_ssr_nb);
 		list_del(&ss_data->list);
 	}
 	INIT_LIST_HEAD(&drv->sub_sys_list);
@@ -509,8 +611,9 @@ static int power_state_remove(struct platform_device *pdev)
 	struct power_state_drvdata *drv = dev_get_drvdata(&pdev->dev);
 	struct subsystem_data *ss_data;
 
+	unregister_syscore_ops(&drv->ps_ops);
 	list_for_each_entry(ss_data, &drv->sub_sys_list, list) {
-		qcom_unregister_ssr_notifier(ss_data->ssr_handle, &drv->ps_ssr_nb);
+		qcom_unregister_ssr_notifier(ss_data->ssr_handle, &ss_data->ps_ssr_nb);
 		list_del(&ss_data->list);
 	}
 

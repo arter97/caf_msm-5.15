@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1556,8 +1556,19 @@ static const struct msm_pinctrl_soc_data sdxpinn_pinctrl = {
 	.nwakeirq_map = ARRAY_SIZE(sdxpinn_pdc_map),
 };
 
+static const struct msm_pinctrl_soc_data sdxpinn_vm_pinctrl = {
+	.pins = sdxpinn_pins,
+	.npins = ARRAY_SIZE(sdxpinn_pins),
+	.functions = sdxpinn_functions,
+	.nfunctions = ARRAY_SIZE(sdxpinn_functions),
+	.groups = sdxpinn_groups,
+	.ngroups = ARRAY_SIZE(sdxpinn_groups),
+	.ngpios = 133,
+};
+
 static const struct of_device_id sdxpinn_pinctrl_of_match[] = {
-	{.compatible = "qcom,sdxpinn-pinctrl", .data = &sdxpinn_pinctrl}, {},
+	{.compatible = "qcom,sdxpinn-pinctrl", .data = &sdxpinn_pinctrl},
+	{.compatible = "qcom,sdxpinn-vm-pinctrl", .data = &sdxpinn_vm_pinctrl}, {},
 };
 
 static int sdxpinn_pinctrl_probe(struct platform_device *pdev)
@@ -1596,5 +1607,6 @@ module_exit(sdxpinn_pinctrl_exit);
 MODULE_DESCRIPTION("QTI sdxpinn pinctrl driver");
 MODULE_LICENSE("GPL v2");
 MODULE_DEVICE_TABLE(of, sdxpinn_pinctrl_of_match);
+MODULE_SOFTDEP("pre: qcom_tlmm_vm_irqchip");
 
 

@@ -22,7 +22,7 @@
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-ethqos.h"
 
-extern struct qcom_ethqos *pethqos;
+extern struct qcom_ethqos *pethqos[ETH_MAX_NICS];
 
 static bool avb_class_a_msg_wq_flag;
 static bool avb_class_b_msg_wq_flag;
@@ -203,7 +203,7 @@ int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg)
 
 	sub_second_inc = pps_config_sub_second_increment
 			 (priv->ptpaddr, eth_pps_cfg->ptpclk_freq,
-			  priv->plat->has_gmac4);
+			  (priv->plat->has_gmac4 || priv->plat->has_xgmac));
 
 	temp = (u64)((u64)eth_pps_cfg->ptpclk_freq << 32);
 	priv->default_addend = div_u64(temp, priv->plat->clk_ptp_rate);
@@ -267,10 +267,9 @@ int ethqos_init_pps(void *priv_n)
 	/* Before we update ptp register please check if it has some information
 	 * in the register then we need to overwrite it.
 	 */
-	priv->systime_flags = readl(priv->ptpaddr + PTP_TCR);
-	value = (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
-	priv->systime_flags |= value;
-	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, priv->systime_flags);
+	value = readl(priv->ptpaddr + PTP_TCR);
+	value |= (PTP_TCR_TSENA | PTP_TCR_TSCFUPDT | PTP_TCR_TSUPDT);
+	priv->hw->ptp->config_hw_tstamping(priv->ptpaddr, value);
 	priv->hw->ptp->init_systime(priv->ptpaddr, 0, 0);
 	priv->hw->ptp->adjust_systime(priv->ptpaddr, 0, 0, 0, 1);
 
@@ -294,6 +293,10 @@ static ssize_t pps_fops_read(struct file *filp, char __user *buf,
 	char *temp_buf;
 	ssize_t ret_cnt = 0;
 	struct pps_info *info;
+	struct qcom_ethqos *ethqos;
+
+	/*PPS functionality is only applicable for auto platform which supports single port */
+	ethqos = pethqos[0];
 
 	info = filp->private_data;
 
@@ -303,27 +306,27 @@ static ssize_t pps_fops_read(struct file *filp, char __user *buf,
 		if (!temp_buf)
 			return -ENOMEM;
 
-		if (pethqos)
+		if (ethqos)
 			len = scnprintf(temp_buf, buf_len,
-					"%ld\n", pethqos->avb_class_a_intr_cnt);
+					"%ld\n", ethqos->avb_class_a_intr_cnt);
 		else
 			len = scnprintf(temp_buf, buf_len, "0\n");
 
 		ret_cnt = simple_read_from_buffer(buf, count, f_pos,
 						  temp_buf, len);
 		kfree(temp_buf);
-		if (pethqos)
+		if (ethqos)
 			ETHQOSERR("poll pps2intr info=%d sent by kernel\n",
-				  pethqos->avb_class_a_intr_cnt);
+				  ethqos->avb_class_a_intr_cnt);
 	} else if (info->channel_no == AVB_CLASS_B_CHANNEL_NUM) {
 		avb_class_b_msg_wq_flag = false;
 		temp_buf = kzalloc(buf_len, GFP_KERNEL);
 		if (!temp_buf)
 			return -ENOMEM;
 
-		if (pethqos)
+		if (ethqos)
 			len = scnprintf(temp_buf, buf_len,
-					"%ld\n", pethqos->avb_class_b_intr_cnt);
+					"%ld\n", ethqos->avb_class_b_intr_cnt);
 		else
 			len = scnprintf(temp_buf, buf_len, "0\n");
 

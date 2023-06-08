@@ -47,6 +47,22 @@ static inline bool usb_gsi_remote_wakeup_allowed(struct usb_function *f)
 	return remote_wakeup_allowed;
 }
 
+static void ipa_ready_callback(void *user_data)
+{
+	struct f_gsi *gsi = user_data;
+
+	log_event_info("%s: ipa is ready\n", __func__);
+
+	/*
+	 * If ipa_ready_timeout is set then don't mark ipa_ready as true since this
+	 * callback can come even after timeout.
+	 */
+	if (!gsi->ipa_ready_timeout) {
+		gsi->d_port.ipa_ready = true;
+			wake_up_interruptible(&gsi->d_port.wait_for_ipa_ready);
+	}
+}
+
 static void post_event(struct gsi_data_port *port, u8 event)
 {
 	unsigned long flags;
@@ -615,6 +631,22 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 				sizeof(ipa_in_channel_out_params));
 	memset(&ipa_out_channel_out_params, 0x0,
 				sizeof(ipa_out_channel_out_params));
+
+	gsi->ipa_ready_timeout = false;
+	ret = ipa_register_ipa_ready_cb(ipa_ready_callback, gsi);
+	if (!ret) {
+		log_event_info("%s: ipa is not ready", __func__);
+		ret = wait_event_interruptible_timeout(
+			gsi->d_port.wait_for_ipa_ready, gsi->d_port.ipa_ready,
+			msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
+		if (!ret) {
+			log_event_err("%s: ipa ready timeout", __func__);
+			gsi->ipa_ready_timeout = true;
+			ret = -ETIMEDOUT;
+			goto end_xfer_ep_out;
+		}
+		gsi->d_port.ipa_ready = false;
+	}
 
 	log_event_dbg("%s: Calling xdci_connect", __func__);
 	ret = ipa_usb_xdci_connect(out_params, in_params,
@@ -1479,7 +1511,7 @@ static long gsi_ctrl_dev_ioctl(struct file *fp, unsigned int cmd,
 	struct gsi_ctrl_port *c_port;
 	struct f_gsi *gsi;
 	struct gsi_ctrl_pkt *cpkt;
-	struct ep_info info;
+	struct ep_info info = {0};
 	struct data_buf_info data_info = {0};
 	enum ipa_usb_teth_prot prot_id =
 		*(enum ipa_usb_teth_prot *)(fp->private_data);
@@ -2676,6 +2708,16 @@ static void gsi_resume(struct usb_function *f)
 
 static int gsi_get_status(struct usb_function *f)
 {
+	struct f_gsi *gsi = func_to_gsi(f);
+
+	/* D0 and D1 bit set to 0 if device is not wakeup capable */
+	if (!(USB_CONFIG_ATT_WAKEUP & f->config->bmAttributes))
+		return 0;
+
+	/* Disable function remote wake-up for DPL interface */
+	if (gsi->prot_id == IPA_USB_DIAG)
+		return 0;
+
 	return (f->func_wakeup_armed ? USB_INTRF_STAT_FUNC_RW : 0) |
 		USB_INTRF_STAT_FUNC_RW_CAP;
 }
@@ -2875,16 +2917,6 @@ fail:
 	}
 	log_event_err("%s: bind failed for %s", __func__, f->name);
 	return -ENOMEM;
-}
-
-static void ipa_ready_callback(void *user_data)
-{
-	struct f_gsi *gsi = user_data;
-
-	log_event_info("%s: ipa is ready\n", __func__);
-
-	gsi->d_port.ipa_ready = true;
-	wake_up_interruptible(&gsi->d_port.wait_for_ipa_ready);
 }
 
 void rmnet_gsi_update_in_buffer_mem_type(struct usb_function *f, bool use_tcm)
@@ -3227,6 +3259,7 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 	if (gsi->prot_id == IPA_USB_GPS)
 		goto skip_ipa_init;
 
+	gsi->ipa_ready_timeout = false;
 	status = ipa_register_ipa_ready_cb(ipa_ready_callback, gsi);
 	if (!status) {
 		log_event_info("%s: ipa is not ready", __func__);
@@ -3632,6 +3665,9 @@ static struct config_item_type gsi_func_rndis_type = {
 
 static void gsi_inst_clean(struct gsi_opts *opts)
 {
+	if (!opts)
+		return;
+
 	if (opts->gsi->c_port.cdev.dev) {
 		struct cdev *cdev = &opts->gsi->c_port.cdev;
 		struct f_gsi *gsi = opts->gsi;
@@ -3737,7 +3773,7 @@ static void gsi_free_inst(struct usb_function_instance *f)
 	enum ipa_usb_teth_prot prot_id;
 	struct f_gsi *gsi;
 
-	if (!opts->gsi)
+	if (!opts || !opts->gsi)
 		return;
 
 	prot_id = opts->gsi->prot_id;
