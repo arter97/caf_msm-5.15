@@ -316,6 +316,7 @@ struct stmmac_priv {
 	bool boot_kpi;
 	bool early_eth_config_set;
 	int current_loopback;
+	int loopback_direction;
 	int phylink_disconnected;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dbgfs_dir;

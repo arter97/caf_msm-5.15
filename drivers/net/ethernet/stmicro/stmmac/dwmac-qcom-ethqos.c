@@ -3635,6 +3635,29 @@ static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, in
 	return 0;
 }
 
+static void ethqos_pcs_loopback(struct qcom_ethqos *ethqos, int config)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (config == 1)
+		qcom_xpcs_pcs_loopback(priv->hw->qxpcs, 1);
+	else if (config == 0)
+		qcom_xpcs_pcs_loopback(priv->hw->qxpcs, 0);
+}
+
+static void ethqos_serdes_loopback(struct qcom_ethqos *ethqos, int speed, int config)
+{
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+			  speed, priv->dev->phydev->duplex);
+
+	if (config == 1)
+		qcom_xpcs_serdes_loopback(priv->hw->qxpcs, 1);
+	else if (config == 0)
+		qcom_xpcs_serdes_loopback(priv->hw->qxpcs, 0);
+}
+
 static void print_loopback_detail(enum loopback_mode loopback)
 {
 	switch (loopback) {
@@ -3649,6 +3672,9 @@ static void print_loopback_detail(enum loopback_mode loopback)
 		break;
 	case ENABLE_PHY_LOOPBACK:
 		ETHQOSINFO("Loopback is Enabled as PHY LOOPBACK\n");
+		break;
+	case ENABLE_SERDES_LOOPBACK:
+		ETHQOSINFO("Loopback is Enabled as SERDES LOOPBACK\n");
 		break;
 	default:
 		ETHQOSINFO("Invalid Loopback=%d\n", loopback);
@@ -3690,6 +3716,18 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 	ctrl |= priv->hw->link.duplex;
 	ctrl &= ~priv->hw->link.speed_mask;
 	switch (speed) {
+	case SPEED_10000:
+		ctrl |= priv->hw->link.xgmii.speed10000;
+		break;
+	case SPEED_5000:
+		ctrl |= priv->hw->link.xgmii.speed5000;
+		break;
+	case SPEED_2500:
+		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII)
+			ctrl |= priv->hw->link.xgmii.speed2500;
+		else if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII)
+			ctrl |= priv->hw->link.speed2500;
+		break;
 	case SPEED_1000:
 		ctrl |= priv->hw->link.speed1000;
 		break;
@@ -3701,7 +3739,7 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 		break;
 	default:
 		speed = SPEED_UNKNOWN;
-		ETHQOSDBG("unkwon speed\n");
+		ETHQOSDBG("unknown speed\n");
 		break;
 	}
 	writel_relaxed(ctrl, priv->ioaddr + MAC_CTRL_REG);
@@ -3845,6 +3883,81 @@ err_out:
 	return ret;
 }
 
+static ssize_t nw_loopback_handling_config(struct file *file, const char __user *user_buffer,
+					   size_t count, loff_t *position)
+{
+	char *in_buf;
+	int buf_len = 2000;
+	unsigned long ret;
+	int config = 0;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	in_buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!in_buf)
+		return -ENOMEM;
+
+	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%d", &config);
+	if (ret != 1) {
+		ETHQOSERR("Error in reading option from user");
+		return -EINVAL;
+	}
+
+	if (priv->loopback_direction == HOST_LOOPBACK_MODE) {
+		ETHQOSERR("Not enabling network loopback since host loopback mode is enabled\n");
+		return -EINVAL;
+	}
+
+	if (config < DISABLE_NW_LOOPBACK || config > ENABLE_PCS_NW_LOOPBACK) {
+		ETHQOSERR("Invalid config =%d\n", config);
+		return -EINVAL;
+	}
+
+	if (priv->plat->interface != PHY_INTERFACE_MODE_SGMII &&
+	    priv->plat->interface != PHY_INTERFACE_MODE_USXGMII) {
+		ETHQOSERR("PCS loopback is not supported for the interface type enabled\n");
+		return -EINVAL;
+	}
+
+	if (config == priv->current_loopback) {
+		switch (config) {
+		case DISABLE_NW_LOOPBACK:
+			ETHQOSINFO("Network loopback is already disabled\n");
+			break;
+		case ENABLE_PCS_NW_LOOPBACK:
+			ETHQOSINFO("Loopback is already Enabled as ");
+			ETHQOSINFO("PCS network loopback\n");
+			break;
+		}
+		return -EINVAL;
+	}
+
+	ethqos = file->private_data;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EFAULT;
+	}
+
+	ethqos_pcs_loopback(ethqos, config);
+
+	priv->current_loopback = config;
+
+	if (priv->current_loopback > DISABLE_NW_LOOPBACK)
+		priv->loopback_direction = NETWORK_LOOPBACK_MODE;
+	else
+		priv->loopback_direction = DISABLE_NW_LOOPBACK;
+
+	kfree(in_buf);
+
+	return count;
+}
+
 static ssize_t loopback_handling_config(struct file *file, const char __user *user_buffer,
 					size_t count, loff_t *position)
 {
@@ -3901,7 +4014,13 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		ETHQOSERR("Speed is also needed while enabling loopback\n");
 		return -EINVAL;
 	}
-	if (config < DISABLE_LOOPBACK || config > ENABLE_PHY_LOOPBACK) {
+
+	if (priv->loopback_direction == NETWORK_LOOPBACK_MODE) {
+		ETHQOSERR("Not enabling host loopback since network loopback mode is enabled\n");
+		return -EINVAL;
+	}
+
+	if (config < DISABLE_LOOPBACK || config > ENABLE_SERDES_LOOPBACK) {
 		ETHQOSERR("Invalid config =%d\n", config);
 		return -EINVAL;
 	}
@@ -3922,10 +4041,32 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 
 	/*Argument validation*/
 	if (config == DISABLE_LOOPBACK || config == ENABLE_IO_MACRO_LOOPBACK ||
-	    config == ENABLE_MAC_LOOPBACK || config == ENABLE_PHY_LOOPBACK) {
-		if (speed != SPEED_1000 && speed != SPEED_100 &&
-		    speed != SPEED_10)
-			return -EINVAL;
+	    config == ENABLE_MAC_LOOPBACK || config == ENABLE_PHY_LOOPBACK ||
+	    config == ENABLE_SERDES_LOOPBACK) {
+		switch (priv->plat->interface) {
+		case PHY_INTERFACE_MODE_RGMII:
+		case PHY_INTERFACE_MODE_RGMII_ID:
+		case PHY_INTERFACE_MODE_RGMII_RXID:
+		case PHY_INTERFACE_MODE_RGMII_TXID:
+			if (config == ENABLE_SERDES_LOOPBACK ||
+			    (speed != SPEED_1000 && speed != SPEED_100 &&
+			      speed != SPEED_10))
+				return -EINVAL;
+			break;
+		case PHY_INTERFACE_MODE_SGMII:
+			if (config == ENABLE_IO_MACRO_LOOPBACK ||
+			    (speed != SPEED_2500 && speed != SPEED_1000 &&
+			     speed != SPEED_100 && speed != SPEED_10))
+				return -EINVAL;
+			break;
+		case PHY_INTERFACE_MODE_USXGMII:
+			if (config == ENABLE_IO_MACRO_LOOPBACK ||
+			    (speed != SPEED_10000 && speed != SPEED_5000 &&
+			     speed != SPEED_2500 && speed != SPEED_1000 &&
+			     speed != SPEED_100 && speed != SPEED_10))
+				return -EINVAL;
+			break;
+		}
 	} else {
 		return -EINVAL;
 	}
@@ -3946,6 +4087,10 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		case ENABLE_PHY_LOOPBACK:
 			ETHQOSINFO("Loopback is already Enabled as ");
 			ETHQOSINFO("PHY LOOPBACK\n");
+			break;
+		case ENABLE_SERDES_LOOPBACK:
+			ETHQOSINFO("Loopback is already Enabled as ");
+			ETHQOSINFO("SERDES LOOPBACK\n");
 			break;
 		}
 		return -EINVAL;
@@ -3972,7 +4117,7 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 			ethqos->backup_duplex = DUPLEX_UNKNOWN;
 		}
 	}
-	/*Backup BMCR before Enabling Phy LoopbackLoopback */
+	/*Backup BMCR before Enabling Phy Loopback */
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
 	    config == ENABLE_PHY_LOOPBACK && priv->mii)
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
@@ -3995,6 +4140,8 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		else if (priv->current_loopback == ENABLE_PHY_LOOPBACK)
 			phy_digital_loopback_config(ethqos,
 						    ethqos->backup_speed, 0);
+		else if (priv->current_loopback == ENABLE_SERDES_LOOPBACK)
+			ethqos_serdes_loopback(ethqos, speed, 0);
 		break;
 	case ENABLE_IO_MACRO_LOOPBACK:
 		ETHQOSINFO("Request to Enable IO MACRO LOOPBACK\n");
@@ -4009,12 +4156,22 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 		ethqos->loopback_speed = speed;
 		phy_digital_loopback_config(ethqos, speed, 1);
 		break;
+	case ENABLE_SERDES_LOOPBACK:
+		ETHQOSINFO("Request to Enable SERDES LOOPBACK\n");
+		ethqos_serdes_loopback(ethqos, speed, 1);
+		break;
 	default:
 		ETHQOSINFO("Invalid Loopback=%d\n", config);
 		break;
 	}
 
 	priv->current_loopback = config;
+
+	if (priv->current_loopback > DISABLE_LOOPBACK)
+		priv->loopback_direction = HOST_LOOPBACK_MODE;
+	else
+		priv->loopback_direction = DISABLE_NW_LOOPBACK;
+
 	kfree(in_buf);
 	return count;
 }
@@ -4073,6 +4230,39 @@ fail:
 	return -EIO;
 }
 
+static ssize_t read_nw_loopback_config(struct file *file,
+				       char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	unsigned int len = 0, buf_len = 2000;
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct platform_device *pdev = ethqos->pdev;
+	struct net_device *dev = platform_get_drvdata(pdev);
+	struct stmmac_priv *priv = netdev_priv(dev);
+
+	if (priv->loopback_direction == HOST_LOOPBACK_MODE) {
+		len += scnprintf(buf + len, buf_len - len,
+		 "Host loopback mode is enabled, NW loopback mode is disabled\n");
+		goto out;
+	}
+
+	if (priv->current_loopback == DISABLE_NW_LOOPBACK)
+		len += scnprintf(buf + len, buf_len - len,
+				 "Network loopback is Disabled\n");
+	else if (priv->current_loopback == ENABLE_PCS_NW_LOOPBACK)
+		len += scnprintf(buf + len, buf_len - len,
+				 "Current Loopback is PCS network LOOPBACK\n");
+	else
+		len += scnprintf(buf + len, buf_len - len,
+				 "Invalid LOOPBACK Config\n");
+
+out:
+	if (len > buf_len)
+		len = buf_len;
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
 static ssize_t read_loopback_config(struct file *file,
 				    char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -4082,6 +4272,12 @@ static ssize_t read_loopback_config(struct file *file,
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
+
+	if (priv->loopback_direction == NETWORK_LOOPBACK_MODE) {
+		len += scnprintf(buf + len, buf_len - len,
+		 "NW loopback mode is enabled, Host loopback mode is disabled\n");
+		goto out;
+	}
 
 	if (priv->current_loopback == DISABLE_LOOPBACK)
 		len += scnprintf(buf + len, buf_len - len,
@@ -4095,9 +4291,14 @@ static ssize_t read_loopback_config(struct file *file,
 	else if (priv->current_loopback == ENABLE_PHY_LOOPBACK)
 		len += scnprintf(buf + len, buf_len - len,
 				 "Current Loopback is PHY LOOPBACK\n");
+	else if (priv->current_loopback == ENABLE_SERDES_LOOPBACK)
+		len += scnprintf(buf + len, buf_len - len,
+				 "Current Loopback is SERDES LOOPBACK\n");
 	else
 		len += scnprintf(buf + len, buf_len - len,
 				 "Invalid LOOPBACK Config\n");
+
+out:
 	if (len > buf_len)
 		len = buf_len;
 
@@ -4207,6 +4408,14 @@ static ssize_t write_ipc_stmmac_log_ctxt_low(struct file *file,
 static const struct file_operations fops_loopback_config = {
 	.read = read_loopback_config,
 	.write = loopback_handling_config,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_nw_loopback_config = {
+	.read = read_nw_loopback_config,
+	.write = nw_loopback_handling_config,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -4529,6 +4738,7 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *rgmii_reg_dump;
 	static struct dentry *ipc_stmmac_log_low;
 	static struct dentry *loopback_enable_mode;
+	static struct dentry *nw_loopback_enable_mode;
 	static struct dentry *enforce_max_speed;
 	static struct dentry *mac_dump;
 	static struct dentry *mac_pcs_dump;
@@ -4652,6 +4862,15 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	if (!loopback_enable_mode || IS_ERR(loopback_enable_mode)) {
 		ETHQOSERR("Can't create loopback_enable_mode %d\n",
 			  (long)loopback_enable_mode);
+		goto fail;
+	}
+
+	nw_loopback_enable_mode = debugfs_create_file("nw_loopback_enable", 0400,
+						      ethqos->debugfs_dir, ethqos,
+						      &fops_nw_loopback_config);
+	if (!nw_loopback_enable_mode || IS_ERR(nw_loopback_enable_mode)) {
+		ETHQOSERR("Can't create loopback_enable_mode %d\n",
+			  (long)nw_loopback_enable_mode);
 		goto fail;
 	}
 

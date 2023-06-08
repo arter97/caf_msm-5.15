@@ -226,7 +226,18 @@ enum loopback_mode {
 	DISABLE_LOOPBACK = 0,
 	ENABLE_IO_MACRO_LOOPBACK,
 	ENABLE_MAC_LOOPBACK,
-	ENABLE_PHY_LOOPBACK
+	ENABLE_PHY_LOOPBACK,
+	ENABLE_SERDES_LOOPBACK,
+};
+
+enum nw_loopback_mode {
+	DISABLE_NW_LOOPBACK = 0,
+	ENABLE_PCS_NW_LOOPBACK,
+};
+
+enum loopback_direction {
+	HOST_LOOPBACK_MODE = 1,
+	NETWORK_LOOPBACK_MODE,
 };
 
 enum phy_power_mode {
