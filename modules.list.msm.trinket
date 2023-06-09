@@ -3,6 +3,7 @@ qcom_soc_wdt.ko
 pinctrl-msm.ko
 pinctrl-trinket.ko
 qcom_cpu_vendor_hooks.ko
+qcom-mpm.ko
 qcom-reboot-reason.ko
 qcom-dload-mode.ko
 qcom-scm.ko
@@ -16,6 +17,9 @@ qcom_iommu_util.ko
 qcom_dma_heaps.ko
 qcom_hwspinlock.ko
 qti-regmap-debugfs.ko
+rpm-smd.ko
+proxy-consumer.ko
+rpm-smd-regulator.ko
 secure_buffer.ko
 smem.ko
 socinfo.ko
@@ -30,3 +34,8 @@ msm_rtb.ko
 qcom-dcvs.ko
 qcom_logbuf_vh.ko
 qcom-pmu-lib.ko
+spmi-pmic-arb.ko
+regmap-spmi.ko
+qcom-spmi-pmic.ko
+nvmem_qcom-spmi-sdam.ko
+rtc-pm8xxx.ko
