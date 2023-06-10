@@ -2820,7 +2820,6 @@ static void ethqos_set_early_eth_param(struct stmmac_priv *priv,
 		priv->plat->mdio_bus_data->phy_mask =
 		 priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
 
-	priv->early_eth = ethqos->early_eth_enabled;
 	qcom_ethqos_add_ipaddr(&pparams, priv->dev);
 
 	if (pparams.is_valid_ipv4_addr) {
@@ -5575,6 +5574,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos->speed = SPEED_10;
 	ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, plat_dat->interface);
 
+	plat_dat->early_eth = ethqos->early_eth_enabled;
 	plat_dat->bsp_priv = ethqos;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->dump_debug_regs = rgmii_dump;

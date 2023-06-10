@@ -314,7 +314,6 @@ struct stmmac_priv {
 	char int_name_tx_irq[MTL_MAX_TX_QUEUES][IFNAMSIZ + 18];
 
 	bool boot_kpi;
-	bool early_eth;
 	bool early_eth_config_set;
 	int current_loopback;
 #ifdef CONFIG_DEBUG_FS
