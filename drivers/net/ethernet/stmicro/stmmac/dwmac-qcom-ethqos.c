@@ -2454,7 +2454,28 @@ static int ethqos_reset_phy_rec(struct stmmac_priv *priv, int int_en)
 	ethqos_phy_power_on(ethqos);
 
 	if (int_en) {
-		ethqos_reset_phy_enable_interrupt(ethqos);
+		if (priv->mii) {
+			ETHQOSERR("do mdio reset\n");
+			priv->mii->reset(priv->mii);
+		}
+
+		/*Enable phy interrupt*/
+		if (priv->plat->phy_intr_en_extn_stm && priv->phydev) {
+			ETHQOSDBG("PHY interrupt Mode enabled\n");
+			priv->phydev->irq = PHY_MAC_INTERRUPT;
+			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+			if (priv->phydev->drv->config_intr &&
+			    !priv->phydev->drv->config_intr(priv->phydev)) {
+				ETHQOSERR("config_phy_intr successful after phy on\n");
+			}
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
+			priv->phydev->irq = PHY_POLL;
+			ETHQOSDBG("PHY Polling Mode enabled\n");
+		} else {
+			ETHQOSERR("phydev is null , intr value=%d\n",
+				  priv->plat->phy_intr_en_extn_stm);
+		}
 		if (ethqos->backup_autoneg == AUTONEG_DISABLE && priv->phydev) {
 			priv->phydev->autoneg = ethqos->backup_autoneg;
 			phy_write(priv->phydev, MII_BMCR, ethqos->backup_bmcr);
@@ -3425,12 +3446,13 @@ static ssize_t phy_off_config(struct file *file, const char __user *user_buffer,
 			ETHQOSDBG("Disable phy Loopback");
 			priv->current_loopback = ENABLE_PHY_LOOPBACK;
 		}
+		ethqos_trigger_phylink(ethqos, false);
 		ethqos_phy_power_off(ethqos);
 	} else if (config == ENABLE_PHY_IMMEDIATELY) {
 		ethqos->current_phy_mode = ENABLE_PHY_IMMEDIATELY;
 		//make phy on
 		ethqos_phy_power_on(ethqos);
-		ethqos_reset_phy_enable_interrupt(ethqos);
+		ethqos_trigger_phylink(ethqos, true);
 		if (priv->current_loopback == ENABLE_PHY_LOOPBACK) {
 			/*If Phy loopback is enabled , enabled It again*/
 			phy_digital_loopback_config(ethqos,
@@ -5977,15 +5999,7 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
-		/*Backup phy related data*/
-		if (priv->phydev->autoneg == AUTONEG_DISABLE && priv->mii) {
-			ethqos->backup_autoneg = priv->phydev->autoneg;
-			ethqos->backup_bmcr = priv->mii->read(priv->mii,
-							      plat->phy_addr,
-							      MII_BMCR);
-		} else {
-			ethqos->backup_autoneg = AUTONEG_ENABLE;
-		}
+		ethqos_trigger_phylink(ethqos, false);
 	}
 
 	ret = stmmac_suspend(dev);
@@ -6078,16 +6092,6 @@ static int qcom_ethqos_resume(struct device *dev)
 		}
 	}
 
-	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
-		ETHQOSINFO("reset phy after clock\n");
-		ethqos_reset_phy_enable_interrupt(ethqos);
-	if (ethqos->backup_autoneg == AUTONEG_DISABLE && priv->mii) {
-		priv->phydev->autoneg = ethqos->backup_autoneg;
-		priv->mii->write(priv->mii, priv->plat->phy_addr,
-				 MII_BMCR, ethqos->backup_bmcr);
-		}
-	}
-
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
 		/* Temp Enable LOOPBACK_EN.
 		 * TX clock needed for reset As Phy is off
@@ -6107,6 +6111,12 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Enabled\n");
 	}
 	ret = stmmac_resume(dev);
+
+	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
+		ETHQOSINFO("reset phy after clock\n");
+		ethqos_trigger_phylink(ethqos, true);
+	}
+
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
 		//Disable  LOOPBACK_EN
 

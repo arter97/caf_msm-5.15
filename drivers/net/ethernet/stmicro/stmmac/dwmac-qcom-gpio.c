@@ -307,32 +307,79 @@ void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 }
 EXPORT_SYMBOL(ethqos_disable_regulators);
 
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos)
+void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 {
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
-	struct phy_device *phydev = priv->dev->phydev;
+	struct phy_device *phydev = NULL;
+	struct device_node *node;
+	int ret = 0;
 
-	/* reset the phy so that it's ready */
-	if (priv->mii) {
-		ETHQOSERR("do mdio reset\n");
-		priv->mii->reset(priv->mii);
-	}
-	/*Enable phy interrupt*/
-	if (priv->plat->phy_intr_en_extn_stm && phydev) {
-		ETHQOSDBG("PHY interrupt Mode enabled\n");
-		phydev->irq = PHY_MAC_INTERRUPT;
-		phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+	if (!priv->phydev->autoneg)
+		linkmode_copy(priv->adv_old, priv->phydev->advertising);
 
-		if (phydev->drv->config_intr &&
-		    !phydev->drv->config_intr(phydev)) {
-			ETHQOSERR("config_phy_intr successful after phy on\n");
-		}
-		priv->plat->request_phy_wol(priv->plat);
-	} else if (!priv->plat->phy_intr_en_extn_stm) {
-		phydev->irq = PHY_POLL;
-		ETHQOSDBG("PHY Polling Mode enabled\n");
+	if (!status) {
+		if (priv->phylink_disconnected)
+			return;
+
+		if (priv->phy_irq_enabled)
+			priv->plat->phy_irq_disable(priv);
+
+		rtnl_lock();
+		phylink_stop(priv->phylink);
+		phylink_disconnect_phy(priv->phylink);
+		rtnl_unlock();
+
+		priv->phylink_disconnected = true;
 	} else {
-		ETHQOSERR("phydev is null , intr value=%d\n", priv->plat->phy_intr_en_extn_stm);
+		if (!priv->phylink_disconnected)
+			return;
+
+		/* reset the phy so that it's ready */
+		if (priv->mii) {
+			ETHQOSERR("do mdio reset\n");
+			priv->mii->reset(priv->mii);
+		}
+
+		phydev = priv->phydev;
+		node = priv->plat->phylink_node;
+
+		if (node)
+			ret = phylink_of_phy_connect(priv->phylink, node, 0);
+
+		rtnl_lock();
+		phylink_connect_phy(priv->phylink, priv->phydev);
+		rtnl_unlock();
+
+			/*Enable phy interrupt*/
+		if (priv->plat->phy_intr_en_extn_stm && phydev) {
+			ETHQOSDBG("PHY interrupt Mode enabled\n");
+			phydev->irq = PHY_MAC_INTERRUPT;
+			phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+			if (phydev->drv->config_intr &&
+			    !phydev->drv->config_intr(phydev)) {
+				ETHQOSERR("config_phy_intr successful after phy on\n");
+			}
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
+			phydev->irq = PHY_POLL;
+			ETHQOSDBG("PHY Polling Mode enabled\n");
+		} else {
+			ETHQOSERR("phydev is null , intr value=%d\n",
+				  priv->plat->phy_intr_en_extn_stm);
+		}
+
+		if (!priv->phy_irq_enabled)
+			priv->plat->phy_irq_enable(priv);
+
+		/*Give some time for the phy to config interrupt*/
+		usleep_range(10000, 20000);
+
+		rtnl_lock();
+		phylink_start(priv->phylink);
+		phylink_speed_up(priv->phylink);
+		rtnl_unlock();
+
+		priv->phylink_disconnected = false;
 	}
 }
 
