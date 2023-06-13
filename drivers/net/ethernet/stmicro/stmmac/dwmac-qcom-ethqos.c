@@ -2405,7 +2405,11 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->phy_intr_en_extn_stm)
 		reinit_completion(&ethqos->clk_enable_done);
 
+	if (priv->plat->mdio_op_busy)
+		wait_for_completion(&priv->plat->mdio_op);
+
 	ethqos->clks_suspended = 1;
+	atomic_set(&priv->plat->phy_clks_suspended, 1);
 
 	ethqos_update_clk_and_bus_cfg(ethqos, 0, priv->plat->interface);
 
@@ -2698,6 +2702,7 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	else
 		ethqos_update_clk_and_bus_cfg(ethqos, SPEED_10, priv->plat->interface);
 
+	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos->clks_suspended = 0;
 
 	if (priv->plat->phy_intr_en_extn_stm)
@@ -5868,6 +5873,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_clk;
 
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
+	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
 	return ret;
