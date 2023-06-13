@@ -18,6 +18,8 @@ enum msg_type {
 	UNICAST_DEL,
 	MULTICAST_DEL,
 	VLAN_DEL,
+	PRIO_ADD,
+	PRIO_DEL,
 };
 
 enum eth_state {

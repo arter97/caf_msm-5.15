@@ -37,7 +37,6 @@
 #include "dwmac-qcom-ethqos.h"
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-serdes.h"
-#include "dwmac-qcom-msgq-pvm.h"
 
 #define PHY_LOOPBACK_1000 0x4140
 #define PHY_LOOPBACK_100 0x6100
@@ -4253,6 +4252,18 @@ static const struct file_operations fops_icb_read = {
 };
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state event)
+{
+	struct qcom_ethqos *ethqos = plat->bsp_priv;
+
+	if (event == EMAC_LINK_UP && !ethqos->passthrough_en) {
+		ethqos->linkup_on_passthrough_en = true;
+	} else {
+		qcom_notify_ethstate_tosvm(NOTIFICATION, event);
+		ethqos->linkup_on_passthrough_en = false;
+	}
+}
+
 static ssize_t show_passthrough_en(struct device *dev,
 				   struct device_attribute *attr, char *user_buf)
 {
@@ -4316,10 +4327,15 @@ static ssize_t store_passthrough_en(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (input == ethqos->passthrough_en)
+	if (input == ethqos->passthrough_en) {
 		ETHQOSERR("No effect as duplicate input\n");
-
-	ethqos->passthrough_en = input;
+	} else {
+		ethqos->passthrough_en = input;
+		if (ethqos->linkup_on_passthrough_en) {
+			qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_UP);
+			ethqos->linkup_on_passthrough_en = false;
+		}
+	}
 
 	return size;
 }
@@ -5233,28 +5249,37 @@ void qcom_ethsvm_command_req(enum msg_type command, void *buf, int len, void *us
 	struct stmmac_priv *priv = (struct stmmac_priv *)user_data;
 	u8 *buffer = (u8 *)buf;
 
-	pr_info("%s GVM command = %d priv = %p %pM\n", __func__, command, priv, buffer);
+	pr_info("%s GVM command = %d priv = %p buf = %pM\n", __func__, command, priv, buffer);
 
 	switch (command) {
 	case VLAN_ADD:
 		/* Last 12 bits are the vlan id */
 		priv->dev->netdev_ops->ndo_vlan_rx_add_vid(priv->dev,
 							   htons(ETH_P_8021Q),
-							   (*((u32 *)buffer) & 0xFFF));
+							   (*((u16 *)buffer) & 0xFFF));
+		break;
 
+	case VLAN_DEL:
+		if (priv->dev->netdev_ops->ndo_vlan_rx_kill_vid)
+			priv->dev->netdev_ops->ndo_vlan_rx_kill_vid(priv->dev,
+							      htons(ETH_P_8021Q),
+							      (*((u16 *)buffer) & 0xFFF));
+		break;
+
+	case PRIO_ADD:
 		/* Disable the MAC Rx/Tx */
 		stmmac_mac_set(priv, priv->ioaddr, false);
 
 		/* Enable queue 4 for SVM and set priority based routing */
 		writel(0x4, priv->ioaddr + 0x1034);
 		stmmac_rx_queue_enable(priv, priv->hw, MTL_QUEUE_DCB, 4);
-		stmmac_rx_queue_prio(priv, priv->hw, (0x1 << 7), 0x4);
+		stmmac_rx_queue_prio(priv, priv->hw, (1 << *buffer), 0x4);
 
 		/* Enable the MAC Rx/Tx */
 		stmmac_mac_set(priv, priv->ioaddr, true);
 		break;
 
-	case VLAN_DEL:
+	case PRIO_DEL:
 		stmmac_rx_queue_prio(priv, priv->hw, 0, 0x4);
 		break;
 

@@ -51,7 +51,7 @@
 #include "dwxgmac2.h"
 #include "hwif.h"
 #include <linux/micrel_phy.h>
-#include "dwmac-qcom-msgq-pvm.h"
+#include "dwmac-qcom-ethqos.h"
 
 /* As long as the interface is active, we keep the timestamping counter enabled
  * with fine resolution and binary rollover. This avoid non-monotonic behavior
@@ -1204,7 +1204,7 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
 
-	qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_DOWN);
+	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
@@ -1368,7 +1368,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 #endif
 
-	qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_UP);
+	qcom_ethstate_update(priv->plat, EMAC_LINK_UP);
 
 	/*We need to reset the clks when speed change occurs on remote
 	 *this is because we need to align rgmii clocks with data else
@@ -4181,7 +4181,7 @@ static int stmmac_open(struct net_device *dev)
 		goto init_error;
 	}
 
-	qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_HW_UP);
+	qcom_ethstate_update(priv->plat, EMAC_HW_UP);
 
 	if (!priv->tx_coal_timer_disable) {
 		stmmac_init_coalesce(priv);
@@ -4271,7 +4271,7 @@ static int stmmac_release(struct net_device *dev)
 	u32 chan;
 	int ret = 0;
 
-	qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_HW_DOWN);
+	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);

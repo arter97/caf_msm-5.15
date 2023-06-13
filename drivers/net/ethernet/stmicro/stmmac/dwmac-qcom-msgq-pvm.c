@@ -185,8 +185,17 @@ static int recv_thread(void *data)
 		case VLAN_DEL:
 			if (msgq_priv->command_cb)
 				msgq_priv->command_cb(rx_msg.type,
-						      &rx_msg,
-						      sizeof(rx_msg),
+						      &rx_msg.data[0],
+						      2,
+						      msgq_priv->user_data);
+			break;
+
+		case PRIO_ADD:
+		case PRIO_DEL:
+			if (msgq_priv->command_cb)
+				msgq_priv->command_cb(rx_msg.type,
+						      &rx_msg.data[0],
+						      1,
 						      msgq_priv->user_data);
 			break;
 
