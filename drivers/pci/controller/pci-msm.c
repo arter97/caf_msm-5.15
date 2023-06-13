@@ -37,6 +37,7 @@
 #include <linux/kfifo.h>
 #include <linux/clk/qcom.h>
 #include <linux/random.h>
+#include <linux/iommu.h>
 
 #include "../pci.h"
 
@@ -5685,11 +5686,16 @@ int msm_pcie_deenumerate(u32 rc_idx)
 	pci_stop_root_bus(bridge->bus);
 	pci_remove_root_bus(bridge->bus);
 
+	if (!dev->power_on || dev->link_status == MSM_PCIE_LINK_DOWN
+			|| dev->user_suspend)
+		goto out;
+
 	/* Mask all the interrupts */
 	msm_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_MASK, 0);
 
 	msm_pcie_disable(dev);
 
+out:
 	dev->enumerated = false;
 
 	mutex_unlock(&dev->enumerate_lock);
@@ -7592,9 +7598,8 @@ static int msm_pcie_remove(struct platform_device *pdev)
 		pci_load_and_free_saved_state(msm_pcie_dev[rc_idx].dev,
 				      &msm_pcie_dev[rc_idx].default_state);
 
+	msm_pcie_deenumerate(rc_idx);
 	msm_pcie_irq_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_vreg_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_clk_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_gpio_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_release_resources(&msm_pcie_dev[rc_idx]);
 
@@ -7616,6 +7621,25 @@ out:
 	mutex_unlock(&pcie_drv.drv_lock);
 
 	return ret;
+}
+
+static void msm_pcie_shutdown(struct platform_device *pdev)
+{
+	int ret = 0;
+	int rc_idx;
+	struct msm_pcie_dev_t *dev;
+	struct iommu_domain *domain = iommu_get_domain_for_dev(&pdev->dev);
+
+	ret = of_property_read_u32((&pdev->dev)->of_node,
+			"cell-index", &rc_idx);
+	if (ret) {
+		pr_err("%s: Did not find RC index.\n", __func__);
+		return;
+	}
+
+	dev = &msm_pcie_dev[rc_idx];
+
+	iommu_detach_device(domain, &pdev->dev);
 }
 
 static int msm_pcie_link_retrain(struct msm_pcie_dev_t *pcie_dev,
@@ -8322,6 +8346,7 @@ static const struct of_device_id msm_pcie_match[] = {
 static struct platform_driver msm_pcie_driver = {
 	.probe	= msm_pcie_probe,
 	.remove	= msm_pcie_remove,
+	.shutdown = msm_pcie_shutdown,
 	.driver	= {
 		.name		= "pci-msm",
 		.pm = &qcom_pcie_pm_ops,
@@ -9639,4 +9664,3 @@ int msm_pcie_deregister_event(struct msm_pcie_register_event *reg)
 EXPORT_SYMBOL(msm_pcie_deregister_event);
 
 MODULE_DESCRIPTION("Qualcomm Technologies, Inc. PCIe RC driver");
-MODULE_LICENSE("GPL v2");
