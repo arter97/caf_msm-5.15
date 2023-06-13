@@ -252,6 +252,16 @@ config PCIE_BUS_PEER2PEER
 
 endchoice
 
+config PCIE_SHUTDOWN_CALLBACK
+	bool "Enable PCIe shutdown callback"
+	help
+	  In some low memory plaforms, device crashes in rebbot scenario,
+	  since smmu disabled and still access smmu protected memory.
+
+	  Enable the PCIe shutdown callback using this flag to handle the reboot
+	  issues in 32 bit devices. This flag needs to be enabled only for
+	  32 bit systems.
+
 source "drivers/pci/hotplug/Kconfig"
 source "drivers/pci/controller/Kconfig"
 source "drivers/pci/endpoint/Kconfig"
