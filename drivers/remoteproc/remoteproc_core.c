@@ -2172,9 +2172,6 @@ int rproc_boot(struct rproc *rproc)
 	char rproc_end[80] = {'\0'};
 	int ret;
 
-	if (rproc->state == RPROC_SUSPENDED)
-		return 0;
-
 	if (!rproc) {
 		pr_err("invalid rproc handle\n");
 		return -EINVAL;
@@ -2186,6 +2183,11 @@ int rproc_boot(struct rproc *rproc)
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
 		return ret;
+	}
+
+	if (rproc->state == RPROC_SUSPENDED) {
+		ret = 0;
+		goto unlock_mutex;
 	}
 
 	if (rproc->state == RPROC_DELETED) {
@@ -2266,14 +2268,14 @@ void rproc_shutdown(struct rproc *rproc)
 	struct device *dev = &rproc->dev;
 	int ret;
 
-	if (rproc->state == RPROC_SUSPENDED)
-		return;
-
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
 		return;
 	}
+
+	if (rproc->state == RPROC_SUSPENDED)
+		goto out;
 
 	/* if the remote proc is still needed, bail out */
 	if (!atomic_dec_and_test(&rproc->power))
@@ -2327,13 +2329,15 @@ int rproc_detach(struct rproc *rproc)
 	struct device *dev = &rproc->dev;
 	int ret;
 
-	if (rproc->state == RPROC_SUSPENDED)
-		return 0;
-
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
 		return ret;
+	}
+
+	if (rproc->state == RPROC_SUSPENDED) {
+		ret = 0;
+		goto out;
 	}
 
 	/* if the remote proc is still needed, bail out */
