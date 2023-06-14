@@ -25,6 +25,8 @@
 #include <linux/tcp.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/inetdevice.h>
+#include <net/addrconf.h>
 #include <linux/rtnetlink.h>
 #include <linux/route.h>
 #include <linux/if_arp.h>
@@ -684,8 +686,7 @@ static int qcom_ethqos_add_ipaddr(struct ip_params *ip_info,
 	sin->sin_family = AF_INET;
 	sin->sin_port = 0;
 
-	res = inet_ioctl(net->genl_sock->sk_socket,
-			 SIOCSIFADDR, (unsigned long)(void *)&ir);
+	res = devinet_ioctl(net, SIOCSIFADDR, &ir);
 		if (res) {
 			ETHQOSERR("can't setup IPv4 address!: %d\r\n", res);
 		} else {
@@ -701,12 +702,16 @@ static int qcom_ethqos_add_ipaddr(struct ip_params *ip_info,
 static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 				    struct net_device *dev)
 {
-	int ret = -EFAULT;
+	int ret = 0;
 	struct in6_ifreq ir6;
 	char *prefix;
 	struct net *net = dev_net(dev);
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+	struct inet6_dev *idev;
+
+	idev = __in6_dev_get_safely(dev);
+
 	/*For valid IPv6 address*/
 
 	if (!net || !net->genl_sock || !net->genl_sock->sk_socket) {
@@ -734,22 +739,15 @@ static int qcom_ethqos_add_ipv6addr(struct ip_params *ip_info,
 		if (ir6.ifr6_prefixlen > 128)
 			ir6.ifr6_prefixlen = 0;
 	}
-	if (net->genl_sock) {
-		ret = inet6_ioctl(net->genl_sock->sk_socket,
-				  SIOCSIFADDR, (unsigned long)(void *)&ir6);
-	} else {
-		ETHQOSERR("Sock is null, unable to assign ipv6 address\n");
-	}
 
-	if (ret) {
-		ETHQOSDBG("Can't setup IPv6 address!\r\n");
-	} else {
-		ETHQOSDBG("Assigned IPv6 address: %s\r\n",
-			  ip_info->ipv6_addr_str);
+	addrconf_add_linklocal(idev, &ir6.ifr6_addr, 0);
+	ETHQOSDBG("Assigned IPv6 address: %s\r\n",
+		  ip_info->ipv6_addr_str);
+
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Assigned IPv6 address");
 #endif
-		}
+
 	return ret;
 }
 
