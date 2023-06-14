@@ -3369,12 +3369,30 @@ static const struct file_operations fops_mac_rec = {
 	.llseek = default_llseek,
 };
 
-static ssize_t read_phy_off(struct file *file,
-			    char __user *user_buf,
-			    size_t count, loff_t *ppos)
+static ssize_t read_phy_off(struct device *dev, struct device_attribute *attr, char *user_buf)
 {
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
 	unsigned int len = 0, buf_len = 2000;
-	struct qcom_ethqos *ethqos = file->private_data;
+
+	if (!netdev) {
+		ETHQOSERR("%s: netdev is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("%s: priv is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("%s: ethqos is NULL\n", __func__);
+		return -EINVAL;
+	}
+
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_IMMEDIATELY)
 		len += scnprintf(buf + len, buf_len - len,
@@ -3403,33 +3421,40 @@ static ssize_t read_phy_off(struct file *file,
 	if (len > buf_len)
 		len = buf_len;
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return scnprintf(user_buf, buf_len, "%s", buf);
 }
 
-static ssize_t phy_off_config(struct file *file, const char __user *user_buffer,
-			      size_t count, loff_t *position)
+static ssize_t phy_off_config(struct device *dev, struct device_attribute *attr,
+			      const char *user_buf, size_t size)
 {
-	char *in_buf;
-	int buf_len = 2000;
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+
+	s8 config = 0;
 	unsigned long ret;
-	int config = 0;
-	struct qcom_ethqos *ethqos = file->private_data;
-	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 
-	in_buf = kzalloc(buf_len, GFP_KERNEL);
-	if (!in_buf)
-		return -ENOMEM;
+	if (!netdev) {
+		ETHQOSERR("%s: netdev is NULL\n", __func__);
+		return -EINVAL;
+	}
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("%s: priv is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("%s: ethqos is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = kstrtos8(user_buf, 0, &config);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		return -EFAULT;
-	}
-
-	ret = sscanf(in_buf, "%d", &config);
-	if (ret != 1) {
-		ETHQOSERR("Error in reading option from user");
-		return -EINVAL;
 	}
 	if (config > DISABLE_PHY_ON_OFF || config < DISABLE_PHY_IMMEDIATELY) {
 		ETHQOSERR("Invalid option =%d", config);
@@ -3474,9 +3499,11 @@ static ssize_t phy_off_config(struct file *file, const char __user *user_buffer,
 		ETHQOSERR("Invalid option\n");
 		return -EINVAL;
 	}
-	kfree(in_buf);
-	return count;
+	return size;
 }
+
+static DEVICE_ATTR(phy_off, ETHQOS_SYSFS_DEV_ATTR_PERMS,
+			read_phy_off, phy_off_config);
 
 void qcom_serdes_loopback_v3_1(struct plat_stmmacenet_data *plat, bool on)
 {
@@ -4172,14 +4199,6 @@ static ssize_t write_ipc_stmmac_log_ctxt_low(struct file *file,
 	return count;
 }
 
-static const struct file_operations fops_phy_off = {
-	.read = read_phy_off,
-	.write = phy_off_config,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-	.llseek = default_llseek,
-};
-
 static const struct file_operations fops_loopback_config = {
 	.read = read_loopback_config,
 	.write = loopback_handling_config,
@@ -4426,6 +4445,9 @@ static int ethqos_remove_sysfs(struct qcom_ethqos *ethqos)
 			  &dev_attr_cv2x_priority.attr);
 #endif
 
+	sysfs_remove_file(&net_dev->dev.kobj,
+			  &dev_attr_phy_off.attr);
+
 	return 0;
 }
 
@@ -4433,6 +4455,7 @@ static int ethqos_create_sysfs(struct qcom_ethqos *ethqos)
 {
 	int ret;
 	struct net_device *net_dev;
+	struct stmmac_priv *priv;
 
 	if (!ethqos) {
 		ETHQOSERR("ethqos is NULL\n");
@@ -4461,6 +4484,17 @@ static int ethqos_create_sysfs(struct qcom_ethqos *ethqos)
 	}
 #endif
 
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
+		ret = sysfs_create_file(&net_dev->dev.kobj,
+					&dev_attr_phy_off.attr);
+		if (ret) {
+			ETHQOSERR("Unable to create phy_off sysfs node\n");
+			goto fail;
+		}
+	}
+
 	return ret;
 
 fail:
@@ -4472,7 +4506,6 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *phy_reg_dump;
 	static struct dentry *rgmii_reg_dump;
 	static struct dentry *ipc_stmmac_log_low;
-	static struct dentry *phy_off;
 	static struct dentry *loopback_enable_mode;
 	static struct dentry *enforce_max_speed;
 	static struct dentry *mac_dump;
@@ -4589,16 +4622,6 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		ETHQOSERR("Cannot create debugfs ipc_stmmac_log_low %x\n",
 			  ipc_stmmac_log_low);
 		goto fail;
-	}
-
-	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
-		phy_off = debugfs_create_file("phy_off", 0400,
-					      ethqos->debugfs_dir, ethqos,
-					      &fops_phy_off);
-		if (!phy_off || IS_ERR(phy_off)) {
-			ETHQOSERR("Can't create phy_off %x\n", phy_off);
-			goto fail;
-		}
 	}
 
 	loopback_enable_mode = debugfs_create_file("loopback_enable_mode", 0400,
