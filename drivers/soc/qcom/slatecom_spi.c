@@ -63,7 +63,7 @@
 
 #define WR_BUF_SIZE_IN_BYTES_FOR_USE	(WR_BUF_SIZE_IN_WORDS_FOR_USE * sizeof(uint32_t))
 #define SLATE_RESUME_IRQ_TIMEOUT 100
-#define SLATE_SPI_AUTOSUSPEND_TIMEOUT 5000
+#define SLATE_SPI_AUTOSUSPEND_TIMEOUT 500
 #define MIN_SLEEP_TIME	5
 
 /* Master_Command[27] */
@@ -1634,8 +1634,13 @@ static int slatecom_pm_prepare(struct device *dev)
 	else
 		cmnd_reg |= SLATE_OK_SLP_RBSC;
 
-	(!atomic_read(&slate_is_spi_active)) ? pm_runtime_get_sync(&s_dev->dev)
-			: SLATECOM_INFO("spi is already active, skip get_sync...\n");
+	if (!atomic_read(&slate_is_spi_active)) {
+		SLATECOM_INFO("spi is already inactive, get_sync.\n");
+		pm_runtime_get_sync(&s_dev->dev);
+		usleep_range(5000, 10000);
+	} else {
+		SLATECOM_INFO("spi is already active, skip get_sync.\n");
+	}
 
 	atomic_set(&ok_to_sleep, 1);
 	ret = slatecom_reg_write_cmd(&clnt_handle, SLATE_CMND_REG, 1, &cmnd_reg, true);
