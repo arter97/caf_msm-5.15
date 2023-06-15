@@ -305,7 +305,6 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 	if ((status & BIT(4)) && !chan) {
 		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(4));
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(4));
-		pr_info("%s Ch 4 Intr status = %u\n", __func__, chan_status);
 	}
 #endif
 	return ret;

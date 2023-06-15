@@ -17,6 +17,7 @@
 #include <linux/ipc_logging.h>
 #include <linux/interconnect.h>
 #include <linux/qtee_shmbridge.h>
+#include "dwmac-qcom-msgq-pvm.h"
 
 #define QCOM_ETH_QOS_MAC_ADDR_LEN 6
 #define QCOM_ETH_QOS_MAC_ADDR_STR_LEN 18
@@ -470,6 +471,7 @@ struct qcom_ethqos {
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	bool linkup_on_passthrough_en;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;
@@ -616,4 +618,14 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb);
 int ethqos_init_pps(void *priv);
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state event);
+#else
+static inline void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state event)
+{
+	/* Not enabled */
+}
+#endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
 #endif
