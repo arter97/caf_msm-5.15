@@ -29,7 +29,9 @@
 #include <linux/spinlock.h>
 #include <linux/ktime.h>
 
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #include <asm/smp_plat.h>
+#endif
 
 #include "qcom_scm.h"
 #include "qtee_shmbridge_internal.h"
@@ -314,6 +316,7 @@ static bool __qcom_scm_is_call_available(struct device *dev, u32 svc_id,
 	return ret ? false : !!res.result[0];
 }
 
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 static int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
 				       unsigned int flags)
 {
@@ -342,6 +345,13 @@ static int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
+#else
+static inline int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
+					      unsigned int flags)
+{
+	return -EINVAL;
+}
+#endif
 
 static int __qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus)
 {
