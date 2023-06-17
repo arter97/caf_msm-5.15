@@ -3688,7 +3688,6 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 	ETHQOSDBG("Old ctrl=0x%x with mask with flow control\n", ctrl);
 
 	ctrl |= priv->hw->link.duplex;
-	priv->dev->phydev->duplex = duplex;
 	ctrl &= ~priv->hw->link.speed_mask;
 	switch (speed) {
 	case SPEED_1000:
@@ -3708,10 +3707,14 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 	writel_relaxed(ctrl, priv->ioaddr + MAC_CTRL_REG);
 	ETHQOSDBG("New ctrl=%x priv hw speeed =%d\n", ctrl,
 		  priv->hw->link.speed1000);
-	priv->dev->phydev->speed = speed;
+
+	if (priv->dev->phydev) {
+		priv->dev->phydev->duplex = duplex;
+		priv->dev->phydev->speed = speed;
+	}
 	priv->speed  = speed;
 
-	if (priv->dev->phydev->speed != SPEED_UNKNOWN)
+	if (speed != SPEED_UNKNOWN)
 		ethqos_fix_mac_speed(ethqos, speed);
 
 	/*We need to reset the clks when speed change occurs on remote
@@ -3961,8 +3964,13 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
 	    config > DISABLE_LOOPBACK) {
 		/*Backup old speed & duplex*/
-		ethqos->backup_speed = priv->speed;
-		ethqos->backup_duplex = priv->dev->phydev->duplex;
+		if (priv->dev->phydev) {
+			ethqos->backup_speed = priv->speed;
+			ethqos->backup_duplex = priv->dev->phydev->duplex;
+		} else {
+			ethqos->backup_speed = SPEED_UNKNOWN;
+			ethqos->backup_duplex = DUPLEX_UNKNOWN;
+		}
 	}
 	/*Backup BMCR before Enabling Phy LoopbackLoopback */
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
