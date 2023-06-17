@@ -420,6 +420,15 @@ stmmac_ethtool_set_link_ksettings(struct net_device *dev,
 		return -ENODEV;
 	}
 
+	if (priv->plat->has_xgmac &&
+	    (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+	     priv->plat->interface == PHY_INTERFACE_MODE_SGMII)) {
+		if (cmd->base.autoneg == AUTONEG_DISABLE)
+			return -EINVAL;
+		else if (cmd->base.speed) /* Autoneg on and speed change is not supported */
+			return 0;
+	}
+
 	if  (!priv->plat->has_gmac4 && (priv->hw->pcs & STMMAC_PCS_RGMII ||
 					priv->hw->pcs & STMMAC_PCS_SGMII)) {
 		u32 mask = ADVERTISED_Autoneg | ADVERTISED_Pause;
