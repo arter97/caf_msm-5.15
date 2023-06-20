@@ -103,8 +103,7 @@ int crypto_qti_ice_config_start(struct request *req,
 				struct ice_data_setting *setting);
 unsigned int crypto_qti_ice_get_num_fde_slots(void);
 int crypto_qti_ice_add_userdata(const unsigned char *inhash);
-int crypto_qti_ice_init_fde_node(struct device *dev);
-
+void crypto_qti_ice_set_fde_flag(int flag);
 #else //CONFIG_QTI_CRYPTO_FDE
 static inline int crypto_qti_ice_setup_ice_hw(const char *storage_type, int enable)
 {
@@ -114,6 +113,8 @@ static inline int crypto_qti_ice_add_userdata(const unsigned char *inhash)
 {
 	return -EOPNOTSUPP;
 }
+static inline void crypto_qti_ice_set_fde_flag(int flag)
+{}
 #endif //CONFIG_QTI_CRYPTO_FDE
 #else
 static inline int crypto_qti_init_crypto(void *mmio_data)
@@ -160,7 +161,8 @@ static inline int crypto_qti_ice_add_userdata(const unsigned char *inhash)
 {
 	return -EOPNOTSUPP;
 }
-
+static inline void crypto_qti_ice_set_fde_flag(int flag)
+{}
 #endif /* CONFIG_QTI_CRYPTO_COMMON */
 
 #endif /* _CRYPTO_QTI_COMMON_H */
