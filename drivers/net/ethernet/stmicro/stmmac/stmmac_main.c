@@ -51,6 +51,7 @@
 #include "dwxgmac2.h"
 #include "hwif.h"
 #include <linux/micrel_phy.h>
+#include "dwmac-qcom-ethqos.h"
 
 /* As long as the interface is active, we keep the timestamping counter enabled
  * with fine resolution and binary rollover. This avoid non-monotonic behavior
@@ -1055,6 +1056,17 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
 
+	if (!priv->phydev->autoneg && !priv->plat->early_eth) {
+		linkmode_copy(state->advertising, priv->adv_old);
+		/* If PCS is supported, check which modes it supports. */
+		if (priv->hw->xpcs)
+			xpcs_validate(priv->hw->xpcs, supported, state);
+		if (priv->hw->qxpcs)
+			qcom_xpcs_validate(priv->hw->qxpcs, supported, state);
+
+		return;
+	}
+
 	/* Cut down 1G if asked to */
 	if ((max_speed > 0) && (max_speed < 1000)) {
 		phylink_set(mask, 1000baseT_Full);
@@ -1187,6 +1199,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+	if (priv->plat->fix_mac_speed) {
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
+		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
+	}
+
+	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
+
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
@@ -1215,10 +1234,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
-	int mac_speed = speed;
-
-	if (priv->plat->fixed_phy_mode && priv->plat->mac2mac_speed)
-		mac_speed = priv->plat->mac2mac_speed;
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1233,7 +1248,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	ctrl &= ~priv->hw->link.speed_mask;
 
 	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_10000:
 			ctrl |= priv->hw->link.xgmii.speed10000;
 			break;
@@ -1256,7 +1271,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else if (interface == PHY_INTERFACE_MODE_XLGMII) {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_100000:
 			ctrl |= priv->hw->link.xlgmii.speed100000;
 			break;
@@ -1282,7 +1297,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			return;
 		}
 	} else {
-		switch (mac_speed) {
+		switch (speed) {
 		case SPEED_2500:
 			ctrl |= priv->hw->link.speed2500;
 			break;
@@ -1300,7 +1315,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	priv->speed = mac_speed;
+	priv->speed = speed;
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
@@ -1312,7 +1327,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	}
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, mac_speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1329,7 +1344,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->plat->mac2mac_link = true;
 		netdev_info(priv->dev,
 			    "mac2mac mode: Mac link up speed = %d\n",
-			    mac_speed);
+			    speed);
 	}
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
@@ -1352,6 +1367,9 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->boot_kpi = true;
 	}
 #endif
+
+	qcom_ethstate_update(priv->plat, EMAC_LINK_UP);
+
 	/*We need to reset the clks when speed change occurs on remote
 	 *this is because we need to align rgmii clocks with data else
 	 *the data would stall on speed change.
@@ -1360,15 +1378,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		reset_control_assert(priv->plat->rgmii_rst);
 		mdelay(100);
 		reset_control_deassert(priv->plat->rgmii_rst);
-	}
-
-	/*Disable LPI interrupt in the mac and enable it during Power management*/
-	if (priv->lpi_irq < 0 && priv->plat->has_xgmac) {
-		int status = 0;
-
-		status = readl(priv->ioaddr + XGMAC_INT_EN);
-		status &= ~(XGMAC_LPIIS);
-		writel(status, priv->ioaddr + XGMAC_INT_EN);
 	}
 }
 
@@ -2796,7 +2805,7 @@ static bool stmmac_xdp_xmit_zc(struct stmmac_priv *priv, u32 queue, u32 budget)
  * @queue: TX queue index
  * Description: it reclaims the transmit resources after transmission completes.
  */
-static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
+int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 {
 	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
 	unsigned int bytes_compl = 0, pkts_compl = 0;
@@ -2986,7 +2995,7 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
  * Description: it cleans the descriptors and restarts the transmission
  * in case of transmission errors.
  */
-static void stmmac_tx_err(struct stmmac_priv *priv, u32 chan)
+void stmmac_tx_err(struct stmmac_priv *priv, u32 chan)
 {
 	struct stmmac_tx_queue *tx_q = &priv->tx_queue[chan];
 
@@ -3076,6 +3085,9 @@ static int stmmac_napi_check(struct stmmac_priv *priv, u32 chan, u32 dir)
 			__napi_schedule(rx_napi);
 		}
 	}
+	if (status == RBU_ERR)
+		if (priv->plat->handle_mac_err)
+			priv->plat->handle_mac_err(priv, RBU_ERR, chan);
 
 	if ((status & handle_tx) && (chan < priv->plat->tx_queues_to_use)) {
 		if (napi_schedule_prep(tx_napi)) {
@@ -3085,6 +3097,9 @@ static int stmmac_napi_check(struct stmmac_priv *priv, u32 chan, u32 dir)
 			__napi_schedule(tx_napi);
 		}
 	}
+	if (status == tx_hard_error)
+		if (priv->plat->handle_mac_err)
+			priv->plat->handle_mac_err(priv, FBE_ERR, chan);
 
 	return status;
 }
@@ -4166,6 +4181,8 @@ static int stmmac_open(struct net_device *dev)
 		goto init_error;
 	}
 
+	qcom_ethstate_update(priv->plat, EMAC_HW_UP);
+
 	if (!priv->tx_coal_timer_disable) {
 		stmmac_init_coalesce(priv);
 	} else {
@@ -4253,6 +4270,8 @@ static int stmmac_release(struct net_device *dev)
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 chan;
 	int ret = 0;
+
+	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
@@ -4745,6 +4764,8 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 			netdev_err(priv->dev,
 				   "%s: Tx Ring full when queue awake\n",
 				   __func__);
+			if (priv->plat->handle_mac_err)
+				priv->plat->handle_mac_err(priv, TDU_ERR, queue);
 		}
 		return NETDEV_TX_BUSY;
 	}
@@ -5673,7 +5694,7 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit, u32 queue)
 		enum pkt_hash_types hash_type;
 		struct stmmac_rx_buffer *buf;
 		struct dma_desc *np, *p;
-		int entry;
+		int entry, err_status = -1;
 		u32 hash;
 
 		if (!count && rx_q->state_saved) {
@@ -5702,8 +5723,8 @@ read_again:
 			p = rx_q->dma_rx + entry;
 
 		/* read the status of the incoming frame */
-		status = stmmac_rx_status(priv, &priv->dev->stats,
-				&priv->xstats, p);
+		status = stmmac_rx_status_err(priv, &priv->dev->stats,
+					      &priv->xstats, p, &err_status);
 		/* check if managed by the DMA otherwise go ahead */
 		if (unlikely(status & dma_own))
 			break;
@@ -5728,6 +5749,10 @@ read_again:
 			error = 1;
 			if (!(status & ctxt_desc) && !priv->hwts_rx_en)
 				priv->dev->stats.rx_errors++;
+			if (err_status >= 0 && err_status <= MAC_ERR_CNT) {
+				if (priv->plat->handle_mac_err)
+					priv->plat->handle_mac_err(priv, err_status, queue);
+			}
 		}
 
 		if (unlikely(error && (status & rx_not_ls)))
@@ -7568,6 +7593,7 @@ int stmmac_dvr_probe(struct device *device,
 	struct stmmac_priv *priv;
 	u32 rxq;
 	int i, ret = 0;
+	int rec_ret = 0;
 
 	ndev = devm_alloc_etherdev_mqs(device, sizeof(struct stmmac_priv),
 				       MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES);
@@ -7787,11 +7813,18 @@ int stmmac_dvr_probe(struct device *device,
 	if (!priv->plat->mac2mac_en &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
+		i = 0;
 		/* MDIO bus Registration */
-		ret = stmmac_mdio_register(ndev);
+		do {
+			ret = stmmac_mdio_register(ndev);
+			if (ret < 0 && priv->plat->handle_mac_err)
+				rec_ret = priv->plat->handle_mac_err(priv, PHY_DET_ERR, 0);
+			i++;
+		} while (i < 10 && ret < 0);
+
 		if (ret < 0) {
 			dev_err(priv->device,
-				"%s: MDIO bus (id: %d) registration failed",
+				"%s: MDIO bus (id: %d) registration failed\n",
 				__func__, priv->plat->bus_id);
 			goto error_mdio_register;
 		}
@@ -7967,7 +8000,7 @@ int stmmac_suspend(struct device *dev)
 
 	mutex_unlock(&priv->lock);
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->phylink_disconnected) {
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
@@ -8084,7 +8117,7 @@ int stmmac_resume(struct device *dev)
 			return ret;
 	}
 
-	if (!priv->plat->mac2mac_en) {
+	if (!priv->plat->mac2mac_en && !priv->phylink_disconnected) {
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);

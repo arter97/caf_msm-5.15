@@ -16,7 +16,8 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 			       struct net_device *dev)
 {
 	void __iomem *ioaddr = hw->pcsr;
-	u32 tx, rx;
+	struct stmmac_priv *priv = netdev_priv(dev);
+	u32 tx, rx, intr_en;
 
 	tx = readl(ioaddr + XGMAC_TX_CONFIG);
 	rx = readl(ioaddr + XGMAC_RX_CONFIG);
@@ -47,7 +48,12 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 
 	writel(tx, ioaddr + XGMAC_TX_CONFIG);
 	writel(rx, ioaddr + XGMAC_RX_CONFIG);
-	writel(XGMAC_INT_DEFAULT_EN, ioaddr + XGMAC_INT_EN);
+
+	if (!(priv->lpi_irq < 0)) {
+		intr_en = readl(ioaddr + XGMAC_INT_EN);
+		intr_en |= XGMAC_LPIIE;
+		writel(intr_en, ioaddr + XGMAC_INT_EN);
+	}
 }
 
 static void dwxgmac2_set_mac(void __iomem *ioaddr, bool enable)
@@ -283,11 +289,11 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 {
 	void __iomem *ioaddr = hw->pcsr;
 	int ret = 0;
-	u32 status;
+	u32 status, chan_status;
 
 	status = readl(ioaddr + XGMAC_MTL_INT_STATUS);
 	if (status & BIT(chan)) {
-		u32 chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
+		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 
 		if (chan_status & XGMAC_RXOVFIS)
 			ret |= CORE_IRQ_MTL_RX_OVERFLOW;
@@ -295,6 +301,12 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	if ((status & BIT(4)) && !chan) {
+		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(4));
+		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(4));
+	}
+#endif
 	return ret;
 }
 

@@ -52,6 +52,9 @@ struct qcom_scm_waitq {
 	struct idr idr;
 	spinlock_t idr_lock;
 	struct work_struct scm_irq_work;
+	u64 call_ctx_cnt;
+	u64 irq;
+	enum qcom_scm_wq_feature wq_feature;
 };
 
 struct qcom_scm {
@@ -2742,6 +2745,7 @@ int qcom_scm_invoke_smc_legacy(phys_addr_t in_buf, size_t in_buf_size,
 		.args[3] = out_buf_size,
 		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
 			QCOM_SCM_RW, QCOM_SCM_VAL),
+		.multicall_allowed = true,
 	};
 
 	struct qcom_scm_res res;
@@ -2776,6 +2780,7 @@ int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size,
 		.args[3] = out_buf_size,
 		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
 					QCOM_SCM_RW, QCOM_SCM_VAL),
+		.multicall_allowed = true,
 	};
 	struct qcom_scm_res res;
 
@@ -2806,6 +2811,7 @@ int qcom_scm_invoke_callback_response(phys_addr_t out_buf,
 		.args[0] = out_buf,
 		.args[1] = out_buf_size,
 		.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL),
+		.multicall_allowed = true,
 	};
 	struct qcom_scm_res res;
 
@@ -2859,6 +2865,34 @@ int qcom_scm_qseecom_call(u32 cmd_id, struct qseecom_scm_desc *desc, bool retry)
 }
 EXPORT_SYMBOL(qcom_scm_qseecom_call);
 
+int __qcom_scm_ddrbw_profiler(struct device *dev, phys_addr_t in_buf,
+	size_t in_buf_size, phys_addr_t out_buf, size_t out_buf_size)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = TZ_SVC_BW_PROF_ID,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+
+	desc.args[0] = in_buf;
+	desc.args[1] = in_buf_size;
+	desc.args[2] = out_buf;
+	desc.args[3] = out_buf_size;
+	desc.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL, QCOM_SCM_RW,
+								 QCOM_SCM_VAL);
+	ret = qcom_scm_call(dev, &desc, NULL);
+
+	return ret;
+}
+
+int qcom_scm_ddrbw_profiler(phys_addr_t in_buf,
+	size_t in_buf_size, phys_addr_t out_buf, size_t out_buf_size)
+{
+	return __qcom_scm_ddrbw_profiler(__scm ? __scm->dev : NULL, in_buf,
+			in_buf_size, out_buf, out_buf_size);
+}
+EXPORT_SYMBOL(qcom_scm_ddrbw_profiler);
 
 static int qcom_scm_find_dload_address(struct device *dev, u64 *addr)
 {
@@ -2917,10 +2951,48 @@ static int qcom_scm_do_restart(struct notifier_block *this, unsigned long event,
 	return NOTIFY_OK;
 }
 
+static int qcom_scm_query_wq_queue_info(struct qcom_scm *scm)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_WAITQ,
+		.cmd = QCOM_SCM_GET_WQ_QUEUE_INFO,
+		.owner = ARM_SMCCC_OWNER_SIP
+	};
+	struct qcom_scm_res res;
+
+	scm->waitq.wq_feature = QCOM_SCM_SINGLE_SMC_ALLOW;
+	ret = qcom_scm_call_atomic(__scm->dev, &desc, &res);
+	if (ret) {
+		pr_err("%s: Failed to get wq queue info: %d\n", __func__, ret);
+		return ret;
+	}
+
+	scm->waitq.call_ctx_cnt = res.result[0] & 0xFF;
+	scm->waitq.irq = res.result[1] & 0xFFFF;
+	scm->waitq.wq_feature = QCOM_SCM_MULTI_SMC_WHITE_LIST_ALLOW;
+
+	pr_info("WQ Info, feature: %d call_ctx_cnt: %d irq: %d\n",
+		scm->waitq.wq_feature, scm->waitq.call_ctx_cnt, scm->waitq.irq);
+
+	return ret;
+}
+
+bool qcom_scm_multi_call_allow(struct device *dev, bool multicall_allowed)
+{
+	struct qcom_scm *scm;
+
+	scm = dev_get_drvdata(dev);
+	if (multicall_allowed &&
+		scm->waitq.wq_feature == QCOM_SCM_MULTI_SMC_WHITE_LIST_ALLOW)
+		return true;
+
+	return false;
+};
+
 struct completion *qcom_scm_lookup_wq(struct qcom_scm *scm, u32 wq_ctx)
 {
 	struct completion *wq = NULL;
-	u32 wq_ctx_idr = wq_ctx;
 	unsigned long flags;
 	int err;
 
@@ -2937,8 +3009,7 @@ struct completion *qcom_scm_lookup_wq(struct qcom_scm *scm, u32 wq_ctx)
 
 	init_completion(wq);
 
-	err = idr_alloc_u32(&scm->waitq.idr, wq, &wq_ctx_idr,
-			    (wq_ctx_idr < U32_MAX ? : U32_MAX), GFP_ATOMIC);
+	err = idr_alloc_u32(&scm->waitq.idr, wq, &wq_ctx, wq_ctx, GFP_ATOMIC);
 	if (err < 0) {
 		devm_kfree(scm->dev, wq);
 		wq = ERR_PTR(err);
@@ -2957,6 +3028,7 @@ void scm_waitq_flag_handler(struct completion *wq, u32 flags)
 		break;
 	case QCOM_SMC_WAITQ_FLAG_WAKE_ALL:
 		complete_all(wq);
+		reinit_completion(wq);
 		break;
 	default:
 		pr_err("invalid flags: %u\n", flags);
@@ -3001,6 +3073,36 @@ static irqreturn_t qcom_scm_irq_handler(int irq, void *p)
 	schedule_work(&scm->waitq.scm_irq_work);
 
 	return IRQ_HANDLED;
+}
+
+static int __qcom_multi_smc_init(struct qcom_scm *__scm,
+						struct platform_device *pdev)
+{
+	int ret = 0, irq;
+
+	spin_lock_init(&__scm->waitq.idr_lock);
+	idr_init(&__scm->waitq.idr);
+	if (of_device_is_compatible(__scm->dev->of_node, "qcom,scm-v1.1")) {
+		INIT_WORK(&__scm->waitq.scm_irq_work, scm_irq_work);
+
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0) {
+			dev_err(__scm->dev, "WQ IRQ is not specified: %d\n", irq);
+			return irq;
+		}
+
+		ret = devm_request_threaded_irq(__scm->dev, irq, NULL,
+			qcom_scm_irq_handler, IRQF_ONESHOT, "qcom-scm", __scm);
+		if (ret < 0) {
+			dev_err(__scm->dev, "Failed to request qcom-scm irq: %d\n", ret);
+			return ret;
+		}
+
+		/* Detect Multi SMC support present or not */
+		qcom_scm_query_wq_queue_info(__scm);
+	}
+
+	return ret;
 }
 
 /**
@@ -3071,7 +3173,7 @@ static int qcom_scm_probe(struct platform_device *pdev)
 {
 	struct qcom_scm *scm;
 	unsigned long clks;
-	int irq, ret;
+	int ret;
 
 	scm = devm_kzalloc(&pdev->dev, sizeof(*scm), GFP_KERNEL);
 	if (!scm)
@@ -3143,27 +3245,11 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	__scm = scm;
 	__scm->dev = &pdev->dev;
 
-	spin_lock_init(&__scm->waitq.idr_lock);
-	idr_init(&__scm->waitq.idr);
-	if (of_device_is_compatible(__scm->dev->of_node, "qcom,scm-v1.1")) {
-		INIT_WORK(&__scm->waitq.scm_irq_work, scm_irq_work);
-
-		irq = platform_get_irq(pdev, 0);
-		if (irq < 0) {
-			pr_err("IRQ not specified: %d\n", irq);
-			return irq;
-		}
-
-		ret = devm_request_threaded_irq(__scm->dev, irq, NULL,
-			qcom_scm_irq_handler, IRQF_ONESHOT, "qcom-scm", __scm);
-		if (ret < 0) {
-			pr_err("Failed to request qcom-scm irq: %d\n", ret);
-			return ret;
-		}
-	}
-
 	__qcom_scm_init();
 	__get_convention();
+	ret  = __qcom_multi_smc_init(scm, pdev);
+	if (ret)
+		return ret;
 
 	scm->restart_nb.notifier_call = qcom_scm_do_restart;
 	scm->restart_nb.priority = 130;

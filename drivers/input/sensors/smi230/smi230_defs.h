@@ -1293,6 +1293,8 @@ struct smi230_dev
 
     /*! Delay function pointer */
     smi230_delay_fptr_t delay_ms;
+
+	int irq;
 };
 
 #endif /* _SMI230_DEFS_H */

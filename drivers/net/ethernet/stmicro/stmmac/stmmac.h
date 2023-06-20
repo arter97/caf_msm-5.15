@@ -314,9 +314,9 @@ struct stmmac_priv {
 	char int_name_tx_irq[MTL_MAX_TX_QUEUES][IFNAMSIZ + 18];
 
 	bool boot_kpi;
-	bool early_eth;
 	bool early_eth_config_set;
 	int current_loopback;
+	int phylink_disconnected;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dbgfs_dir;
 #endif
@@ -355,6 +355,7 @@ struct stmmac_priv {
 	bool phy_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 };
 
 enum stmmac_state {
@@ -384,6 +385,8 @@ int stmmac_dvr_remove(struct device *dev);
 int stmmac_dvr_probe(struct device *device,
 		     struct plat_stmmacenet_data *plat_dat,
 		     struct stmmac_resources *res);
+void stmmac_tx_err(struct stmmac_priv *priv, u32 chan);
+int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue);
 void stmmac_disable_eee_mode(struct stmmac_priv *priv);
 bool stmmac_eee_init(struct stmmac_priv *priv);
 int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt);

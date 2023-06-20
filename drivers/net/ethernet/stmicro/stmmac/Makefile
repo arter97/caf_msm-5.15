@@ -9,6 +9,8 @@ stmmac-objs:= stmmac_main.o stmmac_ethtool.o stmmac_mdio.o ring_mode.o	\
 	      stmmac_xdp.o \
 	      $(stmmac-y)
 
+stmmac-$(CONFIG_ETHQOS_QCOM_HOSTVM) += dwmac-qcom-msgq-pvm.o
+
 stmmac-$(CONFIG_STMMAC_SELFTESTS) += stmmac_selftests.o
 
 # Ordering matters. Generic driver must be last.

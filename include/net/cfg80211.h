@@ -1512,6 +1512,9 @@ struct cfg80211_unsol_bcast_probe_resp {
  * @fils_discovery: FILS discovery transmission parameters
  * @unsol_bcast_probe_resp: Unsolicited broadcast probe response parameters
  * @mbssid_config: AP settings for multiple bssid
+ * @punct_bitmap: Preamble puncturing bitmap. Each bit represents
+ *	a 20 MHz channel, lowest bit corresponding to the lowest channel.
+ *	Bit set to 1 indicates that the channel is punctured.
  */
 struct cfg80211_ap_settings {
 	struct cfg80211_chan_def chandef;
@@ -1546,6 +1549,9 @@ struct cfg80211_ap_settings {
 	struct cfg80211_fils_discovery fils_discovery;
 	struct cfg80211_unsol_bcast_probe_resp unsol_bcast_probe_resp;
 	struct cfg80211_mbssid_config mbssid_config;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	u16 punct_bitmap;
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -1672,6 +1678,9 @@ struct cfg80211_ap_settings {
  * @radar_required: whether radar detection is required on the new channel
  * @block_tx: whether transmissions should be blocked while changing
  * @count: number of beacons until switch
+ * @punct_bitmap: Preamble puncturing bitmap. Each bit represents
+ *	a 20 MHz channel, lowest bit corresponding to the lowest channel.
+ *	Bit set to 1 indicates that the channel is punctured.
  */
 struct cfg80211_csa_settings {
 	struct cfg80211_chan_def chandef;
@@ -1684,6 +1693,9 @@ struct cfg80211_csa_settings {
 	bool radar_required;
 	bool block_tx;
 	u8 count;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	u16 punct_bitmap;
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -2282,6 +2294,24 @@ struct cfg80211_tid_stats {
  *	received packet with an FCS error matches the peer MAC address.
  * @airtime_link_metric: mesh airtime link metric.
  * @connected_to_as: true if mesh STA has a path to authentication server
+ * @mlo_params_valid: Indicates @assoc_link_id and @mld_addr fields are filled
+ *	by driver. Drivers use this only in cfg80211_new_sta() calls when AP
+ *	MLD's MLME/SME is offload to driver. Drivers won't fill this
+ *	information in cfg80211_del_sta_sinfo(), get_station() and
+ *	dump_station() callbacks.
+ * @assoc_link_id: Indicates MLO link ID of the AP, with which the station
+ *	completed (re)association. This information filled for both MLO
+ *	and non-MLO STA connections when the AP affiliated with an MLD.
+ * @mld_addr: For MLO STA connection, filled with MLD address of the station.
+ *	For non-MLO STA connection, filled with all zeros.
+ * @assoc_resp_ies: IEs from (Re)Association Response.
+ *	This is used only when in AP mode with drivers that do not use user
+ *	space MLME/SME implementation. The information is provided only for the
+ *	cfg80211_new_sta() calls to notify user space of the IEs. Drivers won't
+ *	fill this information in cfg80211_del_sta_sinfo(), get_station() and
+ *	dump_station() callbacks. User space needs this information to determine
+ *	the accepted and rejected affiliated links of the connected station.
+ * @assoc_resp_ies_len: Length of @assoc_resp_ies buffer in octets.
  */
 struct station_info {
 	u64 filled;
@@ -2341,6 +2371,14 @@ struct station_info {
 	u32 airtime_link_metric;
 
 	u8 connected_to_as;
+
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	bool mlo_params_valid;
+	u8 assoc_link_id;
+	u8 mld_addr[ETH_ALEN] __aligned(2);
+	const u8 *assoc_resp_ies;
+	size_t assoc_resp_ies_len;
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -4106,6 +4144,17 @@ struct cfg80211_pmk_conf {
  *	the real status code for failures. Used only for the authentication
  *	response command interface (user space to driver).
  * @pmkid: The identifier to refer a PMKSA.
+ * @mld_addr: MLD address of the peer. Used by the authentication request event
+ *	interface. Driver indicates this to enable MLO during the authentication
+ *	offload to user space. Driver shall look at %NL80211_ATTR_MLO_SUPPORT
+ *	flag capability in NL80211_CMD_CONNECT to know whether the user space
+ *	supports enabling MLO during the authentication offload.
+ *	User space should use the address of the interface (on which the
+ *	authentication request event reported) as self MLD address. User space
+ *	and driver should use MLD addresses in RA, TA and BSSID fields of
+ *	authentication frames sent or received via cfg80211. The driver
+ *	translates the MLD addresses to/from link addresses based on the link
+ *	chosen for the authentication.
  */
 struct cfg80211_external_auth_params {
 	enum nl80211_external_auth_action action;
@@ -4114,6 +4163,9 @@ struct cfg80211_external_auth_params {
 	unsigned int key_mgmt_suite;
 	u16 status;
 	const u8 *pmkid;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	u8 mld_addr[ETH_ALEN] __aligned(2);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -4378,12 +4430,24 @@ struct cfg80211_pmsr_request {
  *	the IEs of the remote peer in the event from the host driver and
  *	the constructed IEs by the user space in the request interface.
  * @ie_len: Length of IEs in octets.
+ * @assoc_link_id: MLO link ID of the AP, with which (re)association requested
+ *	by peer. This will be filled by driver for both MLO and non-MLO station
+ *	connections when the AP affiliated with an MLD. For non-MLD AP mode, it
+ *	will be -1. Used only with OWE update event (driver to user space).
+ * @peer_mld_addr: For MLO connection, MLD address of the peer. For non-MLO
+ *	connection, it will be all zeros. This is applicable only when
+ *	@assoc_link_id is not -1, i.e., the AP affiliated with an MLD. Used only
+ *	with OWE update event (driver to user space).
  */
 struct cfg80211_update_owe_info {
 	u8 peer[ETH_ALEN] __aligned(2);
 	u16 status;
 	const u8 *ie;
 	size_t ie_len;
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
+	int assoc_link_id;
+	u8 peer_mld_addr[ETH_ALEN] __aligned(2);
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
 	ANDROID_BACKPORT_RESERVED(1);
 	ANDROID_BACKPORT_RESERVED(2);
@@ -5230,6 +5294,7 @@ struct cfg80211_ops {
  *	in order to not have them reachable in normal drivers, until we have
  *	complete feature/interface combinations/etc. advertisement. No driver
  *	should set this flag for now.
+ * @WIPHY_FLAG_SUPPORTS_EXT_KCK_32: The device supports 32-byte KCK keys.
  */
 enum wiphy_flags {
 	WIPHY_FLAG_SUPPORTS_EXT_KEK_KCK		= BIT(0),
@@ -5242,7 +5307,7 @@ enum wiphy_flags {
 	WIPHY_FLAG_CONTROL_PORT_PROTOCOL	= BIT(7),
 	WIPHY_FLAG_IBSS_RSN			= BIT(8),
 	WIPHY_FLAG_MESH_AUTH			= BIT(10),
-	/* use hole at 11 */
+	WIPHY_FLAG_SUPPORTS_EXT_KCK_32          = BIT(11),
 	/* use hole at 12 */
 	WIPHY_FLAG_SUPPORTS_FW_ROAM		= BIT(13),
 	WIPHY_FLAG_AP_UAPSD			= BIT(14),
@@ -8521,6 +8586,8 @@ void cfg80211_roamed(struct net_device *dev, struct cfg80211_roam_info *info,
  *
  * @dev: network device
  * @bssid: the BSSID of the AP
+ * @td_bitmap: transition disable policy
+ * @td_bitmap_len: Length of transition disable policy
  * @gfp: allocation flags
  *
  * This function should be called by a driver that supports 4 way handshake
@@ -8531,7 +8598,7 @@ void cfg80211_roamed(struct net_device *dev, struct cfg80211_roam_info *info,
  * indicate the 802.11 association.
  */
 void cfg80211_port_authorized(struct net_device *dev, const u8 *bssid,
-			      gfp_t gfp);
+			      const u8* td_bitmap, u8 td_bitmap_len, gfp_t gfp);
 
 #ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 /**
@@ -9136,13 +9203,14 @@ bool cfg80211_reg_can_beacon_relax(struct wiphy *wiphy,
  * @dev: the device which switched channels
  * @chandef: the new channel definition
  * @link_id: the link ID for MLO, must be 0 for non-MLO
+ * @punct_bitmap: the new puncturing bitmap
  *
  * Caller must acquire wdev_lock, therefore must only be called from sleepable
  * driver context!
  */
 void cfg80211_ch_switch_notify(struct net_device *dev,
 			       struct cfg80211_chan_def *chandef,
-			       unsigned int link_id);
+			       unsigned int link_id, u16 punct_bitmap);
 
 /*
  * cfg80211_ch_switch_started_notify - notify channel switch start
@@ -9151,6 +9219,7 @@ void cfg80211_ch_switch_notify(struct net_device *dev,
  * @link_id: the link ID for MLO, must be 0 for non-MLO
  * @count: the number of TBTTs until the channel switch happens
  * @quiet: whether or not immediate quiet was requested by the AP
+ * @punct_bitmap: the future puncturing bitmap
  *
  * Inform the userspace about the channel switch that has just
  * started, so that it can take appropriate actions (eg. starting
@@ -9159,7 +9228,7 @@ void cfg80211_ch_switch_notify(struct net_device *dev,
 void cfg80211_ch_switch_started_notify(struct net_device *dev,
 				       struct cfg80211_chan_def *chandef,
 				       unsigned int link_id, u8 count,
-				       bool quiet);
+				       bool quiet, u16 punct_bitmap);
 
 /**
  * ieee80211_operating_class_to_band - convert operating class to band
@@ -9772,5 +9841,17 @@ static inline int cfg80211_color_change_notify(struct net_device *dev)
 					 NL80211_CMD_COLOR_CHANGE_COMPLETED,
 					 0, 0);
 }
+
+/**
+ * cfg80211_valid_disable_subchannel_bitmap - validate puncturing bitmap
+ * @bitmap: bitmap to be validated
+ * @chandef: channel definition
+ *
+ * Validate the puncturing bitmap.
+ *
+ * Return: %true if the bitmap is valid. %false otherwise.
+ */
+bool cfg80211_valid_disable_subchannel_bitmap(u16 *bitmap,
+					      const struct cfg80211_chan_def *chandef);
 
 #endif /* __NET_CFG80211_H */

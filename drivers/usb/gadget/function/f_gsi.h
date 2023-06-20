@@ -51,6 +51,23 @@
 #define GSI_OUT_RMNET_BUF_LEN 31744
 #define GSI_OUT_ECM_BUF_LEN 2048
 
+#if defined(CONFIG_USB_LOW_MEM_VARIANT) && !defined(CONFIG_USB_DEFAULT_MEM_VARIANT)
+#undef GSI_IN_RNDIS_BUFF_SIZE
+#define GSI_IN_RNDIS_BUFF_SIZE GSI_IN_BUFF_SIZE
+
+#undef GSI_IN_RNDIS_AGGR_SIZE
+#define GSI_IN_RNDIS_AGGR_SIZE 9216
+
+#undef GSI_NUM_IN_RNDIS_BUFFERS
+#define GSI_NUM_IN_RNDIS_BUFFERS GSI_NUM_IN_BUFFERS
+
+#undef GSI_IN_RMNET_BUFF_SIZE
+#define GSI_IN_RMNET_BUFF_SIZE GSI_IN_BUFF_SIZE
+
+#undef GSI_NUM_IN_RMNET_BUFFERS
+#define GSI_NUM_IN_RMNET_BUFFERS GSI_NUM_IN_BUFFERS
+#endif
+
 #define GSI_IPA_READY_TIMEOUT 5000
 
 #define ETH_ADDR_STR_LEN 14
@@ -84,6 +101,13 @@ static char sub_compatible_id[8];
 #define	EVT_RESUMED			10
 
 #define NUM_LOG_PAGES 10
+#define log_event_err_ratelimited(x, ...) do { \
+	if (gsi) { \
+		ipc_log_string(gsi->ipc_log_ctxt, x, ##__VA_ARGS__); \
+		pr_err_ratelimited(x, ##__VA_ARGS__); \
+	} \
+} while (0)
+
 #define log_event_err(x, ...) do { \
 	if (gsi) { \
 		ipc_log_string(gsi->ipc_log_ctxt, x, ##__VA_ARGS__); \
