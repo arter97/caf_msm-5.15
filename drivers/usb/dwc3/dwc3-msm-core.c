@@ -6226,6 +6226,8 @@ static void dwc3_msm_shutdown(struct platform_device *pdev)
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 
 	dbg_log_string("Entry\n");
+	if (dwc3_msm_get_role(mdwc) == USB_ROLE_NONE)
+		return;
 	dwc3_msm_remove(pdev);
 }
 
