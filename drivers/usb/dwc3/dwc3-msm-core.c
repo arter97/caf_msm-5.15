@@ -600,6 +600,7 @@ struct dwc3_msm {
 	enum dp_lane		dp_state;
 	bool			dynamic_disable;
 	bool			sleep_clk_bcr;
+	u32			vbus_boost_gpio;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -5028,10 +5029,15 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
 	enum usb_role role = USB_ROLE_NONE;
 	int ret;
 
-	if (sysfs_streq(buf, "peripheral"))
+	if (sysfs_streq(buf, "peripheral")) {
 		role = USB_ROLE_DEVICE;
-	else if (sysfs_streq(buf, "host"))
+		if (gpio_is_valid(mdwc->vbus_boost_gpio))
+			gpio_set_value(mdwc->vbus_boost_gpio, 0);
+	} else if (sysfs_streq(buf, "host")) {
 		role = USB_ROLE_HOST;
+		if (gpio_is_valid(mdwc->vbus_boost_gpio))
+			gpio_set_value(mdwc->vbus_boost_gpio, 1);
+	}
 
 	dbg_log_string("mode_request:%s\n", usb_role_string(role));
 	ret = dwc3_msm_set_role(mdwc, role);
@@ -6039,6 +6045,17 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		mdwc->apsd_source = REMOTE_PROC;
 	else
 		mdwc->apsd_source = PSY;
+
+	mdwc->vbus_boost_gpio = of_get_named_gpio(mdwc->dev->of_node,
+							"vbus-boost-gpio", 0);
+	if (gpio_is_valid(mdwc->vbus_boost_gpio)) {
+		ret = devm_gpio_request(mdwc->dev, mdwc->vbus_boost_gpio,
+							"usb_vbus_boost_gpio");
+		if (ret)
+			dev_warn(&pdev->dev, "%s devm_gpio_request fail %d\n",
+								 __func__, ret);
+		gpio_direction_output(mdwc->vbus_boost_gpio, 0);
+	}
 
 	if (of_property_read_bool(node, "extcon")) {
 		ret = dwc3_msm_extcon_register(mdwc);
