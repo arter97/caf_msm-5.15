@@ -481,12 +481,14 @@ struct qcom_ethqos {
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
+	bool cv2x_pvm_only_enabled;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
 	bool last_event_linkup;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;
 #endif
+	unsigned int cv2x_queue;
 
 	/* Mac recovery parameters */
 	int mac_err_cnt[MAC_ERR_CNT];
@@ -576,6 +578,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 #define IPA_DMA_RX_CH 0
 
 #define QMI_TAG_TX_CHANNEL 2
+#define CV2X_TAG_TX_CHANNEL 4
 
 #define VLAN_TAG_UCP_SHIFT 13
 #define CLASS_A_TRAFFIC_UCP 3
