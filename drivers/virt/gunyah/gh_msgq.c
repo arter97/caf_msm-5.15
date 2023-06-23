@@ -394,7 +394,7 @@ void *gh_msgq_register(int label)
 	struct gh_msgq_cap_table *cap_table_entry = NULL, *tmp_entry;
 	struct gh_msgq_desc *client_desc;
 
-	if (label < 0)
+	if (label < GH_MSGQ_LABEL_MIN || label >= GH_MSGQ_LABEL_MAX)
 		return ERR_PTR(-EINVAL);
 
 	spin_lock(&gh_msgq_cap_list_lock);
