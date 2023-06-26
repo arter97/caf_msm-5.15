@@ -6290,6 +6290,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	ret = stmmac_suspend(dev);
 
+	disable_irq(priv->dev->irq);
+
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
@@ -6356,6 +6358,8 @@ static int qcom_ethqos_resume(struct device *dev)
 
 	qcom_ethqos_phy_resume_clks(ethqos);
 
+	enable_irq(priv->dev->irq);
+
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
 		ethqos_phy_power_on(ethqos);
@@ -6396,6 +6400,7 @@ static int qcom_ethqos_resume(struct device *dev)
 #endif
 		ETHQOSINFO("Loopback EN Enabled\n");
 	}
+
 	ret = stmmac_resume(dev);
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
