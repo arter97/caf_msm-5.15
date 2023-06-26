@@ -6297,16 +6297,13 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	disable_irq(priv->dev->irq);
 
-	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 
-		if (priv->plat->pm_lite) {
-			ret = ethqos_disable_serdes_consumers(ethqos);
-			if (ret < 0)
-				return ret;
-		}
+		ret = ethqos_disable_serdes_consumers(ethqos);
+		if (ret < 0)
+			return ret;
 	}
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
@@ -6365,13 +6362,10 @@ static int qcom_ethqos_resume(struct device *dev)
 		ethqos_phy_power_on(ethqos);
 	}
 
-	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
-		if (priv->plat->pm_lite) {
-			ret = ethqos_enable_serdes_consumers(ethqos);
-			if (ret < 0)
-				return ret;
-		}
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		ret = ethqos_enable_serdes_consumers(ethqos);
+		if (ret < 0)
+			return ret;
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
@@ -6528,6 +6522,10 @@ static int qcom_ethqos_hib_restore(struct device *dev)
 	priv = netdev_priv(ndev);
 
 	ret = ethqos_init_regulators(ethqos);
+	if (ret)
+		return ret;
+
+	ret = ethqos_init_sgmii_regulators(ethqos);
 	if (ret)
 		return ret;
 

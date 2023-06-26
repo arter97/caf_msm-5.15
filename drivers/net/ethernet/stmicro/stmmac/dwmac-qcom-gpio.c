@@ -30,11 +30,6 @@ int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
-
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_MIN_VOLT,
 				    A_SGMII_1P2_MAX_VOLT);
 	if (ret) {
@@ -84,11 +79,6 @@ EXPORT_SYMBOL(ethqos_enable_serdes_consumers);
 int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
-
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
 
 	regulator_disable(ethqos->vreg_a_sgmii_0p9);
 
@@ -242,8 +232,7 @@ EXPORT_SYMBOL(ethqos_init_regulators);
 
 int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 {
-	int ret = 0;
-	/* Both power supplies are required to be present together */
+	/* Both power supplies are required to be present together for SGMII/USXGMII mode */
 	if (of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_1p2-supply") &&
 	    of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_0p9-supply")) {
 		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get(&ethqos->pdev->dev,
@@ -262,7 +251,8 @@ int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 
 		return ethqos_enable_serdes_consumers(ethqos);
 	}
-	return ret;
+
+	return -ENODEV;
 }
 EXPORT_SYMBOL(ethqos_init_sgmii_regulators);
 
