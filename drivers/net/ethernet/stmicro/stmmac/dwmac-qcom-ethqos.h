@@ -482,7 +482,7 @@ struct qcom_ethqos {
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
-	bool linkup_on_passthrough_en;
+	bool last_event_linkup;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;

@@ -4478,11 +4478,13 @@ void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state even
 {
 	struct qcom_ethqos *ethqos = plat->bsp_priv;
 
-	if (event == EMAC_LINK_UP && !ethqos->passthrough_en) {
-		ethqos->linkup_on_passthrough_en = true;
+	if (event == EMAC_LINK_UP) {
+		ethqos->last_event_linkup = true;
+		if (ethqos->passthrough_en)
+			qcom_notify_ethstate_tosvm(NOTIFICATION, event);
 	} else {
+		ethqos->last_event_linkup = false;
 		qcom_notify_ethstate_tosvm(NOTIFICATION, event);
-		ethqos->linkup_on_passthrough_en = false;
 	}
 }
 
@@ -4550,12 +4552,15 @@ static ssize_t store_passthrough_en(struct device *dev,
 	}
 
 	if (input == ethqos->passthrough_en) {
-		ETHQOSERR("No effect as duplicate input\n");
+		ETHQOSINFO("Ethqos: No effect as duplicate passthrough_en input: %d\n", input);
 	} else {
+		ETHQOSINFO("Ethqos:  passthrough_en input: %d\n", input);
 		ethqos->passthrough_en = input;
-		if (ethqos->linkup_on_passthrough_en) {
-			qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_UP);
-			ethqos->linkup_on_passthrough_en = false;
+		if (input) {
+			if (ethqos->last_event_linkup)
+				qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_UP);
+		} else {
+			qcom_notify_ethstate_tosvm(NOTIFICATION, EMAC_LINK_DOWN);
 		}
 	}
 
