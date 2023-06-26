@@ -84,3 +84,16 @@ config BRIDGE_CFM
 	  Say N to exclude this support and reduce the binary size.
 
 	  If unsure, say N.
+
+config HYFI_BRIDGE_HOOKS
+	bool "Port Hy-Fi Bridging Hooks"
+	depends on BRIDGE
+	default y
+	help
+	  If you say Y here, then the Port Hy-Fi Bridging Hooks will be enabled
+	  and handles inclusion of HYFI_BRIDGE specific structures and definitions
+	  that are needed for EasyMesh specific kernel Modules
+
+	  Say N to exclude this support.
+
+	  If unsure, say Y.

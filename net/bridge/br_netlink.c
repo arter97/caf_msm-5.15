@@ -607,6 +607,9 @@ void br_info_notify(int event, const struct net_bridge *br,
 		kfree_skb(skb);
 		goto errout;
 	}
+#ifdef CONFIG_HYFI_BRIDGE_HOOKS
+	__br_notify(RTNLGRP_LINK, event, port);
+#endif
 	rtnl_notify(skb, net, 0, RTNLGRP_LINK, NULL, GFP_ATOMIC);
 	return;
 errout:

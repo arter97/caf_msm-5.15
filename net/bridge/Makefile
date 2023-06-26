@@ -12,6 +12,8 @@ bridge-y	:= br.o br_device.o br_fdb.o br_forward.o br_if.o br_input.o \
 
 bridge-$(CONFIG_SYSFS) += br_sysfs_if.o br_sysfs_br.o
 
+ccflags-$(CONFIG_HYFI_BRIDGE_HOOKS) += -DHYFI_BRIDGE_HOOKS
+
 bridge-$(subst m,y,$(CONFIG_BRIDGE_NETFILTER)) += br_nf_core.o
 
 br_netfilter-y := br_netfilter_hooks.o
