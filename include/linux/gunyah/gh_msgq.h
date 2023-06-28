@@ -28,7 +28,6 @@ enum gh_msgq_label {
 	GH_MSGQ_LABEL_MAX
 };
 
-#define GH_MSGQ_LABEL_MIN  GH_MSGQ_LABEL_RM
 #define GH_MSGQ_MAX_MSG_SIZE_BYTES 240
 
 #define GH_MSGQ_DIRECTION_TX	0
