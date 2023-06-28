@@ -888,6 +888,10 @@ int evm_inode_init_security(struct inode *inode,
 	    !evm_protected_xattr(lsm_xattr->name))
 		return 0;
 
+	/* If HMAC key is not available, simply return if CONFIG_QCOM_EVM is enabled*/
+	if (!(evm_initialized & EVM_INIT_HMAC) && IS_ENABLED(CONFIG_QCOM_EVM))
+		return 0;
+
 	xattr_data = kzalloc(sizeof(*xattr_data), GFP_NOFS);
 	if (!xattr_data)
 		return -ENOMEM;
