@@ -338,3 +338,21 @@ config IMA_DISABLE_HTABLE
 	default n
 	help
 	   This option disables htable to allow measurement of duplicate records.
+
+config QCOM_IMA
+	bool "Enable QCOM specific IMA Feature"
+	depends on IMA
+	select QCOM_IMA_USE_FIX_UUID
+	default n
+	help
+	   This option enables QCOM specific IMA Feature to use fix UUID's for
+	   certain partition and disable creating sysfs entries.
+
+config QCOM_IMA_USE_FIX_UUID
+	bool "Enable fix UUID for IMA Feature"
+	depends on IMA
+	depends on QCOM_IMA
+	default n
+	help
+	   This option enables to use fix UUID's for IMA feature for rootfs and
+	   data parition.
