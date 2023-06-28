@@ -146,11 +146,11 @@ int __init ima_init(void)
 		return rc;
 
 	ima_init_policy();
-
+#ifndef CONFIG_QCOM_IMA_SKIP_SYSFS_CREATE
 	rc = ima_fs_init();
 	if (rc != 0)
 		return rc;
-
+#endif
 	ima_init_key_queue();
 
 	ima_measure_critical_data("kernel_info", "kernel_version",

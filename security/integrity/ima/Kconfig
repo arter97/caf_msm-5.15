@@ -343,6 +343,7 @@ config QCOM_IMA
 	bool "Enable QCOM specific IMA Feature"
 	depends on IMA
 	select QCOM_IMA_USE_FIX_UUID
+	select QCOM_IMA_SKIP_SYSFS_CREATE
 	default n
 	help
 	   This option enables QCOM specific IMA Feature to use fix UUID's for
@@ -356,3 +357,11 @@ config QCOM_IMA_USE_FIX_UUID
 	help
 	   This option enables to use fix UUID's for IMA feature for rootfs and
 	   data parition.
+
+config QCOM_IMA_SKIP_SYSFS_CREATE
+        bool "Enable option to skip sysfs node for IMA Feature"
+        depends on IMA
+        depends on QCOM_IMA
+        default n
+        help
+           This option enables to skip creating sysfs node for IMA feature.
