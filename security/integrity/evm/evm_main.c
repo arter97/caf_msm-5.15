@@ -935,6 +935,9 @@ static int __init init_evm(void)
 	if (error)
 		goto error;
 
+	if (IS_ENABLED(CONFIG_QCOM_EVM))
+		return 0;
+
 	error = evm_init_secfs();
 	if (error < 0) {
 		pr_info("Error registering secfs\n");
