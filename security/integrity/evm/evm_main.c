@@ -919,6 +919,8 @@ void __init evm_load_x509(void)
 	rc = integrity_load_x509(INTEGRITY_KEYRING_EVM, CONFIG_EVM_X509_PATH);
 	if (!rc)
 		evm_initialized |= EVM_INIT_X509;
+	else if (IS_ENABLED(CONFIG_QCOM_IMA))
+		panic("can't load evm public key!");
 }
 #endif
 
