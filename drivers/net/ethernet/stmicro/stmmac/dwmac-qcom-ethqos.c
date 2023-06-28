@@ -5990,6 +5990,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
+	ret = qcom_ethmsgq_init(&pdev->dev);
+	if (ret < 0)
+		goto err_mem;
+
 	/* Use phy_addr passed from the partition only when the address
 	 * is a valid one and when "snps,phy-addr" is not present in the dtsi
 	 */
@@ -6140,10 +6144,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #else
 	ethqos->cv2x_priority = 0;
 #endif
-
-	ret = qcom_ethmsgq_init(priv->device);
-	if (ret < 0)
-		goto err_clk;
 
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
