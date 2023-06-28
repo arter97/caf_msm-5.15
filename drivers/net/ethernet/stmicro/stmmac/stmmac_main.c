@@ -7785,8 +7785,9 @@ int stmmac_dvr_probe(struct device *device,
 			 "%s: warning: maxmtu having invalid value (%d)\n",
 			 __func__, priv->plat->maxmtu);
 
-	if (flow_ctrl)
-		priv->flow_ctrl = FLOW_AUTO;	/* RX/TX pause on */
+	if (!of_property_read_bool(device->of_node, "qcom,flow-ctrl-disabled"))
+		if (flow_ctrl)
+			priv->flow_ctrl = FLOW_AUTO;	/* RX/TX pause on */
 
 	/* Setup channels NAPI */
 	stmmac_napi_add(ndev);
