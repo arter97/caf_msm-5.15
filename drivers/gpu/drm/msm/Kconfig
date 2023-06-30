@@ -23,6 +23,9 @@ config DRM_MSM
 	select SYNC_FILE
 	select PM_OPP
 	select NVMEM
+	select DRM_GEM_CMA_HELPER
+	select DRM_KMS_CMA_HELPER
+	select DRM_GEM_SHMEM_HELPER
 	help
 	  DRM/KMS driver for MSM/snapdragon.
 
@@ -123,3 +126,13 @@ config DRM_MSM_DSI_7NM_PHY
 	help
 	  Choose this option if DSI PHY on SM8150/SM8250/SC7280 is used on
 	  the platform.
+
+config DRM_QPIC_DISPLAY
+	bool "Enable QPIC display driver in MSM DRM"
+	depends on DRM
+	select DRM_GEM_CMA_HELPER
+	select DRM_KMS_CMA_HELPER
+	select DRM_GEM_SHMEM_HELPER
+	default n
+	help
+	  Choose this option if QPIC display is used on the platform.
