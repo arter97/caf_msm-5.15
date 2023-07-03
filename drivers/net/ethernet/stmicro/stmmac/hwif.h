@@ -403,6 +403,9 @@ struct stmmac_ops {
 	int (*config_l3_filter)(struct mac_device_info *hw, u32 filter_no,
 				bool en, bool ipv6, bool sa, bool inv,
 				u32 match);
+	int (*config_l3_filter_xgmac)(struct mac_device_info *hw, u32 filter_no,
+				      bool en, bool ipv6, bool sa, bool inv,
+				      u32 match, char *ipv6_addr);
 	int (*config_l4_filter)(struct mac_device_info *hw, u32 filter_no,
 				bool en, bool udp, bool sa, bool inv,
 				u32 match);

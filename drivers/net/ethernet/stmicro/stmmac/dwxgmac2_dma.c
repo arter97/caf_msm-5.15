@@ -453,6 +453,9 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 	dma_cap->frpbs = (hw_cap & XGMAC_HWFEAT_FRPPB) >> 9;
 	dma_cap->frpsel = (hw_cap & XGMAC_HWFEAT_FRPSEL) >> 3;
 
+	/* L3L4 filtering feature*/
+	dma_cap->num_l3_l4_filters = 0;
+
 	return 0;
 }
 

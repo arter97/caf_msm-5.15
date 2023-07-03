@@ -31,6 +31,7 @@
 
 /* Misc */
 #define XGMAC_JUMBO_LEN			16368
+#define XGMAC_MAX_FILTER		32
 
 /* MAC Registers */
 #define XGMAC_TX_CONFIG			0x00000000
@@ -209,7 +210,6 @@
 
 /*MTL Rx Queue Bit*/
 #define XGMAC_MTL_RXQ_DMACH		BIT(7)
-
 #define XGMAC_L3L4_DATA			0x00000c04
 #define XGMAC_L3L4_CTRL			0x0
 #define XGMAC_L4DPIM0			BIT(21)
@@ -457,7 +457,7 @@
 #define XGMAC_REGSIZE			((0x0000317c + (0x80 * 15)) / 4)
 #define XGMAC_TDRL			GENMASK(15, 0)
 #define XGMAC_RDRL			GENMASK(15, 0)
-
+#define XGMAC_DMA_CH			0x81
 
 #define XGMAC_DMA_STATUS_MSK_COMMON	(XGMAC_NIS | XGMAC_AIS | XGMAC_FBE)
 #define XGMAC_DMA_STATUS_MSK_RX		(XGMAC_RBU | XGMAC_RI | \
