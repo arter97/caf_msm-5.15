@@ -3033,6 +3033,39 @@ static ssize_t pcs_reg_write(struct file *file,
 	return count;
 }
 
+static ssize_t serdes_reg_write(struct file *file,
+				const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old Value: 0X%x\n", readl_relaxed(ethqos->sgmii_base + offset));
+	writel_relaxed(value, ethqos->sgmii_base + offset);
+	pr_info("New Value: 0X%x\n", readl_relaxed(ethqos->sgmii_base + offset));
+
+	return count;
+}
+
 static ssize_t read_ethqos_rx_clock(struct device *dev,
 				    struct device_attribute *attr,
 				    char *user_buf)
@@ -4345,6 +4378,78 @@ static ssize_t icb_read(struct file *file,
 	return ret_cnt;
 }
 
+static ssize_t phy_reg_read(struct file *file, const char __user *user_buf,
+			    size_t count, loff_t *position)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv;
+	int ret;
+	u32 mmd = 0, offset = 0, reg_value = 0;
+	char in_buf[400];
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, user_buf, count);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x\n", &mmd, &offset);
+	reg_value = phy_read_mmd(priv->phydev, mmd, offset);
+
+	pr_info("PHY register device = 0x%x offset = 0x%x value:0x%x\n", mmd, offset, reg_value);
+
+	return count;
+}
+
+static ssize_t phy_reg_write(struct file *file,
+			     const char __user *user_buf,
+			     size_t count,
+			     loff_t *ppos)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv;
+	int ret;
+	u32 mmd = 0, offset = 0, reg_value = 0, value = 0;
+	char in_buf[400];
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, user_buf, count);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x %x\n", &mmd, &offset, &value);
+	if (ret != 3) {
+		ETHQOSERR("No of arguments are invalid. Requires device, offset, value");
+		return -EINVAL;
+	}
+
+	ret = phy_write_mmd(priv->phydev, mmd, offset, value);
+	if (ret < 0) {
+		ETHQOSERR("Error writing mmd register");
+		return -EFAULT;
+	}
+
+	reg_value = phy_read_mmd(priv->phydev, mmd, offset);
+	pr_info("PHY Write cmd value In :0x%x value out :0x%x\n", value, reg_value);
+
+	return count;
+}
+
 static const struct file_operations fops_phy_reg_dump = {
 	.read = read_phy_reg_dump,
 	.open = simple_open,
@@ -4454,6 +4559,13 @@ static const struct file_operations fops_mac_serdes_dump = {
 
 static const struct file_operations fops_mac_pcs_write = {
 	.write = pcs_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_serdes_write = {
+	.write = serdes_reg_write,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -4725,6 +4837,72 @@ fail:
 	return ethqos_remove_sysfs(ethqos);
 }
 
+static const struct file_operations fops_phy_reg_read = {
+	.write = phy_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_phy_reg_write = {
+	.write = phy_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static int create_debufs_for_sgmii_usxgmii(struct qcom_ethqos *ethqos)
+{
+	struct stmmac_priv *priv;
+	static struct dentry *mac_serdes_dump;
+	static struct dentry *mac_pcs_write;
+	static struct dentry *mac_serdes_write;
+	static struct dentry *mac_pcs_dump;
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0400),
+					   ethqos->debugfs_dir, ethqos,
+					   &fops_mac_pcs_read);
+	if (!mac_pcs_dump || IS_ERR(mac_pcs_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_dump %x\n",
+			  mac_pcs_dump);
+		goto fail;
+	}
+
+	mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
+					    ethqos->debugfs_dir, ethqos,
+					    &fops_mac_pcs_write);
+	if (!mac_pcs_write || IS_ERR(mac_pcs_write)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
+			  mac_pcs_write);
+		goto fail;
+	}
+
+	mac_serdes_write = debugfs_create_file("serdes_reg_write", (0220),
+					       ethqos->debugfs_dir, ethqos,
+					       &fops_mac_serdes_write);
+	if (!mac_serdes_write || IS_ERR(mac_serdes_write)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
+			  mac_serdes_write);
+		goto fail;
+	}
+
+	mac_serdes_dump = debugfs_create_file("serdes_reg_read", (0400),
+					      ethqos->debugfs_dir, ethqos,
+					      &fops_mac_serdes_dump);
+	if (!mac_serdes_dump || IS_ERR(mac_serdes_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_serdes_dump %x\n",
+			  mac_serdes_dump);
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	return -ENOMEM;
+}
+
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -4734,12 +4912,11 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *nw_loopback_enable_mode;
 	static struct dentry *enforce_max_speed;
 	static struct dentry *mac_dump;
-	static struct dentry *mac_pcs_dump;
 	static struct dentry *mac_iomacro_dump;
-	static struct dentry *mac_serdes_dump;
-	static struct dentry *mac_pcs_write;
 	static struct dentry *mac_write;
 	static struct dentry *icb_dump;
+	static struct dentry *phy_reg_read;
+	static struct dentry *phyreg_write;
 	struct stmmac_priv *priv;
 	char dir_name[32];
 	struct net_device *netdev;
@@ -4803,33 +4980,26 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
+	phy_reg_read = debugfs_create_file("phy_reg_read", (0660),
+					   ethqos->debugfs_dir, ethqos, &fops_phy_reg_read);
+	if (!phy_reg_read || IS_ERR(phy_reg_read)) {
+		ETHQOSERR("Cannot create debugfs phy_reg_read %x\n",
+			  mac_write);
+		goto fail;
+	}
+
+	phyreg_write = debugfs_create_file("phy_reg_write", (0220),
+					   ethqos->debugfs_dir, ethqos, &fops_phy_reg_write);
+	if (!phyreg_write || IS_ERR(phyreg_write)) {
+		ETHQOSERR("Cannot create debugfs phy_reg_write %x\n",
+			  phyreg_write);
+		goto fail;
+	}
+
 	if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
 	    priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
-		mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0400),
-						   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
-		if (!mac_pcs_dump || IS_ERR(mac_pcs_dump)) {
-			ETHQOSERR("Cannot create debugfs mac_pcs_dump %x\n",
-				  mac_pcs_dump);
+		if (create_debufs_for_sgmii_usxgmii(ethqos))
 			goto fail;
-		}
-
-		mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
-						    ethqos->debugfs_dir, ethqos,
-						    &fops_mac_pcs_write);
-		if (!mac_pcs_write || IS_ERR(mac_pcs_write)) {
-			ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
-				  mac_pcs_write);
-			goto fail;
-		}
-
-		mac_serdes_dump = debugfs_create_file("serdes_reg_read", (0400),
-						      ethqos->debugfs_dir, ethqos,
-						      &fops_mac_serdes_dump);
-		if (!mac_serdes_dump || IS_ERR(mac_serdes_dump)) {
-			ETHQOSERR("Cannot create debugfs mac_serdes_dump %x\n",
-				  mac_serdes_dump);
-			goto fail;
-		}
 	}
 
 	icb_dump = debugfs_create_file("icb_dump", (0400),
