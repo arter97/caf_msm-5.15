@@ -375,6 +375,7 @@ struct stmmac_priv {
 	struct bpf_prog *xdp_prog;
 
 	bool phy_irq_enabled;
+	bool wol_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
