@@ -732,11 +732,13 @@ static enum usb_charger_type usb_phy_drive_dp_pulse(struct usb_phy *uphy)
 	msm_hsphy_put_phy_in_non_driving_mode(phy, 0);
 
 	msleep(20);
-	msm_hsphy_enable_clocks(phy, false);
-	ret = msm_hsphy_enable_power(phy, false);
-	if (ret < 0) {
-		dev_dbg(phy->phy.dev,
-			"dpdm regulator disable failed:%d\n", ret);
+	if (!phy->cable_connected) {
+		msm_hsphy_enable_clocks(phy, false);
+		ret = msm_hsphy_enable_power(phy, false);
+		if (ret < 0) {
+			dev_dbg(phy->phy.dev,
+				"dpdm regulator disable failed:%d\n", ret);
+		}
 	}
 
 	return 0;
