@@ -27,7 +27,7 @@
 #include "hwif.h"
 #include "mmc.h"
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4) || IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 #define DMA_OFFLOAD_ENABLE
 #endif
 
@@ -42,7 +42,6 @@
 #define DWXGMAC_CORE_2_10	0x21
 #define DWXLGMAC_CORE_2_00	0x20
 #define DWXLGMAC_CORE_3_10	0x31
-
 
 /* Device ID */
 #define DWXGMAC_ID		0x76
@@ -364,7 +363,7 @@ enum request_irq_err {
 	REQ_IRQ_ERR_NO,
 };
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4) || IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 enum ipa_queue_type {
 	IPA_QUEUE_BE = 0,
 };
