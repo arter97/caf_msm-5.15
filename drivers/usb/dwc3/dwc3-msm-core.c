@@ -558,6 +558,7 @@ struct dwc3_msm {
 	int			ext_idx;
 	struct notifier_block	host_nb;
 	int			polarity_idx;
+	int			extcon_cnt;
 
 	u32			ip;
 	atomic_t                in_p3;
@@ -4808,23 +4809,24 @@ static int dwc3_msm_extcon_register(struct dwc3_msm *mdwc)
 {
 	struct device_node *node = mdwc->dev->of_node;
 	struct extcon_dev *edev;
-	int idx, extcon_cnt, ret = 0;
+	int idx, ret = 0;
 	bool check_vbus_state, check_id_state, phandle_found = false;
 
-	extcon_cnt = of_count_phandle_with_args(node, "extcon", NULL);
-	if (extcon_cnt < 0) {
+	mdwc->extcon_cnt = of_count_phandle_with_args(node, "extcon", NULL);
+	if (mdwc->extcon_cnt < 0) {
+		mdwc->extcon_cnt = 0;
 		dev_info(mdwc->dev, "no extcon provide\n");
 		return -ENODEV;
 	}
 
-	mdwc->extcon = devm_kcalloc(mdwc->dev, extcon_cnt,
+	mdwc->extcon = devm_kcalloc(mdwc->dev, mdwc->extcon_cnt,
 					sizeof(*mdwc->extcon), GFP_KERNEL);
 	if (!mdwc->extcon)
 		return -ENOMEM;
 
 	mdwc->polarity_idx = -1;
 
-	for (idx = 0; idx < extcon_cnt; idx++) {
+	for (idx = 0; idx < mdwc->extcon_cnt; idx++) {
 		edev = extcon_get_edev_by_phandle(mdwc->dev, idx);
 		if (IS_ERR(edev) && PTR_ERR(edev) != -ENODEV)
 			return PTR_ERR(edev);
@@ -4880,6 +4882,27 @@ static int dwc3_msm_extcon_register(struct dwc3_msm *mdwc)
 	}
 
 	return 0;
+}
+
+
+static void dwc3_msm_extcon_unregister(struct dwc3_msm *mdwc)
+{
+	int idx;
+
+	if (!mdwc->extcon_cnt || !mdwc->extcon)
+		return;
+
+	for (idx = 0; idx < mdwc->extcon_cnt; idx++) {
+		if (mdwc->extcon[idx].edev) {
+			extcon_unregister_notifier(mdwc->extcon[idx].edev, EXTCON_USB,
+						   &mdwc->extcon[idx].vbus_nb);
+			extcon_unregister_notifier(mdwc->extcon[idx].edev, EXTCON_USB_HOST,
+						   &mdwc->extcon[idx].id_nb);
+			extcon_unregister_notifier(mdwc->extcon[idx].edev, EXTCON_DISP_DP,
+						   &mdwc->extcon[idx].dp_nb);
+		}
+	}
+
 }
 
 static bool dwc3_msm_role_allowed(struct dwc3_msm *mdwc, enum usb_role role)
@@ -6270,6 +6293,8 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	int i, ret_pm;
+
+	dwc3_msm_extcon_unregister(mdwc);
 
 	usb_role_switch_unregister(mdwc->role_switch);
 	cancel_work_sync(&mdwc->sm_work);
