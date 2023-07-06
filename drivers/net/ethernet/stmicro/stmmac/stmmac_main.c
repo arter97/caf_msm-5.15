@@ -2017,8 +2017,7 @@ err_init_rx_buffers:
 		struct stmmac_rx_queue *rx_q = NULL;
 
 		if (priv->plat->rx_queues_cfg[queue].skip_sw) {
-			queue--;
-			continue;
+			goto hw_queue;
 		}
 		rx_q = &priv->rx_queue[queue];
 
@@ -2030,6 +2029,7 @@ err_init_rx_buffers:
 		rx_q->buf_alloc_num = 0;
 		rx_q->xsk_pool = NULL;
 
+hw_queue:
 		if (queue == 0)
 			break;
 
