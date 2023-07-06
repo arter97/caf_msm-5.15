@@ -115,6 +115,7 @@ struct stmmac_extra_stats {
 	unsigned long sa_rx_filter_fail;
 	unsigned long rx_missed_cntr;
 	unsigned long rx_overflow_cntr;
+	unsigned long q_rx_overflow_cntr[5];
 	unsigned long rx_vlan;
 	unsigned long rx_split_hdr_pkt_n;
 	/* Tx/Rx IRQ error info */
