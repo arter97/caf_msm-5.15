@@ -1049,7 +1049,7 @@ out:
 
 static int setup_mpss_dsm_mem(struct platform_device *pdev)
 {
-	struct device_node *node;
+	struct of_phandle_iterator it;
 	struct resource res;
 	int hlosvm[1] = {VMID_HLOS};
 	int mssvm[1] = {VMID_MSS_MSA};
@@ -1058,24 +1058,22 @@ static int setup_mpss_dsm_mem(struct platform_device *pdev)
 	u64 mem_size;
 	int ret;
 
-	node = of_parse_phandle(pdev->dev.of_node, "mpss_dsm_mem_reg", 0);
-	if (!node) {
-		dev_err(&pdev->dev, "mpss dsm mem region is missing\n");
-		return -EINVAL;
-	}
+	of_for_each_phandle(&it, ret, pdev->dev.of_node, "mpss_dsm_mem_reg", NULL, 0) {
+		ret = of_address_to_resource(it.node, 0, &res);
+		if (ret) {
+			dev_err(&pdev->dev, "address to resource failed for mpss_dsm_mem_reg[%d]\n",
+								it.cur_count);
+			return ret;
+		}
 
-	ret = of_address_to_resource(node, 0, &res);
-	if (ret) {
-		dev_err(&pdev->dev, "address to resource failed for mpss dsm mem\n");
-		return ret;
-	}
-
-	mem_phys = res.start;
-	mem_size = resource_size(&res);
-	ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
-	if (ret) {
-		dev_err(&pdev->dev, "hyp assign for mpss dsm mem failed\n");
-		return ret;
+		mem_phys = res.start;
+		mem_size = resource_size(&res);
+		ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
+		if (ret) {
+			dev_err(&pdev->dev, "hyp assign for mpss_dsm_mem_reg[%d] failed\n",
+				it.cur_count);
+			return ret;
+		}
 	}
 
 	mpss_dsm_mem_setup = true;
