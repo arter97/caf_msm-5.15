@@ -19,12 +19,21 @@
 #define EMAC_VREG_A_SGMII_1P2_NAME "vreg_a_sgmii_1p2"
 #define EMAC_VREG_A_SGMII_0P9_NAME "vreg_a_sgmii_0p9"
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static u32 A_SGMII_1P2_MAX_VOLT = 1200000;
 static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
 static u32 A_SGMII_0P9_MAX_VOLT = 912000;
 static u32 A_SGMII_0P9_MIN_VOLT = 880000;
 static u32 A_SGMII_1P2_LOAD_CURR = 25000;
 static u32 A_SGMII_0P9_LOAD_CURR = 132000;
+#else
+static u32 A_SGMII_1P2_MAX_VOLT = 1300000;
+static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
+static u32 A_SGMII_0P9_MAX_VOLT = 950000;
+static u32 A_SGMII_0P9_MIN_VOLT = 880000;
+static u32 A_SGMII_1P2_LOAD_CURR = 15000;
+static u32 A_SGMII_0P9_LOAD_CURR = 458000;
+#endif
 
 int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 {

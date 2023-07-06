@@ -6478,6 +6478,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
 
+	ethqos_free_gpios(ethqos);
+
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("disable phy at suspend\n");
@@ -6523,14 +6525,16 @@ static int qcom_ethqos_resume(struct device *dev)
 		return -EINVAL;
 	}
 
-	qcom_ethqos_phy_resume_clks(ethqos);
-
-	enable_irq(priv->dev->irq);
-
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
 		ethqos_phy_power_on(ethqos);
 	}
+
+	ethqos_init_gpio(ethqos);
+
+	qcom_ethqos_phy_resume_clks(ethqos);
+
+	enable_irq(priv->dev->irq);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ret = ethqos_enable_serdes_consumers(ethqos);
@@ -6546,7 +6550,6 @@ static int qcom_ethqos_resume(struct device *dev)
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret)
 			return -EINVAL;
-
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
