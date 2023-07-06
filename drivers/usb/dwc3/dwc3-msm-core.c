@@ -6145,6 +6145,8 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	int i, ret_pm;
 
 	usb_role_switch_unregister(mdwc->role_switch);
+	cancel_delayed_work_sync(&mdwc->sm_work);
+	destroy_workqueue(mdwc->sm_usb_wq);
 
 	if (mdwc->dpdm_nb.notifier_call) {
 		regulator_unregister_notifier(mdwc->dpdm_reg, &mdwc->dpdm_nb);
@@ -6169,7 +6171,6 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	}
 
 	msm_dwc3_perf_vote_enable(mdwc, false);
-	cancel_delayed_work_sync(&mdwc->sm_work);
 
 	if (mdwc->hs_phy)
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
@@ -6207,7 +6208,6 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	dwc3_msm_config_gdsc(mdwc, 0);
 
-	destroy_workqueue(mdwc->sm_usb_wq);
 	destroy_workqueue(mdwc->dwc3_wq);
 
 	ipc_log_context_destroy(mdwc->dwc_ipc_log_ctxt);
