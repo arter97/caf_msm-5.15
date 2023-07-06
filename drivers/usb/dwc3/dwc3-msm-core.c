@@ -611,6 +611,7 @@ struct dwc3_msm {
 	bool			sleep_clk_bcr;
 	u32			vbus_boost_gpio;
 	bool			wcd_usbss;
+	bool			dis_role_switch;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -4648,6 +4649,9 @@ static int dwc3_msm_id_notifier(struct notifier_block *nb,
 	if (!edev || !mdwc)
 		return NOTIFY_DONE;
 
+	if (mdwc->dis_role_switch)
+		return NOTIFY_DONE;
+
 	dwc = platform_get_drvdata(mdwc->dwc3);
 
 	dbg_event(0xFF, "extcon idx", enb->idx);
@@ -4683,6 +4687,9 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
+
+	if (mdwc->dis_role_switch)
+		return NOTIFY_DONE;
 
 	dbg_event(0xFF, "extcon idx", enb->idx);
 	dev_dbg(mdwc->dev, "vbus:%ld event received\n", event);
@@ -4925,6 +4932,9 @@ static enum usb_role dwc3_msm_usb_role_switch_get_role(struct usb_role_switch *s
 static int dwc3_msm_set_role(struct dwc3_msm *mdwc, enum usb_role role)
 {
 	enum usb_role cur_role;
+
+	if (mdwc->dis_role_switch)
+		return -EPERM;
 
 	if (!dwc3_msm_role_allowed(mdwc, role))
 		return -EINVAL;
@@ -6148,6 +6158,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 	mutex_init(&mdwc->suspend_resume_mutex);
 	mutex_init(&mdwc->role_switch_mutex);
+	mdwc->dis_role_switch = false;
 
 	if (of_property_read_bool(node, "usb-role-switch")) {
 		struct usb_role_switch_desc role_desc = {
@@ -6355,9 +6366,9 @@ static void dwc3_msm_shutdown(struct platform_device *pdev)
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 
 	dbg_log_string("Entry\n");
-	if (dwc3_msm_get_role(mdwc) == USB_ROLE_NONE)
-		return;
-	dwc3_msm_remove(pdev);
+	dwc3_msm_set_role(mdwc, USB_ROLE_NONE);
+	mdwc->dis_role_switch = true;
+	flush_workqueue(mdwc->sm_usb_wq);
 }
 
 static int dwc3_msm_host_ss_powerdown(struct dwc3_msm *mdwc)
