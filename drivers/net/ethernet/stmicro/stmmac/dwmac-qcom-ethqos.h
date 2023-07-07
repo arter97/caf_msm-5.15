@@ -498,6 +498,7 @@ struct qcom_ethqos {
 	bool probed;
 	bool ipa_enabled;
 	struct notifier_block panic_nb;
+	struct notifier_block vm_nb;
 
 	struct stmmac_priv *priv;
 
