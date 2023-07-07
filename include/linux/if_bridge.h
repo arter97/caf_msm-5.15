@@ -61,6 +61,11 @@ struct br_ip_list {
 
 #define BR_DEFAULT_AGEING_TIME	(300 * HZ)
 
+//Handle HYFI_BRIDGING hooks related stuffs, only if HYFI_BRIDGE_HOOKS is defined
+#ifdef CONFIG_HYFI_BRIDGE_HOOKS
+struct net_bridge_port;
+#endif
+
 struct net_bridge;
 void brioctl_set(int (*hook)(struct net *net, struct net_bridge *br,
 			     unsigned int cmd, struct ifreq *ifr,
@@ -195,4 +200,11 @@ static inline clock_t br_get_ageing_time(const struct net_device *br_dev)
 }
 #endif
 
+#ifdef CONFIG_HYFI_BRIDGE_HOOKS
+typedef void (br_notify_hook_t)(int group, int event, const void *ptr);
+extern br_notify_hook_t __rcu *br_notify_hook;
+typedef int (br_multicast_handle_hook_t)(const struct net_bridge_port *src,
+		struct sk_buff *skb);
+extern br_multicast_handle_hook_t __rcu *br_multicast_handle_hook;
+#endif
 #endif
