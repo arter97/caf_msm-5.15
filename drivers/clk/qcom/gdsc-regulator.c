@@ -1090,9 +1090,6 @@ static int gdsc_probe(struct platform_device *pdev)
 		sc->pm_ops = true;
 	}
 
-	if (sc->retain_ff_enable && !(regval & RETAIN_FF_ENABLE_MASK))
-		regval |= RETAIN_FF_ENABLE_MASK;
-
 	regmap_write(sc->regmap, REG_OFFSET, regval);
 
 	if (!sc->toggle_logic) {
