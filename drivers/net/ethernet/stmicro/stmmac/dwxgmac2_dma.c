@@ -342,7 +342,7 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 		if (unlikely(intr_status & XGMAC_RBU)) {
 			x->rx_buf_unav_irq++;
 			x->rxq_stats[chan].rx_buf_unav_irq++;
-			ret |= handle_rx;
+			ret |= (handle_rx | RBU_ERR);
 		}
 		if (unlikely(intr_status & XGMAC_TPS)) {
 			x->tx_process_stopped_irq++;

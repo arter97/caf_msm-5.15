@@ -1843,12 +1843,14 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 	if (drvdata->out_mode == TMC_ETR_OUT_MODE_MEM ||
 		(drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
 			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)) {
+		tmc_etr_disable_hw(drvdata);
 		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 			spin_unlock_irqrestore(&drvdata->spinlock, flags);
 			tmc_usb_disable(drvdata->usb_data);
+			tmc_etr_free_sysfs_buf(drvdata->sysfs_buf);
 			spin_lock_irqsave(&drvdata->spinlock, flags);
+			drvdata->sysfs_buf = NULL;
 		}
-		tmc_etr_disable_hw(drvdata);
 	} else if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
 		drvdata->usb_data->usb_mode == TMC_ETR_USB_BAM_TO_BAM){
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);

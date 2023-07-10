@@ -395,7 +395,7 @@ static void hsusb_phy_write_seq(void __iomem *base, u32 *seq, int cnt,
 static int msm_hsphy_init(struct usb_phy *uphy)
 {
 	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
-	int ret;
+	int ret = 0;
 	u32 rcal_code = 0, eud_csr_reg = 0;
 
 	dev_dbg(uphy->dev, "%s phy_flags:0x%x\n", __func__, phy->phy.flags);
@@ -409,7 +409,6 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 				qcom_scm_io_writel(phy->eud_reg, 0x0);
 				phy->re_enable_eud = true;
 			} else {
-				ret = msm_hsphy_enable_power(phy, true);
 				/* On some targets 3.3V LDO which acts as EUD power
 				 * up (which in turn reset the USB PHY) is shared
 				 * with EMMC so that it won't be turned off even
@@ -423,6 +422,8 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 				 */
 				msm_usb_write_readback(phy->base,
 					USB2_PHY_USB_PHY_PWRDOWN_CTRL, PWRDOWN_B, 1);
+				msm_hsphy_enable_power(phy, true);
+				msm_hsphy_enable_clocks(phy, true);
 				msleep(50);
 				return ret;
 			}
@@ -603,6 +604,7 @@ suspend:
 		}
 		phy->suspended = true;
 	} else { /* Bus resume and cable connect */
+		msm_hsphy_enable_power(phy, true);
 		msm_hsphy_enable_clocks(phy, true);
 		phy->suspended = false;
 	}
@@ -1533,8 +1535,11 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	 * kernel boot till USB phy driver is initialized based on cable status,
 	 * keep LDOs on here.
 	 */
-	if (phy->eud_enable_reg && readl_relaxed(phy->eud_enable_reg))
+	if (phy->eud_enable_reg && readl_relaxed(phy->eud_enable_reg)) {
 		msm_hsphy_enable_power(phy, true);
+		msm_hsphy_enable_clocks(phy, true);
+	}
+
 	return 0;
 }
 
