@@ -74,7 +74,7 @@ config EVM_X509_PATH
 	   This option defines X509 certificate path.
 
 config QCOM_EVM
-	string "Enable QCOM specific EVM"
+	bool "Enable QCOM specific EVM"
 	depends on EVM
 	default n
 	help
