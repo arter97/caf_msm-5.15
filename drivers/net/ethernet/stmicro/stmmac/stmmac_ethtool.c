@@ -75,6 +75,11 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 	STMMAC_STAT(sa_rx_filter_fail),
 	STMMAC_STAT(rx_missed_cntr),
 	STMMAC_STAT(rx_overflow_cntr),
+	STMMAC_STAT(q_rx_overflow_cntr[0]),
+	STMMAC_STAT(q_rx_overflow_cntr[1]),
+	STMMAC_STAT(q_rx_overflow_cntr[2]),
+	STMMAC_STAT(q_rx_overflow_cntr[3]),
+	STMMAC_STAT(q_rx_overflow_cntr[4]),
 	STMMAC_STAT(rx_vlan),
 	STMMAC_STAT(rx_split_hdr_pkt_n),
 	/* Tx/Rx IRQ error info */

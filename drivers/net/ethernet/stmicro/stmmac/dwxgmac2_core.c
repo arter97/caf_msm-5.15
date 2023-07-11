@@ -342,8 +342,10 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 	if (status & BIT(chan)) {
 		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 
-		if (chan_status & XGMAC_RXOVFIS)
+		if (chan_status & XGMAC_RXOVFIS) {
 			ret |= CORE_IRQ_MTL_RX_OVERFLOW;
+			ret |= ((readl(ioaddr + XGMAC_MTL_QOVERFLOW(chan)) & 0x7FF) << 9);
+		}
 
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 	}
