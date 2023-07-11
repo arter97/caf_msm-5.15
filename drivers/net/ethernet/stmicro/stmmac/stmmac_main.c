@@ -2677,6 +2677,9 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 
 		qmode = priv->plat->rx_queues_cfg[chan].mode_to_use;
 
+		if (priv->plat->rx_queues_cfg[chan].fifo_sz_bytes > 0)
+			rxfifosz = priv->plat->rx_queues_cfg[chan].fifo_sz_bytes;
+
 		if (priv->plat->rx_queues_cfg[chan].thresholdmode) {
 			thresh_rx_mode = priv->plat->rx_queues_cfg[chan].threshold_byte;
 			stmmac_dma_rx_mode(priv, priv->ioaddr, thresh_rx_mode, chan,
