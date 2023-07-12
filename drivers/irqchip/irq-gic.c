@@ -40,8 +40,6 @@
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqchip/arm-gic.h>
 #include <trace/hooks/gic.h>
-#include <linux/notifier.h>
-#include <linux/suspend.h>
 
 #include <asm/cputype.h>
 #include <asm/irq.h>
@@ -112,9 +110,6 @@ static DEFINE_RAW_SPINLOCK(cpu_map_lock);
 #endif
 
 static DEFINE_STATIC_KEY_FALSE(needs_rmw_access);
-static void gic_dist_init(struct gic_chip_data *gic);
-static int gic_cpu_init(struct gic_chip_data *gic);
-static bool hibernation;
 
 /*
  * The GIC mapping of CPU interfaces does not necessarily match
@@ -407,56 +402,22 @@ static void gic_handle_cascade_irq(struct irq_desc *desc)
 #ifdef CONFIG_PM
 void gic_v2_resume(void)
 {
-	pr_info("Re-initializing gic in hibernation restore\n");
-	gic_dist_init(&gic_data[0]);
-	gic_cpu_init(&gic_data[0]);
-
-	gic_dist_restore(&gic_data[0]);
-	gic_cpu_restore(&gic_data[0]);
+	trace_android_vh_gic_v2_resume(gic_data[0].domain, gic_data_dist_base(&gic_data[0]));
 }
 EXPORT_SYMBOL_GPL(gic_v2_resume);
 
-static int gic_v2_suspend(void)
-{
-	if (unlikely(!hibernation))
-		return -1;
-
-	gic_dist_save(&gic_data[0]);
-	gic_cpu_save(&gic_data[0]);
-
-	return 0;
-}
-
-static int gic_suspend_notifier(struct notifier_block *nb, unsigned long event, void *dummy)
-{
-	if ((event == PM_HIBERNATION_PREPARE) || ((event == PM_SUSPEND_PREPARE)
-			&& pm_suspend_via_firmware()))
-		hibernation = true;
-	else if ((event == PM_POST_HIBERNATION) || ((event == PM_POST_SUSPEND)
-			&& pm_suspend_via_firmware()))
-		hibernation = false;
-	return NOTIFY_OK;
-}
-
-static struct notifier_block gic_notif_block = {
-		.notifier_call = gic_suspend_notifier,
-};
-
 static struct syscore_ops gic_v2_syscore_ops = {
 	.resume = gic_v2_resume,
-	.suspend = gic_v2_suspend,
 };
 
 static void gic_v2_syscore_init(void)
 {
 	register_syscore_ops(&gic_v2_syscore_ops);
-	register_pm_notifier(&gic_notif_block);
 }
 
 #else
 static inline void gic_v2_syscore_init(void) { }
 void gic_v2_resume(void) { }
-static inline int gic_v2_suspend(void) { return 0; }
 #endif
 
 static const struct irq_chip gic_chip = {
@@ -607,7 +568,7 @@ int gic_cpu_if_down(unsigned int gic_nr)
 	return 0;
 }
 
-#if defined(CONFIG_CPU_PM) || defined(CONFIG_ARM_GIC_PM) || defined(CONFIG_PM)
+#if defined(CONFIG_CPU_PM) || defined(CONFIG_ARM_GIC_PM)
 /*
  * Saves the GIC distributor registers during suspend or idle.  Must be called
  * with interrupts disabled but before powering down the GIC.  After calling
