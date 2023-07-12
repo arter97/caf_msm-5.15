@@ -6218,6 +6218,9 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 
 	xmac = priv->plat->has_gmac4 || priv->plat->has_xgmac;
 	queues_count = (rx_cnt > tx_cnt) ? rx_cnt : tx_cnt;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	queues_count++;
+#endif
 
 	if (priv->irq_wake)
 		pm_wakeup_event(priv->device, 0);
