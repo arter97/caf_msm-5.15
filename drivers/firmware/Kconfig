@@ -8,6 +8,15 @@ menu "Firmware Drivers"
 
 source "drivers/firmware/arm_scmi/Kconfig"
 
+config ARM_SCMI_VIRTIO_BACKEND
+	tristate "SCMI Message Protocol Virtio Backend device"
+	depends on ARM || ARM64 || COMPILE_TEST
+	help
+	  ARM System Control and Management Interface (SCMI) protocol
+	  platform device for SCMI Virtio transport. This component
+	  provides platform side implementation of SCMI protocols
+	  for clients communication over Virtio transport.
+
 config ARM_SCPI_PROTOCOL
 	tristate "ARM System Control and Power Interface (SCPI) Message Protocol"
 	depends on ARM || ARM64 || COMPILE_TEST
