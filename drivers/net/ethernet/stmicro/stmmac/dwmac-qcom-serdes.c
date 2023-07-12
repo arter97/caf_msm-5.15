@@ -1375,6 +1375,10 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 {
 	int ret = 0;
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M -Ethernet Serdes power up start");
+#endif
+
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
 		ret = qcom_ethqos_serdes_update_sgmii(ethqos, speed);
@@ -1387,6 +1391,9 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 		ret = EINVAL;
 		break;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Serdes power up end");
+#endif
 
 	return ret;
 }
