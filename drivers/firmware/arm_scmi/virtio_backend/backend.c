@@ -505,12 +505,19 @@ static int __init scmi_virtio_be_init(void)
 	init_rwsem(&scmi_virtio_be_info.active_protocols_rwsem);
 	scmi_virtio_base_register();
 
+#ifdef CONFIG_ARM_SCMI_VIRTIO_CLK
+	scmi_virtio_clock_register();
+#endif
+
 	return platform_driver_register(&scmi_virtio_be_driver);
 }
 module_init(scmi_virtio_be_init);
 
 static void __exit scmi_virtio_be_exit(void)
 {
+#ifdef CONFIG_ARM_SCMI_VIRTIO_CLK
+	scmi_virtio_clock_unregister();
+#endif
 	scmi_virtio_base_unregister();
 	idr_destroy(&scmi_virtio_be_info.active_protocols);
 	idr_destroy(&scmi_virtio_be_info.registered_protocols);

@@ -7,6 +7,7 @@
 #define _LINUX_SCMI_VIRTIO_BACKEND_H
 
 #include <linux/idr.h>
+#include <linux/clk-provider.h>
 
 /**
  * scmi_virtio_client_h : Structure encapsulating a unique
@@ -27,5 +28,14 @@ int scmi_virtio_be_close(const struct scmi_virtio_client_h *client_h);
 int scmi_virtio_be_request(const struct scmi_virtio_client_h *client_h,
 			const struct scmi_virtio_be_msg *req,
 			struct scmi_virtio_be_msg *resp);
+
+#ifdef CONFIG_ARM_SCMI_VIRTIO_CLK
+int scmi_virtio_register_clock(struct clk_hw *hw, const char *remote_name);
+#else
+static inline int scmi_virtio_register_clock(struct clk_hw *hw, const char *remote_name)
+{
+	return 0;
+}
+#endif
 
 #endif /* _LINUX_SCMI_VIRTIO_BACKEND_H */

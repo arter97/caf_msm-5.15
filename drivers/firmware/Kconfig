@@ -17,6 +17,17 @@ config ARM_SCMI_VIRTIO_BACKEND
 	  provides platform side implementation of SCMI protocols
 	  for clients communication over Virtio transport.
 
+config ARM_SCMI_VIRTIO_CLK
+	bool "SCMI Message Protocol Virtio Backend Clock Protocol Driver"
+	depends on ARM_SCMI_VIRTIO_BACKEND
+	help
+	  Implementation of SCMI clock protocol specification
+	  for ARM SCMI Virtio backend. Implementation supports enable and
+	  disable of clocks. Clocks are expected to be registered using a
+	  unique name string as per the standard and this string is sent
+	  as part of the SCMI message to identify which clock should be
+	  enabled or disabled.
+
 config ARM_SCPI_PROTOCOL
 	tristate "ARM System Control and Power Interface (SCPI) Message Protocol"
 	depends on ARM || ARM64 || COMPILE_TEST
