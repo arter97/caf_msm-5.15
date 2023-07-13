@@ -6235,6 +6235,11 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
 
+	ret = atomic_notifier_chain_unregister(&panic_notifier_list,
+					     &ethqos->panic_nb);
+	if (ret)
+		return ret;
+
 	for (i = 0; i < ETH_MAX_NICS; i++) {
 		if (pethqos[i] == ethqos) {
 			pethqos[i] = NULL;
