@@ -217,10 +217,10 @@ static int msm_nand_suspend(struct device *dev)
 	struct msm_nand_info *info = dev_get_drvdata(dev);
 	struct msm_nand_chip *chip = &info->nand_chip;
 
+	mutex_lock(&info->lock);
+
 	/* Returns true for Deep sleep/Quick boot case else false */
 	if (pm_suspend_via_firmware()) {
-		mutex_lock(&info->lock);
-
 		/* sps_deregister_bam_device  is accessing bam registers so enable clocks*/
 		ret = msm_nand_get_device(chip->dev);
 		if (ret)
@@ -242,8 +242,7 @@ static int msm_nand_suspend(struct device *dev)
 		ret = msm_nand_runtime_suspend(dev);
 
 out:
-	if (pm_suspend_via_firmware())
-		mutex_unlock(&info->lock);
+	mutex_unlock(&info->lock);
 	return ret;
 }
 
@@ -252,8 +251,12 @@ static int msm_nand_resume(struct device *dev)
 	int ret = 0;
 	struct msm_nand_info *info = dev_get_drvdata(dev);
 
+	mutex_lock(&info->lock);
+
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_resume(dev);
+
+	mutex_unlock(&info->lock);
 
 	/* Returns true for Deep sleep/Quick boot case else false */
 	if (pm_suspend_via_firmware()) {
