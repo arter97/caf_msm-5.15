@@ -305,7 +305,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	unsigned int eth_type, priority;
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv->plat->bsp_priv;
-
+	s8 eprio;
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
@@ -327,13 +327,26 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	} else if (eth_type == ETH_P_1588) {
 		/*gPTP seelct tx queue 1*/
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
-	} else {
+	} else if (ethqos->cv2x_pvm_only_enabled && skb_vlan_tag_present(skb)) {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
-		if (ethqos->ipa_enabled)
+		/* Getting VLAN priority field from skb */
+		priority =  skb_vlan_tag_get_prio(skb);
+		#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+			eprio = -1;
+		#else
+			eprio = ethqos->cv2x_priority;
+		#endif
+
+		if (priority == eprio)
+			txqueue_select = ethqos->cv2x_queue;
+		else if (ethqos->ipa_enabled)
 			txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
 		else
 			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
-	}
+	} else if (ethqos->ipa_enabled)
+		txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
+	else
+		txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
 
 	return txqueue_select;
 }
@@ -4712,6 +4725,7 @@ static ssize_t store_cv2x_priority(struct device *dev,
 	struct net_device *netdev = to_net_dev(dev);
 	struct stmmac_priv *priv;
 	struct qcom_ethqos *ethqos;
+	u32 prio;
 	s8 input = 0;
 
 	if (!netdev) {
@@ -4736,7 +4750,7 @@ static ssize_t store_cv2x_priority(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (input < 0 || input > 7) {
+	if (input < 1 || input > 7) {
 		ETHQOSERR("Invalid option set by user\n");
 		return -EINVAL;
 	}
@@ -4745,6 +4759,11 @@ static ssize_t store_cv2x_priority(struct device *dev,
 		ETHQOSERR("No effect as duplicate input\n");
 
 	ethqos->cv2x_priority = input;
+	prio  = 1 << input;
+	ethqos->cv2x_pvm_only_enabled = true;
+	// Configuring the priority for q4
+	priv->plat->rx_queues_cfg[ethqos->cv2x_queue].prio = prio;
+	stmmac_rx_queue_prio(priv, priv->hw, prio, ethqos->cv2x_queue);
 
 	return size;
 }
@@ -6342,6 +6361,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		ethqos->passthrough_en = 0;
 #else
 	ethqos->cv2x_priority = 0;
+	if (of_property_read_bool(np, "cv2x-queue"))
+		of_property_read_u32(np, "cv2x-queue",
+				     &ethqos->cv2x_queue);
+	else
+		ethqos->cv2x_queue = CV2X_TAG_TX_CHANNEL;
 #endif
 
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
