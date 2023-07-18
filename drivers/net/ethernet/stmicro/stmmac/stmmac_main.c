@@ -3243,10 +3243,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		dev_info(priv->device, "XPCS LINK not ready\n");
 	}
 
-	ret = stmmac_reset(priv, priv->ioaddr);
-	if (ret) {
-		dev_err(priv->device, "Failed to reset the dma\n");
-		return ret;
+	if (!priv->plat->mac_suspended) {
+		ret = stmmac_reset(priv, priv->ioaddr);
+		if (ret) {
+			dev_err(priv->device, "Failed to reset the dma\n");
+			return ret;
+		}
 	}
 
 	if (priv->plat->rgmii_rst) {
@@ -8257,6 +8259,7 @@ int stmmac_suspend(struct device *dev)
 		stmmac_fpe_stop_wq(priv);
 	}
 
+	priv->plat->mac_suspended = true;
 	priv->speed = SPEED_UNKNOWN;
 	return 0;
 }
@@ -8288,22 +8291,6 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 
 		netdev_tx_reset_queue(netdev_get_tx_queue(priv->dev, queue));
 	}
-}
-
-static int stmmac_resume_lite(struct stmmac_priv *priv, struct net_device *ndev)
-{
-	stmmac_enable_all_queues(priv);
-	netif_device_attach(ndev);
-	stmmac_start_all_dma(priv);
-	stmmac_mac_set(priv, priv->ioaddr, true);
-
-	if (priv->dma_cap.fpesel) {
-		stmmac_fpe_start_wq(priv);
-		if (priv->plat->fpe_cfg->enable)
-			stmmac_fpe_handshake(priv, true);
-	}
-
-	return 0;
 }
 
 /**
@@ -8364,9 +8351,6 @@ int stmmac_resume(struct device *dev)
 		rtnl_unlock();
 	}
 
-	if (priv->plat->pm_lite)
-		return stmmac_resume_lite(priv, ndev);
-
 	rtnl_lock();
 	mutex_lock(&priv->lock);
 
@@ -8395,6 +8379,7 @@ int stmmac_resume(struct device *dev)
 	rtnl_unlock();
 
 	netif_device_attach(ndev);
+	priv->plat->mac_suspended = false;
 
 	return 0;
 }
