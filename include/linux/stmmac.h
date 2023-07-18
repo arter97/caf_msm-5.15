@@ -334,5 +334,6 @@ struct plat_stmmacenet_data {
 	bool mdio_op_busy;
 	atomic_t phy_clks_suspended;
 	struct completion mdio_op;
+	bool mac_suspended;
 };
 #endif
