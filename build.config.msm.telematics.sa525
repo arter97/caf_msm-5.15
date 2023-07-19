@@ -1,6 +1,46 @@
 ################################################################################
 # Common MSM configuration for building non-GKI-based kernels
 DEFCONFIG="generic_tele_defconfig"
+OPENSSL_DIR=${KERNEL_DIR}/../build/build-tools/path/linux-x86
+OPENSSL_BIN=${KERNEL_DIR}/../build/build-tools/path/linux-x86/openssl
+
+append_cmd POST_DEFCONFIG_CMDS 'ima_evm_signing_keys_config'
+
+ima_evm_signing_keys_config() {
+	if test -f "${OPENSSL_BIN}"; then
+		${OPENSSL_BIN} req -new -nodes -x509 -sha256 -utf8 -days 36500 \
+		-batch -config ${KERNEL_DIR}/certs/ima_local_ca.conf \
+		-outform PEM -out ${OUT_DIR}/ima-local-ca.pem -keyout ${OUT_DIR}/ima-local-ca.priv
+
+		# IMA private key
+		${OPENSSL_BIN} req -new -nodes -utf8 -sha256 -days 36500 -batch -config \
+		${KERNEL_DIR}/certs/ima_file.genkey -out ${OUT_DIR}/csr_ima.pem -keyout \
+		${OUT_DIR}/privkey_ima.pem
+
+		# Sign IMA public certificate
+		${OPENSSL_BIN} x509 -req -in ${OUT_DIR}/csr_ima.pem -days 36500 -extfile \
+		${KERNEL_DIR}/certs/ima_file.genkey -extensions v3_usr -CA ${OUT_DIR}/ima-local-ca.pem \
+		-CAkey ${OUT_DIR}/ima-local-ca.priv -CAcreateserial -outform DER -out \
+		${OUT_DIR}/x509_ima.der
+
+		${KERNEL_DIR}/scripts/config --file ${OUT_DIR}/.config \
+		--set-str CONFIG_SYSTEM_TRUSTED_KEYS "ima-local-ca.pem"
+
+		(cd ${OUT_DIR} && \
+		make ${CC_LD_ARG} O=${OUT_DIR} ${MAKE_ARGS} olddefconfig)
+	fi
+}
+
+append_cmd POST_KERNEL_BUILD_CMDS 'move_ima_evm_keys'
+
+function move_ima_evm_keys() {
+	cp ${OUT_DIR}/ima-local-ca.pem ${OUT_DIR}/certs
+	cp ${OUT_DIR}/ima-local-ca.priv ${OUT_DIR}/certs
+	cp ${OUT_DIR}/csr_ima.pem ${OUT_DIR}/certs
+	cp ${OUT_DIR}/privkey_ima.pem ${OUT_DIR}/certs
+	cp ${OUT_DIR}/x509_ima.der ${OUT_DIR}/certs
+	cp ${OUT_DIR}/x509_ima.der ${OUT_DIR}/certs/x509_evm.der
+}
 
 function build_defconfig_fragments() {
 	if [[ "${VARIANT}" =~ ^(perf_defconfig|debug_defconfig|hostvm_perf_defconfig|hostvm_debug_defconfig)$ ]]; then
