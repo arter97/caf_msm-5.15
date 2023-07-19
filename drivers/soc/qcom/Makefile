@@ -127,3 +127,4 @@ obj-$(CONFIG_RENAME_DEVICES) += rename_devices.o
 obj-$(CONFIG_QCOM_S2D_VENDOR_HOOK) += qcom_hib.o
 obj-$(CONFIG_QCOM_SECURE_HIBERNATION) += qcom_secure_hibernation.o
 obj-$(CONFIG_SENSORS_SSC) += sensors_ssc.o
+obj-$(CONFIG_QCOM_AOP_FAULT_COLLECTOR) += qcom_aop_fault_collector.o

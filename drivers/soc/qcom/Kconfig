@@ -1389,4 +1389,15 @@ config QCOM_SECURE_HIBERNATION
 	  pages at the kernel.
 	  If not sure, say N.
 
+config QCOM_AOP_FAULT_COLLECTOR
+	  tristate "AOP Fault Collector Driver"
+	  depends on ARCH_QCOM || COMPILE_TEST
+	  depends on MAILBOX
+	  select QCOM_QMI_HELPERS
+	  help
+	   This driver monitors different faults from AOP subsystem and
+	   notifies fault manager service and it also supports to query
+	   different AOP details and expose it to userspace fault
+	   manager service.
+
 endmenu
