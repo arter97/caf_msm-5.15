@@ -75,6 +75,11 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 	STMMAC_STAT(sa_rx_filter_fail),
 	STMMAC_STAT(rx_missed_cntr),
 	STMMAC_STAT(rx_overflow_cntr),
+	STMMAC_STAT(q_rx_overflow_cntr[0]),
+	STMMAC_STAT(q_rx_overflow_cntr[1]),
+	STMMAC_STAT(q_rx_overflow_cntr[2]),
+	STMMAC_STAT(q_rx_overflow_cntr[3]),
+	STMMAC_STAT(q_rx_overflow_cntr[4]),
 	STMMAC_STAT(rx_vlan),
 	STMMAC_STAT(rx_split_hdr_pkt_n),
 	/* Tx/Rx IRQ error info */
@@ -412,11 +417,21 @@ stmmac_ethtool_set_link_ksettings(struct net_device *dev,
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct phy_device *phy = dev->phydev;
+	int rc = 0;
 
 	if (!phy) {
 		pr_err("%s: %s: PHY is not registered\n",
 		       __func__, dev->name);
 		return -ENODEV;
+	}
+
+	if (priv->plat->has_xgmac &&
+	    (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+	     priv->plat->interface == PHY_INTERFACE_MODE_SGMII)) {
+		if (cmd->base.autoneg == AUTONEG_DISABLE)
+			return -EINVAL;
+		else if (cmd->base.speed) /* Autoneg on and speed change is not supported */
+			return 0;
 	}
 
 	if  (!priv->plat->has_gmac4 && (priv->hw->pcs & STMMAC_PCS_RGMII ||
@@ -441,10 +456,13 @@ stmmac_ethtool_set_link_ksettings(struct net_device *dev,
 		return 0;
 	}
 
-	if (!priv->plat->mac2mac_en)
-		return phylink_ethtool_ksettings_set(priv->phylink, cmd);
-	else
+	if (!priv->plat->mac2mac_en) {
+		rc = phylink_ethtool_ksettings_set(priv->phylink, cmd);
+		linkmode_copy(priv->adv_old, phy->advertising);
+		return rc;
+	} else {
 		return 0;
+	}
 
 }
 

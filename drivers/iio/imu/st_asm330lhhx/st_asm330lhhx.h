@@ -781,6 +781,14 @@ st_asm330lhhx_set_page_access(struct st_asm330lhhx_hw *hw,
 	return err;
 }
 
+static inline s64 st_asm330lhhx_get_time_ns(void)
+{
+	struct timespec64 ts;
+
+	ktime_get_boottime_ts64(&ts);
+	return timespec64_to_ns(&ts);
+}
+
 static inline int
 st_asm330lhhx_read_page_locked(struct st_asm330lhhx_hw *hw,
 			       unsigned int addr,

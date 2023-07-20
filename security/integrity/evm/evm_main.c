@@ -431,6 +431,44 @@ EXPORT_SYMBOL_GPL(evm_verifyxattr);
  * Verify and return the dentry's metadata integrity. The exceptions are
  * before EVM is initialized or in 'fix' mode.
  */
+#ifdef CONFIG_QCOM_EVM
+static enum integrity_status evm_verify_current_integrity(struct dentry *dentry)
+{
+	struct inode *inode = d_backing_inode(dentry);
+	static const uuid_t rfsuuid = UUID_INIT(0x6F2B9A5B, 0x3207,
+			0x4D8B, 0x84, 0x7C, 0x0F, 0x4F, 0xF9, 0xD9, 0x04, 0x85);
+
+	if (!evm_key_loaded() || !S_ISREG(inode->i_mode) || evm_fixmode)
+		return 0;
+
+	/* 1. Exclude all UBIFS formatted partition except root file
+	 *    system partition. 0x24051905 is UBIFS magic number.
+	 * 2. Exclude external SD-card (FAT FS).
+	 */
+	switch (dentry->d_sb->s_magic) {
+	case 0x24051905:
+		if (!uuid_equal(&rfsuuid, &inode->i_sb->s_uuid))
+			return 0;
+		break;
+	case MSDOS_SUPER_MAGIC:
+		return 0;
+	}
+
+	/* Exclude pseudo filesystems. 0x62656570 is CONFIGFS magic number */
+	switch (dentry->d_sb->s_magic) {
+	case 0x62656570:
+	case TMPFS_MAGIC:
+	case SYSFS_MAGIC:
+	case RAMFS_MAGIC:
+	case CGROUP_SUPER_MAGIC:
+	case CGROUP2_SUPER_MAGIC:
+	case DEVPTS_SUPER_MAGIC:
+		return 0;
+	}
+
+	return evm_verify_hmac(dentry, NULL, NULL, 0, NULL);
+}
+#else
 static enum integrity_status evm_verify_current_integrity(struct dentry *dentry)
 {
 	struct inode *inode = d_backing_inode(dentry);
@@ -439,6 +477,7 @@ static enum integrity_status evm_verify_current_integrity(struct dentry *dentry)
 		return 0;
 	return evm_verify_hmac(dentry, NULL, NULL, 0, NULL);
 }
+#endif /* CONFIG_QCOM_EVM */
 
 /*
  * evm_xattr_acl_change - check if passed ACL changes the inode mode
@@ -849,6 +888,10 @@ int evm_inode_init_security(struct inode *inode,
 	    !evm_protected_xattr(lsm_xattr->name))
 		return 0;
 
+	/* If HMAC key is not available, simply return if CONFIG_QCOM_EVM is enabled*/
+	if (!(evm_initialized & EVM_INIT_HMAC) && IS_ENABLED(CONFIG_QCOM_EVM))
+		return 0;
+
 	xattr_data = kzalloc(sizeof(*xattr_data), GFP_NOFS);
 	if (!xattr_data)
 		return -ENOMEM;
@@ -876,6 +919,8 @@ void __init evm_load_x509(void)
 	rc = integrity_load_x509(INTEGRITY_KEYRING_EVM, CONFIG_EVM_X509_PATH);
 	if (!rc)
 		evm_initialized |= EVM_INIT_X509;
+	else if (IS_ENABLED(CONFIG_QCOM_IMA))
+		panic("can't load evm public key!");
 }
 #endif
 
@@ -889,6 +934,9 @@ static int __init init_evm(void)
 	error = integrity_init_keyring(INTEGRITY_KEYRING_EVM);
 	if (error)
 		goto error;
+
+	if (IS_ENABLED(CONFIG_QCOM_EVM))
+		return 0;
 
 	error = evm_init_secfs();
 	if (error < 0) {

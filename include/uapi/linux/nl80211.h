@@ -2762,7 +2762,22 @@ enum nl80211_commands {
  * @NL80211_ATTR_TD_BITMAP: Transition Disable bitmap, for subsequent
  *	(re)associations.
  *
- * @NL80211_ATTR_MLD_MAC: MLD MAC address.
+ * @NL80211_ATTR_TX_HW_TIMESTAMP: Hardware timestamp for TX operation in
+ *	nanoseconds (u64). This is the device clock timestamp so it will
+ *	probably reset when the device is stopped or the firmware is reset.
+ *	When used with %NL80211_CMD_FRAME_TX_STATUS, indicates the frame TX
+ *	timestamp. When used with %NL80211_CMD_FRAME RX notification, indicates
+ *	the ack TX timestamp.
+ * @NL80211_ATTR_RX_HW_TIMESTAMP: Hardware timestamp for RX operation in
+ *	nanoseconds (u64). This is the device clock timestamp so it will
+ *	probably reset when the device is stopped or the firmware is reset.
+ *	When used with %NL80211_CMD_FRAME_TX_STATUS, indicates the ack RX
+ *	timestamp. When used with %NL80211_CMD_FRAME RX notification, indicates
+ *	the incoming frame RX timestamp.
+ * @NL80211_ATTR_TD_BITMAP: Transition Disable bitmap, for subsequent
+ *	(re)associations.
+ *
+ * @NL80211_ATTR_MLD_MAC: MLD MAC address
  * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
  * @NL80211_ATTR_MLD_LINK_IDS: nested attribute to hold MLD link-ids.
  * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
@@ -5957,6 +5972,7 @@ enum plink_actions {
 #define NL80211_KEK_LEN			16
 #define NL80211_KCK_EXT_LEN		24
 #define NL80211_KEK_EXT_LEN		32
+#define NL80211_KCK_EXT_LEN_32		32
 #define NL80211_REPLAY_CTR_LEN		8
 
 /**

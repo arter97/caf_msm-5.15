@@ -6,6 +6,16 @@
 #ifndef __QCOM_BOOT_STATS_H__
 #define __QCOM_BOOT_STATS_H__
 
+#ifdef CONFIG_ARM
+#undef readq_relaxed
+#define readq_relaxed(a) ({			\
+	u64 val = readl_relaxed((a) + 4);	\
+	val <<= 32;				\
+	val |=  readl_relaxed((a));		\
+	val;					\
+})
+#endif
+
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 void place_marker(const char *name);
 void destroy_marker(const char *name);

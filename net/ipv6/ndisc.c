@@ -1025,16 +1025,14 @@ static void ndisc_recv_na(struct sk_buff *skb)
 		in6_ifa_put(ifp);
 		return;
 	}
-
-		neigh_probe_enable_rcv(&handle_unsolicited_na);
-		if (handle_unsolicited_na) {
-			check = (!msg->icmph.icmp6_solicited && lladdr &&
-					idev && idev->cnf.forwarding &&
-					handle_unsolicited_na);
-			neigh = __neigh_lookup(&nd_tbl, &msg->target, dev, check);
-		} else {
-			neigh = neigh_lookup(&nd_tbl, &msg->target, dev);
-		}
+	neigh_probe_enable_rcv(&handle_unsolicited_na);
+	if (handle_unsolicited_na) {
+		check = (!msg->icmph.icmp6_solicited && lladdr &&
+		idev && idev->cnf.forwarding);
+		neigh = __neigh_lookup(&nd_tbl, &msg->target, dev, check);
+	} else {
+		neigh = neigh_lookup(&nd_tbl, &msg->target, dev);
+	}
 	if (neigh) {
 		u8 old_flags = neigh->flags;
 		struct net *net = dev_net(dev);

@@ -136,6 +136,7 @@ struct stmmac_rxq_cfg {
 	u32 prio;
 	bool thresholdmode;
 	u32 threshold_byte;
+	u32 fifo_sz_bytes;
 	bool skip_sw;
 	bool mbcast_route;
 };
@@ -330,5 +331,8 @@ struct plat_stmmacenet_data {
 	bool plat_wait_for_emac_rx_clk_en;
 	bool rx_clk_rdy;
 	bool mac_err_rec;
+	bool mdio_op_busy;
+	atomic_t phy_clks_suspended;
+	struct completion mdio_op;
 };
 #endif

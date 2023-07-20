@@ -17,6 +17,7 @@
 #include <linux/ipc_logging.h>
 #include <linux/interconnect.h>
 #include <linux/qtee_shmbridge.h>
+#include "dwmac-qcom-msgq-pvm.h"
 
 #define QCOM_ETH_QOS_MAC_ADDR_LEN 6
 #define QCOM_ETH_QOS_MAC_ADDR_STR_LEN 18
@@ -225,7 +226,18 @@ enum loopback_mode {
 	DISABLE_LOOPBACK = 0,
 	ENABLE_IO_MACRO_LOOPBACK,
 	ENABLE_MAC_LOOPBACK,
-	ENABLE_PHY_LOOPBACK
+	ENABLE_PHY_LOOPBACK,
+	ENABLE_SERDES_LOOPBACK,
+};
+
+enum nw_loopback_mode {
+	DISABLE_NW_LOOPBACK = 0,
+	ENABLE_PCS_NW_LOOPBACK,
+};
+
+enum loopback_direction {
+	HOST_LOOPBACK_MODE = 1,
+	NETWORK_LOOPBACK_MODE,
 };
 
 enum phy_power_mode {
@@ -449,6 +461,7 @@ struct qcom_ethqos {
 	int curr_serdes_speed;
 	unsigned int emac_phy_off_suspend;
 	int loopback_speed;
+	u32 max_speed_enforce;
 	enum phy_power_mode current_phy_mode;
 	enum current_phy_state phy_state;
 	/*Backup variable for phy loopback*/
@@ -468,11 +481,14 @@ struct qcom_ethqos {
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
+	bool cv2x_pvm_only_enabled;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+	bool last_event_linkup;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;
 #endif
+	unsigned int cv2x_queue;
 
 	/* Mac recovery parameters */
 	int mac_err_cnt[MAC_ERR_CNT];
@@ -547,7 +563,6 @@ void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos);
 int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg);
 int ethqos_phy_power_on(struct qcom_ethqos *ethqos);
 void  ethqos_phy_power_off(struct qcom_ethqos *ethqos);
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos);
 
 u16 dwmac_qcom_select_queue(struct net_device *dev,
 			    struct sk_buff *skb,
@@ -563,6 +578,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 #define IPA_DMA_RX_CH 0
 
 #define QMI_TAG_TX_CHANNEL 2
+#define CV2X_TAG_TX_CHANNEL 4
 
 #define VLAN_TAG_UCP_SHIFT 13
 #define CLASS_A_TRAFFIC_UCP 3
@@ -608,7 +624,7 @@ struct dwmac_qcom_avb_algorithm {
 };
 
 void qcom_ethqos_request_phy_wol(void *plat_n);
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos);
+void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status);
 void  ethqos_phy_power_off(struct qcom_ethqos *ethqos);
 int ethqos_phy_power_on(struct qcom_ethqos *ethqos);
 void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
@@ -616,4 +632,14 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb);
 int ethqos_init_pps(void *priv);
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state event);
+#else
+static inline void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum eth_state event)
+{
+	/* Not enabled */
+}
+#endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
 #endif

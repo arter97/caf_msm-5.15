@@ -52,7 +52,7 @@
 #define PCIE_L1SUB_AHB_TIMEOUT_MIN		100
 #define PCIE_L1SUB_AHB_TIMEOUT_MAX		120
 
-#define PERST_RAW_RESET_STATUS			BIT(11)
+#define PERST_RAW_RESET_STATUS			BIT(0)
 #define LINK_STATUS_REG_SHIFT			16
 
 /* debug mask sys interface */
@@ -96,6 +96,7 @@ static struct ep_pcie_clk_info_t
 	{NULL, "snoc_cnoc_gemnoc_pcie_south_qx_clk", 0, false},
 	{NULL, "snoc_cnoc_gemnoc_pcie_qx_clk", 0, false},
 	{NULL, "gemnoc_pcie_qx_clk", 0, false},
+	{NULL, "gcc_pcie_0_phy_aux_clk", 0, false},
 };
 
 static struct ep_pcie_clk_info_t
@@ -1079,6 +1080,9 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 			readl_relaxed(dev->dm_core + pos + PCI_L1SS_CAP));
 		}
 
+		/* Set CLK_PM_EN which allows to configure the clock-power-man bit below for EP */
+		ep_pcie_write_mask(dev->elbi + PCIE20_ELBI_SYS_CTRL, 1, BIT(7));
+
 		/* Enable Clock Power Management */
 		ep_pcie_write_reg_field(dev->dm_core, PCIE20_LINK_CAPABILITIES,
 			PCIE20_MASK_CLOCK_POWER_MAN, 0x1);
@@ -1139,14 +1143,14 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 	if (dev->active_config) {
 		ep_pcie_write_reg(dev->dm_core, PCIE20_AUX_CLK_FREQ_REG, dev->aux_clk_val);
 
-		/* Prevent L1ss wakeup after 100ms */
-		ep_pcie_write_mask(dev->dm_core + PCIE20_GEN3_RELATED_OFF,
-							BIT(0), 0);
-
 		/* Disable SRIS_MODE */
 		ep_pcie_write_mask(dev->parf + PCIE20_PARF_SRIS_MODE,
 								BIT(0), 0);
 	}
+
+	/* Prevent L1ss wakeup after 100ms */
+	ep_pcie_write_mask(dev->dm_core + PCIE20_GEN3_RELATED_OFF,
+						BIT(0), 0);
 
 	ep_pcie_sriov_init(dev);
 	if (!configured) {
@@ -2124,10 +2128,6 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
 		}
 
-		if (dev->pcie_cesta_clkreq_offset)
-			ep_pcie_write_reg_field(dev->parf,
-						dev->pcie_cesta_clkreq_offset, BIT(0), 0);
-
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
 			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
@@ -2356,6 +2356,13 @@ checkbme:
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
 	if (dev->aoss_rst_clear && dev->aoss_rst_perst)
 		writel_relaxed(ep_pcie_dev.perst_raw_rst_status_mask, dev->aoss_rst_perst);
+
+	/* Make sure clkreq control is with controller, not CESTA */
+	if (dev->pcie_cesta_clkreq_offset) {
+		ep_pcie_write_reg_field(dev->parf, dev->pcie_cesta_clkreq_offset, BIT(0), 0);
+		val = readl_relaxed(dev->parf + dev->pcie_cesta_clkreq_offset);
+		EP_PCIE_DBG(dev, "PCIe V%d: CESTA_CLKREQ_CTRL:0x%x.\n", dev->rev, val);
+	}
 
 	/*
 	 * De-assert WAKE# GPIO following link until L2/3 and WAKE#
@@ -3546,19 +3553,20 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		ep_pcie_dev.rev, lower, upper, data, vf_id);
 
 	if (ctrl_reg & BIT(16)) {
-
-		if (ep_pcie_dev.active_config)
-			ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
-					EP_PCIE_OATU_INDEX_MSI,
-					vf_id,
-					msi->start + (n * 0x8), EP_PCIE_OATU_UPPER,
-					msi->end, lower, upper);
-		else
-			ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
-					EP_PCIE_OATU_INDEX_MSI,
-					vf_id,
-					msi->start + (n * 0x8), 0, msi->end,
-					lower, upper);
+		if (ep_pcie_dev.use_iatu_msi) {
+			if (ep_pcie_dev.active_config)
+				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
+						EP_PCIE_OATU_INDEX_MSI,
+						vf_id,
+						msi->start + (n * 0x8), EP_PCIE_OATU_UPPER,
+						msi->end, lower, upper);
+			else
+				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
+						EP_PCIE_OATU_INDEX_MSI,
+						vf_id,
+						msi->start + (n * 0x8), 0, msi->end,
+						lower, upper);
+		}
 
 		if (ep_pcie_dev.active_config || ep_pcie_dev.pcie_edma) {
 			cfg->lower = lower;
@@ -4094,8 +4102,8 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 		}
 
 		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: Perset Raw Reset Status Bit: %d",
-			ep_pcie_dev.rev, BIT(ep_pcie_dev.perst_raw_rst_status_mask));
+			"PCIe V%d: Perst Raw Reset Status Mask: 0x%x\n",
+			ep_pcie_dev.rev, ep_pcie_dev.perst_raw_rst_status_mask);
 	}
 }
 

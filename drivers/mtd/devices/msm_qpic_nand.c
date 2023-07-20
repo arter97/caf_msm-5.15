@@ -4247,18 +4247,6 @@ static int msm_nand_bam_init(struct msm_nand_info *nand_info)
 	 */
 	bam.manage = SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE;
 
-	/* In normal bootup, TZ/UEFI does pipe reset/initialization. And later
-	 * BAM driver don’t reconfigure pipes based on the flag
-	 * SPS_BAM_MGR_DEVICE_REMOTE being set.
-	 * When system is going to DeepSleep and QuickBoot UEFI is not present,
-	 * and we need to reconfigure the BAM Pipes during QuickBoot.
-	 * Clear the flag SPS_BAM_MGR_DEVICE_REMOTE for HLOS BAM driver to
-	 * configure the BAM pipes and reinitialize the BAM hw registers
-	 * during QuickBoot.
-	 */
-	if (pm_suspend_via_firmware())
-		bam.manage &= ~SPS_BAM_MGR_DEVICE_REMOTE;
-
 	bam.ipc_loglevel = QPIC_BAM_DEFAULT_IPC_LOGLVL;
 	mutex_lock(&nand_info->lock);
 	rc = msm_nand_get_device(chip->dev);

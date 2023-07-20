@@ -10,11 +10,13 @@
 
 #include "dwmac-qcom-serdes.h"
 
-void qcom_ethqos_reset_serdes_speed(struct qcom_ethqos *ethqos)
+void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
-	ethqos->curr_serdes_speed = 0;
+	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
+	usleep_range(300, 500);
+	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
 }
-EXPORT_SYMBOL(qcom_ethqos_reset_serdes_speed);
+EXPORT_SYMBOL(qcom_ethqos_serdes_soft_reset);
 
 void qcom_ethqos_disable_serdes_clocks(struct qcom_ethqos *ethqos)
 {
@@ -1373,6 +1375,10 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 {
 	int ret = 0;
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M -Ethernet Serdes power up start");
+#endif
+
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
 		ret = qcom_ethqos_serdes_update_sgmii(ethqos, speed);
@@ -1385,6 +1391,9 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 		ret = EINVAL;
 		break;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet Serdes power up end");
+#endif
 
 	return ret;
 }

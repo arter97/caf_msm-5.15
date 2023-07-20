@@ -214,6 +214,27 @@ struct stmmac_rfs_entry {
 	int tc;
 };
 
+struct l4_filter_info {
+	u8 l4_proto_number;
+	u16 src_port;
+	u16 dest_port;
+};
+
+struct l3_l4_ipv4_filter {
+	u32 src_addr;
+	u8 src_addr_mask;
+	u32 dest_addr;
+	u8 dest_addr_mask;
+	struct l4_filter_info l4_filter;
+};
+
+struct l3_l4_ipv6_filter {
+	bool src_or_dest_ip;
+	unsigned char src_or_dest_addr[16];
+	unsigned char src_or_dest_addr_mask;
+	struct l4_filter_info l4_filter;
+};
+
 struct stmmac_priv {
 	/* Frequently used values are kept adjacent for cache effect */
 	u32 tx_coal_frames[MTL_MAX_TX_QUEUES];
@@ -314,9 +335,10 @@ struct stmmac_priv {
 	char int_name_tx_irq[MTL_MAX_TX_QUEUES][IFNAMSIZ + 18];
 
 	bool boot_kpi;
-	bool early_eth;
 	bool early_eth_config_set;
 	int current_loopback;
+	int loopback_direction;
+	int phylink_disconnected;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dbgfs_dir;
 #endif
@@ -355,6 +377,7 @@ struct stmmac_priv {
 	bool phy_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 };
 
 enum stmmac_state {

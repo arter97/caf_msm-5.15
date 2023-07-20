@@ -19,21 +19,29 @@
 #define EMAC_VREG_A_SGMII_1P2_NAME "vreg_a_sgmii_1p2"
 #define EMAC_VREG_A_SGMII_0P9_NAME "vreg_a_sgmii_0p9"
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static u32 A_SGMII_1P2_MAX_VOLT = 1200000;
 static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
 static u32 A_SGMII_0P9_MAX_VOLT = 912000;
 static u32 A_SGMII_0P9_MIN_VOLT = 880000;
 static u32 A_SGMII_1P2_LOAD_CURR = 25000;
 static u32 A_SGMII_0P9_LOAD_CURR = 132000;
+#else
+static u32 A_SGMII_1P2_MAX_VOLT = 1300000;
+static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
+static u32 A_SGMII_0P9_MAX_VOLT = 950000;
+static u32 A_SGMII_0P9_MIN_VOLT = 880000;
+static u32 A_SGMII_1P2_LOAD_CURR = 15000;
+static u32 A_SGMII_0P9_LOAD_CURR = 458000;
+#endif
 
 int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet enable serdes consumers start");
+#endif
 
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_MIN_VOLT,
 				    A_SGMII_1P2_MAX_VOLT);
@@ -77,6 +85,10 @@ int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 
 	ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet enable serdes consumers end");
+#endif
+
 	return ret;
 }
 EXPORT_SYMBOL(ethqos_enable_serdes_consumers);
@@ -85,10 +97,9 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet disable serdes consumers start");
+#endif
 
 	regulator_disable(ethqos->vreg_a_sgmii_0p9);
 
@@ -107,6 +118,10 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 			  ret);
 		return ret;
 	}
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet disable serdes consumers end");
+#endif
 
 	return ret;
 }
@@ -242,8 +257,7 @@ EXPORT_SYMBOL(ethqos_init_regulators);
 
 int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 {
-	int ret = 0;
-	/* Both power supplies are required to be present together */
+	/* Both power supplies are required to be present together for SGMII/USXGMII mode */
 	if (of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_1p2-supply") &&
 	    of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_0p9-supply")) {
 		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get(&ethqos->pdev->dev,
@@ -262,7 +276,8 @@ int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 
 		return ethqos_enable_serdes_consumers(ethqos);
 	}
-	return ret;
+
+	return -ENODEV;
 }
 EXPORT_SYMBOL(ethqos_init_sgmii_regulators);
 
@@ -307,32 +322,79 @@ void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 }
 EXPORT_SYMBOL(ethqos_disable_regulators);
 
-void ethqos_reset_phy_enable_interrupt(struct qcom_ethqos *ethqos)
+void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 {
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
-	struct phy_device *phydev = priv->dev->phydev;
+	struct phy_device *phydev = NULL;
+	struct device_node *node;
+	int ret = 0;
 
-	/* reset the phy so that it's ready */
-	if (priv->mii) {
-		ETHQOSERR("do mdio reset\n");
-		priv->mii->reset(priv->mii);
-	}
-	/*Enable phy interrupt*/
-	if (priv->plat->phy_intr_en_extn_stm && phydev) {
-		ETHQOSDBG("PHY interrupt Mode enabled\n");
-		phydev->irq = PHY_MAC_INTERRUPT;
-		phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+	if (!priv->phydev->autoneg)
+		linkmode_copy(priv->adv_old, priv->phydev->advertising);
 
-		if (phydev->drv->config_intr &&
-		    !phydev->drv->config_intr(phydev)) {
-			ETHQOSERR("config_phy_intr successful after phy on\n");
-		}
-		priv->plat->request_phy_wol(priv->plat);
-	} else if (!priv->plat->phy_intr_en_extn_stm) {
-		phydev->irq = PHY_POLL;
-		ETHQOSDBG("PHY Polling Mode enabled\n");
+	if (!status) {
+		if (priv->phylink_disconnected)
+			return;
+
+		if (priv->phy_irq_enabled)
+			priv->plat->phy_irq_disable(priv);
+
+		rtnl_lock();
+		phylink_stop(priv->phylink);
+		phylink_disconnect_phy(priv->phylink);
+		rtnl_unlock();
+
+		priv->phylink_disconnected = true;
 	} else {
-		ETHQOSERR("phydev is null , intr value=%d\n", priv->plat->phy_intr_en_extn_stm);
+		if (!priv->phylink_disconnected)
+			return;
+
+		/* reset the phy so that it's ready */
+		if (priv->mii) {
+			ETHQOSERR("do mdio reset\n");
+			priv->mii->reset(priv->mii);
+		}
+
+		phydev = priv->phydev;
+		node = priv->plat->phylink_node;
+
+		if (node)
+			ret = phylink_of_phy_connect(priv->phylink, node, 0);
+
+		rtnl_lock();
+		phylink_connect_phy(priv->phylink, priv->phydev);
+		rtnl_unlock();
+
+			/*Enable phy interrupt*/
+		if (priv->plat->phy_intr_en_extn_stm && phydev) {
+			ETHQOSDBG("PHY interrupt Mode enabled\n");
+			phydev->irq = PHY_MAC_INTERRUPT;
+			phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+			if (phydev->drv->config_intr &&
+			    !phydev->drv->config_intr(phydev)) {
+				ETHQOSERR("config_phy_intr successful after phy on\n");
+			}
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
+			phydev->irq = PHY_POLL;
+			ETHQOSDBG("PHY Polling Mode enabled\n");
+		} else {
+			ETHQOSERR("phydev is null , intr value=%d\n",
+				  priv->plat->phy_intr_en_extn_stm);
+		}
+
+		if (!priv->phy_irq_enabled)
+			priv->plat->phy_irq_enable(priv);
+
+		/*Give some time for the phy to config interrupt*/
+		usleep_range(10000, 20000);
+
+		rtnl_lock();
+		phylink_start(priv->phylink);
+		phylink_speed_up(priv->phylink);
+		rtnl_unlock();
+
+		priv->phylink_disconnected = false;
 	}
 }
 
