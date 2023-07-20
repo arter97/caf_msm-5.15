@@ -196,7 +196,6 @@ static void mhi_dev_net_process_queue_packets(struct work_struct *work)
 {
 	struct mhi_dev_net_client *client = container_of(work,
 			struct mhi_dev_net_client, xmit_work);
-	unsigned long flags = 0;
 	int xfer_data = 0;
 	struct sk_buff *skb = NULL;
 	struct mhi_req *wreq = NULL;
@@ -212,12 +211,12 @@ static void mhi_dev_net_process_queue_packets(struct work_struct *work)
 
 	while (!((skb_queue_empty(&client->tx_buffers)) ||
 			(list_empty(&client->wr_req_buffers)))) {
-		spin_lock_irqsave(&client->wrt_lock, flags);
+		spin_lock(&client->wrt_lock);
 		skb = skb_dequeue(&(client->tx_buffers));
 		if (!skb) {
 			mhi_dev_net_log(client->vf_id, MHI_INFO,
 					"SKB is NULL from dequeue\n");
-			spin_unlock_irqrestore(&client->wrt_lock, flags);
+			spin_unlock(&client->wrt_lock);
 			return;
 		}
 		wreq = container_of(client->wr_req_buffers.next,
@@ -236,7 +235,7 @@ static void mhi_dev_net_process_queue_packets(struct work_struct *work)
 			wreq->snd_cmpl = 1;
 		} else
 			wreq->snd_cmpl = 0;
-		spin_unlock_irqrestore(&client->wrt_lock, flags);
+		spin_unlock(&client->wrt_lock);
 		xfer_data = mhi_dev_write_channel(wreq);
 		if (xfer_data <= 0) {
 			mhi_dev_net_log(client->vf_id, MHI_ERROR,
@@ -304,7 +303,6 @@ static void mhi_dev_net_read_completion_cb(void *req)
 	struct mhi_dev_net_client *net_handle =
 			chan_to_net_client(mreq->vf_id, mreq->chan);
 	struct sk_buff *skb = mreq->context;
-	unsigned long   flags;
 
 	skb_put(skb, mreq->transfer_len);
 
@@ -316,9 +314,9 @@ static void mhi_dev_net_read_completion_cb(void *req)
 	net_handle->dev->stats.rx_packets++;
 	skb->dev = net_handle->dev;
 	netif_rx(skb);
-	spin_lock_irqsave(&net_handle->rd_lock, flags);
+	spin_lock(&net_handle->rd_lock);
 	list_add_tail(&mreq->list, &net_handle->rx_buffers);
-	spin_unlock_irqrestore(&net_handle->rd_lock, flags);
+	spin_unlock(&net_handle->rd_lock);
 }
 
 static ssize_t mhi_dev_net_client_read(struct mhi_dev_net_client *mhi_handle)
@@ -329,29 +327,28 @@ static ssize_t mhi_dev_net_client_read(struct mhi_dev_net_client *mhi_handle)
 	struct mhi_dev_client *client_handle = NULL;
 	struct mhi_req *req;
 	struct sk_buff *skb;
-	unsigned long   flags;
 
 	client_handle = mhi_handle->out_handle;
 	chan = mhi_handle->out_chan;
 	if (!atomic_read(&mhi_handle->rx_enabled))
 		return -EPERM;
 	while (1) {
-		spin_lock_irqsave(&mhi_handle->rd_lock, flags);
+		spin_lock(&mhi_handle->rd_lock);
 		if (list_empty(&mhi_handle->rx_buffers)) {
-			spin_unlock_irqrestore(&mhi_handle->rd_lock, flags);
+			spin_unlock(&mhi_handle->rd_lock);
 			break;
 		}
 
 		req = container_of(mhi_handle->rx_buffers.next,
 				struct mhi_req, list);
 		list_del_init(&req->list);
-		spin_unlock_irqrestore(&mhi_handle->rd_lock, flags);
+		spin_unlock(&mhi_handle->rd_lock);
 		skb = alloc_skb(mhi_handle->max_skb_length, GFP_KERNEL);
 		if (skb == NULL) {
 			mhi_dev_net_log(mhi_handle->vf_id, MHI_ERROR, "skb alloc failed\n");
-			spin_lock_irqsave(&mhi_handle->rd_lock, flags);
+			spin_lock(&mhi_handle->rd_lock);
 			list_add_tail(&req->list, &mhi_handle->rx_buffers);
-			spin_unlock_irqrestore(&mhi_handle->rd_lock, flags);
+			spin_unlock(&mhi_handle->rd_lock);
 			ret_val = -ENOMEM;
 			return ret_val;
 		}
@@ -370,19 +367,19 @@ static ssize_t mhi_dev_net_client_read(struct mhi_dev_net_client *mhi_handle)
 			mhi_dev_net_log(mhi_handle->vf_id, MHI_ERROR,
 					"Failed to read ch_id:%d bytes_avail = %d\n",
 					chan, bytes_avail);
-			spin_lock_irqsave(&mhi_handle->rd_lock, flags);
+			spin_lock(&mhi_handle->rd_lock);
 			kfree_skb(skb);
 			list_add_tail(&req->list, &mhi_handle->rx_buffers);
-			spin_unlock_irqrestore(&mhi_handle->rd_lock, flags);
+			spin_unlock(&mhi_handle->rd_lock);
 			ret_val = -EIO;
 			return 0;
 		}
 		/* no data to send to network stack, break */
 		if (!bytes_avail) {
-			spin_lock_irqsave(&mhi_handle->rd_lock, flags);
+			spin_lock(&mhi_handle->rd_lock);
 			kfree_skb(skb);
 			list_add_tail(&req->list, &mhi_handle->rx_buffers);
-			spin_unlock_irqrestore(&mhi_handle->rd_lock, flags);
+			spin_unlock(&mhi_handle->rd_lock);
 			return 0;
 		}
 	}
@@ -397,12 +394,11 @@ static void mhi_dev_net_write_completion_cb(void *req)
 	struct mhi_dev_net_client *client_handle =
 				chan_to_net_client(wreq->vf_id, wreq->chan);
 	struct sk_buff *skb = wreq->context;
-	unsigned long   flags;
 
 	kfree_skb(skb);
-	spin_lock_irqsave(&client_handle->wrt_lock, flags);
+	spin_lock(&client_handle->wrt_lock);
 	list_add_tail(&wreq->list, &client_handle->wr_req_buffers);
-	spin_unlock_irqrestore(&client_handle->wrt_lock, flags);
+	spin_unlock(&client_handle->wrt_lock);
 }
 
 static int mhi_dev_net_alloc_write_reqs(struct mhi_dev_net_client *client)
@@ -460,7 +456,6 @@ static netdev_tx_t mhi_dev_net_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct mhi_dev_net_client *mhi_dev_net_ptr =
 			*(struct mhi_dev_net_client **)netdev_priv(dev);
-	unsigned long flags;
 
 	if (skb->len <= 0) {
 		mhi_dev_net_log(mhi_dev_net_ptr->vf_id, MHI_ERROR,
@@ -468,9 +463,9 @@ static netdev_tx_t mhi_dev_net_xmit(struct sk_buff *skb, struct net_device *dev)
 		kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
-	spin_lock_irqsave(&mhi_dev_net_ptr->wrt_lock, flags);
+	spin_lock(&mhi_dev_net_ptr->wrt_lock);
 	skb_queue_tail(&(mhi_dev_net_ptr->tx_buffers), skb);
-	spin_unlock_irqrestore(&mhi_dev_net_ptr->wrt_lock, flags);
+	spin_unlock(&mhi_dev_net_ptr->wrt_lock);
 
 	queue_work(mhi_dev_net_ptr->pending_pckt_wq,
 			&mhi_dev_net_ptr->xmit_work);
