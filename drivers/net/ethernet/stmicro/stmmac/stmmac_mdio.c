@@ -551,6 +551,9 @@ int stmmac_mdio_register(struct net_device *ndev)
 	new_bus->phy_mask = mdio_bus_data->phy_mask;
 	new_bus->parent = priv->device;
 
+	if (priv->plat->early_eth && priv->plat->phy_addr != -1)
+		new_bus->phy_mask = ~(1 << priv->plat->phy_addr);
+
 	err = of_mdiobus_register(new_bus, mdio_node);
 	if (err != 0) {
 		dev_err(dev, "Cannot register the MDIO bus\n");

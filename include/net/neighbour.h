@@ -524,6 +524,7 @@ static inline int neigh_output(struct neighbour *n, struct sk_buff *skb,
 
 	return n->output(n, skb);
 }
+void neigh_probe_enable_rcv(unsigned int  *data);
 
 static inline struct neighbour *
 __neigh_lookup(struct neigh_table *tbl, const void *pkey, struct net_device *dev, int creat)

@@ -136,6 +136,7 @@ struct stmmac_rxq_cfg {
 	u32 prio;
 	bool thresholdmode;
 	u32 threshold_byte;
+	u32 fifo_sz_bytes;
 	bool skip_sw;
 	bool mbcast_route;
 };

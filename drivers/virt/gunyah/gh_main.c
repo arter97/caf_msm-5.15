@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -16,6 +16,7 @@
 
 #include <soc/qcom/secure_buffer.h>
 #include <linux/gunyah.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "gh_secure_vm_virtio_backend.h"
 #include "gh_secure_vm_loader.h"
@@ -273,6 +274,7 @@ static int gh_vcpu_ioctl_run(struct gh_vcpu *vcpu)
 	struct gh_hcall_vcpu_run_resp vcpu_run;
 	struct gh_vm *vm = vcpu->vm;
 	int ret = 0;
+	char marker_svm_running[80] = {'\0'};
 
 	mutex_lock(&vm->vm_lock);
 
@@ -318,6 +320,9 @@ static int gh_vcpu_ioctl_run(struct gh_vcpu *vcpu)
 	pr_info("VM:%d started running\n", vm->vmid);
 
 	mutex_unlock(&vm->vm_lock);
+	snprintf(marker_svm_running, sizeof(marker_svm_running), "M - Running SVM : %s",
+		vm->fw_name);
+	update_marker(marker_svm_running);
 
 start_vcpu_run:
 	/*
@@ -679,6 +684,8 @@ static long gh_dev_ioctl_create_vm(unsigned long arg)
 	vm = gh_create_vm();
 	if (IS_ERR_OR_NULL(vm))
 		return PTR_ERR(vm);
+
+	update_marker("M - Loading SVM ");
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0) {

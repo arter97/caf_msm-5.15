@@ -1320,9 +1320,9 @@ static int spi_geni_mas_setup(struct spi_master *spi)
 {
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
 	int proto = geni_se_read_proto(&mas->spi_rsc);
-	unsigned int major;
-	unsigned int minor;
-	int hw_ver;
+	unsigned int major = 0;
+	unsigned int minor = 0;
+	u32 hw_ver = 0;
 	int ret = 0;
 
 	if (spi->slave) {
@@ -1447,10 +1447,10 @@ setup_ipc:
 
 	if (!mas->is_deep_sleep) {
 		hw_ver = geni_se_get_qup_hw_version(&mas->spi_rsc);
-		if (hw_ver)
+		if (!hw_ver) {
 			dev_err(mas->dev, "%s:Err getting HW version %d\n",
 							__func__, hw_ver);
-		else {
+		} else {
 			major = GENI_SE_VERSION_MAJOR(hw_ver);
 			minor = GENI_SE_VERSION_MINOR(hw_ver);
 
@@ -2453,6 +2453,20 @@ static int spi_geni_remove(struct platform_device *pdev)
 	return ret;
 }
 
+/**
+ * spi_geni_shutdown: shutdown call back function for SPI
+ * This will invoke during reboot/shutdown process
+ *
+ * @pdev: SPI platform device
+ *
+ * Return: none
+ */
+static void spi_geni_shutdown(struct platform_device *pdev)
+{
+	dev_info(&pdev->dev, "%s: Entry %d\n", __func__, true);
+	spi_geni_remove(pdev);
+}
+
 #if IS_ENABLED(CONFIG_PM)
 static int spi_geni_gpi_suspend_resume(struct spi_geni_master *geni_mas, bool is_suspend)
 {
@@ -2752,6 +2766,7 @@ static const struct of_device_id spi_geni_dt_match[] = {
 static struct platform_driver spi_geni_driver = {
 	.probe  = spi_geni_probe,
 	.remove = spi_geni_remove,
+	.shutdown = spi_geni_shutdown,
 	.driver = {
 		.name = "spi_geni",
 		.pm = &spi_geni_pm_ops,

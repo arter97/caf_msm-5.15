@@ -19,21 +19,29 @@
 #define EMAC_VREG_A_SGMII_1P2_NAME "vreg_a_sgmii_1p2"
 #define EMAC_VREG_A_SGMII_0P9_NAME "vreg_a_sgmii_0p9"
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static u32 A_SGMII_1P2_MAX_VOLT = 1200000;
 static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
 static u32 A_SGMII_0P9_MAX_VOLT = 912000;
 static u32 A_SGMII_0P9_MIN_VOLT = 880000;
 static u32 A_SGMII_1P2_LOAD_CURR = 25000;
 static u32 A_SGMII_0P9_LOAD_CURR = 132000;
+#else
+static u32 A_SGMII_1P2_MAX_VOLT = 1300000;
+static u32 A_SGMII_1P2_MIN_VOLT = 1200000;
+static u32 A_SGMII_0P9_MAX_VOLT = 950000;
+static u32 A_SGMII_0P9_MIN_VOLT = 880000;
+static u32 A_SGMII_1P2_LOAD_CURR = 15000;
+static u32 A_SGMII_0P9_LOAD_CURR = 458000;
+#endif
 
 int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet enable serdes consumers start");
+#endif
 
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_MIN_VOLT,
 				    A_SGMII_1P2_MAX_VOLT);
@@ -77,6 +85,10 @@ int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 
 	ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet enable serdes consumers end");
+#endif
+
 	return ret;
 }
 EXPORT_SYMBOL(ethqos_enable_serdes_consumers);
@@ -85,10 +97,9 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-	if (!ethqos->vreg_a_sgmii_1p2 || !ethqos->vreg_a_sgmii_0p9) {
-		ETHQOSERR("SerDes power consumers not enabled\n");
-		return -EINVAL;
-	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet disable serdes consumers start");
+#endif
 
 	regulator_disable(ethqos->vreg_a_sgmii_0p9);
 
@@ -107,6 +118,10 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 			  ret);
 		return ret;
 	}
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet disable serdes consumers end");
+#endif
 
 	return ret;
 }
@@ -242,8 +257,7 @@ EXPORT_SYMBOL(ethqos_init_regulators);
 
 int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 {
-	int ret = 0;
-	/* Both power supplies are required to be present together */
+	/* Both power supplies are required to be present together for SGMII/USXGMII mode */
 	if (of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_1p2-supply") &&
 	    of_property_read_bool(ethqos->pdev->dev.of_node, "vreg_a_sgmii_0p9-supply")) {
 		ethqos->vreg_a_sgmii_1p2 = devm_regulator_get(&ethqos->pdev->dev,
@@ -262,7 +276,8 @@ int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos)
 
 		return ethqos_enable_serdes_consumers(ethqos);
 	}
-	return ret;
+
+	return -ENODEV;
 }
 EXPORT_SYMBOL(ethqos_init_sgmii_regulators);
 

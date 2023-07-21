@@ -136,8 +136,8 @@
 
 /* DMA Rx Channel X Control register defines */
 #define DMA_CONTROL_SR			BIT(0)
-#define DMA_RBSZ_MASK			GENMASK(14, 1)
-#define DMA_RBSZ_SHIFT			1
+#define DMA_RBSZ_MASK			GENMASK(14, 4)
+#define DMA_RBSZ_SHIFT			4
 
 /* Interrupt status per channel */
 #define DMA_CHAN_STATUS_REB		GENMASK(21, 19)

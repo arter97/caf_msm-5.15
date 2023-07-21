@@ -370,6 +370,10 @@ int evm_update_evmxattr(struct dentry *dentry, const char *xattr_name,
 	if (rc)
 		return -EPERM;
 
+#ifdef CONFIG_QCOM_EVM
+	/* Unconditionally return success, we don't use HMAC for this. */
+	return 0;
+#endif
 	data.hdr.algo = HASH_ALGO_SHA1;
 	rc = evm_calc_hmac(dentry, xattr_name, xattr_value,
 			   xattr_value_len, &data);

@@ -600,6 +600,7 @@ struct dwc3_msm {
 	enum dp_lane		dp_state;
 	bool			dynamic_disable;
 	bool			sleep_clk_bcr;
+	u32			vbus_boost_gpio;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -5028,10 +5029,15 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
 	enum usb_role role = USB_ROLE_NONE;
 	int ret;
 
-	if (sysfs_streq(buf, "peripheral"))
+	if (sysfs_streq(buf, "peripheral")) {
 		role = USB_ROLE_DEVICE;
-	else if (sysfs_streq(buf, "host"))
+		if (gpio_is_valid(mdwc->vbus_boost_gpio))
+			gpio_set_value(mdwc->vbus_boost_gpio, 0);
+	} else if (sysfs_streq(buf, "host")) {
 		role = USB_ROLE_HOST;
+		if (gpio_is_valid(mdwc->vbus_boost_gpio))
+			gpio_set_value(mdwc->vbus_boost_gpio, 1);
+	}
 
 	dbg_log_string("mode_request:%s\n", usb_role_string(role));
 	ret = dwc3_msm_set_role(mdwc, role);
@@ -6040,6 +6046,17 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	else
 		mdwc->apsd_source = PSY;
 
+	mdwc->vbus_boost_gpio = of_get_named_gpio(mdwc->dev->of_node,
+							"vbus-boost-gpio", 0);
+	if (gpio_is_valid(mdwc->vbus_boost_gpio)) {
+		ret = devm_gpio_request(mdwc->dev, mdwc->vbus_boost_gpio,
+							"usb_vbus_boost_gpio");
+		if (ret)
+			dev_warn(&pdev->dev, "%s devm_gpio_request fail %d\n",
+								 __func__, ret);
+		gpio_direction_output(mdwc->vbus_boost_gpio, 0);
+	}
+
 	if (of_property_read_bool(node, "extcon")) {
 		ret = dwc3_msm_extcon_register(mdwc);
 		if (ret)
@@ -6128,6 +6145,8 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	int i, ret_pm;
 
 	usb_role_switch_unregister(mdwc->role_switch);
+	cancel_delayed_work_sync(&mdwc->sm_work);
+	destroy_workqueue(mdwc->sm_usb_wq);
 
 	if (mdwc->dpdm_nb.notifier_call) {
 		regulator_unregister_notifier(mdwc->dpdm_reg, &mdwc->dpdm_nb);
@@ -6152,7 +6171,6 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	}
 
 	msm_dwc3_perf_vote_enable(mdwc, false);
-	cancel_delayed_work_sync(&mdwc->sm_work);
 
 	if (mdwc->hs_phy)
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
@@ -6190,7 +6208,6 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	dwc3_msm_config_gdsc(mdwc, 0);
 
-	destroy_workqueue(mdwc->sm_usb_wq);
 	destroy_workqueue(mdwc->dwc3_wq);
 
 	ipc_log_context_destroy(mdwc->dwc_ipc_log_ctxt);
@@ -6209,6 +6226,8 @@ static void dwc3_msm_shutdown(struct platform_device *pdev)
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 
 	dbg_log_string("Entry\n");
+	if (dwc3_msm_get_role(mdwc) == USB_ROLE_NONE)
+		return;
 	dwc3_msm_remove(pdev);
 }
 
