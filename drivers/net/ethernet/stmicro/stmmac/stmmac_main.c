@@ -1797,6 +1797,9 @@ static void stmmac_free_tx_buffer(struct stmmac_priv *priv, u32 queue, int i)
 {
 	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
 
+	if (priv->plat->tx_queues_cfg[queue].skip_sw)
+		return;
+
 	if (tx_q->tx_skbuff_dma[i].buf &&
 	    tx_q->tx_skbuff_dma[i].buf_type != STMMAC_TXBUF_T_XDP_TX) {
 		if (tx_q->tx_skbuff_dma[i].map_as_page)
@@ -2163,6 +2166,9 @@ static void dma_free_tx_skbufs(struct stmmac_priv *priv, u32 queue)
 	int i;
 
 	tx_q->xsk_frames_done = 0;
+
+	if (priv->plat->tx_queues_cfg[queue].skip_sw)
+		return;
 
 	for (i = 0; i < priv->dma_tx_size; i++)
 		stmmac_free_tx_buffer(priv, queue, i);
