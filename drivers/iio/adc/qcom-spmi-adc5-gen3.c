@@ -894,6 +894,12 @@ static int adc_tm5_gen3_set_trip_temp(void *data,
 	if (!prop)
 		return -EINVAL;
 
+	if (prop->tzd && prop->tzd->emul_temperature) {
+		pr_debug("%s: %s emul_temp is enabled[%d], ignoring setting trip\n",
+			__func__, prop->tzd->type, prop->tzd->emul_temperature);
+		return 0;
+	}
+
 	pr_debug("channel:%s :low_temp(mdegC):%d, high_temp(mdegC):%d\n",
 		prop->datasheet_name, low_temp, high_temp);
 
