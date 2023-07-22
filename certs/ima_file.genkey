@@ -1,0 +1,18 @@
+[ req ]
+default_bits = 1024
+distinguished_name = req_distinguished_name
+prompt = no
+string_mask = utf8only
+x509_extensions = v3_usr
+[ req_distinguished_name ]
+O = ima
+CN = signing key
+emailAddress = usr@ima
+[ v3_usr ]
+basicConstraints=critical,CA:FALSE
+#basicConstraints=CA:FALSE
+keyUsage=digitalSignature
+#keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid
+#authorityKeyIdentifier=keyid,issuer
