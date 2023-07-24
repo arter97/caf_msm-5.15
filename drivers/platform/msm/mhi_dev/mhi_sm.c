@@ -29,7 +29,6 @@
 #define MHI_SM_FUNC_ENTRY(vf_id) MHI_SM_DBG(vf_id, "ENTRY\n")
 #define MHI_SM_FUNC_EXIT(vf_id) MHI_SM_DBG(vf_id, "EXIT\n")
 
-#define PCIE_EP_TIMER_US		500000000
 #define MHI_DMA_DISABLE_DELAY_MS	10
 #define MHI_DMA_DISABLE_COUNTER		20
 #define MHI_PF_VALUE			0
@@ -489,6 +488,30 @@ static bool check_dev_ready_for_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_
 }
 
 /**
+ * mhi_sm_enable_wake_db() - Enable wake doorbell.
+ *
+ * Enable wake doorbell on channel 127 if M2 is enabled.
+ *
+ * Return:	0: success
+ *		negative: failure
+ */
+static int mhi_sm_enable_wake_db(struct mhi_sm_dev *mhi_sm_ctx)
+{
+	int res = 0;
+
+	/* Check if M2 is enabled */
+	if (mhi_sm_ctx->mhi_dev->enable_m2) {
+		res = mhi_dev_mmio_enable_chdb_a7(mhi_sm_ctx->mhi_dev, MHI_DEV_WAKE_DB_CHAN);
+		if (res) {
+			MHI_SM_ERR(mhi_sm_ctx->mhi_dev->vf_id, "Enable wake_db ch_id:%d failed\n",
+					MHI_DEV_WAKE_DB_CHAN);
+		}
+	}
+
+	return res;
+}
+
+/**
  * mhi_sm_prepare_resume() - switch to M0 state.
  *
  * Switch MHI-device state to M0, if possible according to MHI state machine.
@@ -501,7 +524,6 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 {
 	enum mhi_dev_state old_state;
 	struct ep_pcie_msi_config cfg;
-	struct ep_pcie_inactivity inact_param;
 	int res = -EINVAL;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
 	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
@@ -539,6 +561,13 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 					MHI_SM_ERR(mhi->vf_id, "Error configuring db routing\n");
 					goto exit;
 				}
+			}
+
+			/* Enable channel DB for DEVICE_WAKE support */
+			res = mhi_sm_enable_wake_db(mhi_sm_ctx);
+			if (res) {
+				MHI_SM_ERR(mhi->vf_id, "Error enabling wake db\n");
+				goto exit;
 			}
 		}
 		break;
@@ -645,17 +674,18 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 		}
 	}
 
-	if (mhi_sm_ctx->mhi_dev->enable_m2) {
+	/*
+	 * Configure and enable the inactivity timer for autonomous M2 only
+	 * if autonomous M2 is enabled and the device wake doorbell is
+	 * deasserted, i.e wake_db_status is false (default or the host
+	 * did not assert the wake db).
+	 */
+	if ((mhi_sm_ctx->mhi_dev->enable_m2) &&
+		(!(mhi_sm_ctx->mhi_dev->wake_db_status))) {
 		MHI_SM_DBG(mhi->vf_id, "configure inact timer\n");
-		inact_param.enable = true;
-		inact_param.timer_us = PCIE_EP_TIMER_US;
-		res = ep_pcie_configure_inactivity_timer(
-					mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
-					&inact_param);
-		if (res) {
-			MHI_SM_ERR(mhi->vf_id, "failed to configure inact timer\n");
+		res = mhi_dev_configure_inactivity_timer(mhi_sm_ctx->mhi_dev, true);
+		if (res)
 			goto exit;
-		}
 	}
 	res  = 0;
 
@@ -678,7 +708,6 @@ exit:
 static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_state new_state)
 {
 	enum mhi_dev_state old_state;
-	struct ep_pcie_inactivity inact_param;
 	int res = 0, rc, wait_timeout = 0;
 	bool ready_for_suspend;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
@@ -698,15 +727,9 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 	/* Disable the inactivity timer if M2 autonomus is enabled */
 	if (mhi_sm_ctx->mhi_dev->enable_m2) {
 		MHI_SM_DBG(mhi->vf_id, "Disable inactivity timer.\n");
-		inact_param.enable = false;
-		inact_param.timer_us = PCIE_EP_TIMER_US;
-		res = ep_pcie_configure_inactivity_timer(
-					mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
-					&inact_param);
-		if (res) {
-			MHI_SM_ERR(mhi->vf_id, "failed to configure inact timer\n");
+		res = mhi_dev_configure_inactivity_timer(mhi_sm_ctx->mhi_dev, false);
+		if (res)
 			goto exit;
-		}
 	}
 
 	/*
