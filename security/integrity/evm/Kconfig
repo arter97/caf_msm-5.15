@@ -72,3 +72,10 @@ config EVM_X509_PATH
 	default "/etc/keys/x509_evm.der"
 	help
 	   This option defines X509 certificate path.
+
+config QCOM_EVM
+	bool "Enable QCOM specific EVM"
+	depends on EVM
+	default n
+	help
+	   This option enable the QCOM specific EVM feature.

@@ -185,7 +185,10 @@ static void dwxgmac2_dma_rx_mode(void __iomem *ioaddr, int mode,
 			rfd = 0x03; /* Full-2.5K */
 			rfa = 0x01; /* Full-1.5K */
 			break;
-
+		case 7680:
+			rfd = 0x07; /* Full-4.5K */
+			rfa = 0x01; /* Full-1.5K */
+			break;
 		default:
 			rfd = 0x07; /* Full-4.5K */
 			rfa = 0x04; /* Full-3K */
@@ -452,6 +455,9 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 	dma_cap->frpes = (hw_cap & XGMAC_HWFEAT_FRPES) >> 11;
 	dma_cap->frpbs = (hw_cap & XGMAC_HWFEAT_FRPPB) >> 9;
 	dma_cap->frpsel = (hw_cap & XGMAC_HWFEAT_FRPSEL) >> 3;
+
+	/* L3L4 filtering feature*/
+	dma_cap->num_l3_l4_filters = 0;
 
 	return 0;
 }

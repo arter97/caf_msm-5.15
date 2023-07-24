@@ -14,6 +14,10 @@
 #include <linux/workqueue.h>
 #include "pcs-xpcs-qcom.h"
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+#include <soc/qcom/boot_stats.h>
+#endif
+
 #define phylink_pcs_to_xpcs(pl_pcs) \
 	container_of((pl_pcs), struct dw_xpcs_qcom, pcs)
 
@@ -926,16 +930,20 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 	case PHY_INTERFACE_MODE_2500BASEX:
 	case PHY_INTERFACE_MODE_SGMII:
 		qcom_xpcs_link_up_sgmii(xpcs, speed, duplex);
-		return;
+		break;
 	case PHY_INTERFACE_MODE_USXGMII:
 		if (xpcs->intr_en)
 			return;
 		qcom_xpcs_link_up_usxgmii(xpcs, speed);
-		return;
+		break;
 	default:
 		XPCSERR("Invalid MII mode: %s\n", phy_modes(interface));
 		return;
 	}
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet XPCS is ready -system side link up received");
+#endif
+	return;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_link_up);
 

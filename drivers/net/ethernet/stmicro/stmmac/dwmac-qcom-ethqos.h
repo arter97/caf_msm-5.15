@@ -226,7 +226,18 @@ enum loopback_mode {
 	DISABLE_LOOPBACK = 0,
 	ENABLE_IO_MACRO_LOOPBACK,
 	ENABLE_MAC_LOOPBACK,
-	ENABLE_PHY_LOOPBACK
+	ENABLE_PHY_LOOPBACK,
+	ENABLE_SERDES_LOOPBACK,
+};
+
+enum nw_loopback_mode {
+	DISABLE_NW_LOOPBACK = 0,
+	ENABLE_PCS_NW_LOOPBACK,
+};
+
+enum loopback_direction {
+	HOST_LOOPBACK_MODE = 1,
+	NETWORK_LOOPBACK_MODE,
 };
 
 enum phy_power_mode {
@@ -471,7 +482,7 @@ struct qcom_ethqos {
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
-	bool linkup_on_passthrough_en;
+	bool last_event_linkup;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;

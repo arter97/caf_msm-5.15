@@ -18,6 +18,9 @@
 #include <linux/if_vlan.h>
 #include <linux/rhashtable.h>
 #include <linux/refcount.h>
+#ifdef CONFIG_HYFI_BRIDGE_HOOKS
+#include <linux/export.h>
+#endif
 
 #define BR_HASH_BITS 8
 #define BR_HASH_SIZE (1 << BR_HASH_BITS)
@@ -262,6 +265,9 @@ struct net_bridge_fdb_entry {
 
 	struct net_bridge_fdb_key	key;
 	struct hlist_node		fdb_node;
+	unsigned char			is_local:1,
+							is_static:1;
+
 	unsigned long			flags;
 
 	/* write-heavy members should not affect lookups */
@@ -451,6 +457,7 @@ struct net_bridge {
 	spinlock_t			hash_lock;
 	struct hlist_head		frame_type_list;
 	struct net_device		*dev;
+	struct pcpu_sw_netstats		__percpu *stats;
 	unsigned long			options;
 	/* These fields are accessed on each packet */
 #ifdef CONFIG_BRIDGE_VLAN_FILTERING
@@ -2100,4 +2107,17 @@ void br_do_proxy_suppress_arp(struct sk_buff *skb, struct net_bridge *br,
 void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
 		       u16 vid, struct net_bridge_port *p, struct nd_msg *msg);
 struct nd_msg *br_is_nd_neigh_msg(struct sk_buff *skb, struct nd_msg *m);
+#ifdef CONFIG_HYFI_BRIDGE_HOOKS
+#define __br_get(__hook, __default, __args ...) \
+		({ typeof(__hook) HOOK_ = (__hook);     \
+		(HOOK_ ? (HOOK_(__args)) : (__default)); })
+
+static inline void __br_notify(int group, int type, const void *data)
+{
+	br_notify_hook_t *notify_hook = rcu_dereference(br_notify_hook);
+
+	if (notify_hook)
+		notify_hook(group, type, data);
+}
+#endif
 #endif

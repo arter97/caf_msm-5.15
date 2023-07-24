@@ -64,6 +64,10 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 	void __iomem *xpcs_base;
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet xpcs init start");
+#endif
+
 	xpcs_base = devm_platform_ioremap_resource_byname(ethqos->pdev, "xpcs");
 	if (IS_ERR_OR_NULL(xpcs_base)) {
 		ETHQOSERR("XPCS not supported from device tree!\n");
@@ -99,6 +103,11 @@ int ethqos_xpcs_init(struct net_device *ndev)
 out:
 	if (!priv->plat->mac2mac_en)
 		phylink_set_pcs(priv->phylink, &priv->hw->qxpcs->pcs);
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - Ethernet xpcs init end");
+#endif
+
 	ETHQOSINFO("Successfully initialized XPCS\n");
 	return 0;
 }

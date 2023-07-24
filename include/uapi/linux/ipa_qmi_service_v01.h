@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -422,6 +423,18 @@ struct ipa_init_modem_driver_req_msg_v01 {
 	 */
 	__u8 per_stats_smem_info_valid;
 	struct ipa_modem_mem_info_type_v01 per_stats_smem_info;
+
+	/* Optional
+	 * filter_start_id_valid is set to 1,then only apps driver
+	 * will send request to Q6 via QMI about this new start rule id.
+	 */
+	__u8 filter_start_id_valid;
+
+	/* Optional
+	 * filter_start_id_valid is set to 1, apps driver will fill the
+	 * filter_start_id with new start id and send to Q6.
+	 */
+	__u16 filter_start_id;
 };  /* Message */
 
 /* Response Message; Requests the modem IPA driver about initialization */
@@ -467,6 +480,19 @@ struct ipa_init_modem_driver_resp_msg_v01 {
 	 *	for a INIT_MODEM_DRIVER_CMPLT message before communicating with
 	 *	IPA HWP.
 	 */
+
+	/* Optional*/
+	/* filter_start_id_valid must be set to 1 if modem is accept with
+	 * new start rule id, other wise UL rules will start by default
+	 * from 512.
+	 */
+	__u8 filter_start_id_valid;
+
+	/* if modem is accept with new start rule id then fill filter_start_id
+	 * with new start rule id sent by apps driver, other wise fill with
+	 * default start rule is 512.
+	 */
+	__u16 filter_start_id;
 };  /* Message */
 
 /*
@@ -3278,8 +3304,8 @@ struct ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_v01 {
 
 
 /* add for max length*/
-#define QMI_IPA_INIT_MODEM_DRIVER_REQ_MAX_MSG_LEN_V01 197
-#define QMI_IPA_INIT_MODEM_DRIVER_RESP_MAX_MSG_LEN_V01 25
+#define QMI_IPA_INIT_MODEM_DRIVER_REQ_MAX_MSG_LEN_V01 202
+#define QMI_IPA_INIT_MODEM_DRIVER_RESP_MAX_MSG_LEN_V01 32
 #define QMI_IPA_INDICATION_REGISTER_REQ_MAX_MSG_LEN_V01 16
 #define QMI_IPA_INDICATION_REGISTER_RESP_MAX_MSG_LEN_V01 7
 #define QMI_IPA_INSTALL_FILTER_RULE_REQ_MAX_MSG_LEN_V01 33705
