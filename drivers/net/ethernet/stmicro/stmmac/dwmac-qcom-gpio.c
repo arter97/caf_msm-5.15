@@ -329,7 +329,7 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 	struct device_node *node;
 	int ret = 0;
 
-	if (!priv->phydev->autoneg)
+	if (priv->phydev && !priv->phydev->autoneg)
 		linkmode_copy(priv->adv_old, priv->phydev->advertising);
 
 	if (!status) {
@@ -371,11 +371,11 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 			phydev->irq = PHY_MAC_INTERRUPT;
 			phydev->interrupts =  PHY_INTERRUPT_ENABLED;
 
-			if (phydev->drv->config_intr &&
+			if (phydev && phydev->drv && phydev->drv->config_intr &&
 			    !phydev->drv->config_intr(phydev)) {
 				ETHQOSERR("config_phy_intr successful after phy on\n");
 			}
-		} else if (!priv->plat->phy_intr_en_extn_stm) {
+		} else if (!priv->plat->phy_intr_en_extn_stm && phydev) {
 			phydev->irq = PHY_POLL;
 			ETHQOSDBG("PHY Polling Mode enabled\n");
 		} else {
