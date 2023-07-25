@@ -210,6 +210,8 @@ do {\
 #define MAC_DUMP_SIZE 0
 #endif
 
+#define MAC_REG_SIZE 4
+
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
 	return (GENMASK(PPS_MINIDX(x) + 3, PPS_MINIDX(x)) &
