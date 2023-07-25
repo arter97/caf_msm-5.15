@@ -132,6 +132,7 @@ struct msm_hsphy {
 	phys_addr_t		eud_reg;
 	void __iomem		*eud_enable_reg;
 	bool			re_enable_eud;
+	bool			eud_active;
 
 	struct clk		*ref_clk_src;
 	struct clk		*cfg_ahb_clk;
@@ -586,7 +587,7 @@ suspend:
 				phy->re_enable_eud = false;
 			}
 
-			if (!phy->dpdm_enable) {
+			if (!phy->dpdm_enable && !phy->eud_active) {
 				if (!(phy->phy.flags & EUD_SPOOF_DISCONNECT)) {
 					dev_dbg(uphy->dev, "turning off clocks/ldo\n");
 					if (!(phy->phy.flags & PHY_HOST_MODE)) {
@@ -627,6 +628,7 @@ static int msm_hsphy_notify_disconnect(struct usb_phy *uphy,
 {
 	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
 
+	phy->eud_active = false;
 	phy->cable_connected = false;
 
 	return 0;
@@ -1538,6 +1540,7 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	 * keep LDOs on here.
 	 */
 	if (phy->eud_enable_reg && readl_relaxed(phy->eud_enable_reg)) {
+		phy->eud_active = true;
 		msm_hsphy_enable_power(phy, true);
 		msm_hsphy_enable_clocks(phy, true);
 	}
