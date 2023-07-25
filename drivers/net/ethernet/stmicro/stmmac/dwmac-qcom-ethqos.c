@@ -6551,6 +6551,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	icc_put(ethqos->apb_icc_path);
 
+	atomic_set(&priv->plat->phy_clks_suspended, 1);
+
 	if (plat_dat->mac_err_rec) {
 		ret = ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
 							 &ethqos->emac_rec_cdev,
