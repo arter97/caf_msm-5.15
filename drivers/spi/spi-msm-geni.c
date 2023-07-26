@@ -2437,19 +2437,28 @@ spi_geni_probe_err:
 
 static int spi_geni_remove(struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct spi_geni_master *geni_mas = spi_master_get_devdata(master);
 
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_spi_slave_state.attr);
-	geni_se_common_clks_off(geni_mas->spi_rsc.clk, geni_mas->m_ahb_clk, geni_mas->s_ahb_clk);
-	ret = geni_icc_disable(&geni_mas->spi_rsc);
-	if (ret)
-		SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
-		"%s failing at geni_icc_disable ret=%d\n", __func__, ret);
+	if (!pm_runtime_status_suspended(&pdev->dev)) {
+		if (list_empty(&master->queue) && !master->cur_msg) {
+			SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
+				    "%s: Force RT suspend\n", __func__);
+			ret = spi_geni_runtime_suspend(&pdev->dev);
+			if (ret) {
+				SPI_LOG_ERR(geni_mas->ipc, false, geni_mas->dev,
+					    "Force RT suspend Failed:%d\n", ret);
+				return -EBUSY;
+			}
+		}
+	}
+
 	spi_unregister_master(master);
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
+
 	return ret;
 }
 
