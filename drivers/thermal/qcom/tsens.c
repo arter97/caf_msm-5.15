@@ -581,6 +581,13 @@ static int tsens_set_trips(void *_sensor, int low, int high)
 	int high_val, low_val, cl_high, cl_low;
 	u32 hw_id = s->hw_id;
 
+	if (s->tzd && s->tzd->emul_temperature) {
+		dev_dbg(dev,
+		"%s: [%u] emul_temp is enabled[%d], ignoring setting trip\n",
+		 __func__, hw_id, s->tzd->emul_temperature);
+		return 0;
+	}
+
 	if (tsens_version(priv) < VER_0_1) {
 		/* Pre v0.1 IP had a single register for each type of interrupt
 		 * and thresholds
