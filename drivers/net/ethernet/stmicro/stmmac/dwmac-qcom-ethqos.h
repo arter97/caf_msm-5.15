@@ -407,4 +407,7 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb);
 int ethqos_init_pps(void *priv);
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf);
+
+#define EMAC_GDSC_EMAC_NAME "gdsc_emac"
+
 #endif

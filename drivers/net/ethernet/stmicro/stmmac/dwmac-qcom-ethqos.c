@@ -3138,6 +3138,11 @@ static int qcom_ethqos_suspend(struct device *dev)
 	}
 
 	priv->boot_kpi = false;
+
+	if (ethqos->gdsc_emac) {
+		regulator_disable(ethqos->gdsc_emac);
+		ETHQOSDBG("Disabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
@@ -3165,6 +3170,11 @@ static int qcom_ethqos_resume(struct device *dev)
 	if (!ethqos)
 		return -ENODEV;
 
+	ret = regulator_enable(ethqos->gdsc_emac);
+	if (ret)
+		ETHQOSERR("Can not enable <%s>\n", EMAC_GDSC_EMAC_NAME);
+	ETHQOSDBG("Enabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+
 	ndev = dev_get_drvdata(dev);
 	priv = netdev_priv(ndev);
 
@@ -3178,6 +3188,8 @@ static int qcom_ethqos_resume(struct device *dev)
 		ethqos_phy_power_on(ethqos);
 	}
 	qcom_ethqos_phy_resume_clks(ethqos);
+
+	ethqos_set_func_clk_en(ethqos);
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("reset phy after clock\n");
