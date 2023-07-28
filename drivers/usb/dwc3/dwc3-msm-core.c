@@ -295,6 +295,15 @@ enum usb_gsi_reg {
 	GSI_REG_MAX,
 };
 
+struct usb_udc {
+	struct usb_gadget_driver	*driver;
+	struct usb_gadget		*gadget;
+	struct device			dev;
+	struct list_head		list;
+	bool				vbus;
+	bool				started;
+};
+
 struct dwc3_hw_ep {
 	struct dwc3_ep		*dep;
 	enum usb_hw_ep_mode	mode;
@@ -596,6 +605,7 @@ struct dwc3_msm {
 	enum dp_lane		dp_state;
 	bool			dynamic_disable;
 	bool			wcd_usbss;
+	bool			force_disconnect;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -4383,7 +4393,7 @@ skip_update:
 	 * only in case of power event irq in lpm.
 	 */
 	if (mdwc->resume_pending) {
-		dwc3_msm_resume(mdwc);
+		pm_runtime_resume(mdwc->dev);
 		mdwc->resume_pending = false;
 	}
 
@@ -5463,12 +5473,6 @@ exit:
 }
 EXPORT_SYMBOL(dwc3_msm_set_dp_mode);
 
-int dwc3_msm_release_ss_lane(struct device *dev)
-{
-	return dwc3_msm_set_dp_mode(dev, true, 4);
-}
-EXPORT_SYMBOL(dwc3_msm_release_ss_lane);
-
 static int dwc3_msm_debug_init(struct dwc3_msm *mdwc)
 {
 	char ipc_log_name[40];
@@ -6147,6 +6151,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	if (of_property_read_bool(node, "qcom,msm-probe-core-init"))
 		dwc3_ext_event_notify(mdwc);
 
+	mdwc->force_disconnect = false;
 	return 0;
 
 put_dwc3:
@@ -6693,6 +6698,17 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 					    PM_QOS_DEFAULT_VALUE);
 		clk_set_rate(mdwc->core_clk, mdwc->core_clk_rate);
 		msm_dwc3_perf_vote_enable(mdwc, true);
+
+		/*
+		 * Check udc->driver to find out if we are bound to udc or not.
+		 */
+		if ((dwc->gadget->udc->driver) && (!dwc->softconnect) &&
+			(mdwc->force_disconnect)) {
+			dbg_event(0xFF, "Force Pullup", 0);
+			usb_gadget_connect(dwc->gadget);
+		}
+		mdwc->force_disconnect = false;
+
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off gadget\n", __func__);
 		msm_dwc3_perf_vote_enable(mdwc, false);
@@ -6712,17 +6728,30 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 
 		/*
 		 * DWC3 core runtime PM may return an error during the put sync
-		 * and nothing else can trigger idle after this point.  If EBUSY
-		 * is detected (i.e. dwc->connected == TRUE) then wait for the
-		 * connected flag to turn FALSE (set to false during disconnect
-		 * or pullup disable), and retry suspend again.
+		 * and nothing else can trigger idle after this point.  If any
+		 * error condition is detected then  wait for the connected flag
+		 * to turn FALSE (set to false during disconnect or pullup
+		 * disable), and retry suspend again.
 		 */
 		ret = pm_runtime_put_sync(&mdwc->dwc3->dev);
-		if (ret == -EBUSY) {
+		if (ret < 0) {
 			while (--timeout && dwc->connected)
 				msleep(20);
 			dbg_event(0xFF, "StopGdgt connected", dwc->connected);
 			pm_runtime_suspend(&mdwc->dwc3->dev);
+		}
+
+		if ((timeout == 0) && (dwc->connected)) {
+			dbg_event(0xFF, "Force Pulldown", 0);
+
+			/*
+			 * Since we are not taking the udc_lock, there is a
+			 * chance that this might race with gadget_remove driver
+			 * in case this is called in parallel to UDC getting
+			 * cleared in userspace
+			 */
+			usb_gadget_disconnect(dwc->gadget);
+			mdwc->force_disconnect = true;
 		}
 
 		/* wait for LPM, to ensure h/w is reset after stop_peripheral */
