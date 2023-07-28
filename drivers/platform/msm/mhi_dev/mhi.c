@@ -1631,7 +1631,7 @@ static int mhi_hwc_init(struct mhi_dev *mhi_ctx)
 	struct ep_pcie_db_config erdb_cfg;
 	struct mhi_dma_function_params mhi_dma_fun_params;
 
-	if (mhi_ctx->use_edma || !mhi_ctx->no_path_from_ipa_to_pcie) {
+	if (mhi_ctx->use_edma || mhi_ctx->no_path_from_ipa_to_pcie) {
 		/*
 		 * Interrupts are enabled during the MHI DMA callback
 		 * once the MHI DMA HW is ready. Callback is not triggerred
@@ -1732,16 +1732,17 @@ static void mhi_hwc_cb(void *priv, enum mhi_dma_event_type event,
 
 	switch (event) {
 	case MHI_DMA_EVENT_READY:
+		mutex_lock(&mhi_ctx->mhi_lock);
 		mhi_log(mhi_ctx->vf_id, MHI_MSG_INFO,
 			"HW ch uC is ready event=0x%X\n", event);
 		rc = mhi_hwc_start(mhi_ctx);
 		if (rc) {
 			mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR,
 				"hwc_init start failed with %d\n", rc);
+			mutex_unlock(&mhi_ctx->mhi_lock);
 			return;
 		}
 
-		mutex_lock(&mhi_ctx->mhi_lock);
 		rc = mhi_dev_mmio_get_mhi_state(mhi_ctx, &state, &mhi_reset);
 		if (rc) {
 			mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR, "get mhi state failed\n");
@@ -1797,7 +1798,7 @@ static int mhi_hwc_chcmd(struct mhi_dev *mhi, uint chid,
 	switch (type) {
 	case MHI_DEV_RING_EL_RESET:
 	case MHI_DEV_RING_EL_STOP:
-		if ((chid-(mhi->mhi_chan_hw_base)) > NUM_HW_CHANNELS) {
+		if ((chid-(mhi->mhi_chan_hw_base)) >= NUM_HW_CHANNELS) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"Invalid HW ch_id:%d\n", chid);
 			return -EINVAL;
@@ -1820,7 +1821,7 @@ static int mhi_hwc_chcmd(struct mhi_dev *mhi, uint chid,
 			return -EINVAL;
 		}
 
-		if ((chid-(mhi->mhi_chan_hw_base)) > NUM_HW_CHANNELS) {
+		if ((chid-(mhi->mhi_chan_hw_base)) >= NUM_HW_CHANNELS) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"Invalid HW ch_id:%d\n", chid);
 			return -EINVAL;
@@ -2680,7 +2681,7 @@ static bool mhi_dev_check_channel_interrupt(struct mhi_dev *mhi)
 			pending_work |= mhi_dev_queue_channel_db(mhi,
 							chintr_value, ch_num);
 			rc = mhi_dev_mmio_write(mhi, MHI_CHDB_INT_CLEAR_A7_n(i),
-							mhi->chdb[i].status);
+							chintr_value);
 			if (rc) {
 				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"Error writing interrupt clear for A7\n");
@@ -4177,24 +4178,26 @@ static void mhi_dev_enable(struct work_struct *work)
 	enum mhi_dev_state state;
 	uint32_t max_cnt = 0;
 
+	mutex_lock(&mhi->mhi_lock);
+
 	if (mhi->use_mhi_dma) {
 		rc = mhi_dma_fun_ops->mhi_dma_memcpy_init(mhi->mhi_dma_fun_params);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "ipa dma init failed\n");
-			return;
+			goto exit;
 		}
 
 		rc = mhi_dma_fun_ops->mhi_dma_memcpy_enable(mhi->mhi_dma_fun_params);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "ipa enable failed\n");
-			return;
+			goto exit;
 		}
 	}
 
 	rc = mhi_dev_mmio_get_mhi_state(mhi, &state, &mhi_reset);
 	if (rc) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "get mhi state failed\n");
-		return;
+		goto exit;
 	}
 	if (mhi_reset) {
 		mhi_dev_mmio_clear_reset(mhi);
@@ -4209,7 +4212,7 @@ static void mhi_dev_enable(struct work_struct *work)
 		rc = mhi_dev_mmio_get_mhi_state(mhi, &state, &mhi_reset);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "get mhi state failed\n");
-			return;
+			goto exit;
 		}
 		if (mhi_reset) {
 			mhi_dev_mmio_clear_reset(mhi);
@@ -4226,26 +4229,26 @@ static void mhi_dev_enable(struct work_struct *work)
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"Failed to cache the host config\n");
-			return;
+			goto exit;
 		}
 
 		rc = mhi_dev_mmio_set_env(mhi, MHI_ENV_VALUE);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "env setting failed\n");
-			return;
+			goto exit;
 		}
 	} else {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "MHI device failed to enter M0\n");
-		return;
+		goto exit;
 	}
 
 	rc = mhi_hwc_init(mhi);
 	if (rc) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "error during hwc_init\n");
-		return;
+		goto exit;
 	}
 
-	if (mhi->use_edma || !mhi->no_path_from_ipa_to_pcie) {
+	if (mhi->use_edma || mhi->no_path_from_ipa_to_pcie) {
 		if (mhi->config_iatu || mhi->mhi_int) {
 			mhi->mhi_int_en = true;
 			enable_irq(mhi->mhi_irq);
@@ -4261,11 +4264,17 @@ static void mhi_dev_enable(struct work_struct *work)
 	if (mhi->ctrl_info != MHI_STATE_CONNECTED)
 		mhi_update_state_info(mhi, MHI_STATE_CONFIGURED);
 
+	mutex_unlock(&mhi->mhi_lock);
+
 	/* Enable MHI dev network stack Interface */
 	rc = mhi_dev_net_interface_init(&dev_ops, mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
 	if (rc)
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"Failed to initialize mhi_dev_net iface\n");
+	return;
+exit:
+	mutex_unlock(&mhi->mhi_lock);
+	return;
 }
 
 static void mhi_ring_init_cb(void *data)
@@ -4409,6 +4418,11 @@ int mhi_ctrl_state_info(uint32_t ch_id, uint32_t *info)
 {
 	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
 
+	if (!mhi) {
+		mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_ERROR, "MHI is NULL, defering\n");
+		return -EINVAL;
+	}
+
 	return __mhi_ctrl_state_info(mhi, mhi->vf_id, ch_id, info);
 }
 EXPORT_SYMBOL(mhi_ctrl_state_info);
@@ -4416,6 +4430,11 @@ EXPORT_SYMBOL(mhi_ctrl_state_info);
 int mhi_vf_ctrl_state_info(uint32_t vf_id, uint32_t ch_id, uint32_t *info)
 {
 	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, vf_id);
+
+	if (!mhi) {
+		mhi_log(vf_id, MHI_MSG_ERROR, "MHI is NULL, defering\n");
+		return -EINVAL;
+	}
 
 	return __mhi_ctrl_state_info(mhi, vf_id, ch_id, info);
 }
@@ -5193,6 +5212,13 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		}
 
 		mhi_pf = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
+
+		if (!mhi_pf) {
+			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
+					"mhi_pf is NULL, defering\n");
+			return -EINVAL;
+		}
+
 		/*
 		 * The below list and mutex should be initialized
 		 * before calling mhi_uci_init to avoid crash in
@@ -5216,6 +5242,13 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		 * completion to make sure VF's are initialized in mission
 		 * mode directly, if not host assumes it in PBL state.
 		 */
+
+		if (!mhi_pf) {
+			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
+					"mhi_pf is NULL, defering\n");
+			return -EINVAL;
+		}
+
 		mhi_dev_setup_virt_device(mhi_hw_ctx);
 		queue_work(mhi_pf->pcie_event_wq, &mhi_pf->pcie_event);
 	} else {
