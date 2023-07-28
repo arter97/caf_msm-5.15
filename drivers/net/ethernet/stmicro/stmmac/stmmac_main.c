@@ -422,7 +422,7 @@ static inline void stmmac_hw_fix_mac_speed(struct stmmac_priv *priv)
 					priv->speed);
 			return;
 		}
-		if (priv->phydev->link)
+		if (priv->phydev && priv->phydev->link)
 			priv->plat->fix_mac_speed(priv->plat->bsp_priv,
 						  priv->speed);
 		else
@@ -1059,7 +1059,7 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
 
-	if (!priv->phydev->autoneg && !priv->plat->early_eth) {
+	if (priv->phydev && !priv->phydev->autoneg && !priv->plat->early_eth) {
 		linkmode_copy(state->advertising, priv->adv_old);
 		/* If PCS is supported, check which modes it supports. */
 		if (priv->hw->xpcs)
@@ -1322,7 +1322,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
-	    duplex &&
+	    duplex && priv->phydev && priv->phydev->drv &&
 	   ((priv->phydev->phy_id & priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 		phy_data = priv->mii->read(priv->mii, priv->plat->phy_addr, KSZ9131RNX_LBR);
 		phy_data = phy_data | (1 << 2);
@@ -1502,7 +1502,18 @@ static int stmmac_init_phy(struct net_device *dev)
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
 		__func__);
 
-	dev->phydev = priv->phydev;
+	if (priv->phydev) {
+		pr_info(" qcom-ethqos: %s dev phydev = priv phydev\n", __func__);
+		dev->phydev = priv->phydev;
+	} else {
+		pr_info(" qcom-ethqos: %s priv phydev is null\n", __func__);
+		if (dev->phydev) {
+			priv->phydev = dev->phydev;
+			priv->plat->phy_addr = priv->phydev->mdio.addr;
+			pr_info(" qcom-ethqos: %s priv->phydev is set with dev->phydev\n",
+				__func__);
+		}
+	}
 
 	if (!priv->plat->pmt) {
 		struct ethtool_wolinfo wol = { .cmd = ETHTOOL_GWOL };
@@ -8314,7 +8325,7 @@ int stmmac_suspend(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_suspend(priv->phylink, false);
 		} else {
@@ -8416,7 +8427,7 @@ int stmmac_resume(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_resume(priv->phylink);
 		} else {

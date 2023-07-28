@@ -2477,7 +2477,7 @@ static int ethqos_reset_phy_rec(struct stmmac_priv *priv, int int_en)
 			    !priv->phydev->drv->config_intr(priv->phydev)) {
 				ETHQOSERR("config_phy_intr successful after phy on\n");
 			}
-		} else if (!priv->plat->phy_intr_en_extn_stm) {
+		} else if (!priv->plat->phy_intr_en_extn_stm && priv->phydev) {
 			priv->phydev->irq = PHY_POLL;
 			ETHQOSDBG("PHY Polling Mode enabled\n");
 		} else {
@@ -3637,7 +3637,7 @@ static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, in
 			break;
 		case SPEED_10:
 			/*KSZ9131RNX_LBR = 0x11*/
-			if (!priv->plat->fixed_phy_mode &&
+			if (!priv->plat->fixed_phy_mode && priv->phydev && priv->phydev->drv &&
 			    ((priv->phydev->phy_id &
 			    priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 				phydata = priv->mii->read(priv->mii,
