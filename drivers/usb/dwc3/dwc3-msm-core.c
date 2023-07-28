@@ -3334,6 +3334,7 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 					 DMA_FROM_DEVICE);
 			mdwc->dummy_gsi_db_dma = (dma_addr_t)NULL;
 		}
+		mdwc->gsi_ev_buff = NULL;
 		break;
 	case DWC3_GSI_EVT_BUF_CLEAR:
 		dev_dbg(mdwc->dev, "DWC3_GSI_EVT_BUF_CLEAR\n");
