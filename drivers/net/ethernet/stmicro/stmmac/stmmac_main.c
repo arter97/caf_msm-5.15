@@ -1221,10 +1221,16 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
 	priv->eee_enabled = stmmac_eee_init(priv);
+	priv->speed = SPEED_UNKNOWN;
 	stmmac_set_eee_pls(priv, priv->hw, false);
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+					       priv->plat->bsp_priv, false, false);
+
 }
 
 static void stmmac_mac_link_up(struct phylink_config *config,
@@ -1237,6 +1243,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+							  priv->plat->bsp_priv, true, true);
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1331,6 +1341,11 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (priv->plat->fix_mac_speed)
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
+
+	if (priv->plat->serdes_powerup) {
+		ret = priv->plat->serdes_powerup(to_net_dev(config->dev),
+						 priv->plat->bsp_priv);
+	}
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -8415,7 +8430,7 @@ int stmmac_resume(struct device *dev)
 			stmmac_mdio_reset(priv->mii);
 	}
 
-	if (priv->plat->serdes_powerup) {
+	if (priv->plat->serdes_powerup && priv->speed != SPEED_UNKNOWN) {
 		ret = priv->plat->serdes_powerup(ndev,
 						 priv->plat->bsp_priv);
 

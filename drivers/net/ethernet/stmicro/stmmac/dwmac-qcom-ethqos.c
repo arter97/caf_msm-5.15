@@ -5996,6 +5996,42 @@ static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
+static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
+				      bool power_state, bool needs_serdes_reset)
+{
+	struct qcom_ethqos *ethqos = priv;
+	int ret = 0;
+
+	if (ethqos->emac_ver != EMAC_HW_v4_0_0)
+		return -EINVAL;
+
+	if (ethqos->power_state == power_state)
+		return -EINVAL;
+
+	if (power_state) {
+		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+			ret = ethqos_enable_serdes_consumers(ethqos);
+			if (ret < 0)
+				return ret;
+
+			if (needs_serdes_reset)
+				qcom_ethqos_serdes_soft_reset(ethqos);
+
+			ETHQOSINFO("power saving turned off\n");
+		}
+	} else {
+		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+			ret = ethqos_disable_serdes_consumers(ethqos);
+			if (ret < 0)
+				return ret;
+
+			ETHQOSINFO("power saving turned on\n");
+		}
+	}
+	ethqos->power_state = power_state;
+	return ret;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -6182,8 +6218,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII)
+	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII) {
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
+		plat_dat->serdes_powersaving = ethqos_serdes_power_saving;
+	}
 
 	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");
 	plat_dat->rx_clk_rdy = false;
@@ -6309,7 +6347,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
 	ethqos->priv = priv;
-
+	ethqos->power_state = true;
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
@@ -6593,9 +6631,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 
-		ret = ethqos_disable_serdes_consumers(ethqos);
-		if (ret < 0)
-			return ret;
+		if (priv->plat->serdes_powersaving)
+			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, false, false);
 	}
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
@@ -6659,15 +6696,12 @@ static int qcom_ethqos_resume(struct device *dev)
 	enable_irq(priv->dev->irq);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-		ret = ethqos_enable_serdes_consumers(ethqos);
-		if (ret < 0)
-			return ret;
+		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
+			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
 			return -EINVAL;
-
-		qcom_ethqos_serdes_soft_reset(ethqos);
 
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret)

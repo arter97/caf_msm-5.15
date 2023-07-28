@@ -101,8 +101,6 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 	update_marker("M - Ethernet disable serdes consumers start");
 #endif
 
-	regulator_disable(ethqos->vreg_a_sgmii_0p9);
-
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, 0, INT_MAX);
 	if (ret < 0) {
 		ETHQOSERR("Failed to remove %s voltage request: %d\n", EMAC_VREG_A_SGMII_0P9_NAME,
@@ -110,7 +108,13 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 		return ret;
 	}
 
-	regulator_disable(ethqos->vreg_a_sgmii_1p2);
+	ret = regulator_set_load(ethqos->vreg_a_sgmii_0p9, 0);
+	if (ret) {
+		ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_0P9_NAME);
+		return ret;
+	}
+
+	regulator_disable(ethqos->vreg_a_sgmii_0p9);
 
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, 0, INT_MAX);
 	if (ret < 0) {
@@ -118,6 +122,14 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 			  ret);
 		return ret;
 	}
+
+	ret = regulator_set_load(ethqos->vreg_a_sgmii_1p2, 0);
+	if (ret) {
+		ETHQOSERR("Failed to set load for %s\n", EMAC_VREG_A_SGMII_1P2_NAME);
+		return ret;
+	}
+
+	regulator_disable(ethqos->vreg_a_sgmii_1p2);
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet disable serdes consumers end");
@@ -310,10 +322,11 @@ void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 	}
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-		ret = ethqos_disable_serdes_consumers(ethqos);
-		if (ret < 0)
-			ETHQOSERR("Failed to disable SerDes consumers\n");
-
+		if (ethqos->power_state) {
+			ret = ethqos_disable_serdes_consumers(ethqos);
+			if (ret < 0)
+				ETHQOSERR("Failed to disable SerDes consumers\n");
+		}
 		devm_regulator_put(ethqos->vreg_a_sgmii_1p2);
 		ethqos->vreg_a_sgmii_1p2 = NULL;
 		devm_regulator_put(ethqos->vreg_a_sgmii_0p9);

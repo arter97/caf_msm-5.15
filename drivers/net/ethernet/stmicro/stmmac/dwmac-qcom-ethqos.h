@@ -517,6 +517,7 @@ struct qcom_ethqos {
 	int tdu_chan;
 
 	struct mac_csr_data *mac_reg_list;
+	bool power_state;
 };
 
 struct pps_cfg {
