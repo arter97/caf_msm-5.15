@@ -55,6 +55,7 @@ config SMI230_GYRO_DRIVER
 choice
 	prompt "Select GYRO interrupt source"
 	depends on (!SMI230_DATA_SYNC) && SMI230_GYRO_DRIVER
+	default SMI230_GYRO_INT4
 
     config SMI230_GYRO_INT3
 	bool "use int3 as source"
@@ -143,7 +144,7 @@ config SMI230_DATA_SYNC
 	help
 	 SMI230 data sync between accel and gyroscope, this feature can only be exclusively enabled in one compile, while it needs its dedicated config file loaded and interupt pins specially configured
 
-config SMI230_BOSCH_DRIVER_LOG_FUNC
+config BOSCH_DRIVER_LOG_FUNC
 	bool "Smart log function support"
 	depends on (I2C || SPI_MASTER) && SYSFS
 	help
