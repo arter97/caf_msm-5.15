@@ -5733,8 +5733,8 @@ static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
 				      unsigned long event, void *ptr)
 {
 	struct qcom_ethqos *ethqos;
-	u32 i, j, k = 0, reg_size = 4;
-	unsigned long num_registers = MAC_DUMP_SIZE / reg_size;
+	struct stmmac_priv *priv;
+	u32 i, j, k = 0;
 	#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	u32 mac_reg_sizes[MAC_DATA_SIZE] = {0x18, 0xc, 0x8, 0x30, 0x1c, 0x10, 0x8,
 						0x14, 0x8, 0x28, 0xc, 0xc, 0xc,
@@ -5786,28 +5786,22 @@ static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
 		return -EINVAL;
 	}
 
-	if (!num_registers)
-		goto panic_done;
+	priv = qcom_ethqos_get_priv(ethqos);
 
-	pr_info("Dumping EMAC registers\n");
+	if (!atomic_read(&priv->plat->phy_clks_suspended) && ethqos->mac_reg_list) {
+		pr_info("Dumping EMAC registers\n");
 
-	ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data), GFP_KERNEL);
-	if (!ethqos->mac_reg_list) {
-		ETHQOSERR("Failed to allocate memory for EMAC register list\n");
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < MAC_DATA_SIZE; i++) {
-		for (j = 0; j < mac_reg_sizes[i]; j += reg_size) {
-			ethqos->mac_reg_list[k++].offset = mac_reg_offsets[i] + j;
-			ethqos->mac_reg_list[k++].value = readl(ethqos->ioaddr +
+		for (i = 0; i < MAC_DATA_SIZE; i++) {
+			for (j = 0; j < mac_reg_sizes[i]; j += MAC_REG_SIZE) {
+				ethqos->mac_reg_list[k++].offset = mac_reg_offsets[i] + j;
+				ethqos->mac_reg_list[k++].value = readl(ethqos->ioaddr +
 								mac_reg_offsets[i] + j);
+			}
 		}
+
+		pr_info("EMAC register dump complete\n");
 	}
 
-	pr_info("EMAC register dump complete\n");
-
-panic_done:
 	pr_info("qcom-ethqos: ethqos 0x%p\n", ethqos);
 
 	pr_info("qcom-ethqos: stmmac_priv 0x%p\n", ethqos->priv);
@@ -6097,9 +6091,19 @@ out:
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
+	unsigned long num_registers = MAC_DUMP_SIZE / MAC_REG_SIZE;
 
 	ethqos->panic_nb.notifier_call	= qcom_ethqos_panic_notifier;
 	ethqos->panic_nb.priority = INT_MAX;
+
+	if (num_registers) {
+		ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data),
+						GFP_KERNEL);
+		if (!ethqos->mac_reg_list) {
+			ETHQOSERR("Failed to allocate memory for panic notifier register dump\n");
+			return -ENOMEM;
+		}
+	}
 
 	ret = atomic_notifier_chain_register(&panic_notifier_list,
 					     &ethqos->panic_nb);
@@ -6598,6 +6602,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
+
 	return ret;
 
 err_clk:
@@ -6670,6 +6675,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
+
+	atomic_set(&priv->plat->phy_clks_suspended, 1);
+
+	if (ethqos->mac_reg_list) {
+		kfree(ethqos->mac_reg_list);
+		ethqos->mac_reg_list = NULL;
+	}
 
 	if (plat_dat->mac_err_rec) {
 		ret = ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
