@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -41,6 +42,7 @@ enum gh_vm_names {
 	GH_OEM_VM,
 	GH_TELE_VM,
 	GH_FOTA_VM,
+	GH_AUTO_VM,
 	GH_VM_MAX
 };
 
