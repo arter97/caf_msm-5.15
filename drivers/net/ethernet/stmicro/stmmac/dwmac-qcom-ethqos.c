@@ -2190,6 +2190,23 @@ static int ethqos_phy_intr_config(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
+static int ethqos_wol_intr_config(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+
+	ethqos->wol_intr = platform_get_irq_byname(ethqos->pdev, "eth_wol_irq");
+
+	if (ethqos->wol_intr < 0) {
+		if (ethqos->wol_intr != -EPROBE_DEFER) {
+			dev_err(&ethqos->pdev->dev,
+				"WOL IRQ configuration information not found\n");
+		}
+		ret = 1;
+	}
+
+	return ret;
+}
+
 static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 {
 	int phy_intr_status = 0;
@@ -2288,6 +2305,32 @@ static irqreturn_t ETHQOS_PHY_ISR(int irq, void *dev_data)
 	pm_wakeup_event(&ethqos->pdev->dev, 5000);
 
 	queue_work(system_wq, &ethqos->emac_phy_work);
+
+	return IRQ_HANDLED;
+}
+
+static void ethqos_defer_wol_isr_work(struct work_struct *work)
+{
+	struct qcom_ethqos *ethqos =
+		container_of(work, struct qcom_ethqos, emac_wol_work);
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (ethqos->clks_suspended)
+		wait_for_completion(&ethqos->clk_enable_done);
+
+	/* WoL interrupt handler function*/
+	priv->phydev->drv->handle_interrupt(priv->phydev);
+}
+
+static irqreturn_t ETHQOS_WOL_ISR(int irq, void *dev_data)
+{
+	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)dev_data;
+
+	pm_wakeup_event(&ethqos->pdev->dev, 5000);
+
+	 /* queue the WoL interrupt handler */
+	queue_work(system_wq, &ethqos->emac_wol_work);
+
 	return IRQ_HANDLED;
 }
 
@@ -2302,6 +2345,32 @@ static void ethqos_phy_irq_enable(void *priv_n)
 		priv->phy_irq_enabled = true;
 	}
 }
+
+#ifdef CONFIG_DWMAC_QCOM_VER3
+static void ethqos_wol_irq_enable(void *priv_n)
+{
+	struct stmmac_priv *priv = priv_n;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	if (ethqos->wol_intr) {
+		ETHQOSINFO("enabling  wol irq = %d\n", priv->wol_irq_enabled);
+		enable_irq(ethqos->wol_intr);
+		priv->wol_irq_enabled = true;
+	}
+}
+
+static void ethqos_wol_irq_disable(void *priv_n)
+{
+	struct stmmac_priv *priv = priv_n;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	if (ethqos->wol_intr) {
+		ETHQOSINFO("disabling irq = %d\n", priv->wol_irq_enabled);
+		disable_irq(ethqos->wol_intr);
+		priv->wol_irq_enabled = false;
+	}
+}
+#endif
 
 static void ethqos_phy_irq_disable(void *priv_n)
 {
@@ -2332,6 +2401,26 @@ static int ethqos_phy_intr_enable(struct qcom_ethqos *ethqos)
 	}
 	priv->plat->phy_intr_en_extn_stm = true;
 	priv->phy_irq_enabled = true;
+	return ret;
+}
+
+static int ethqos_wol_intr_enable(struct qcom_ethqos *ethqos)
+{
+	int ret = 0;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	INIT_WORK(&ethqos->emac_wol_work, ethqos_defer_wol_isr_work);
+	init_completion(&ethqos->clk_enable_done);
+
+	ret = request_irq(ethqos->wol_intr, ETHQOS_WOL_ISR,
+			  IRQF_SHARED, "emac_pin_wol_intr", ethqos);
+	if (ret) {
+		ETHQOSERR("Unable to register PHY IRQ %d\n",
+			  ethqos->wol_intr);
+		return ret;
+	}
+
+	priv->wol_irq_enabled = true;
 	return ret;
 }
 
@@ -2747,7 +2836,11 @@ void qcom_ethqos_request_phy_wol(void *plat_n)
 
 		device_set_wakeup_capable(priv->device, 1);
 
-				enable_irq_wake(ethqos->phy_intr);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		enable_irq_wake(ethqos->phy_intr);
+#else
+		enable_irq_wake(ethqos->wol_intr);
+#endif
 				device_set_wakeup_enable(&ethqos->pdev->dev, 1);
 	}
 }
@@ -3737,12 +3830,19 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 	}
 
 	/*Disable phy interrupt by Link/Down by cable plug in/out*/
-	if (mode > DISABLE_LOOPBACK)
+	if (mode > DISABLE_LOOPBACK) {
 		disable_irq(ethqos->phy_intr);
-	else if (mode == DISABLE_LOOPBACK)
+#ifdef CONFIG_DWMAC_QCOM_VER3
+		disable_irq(ethqos->wol_intr);
+#endif
+	} else if (mode == DISABLE_LOOPBACK) {
 		enable_irq(ethqos->phy_intr);
-	else
+#ifdef CONFIG_DWMAC_QCOM_VER3
+		enable_irq(ethqos->wol_intr);
+#endif
+	} else {
 		ETHQOSERR("Mode is invalid\n");
+	}
 
 	ctrl = readl_relaxed(priv->ioaddr + MAC_CTRL_REG);
 	ETHQOSDBG("Old ctrl=0x%x with mask with flow control\n", ctrl);
@@ -5383,21 +5483,31 @@ static int ethqos_enable_wol(struct net_device *ndev, struct ethtool_wolinfo *wo
 			return ret;
 
 		if (wol->wolopts) {
-			if (!priv->dev->wol_enabled)
+			if (!priv->dev->wol_enabled) {
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 				ret = enable_irq_wake(ethqos->phy_intr);
+#else
+				ret = enable_irq_wake(ethqos->wol_intr);
+#endif
+			}
 
 			priv->dev->wol_enabled = true;
 			ETHQOSINFO("Enabled WoL\n");
 		} else {
-			if (priv->dev->wol_enabled)
+			if (priv->dev->wol_enabled) {
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 				ret = disable_irq_wake(ethqos->phy_intr);
+#else
+				ret = disable_irq_wake(ethqos->wol_intr);
+#endif
+			}
 
 			priv->dev->wol_enabled = false;
 			ETHQOSINFO("Disabled WoL\n");
 		}
 
 		if (ret) {
-			ETHQOSERR("Failed to configure WoL IRQ\n");
+			ETHQOSERR("Failed to configure WoL\n");
 			return ret;
 		}
 	} else {
@@ -6212,6 +6322,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->init_pps = ethqos_init_pps;
 	plat_dat->phy_irq_enable = ethqos_phy_irq_enable;
 	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
+#ifdef CONFIG_DWMAC_QCOM_VER3
+	plat_dat->wol_irq_enable = ethqos_wol_irq_enable;
+	plat_dat->wol_irq_disable = ethqos_wol_irq_disable;
+#endif
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
 	if (plat_dat->mac_err_rec)
@@ -6385,8 +6499,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			ethqos_phy_intr_enable(ethqos);
 		else
 			ETHQOSERR("Phy interrupt configuration failed");
-	}
 
+		if (!ethqos_wol_intr_config(ethqos)) {
+			ETHQOSDBG("WOL found in dtsi\n");
+			ethqos_wol_intr_enable(ethqos);
+		} else {
+			ETHQOSERR("WOL interrupt configuration failed");
+		}
+	}
 	if (ethqos->emac_ver == EMAC_HW_v2_3_2_RG) {
 		ethqos_pps_irq_config(ethqos);
 		create_pps_interrupt_device_node(&ethqos->avb_class_a_dev_t,
@@ -6564,7 +6684,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
 
+	if (priv->wol_irq_enabled)
+		free_irq(ethqos->wol_intr, ethqos);
+
 	priv->phy_irq_enabled = false;
+#ifdef CONFIG_DWMAC_QCOM_VER3
+	priv->wol_irq_enabled = false;
+#endif
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
