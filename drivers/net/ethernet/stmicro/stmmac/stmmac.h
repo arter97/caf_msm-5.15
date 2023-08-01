@@ -435,6 +435,7 @@ static inline unsigned int stmmac_rx_offset(struct stmmac_priv *priv)
 	return 0;
 }
 
+int stmmac_phy_setup(struct stmmac_priv *priv);
 void stmmac_disable_rx_queue(struct stmmac_priv *priv, u32 queue);
 void stmmac_enable_rx_queue(struct stmmac_priv *priv, u32 queue);
 void stmmac_disable_tx_queue(struct stmmac_priv *priv, u32 queue);

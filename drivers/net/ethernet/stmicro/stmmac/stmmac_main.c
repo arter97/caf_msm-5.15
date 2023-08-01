@@ -1587,7 +1587,7 @@ static void stmmac_get_fixed_state(struct phylink_config *config,
 		state->link = 1;
 }
 
-static int stmmac_phy_setup(struct stmmac_priv *priv)
+int stmmac_phy_setup(struct stmmac_priv *priv)
 {
 	struct stmmac_mdio_bus_data *mdio_bus_data = priv->plat->mdio_bus_data;
 	struct fwnode_handle *fwnode = of_fwnode_handle(priv->plat->phylink_node);

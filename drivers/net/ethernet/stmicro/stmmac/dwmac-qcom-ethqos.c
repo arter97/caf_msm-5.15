@@ -51,7 +51,7 @@
 #define PHY_USXGMII_LOOPBACK_1000	0x0802
 #define PHY_USXGMII_LOOPBACK_100	0x0801
 #define PHY_USXGMII_LOOPBACK_10	0x0800
-
+#define TN_SYSFS_DEV_ATTR_PERMS 0644
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -6304,6 +6304,373 @@ static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
 
+static int qcom_ethqos_bring_up_phy_if(struct device *dev)
+{
+	int ret;
+	struct net_device *ndev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	struct device_node *serdes_node = NULL;
+	struct phy_device *phydev = NULL;
+	u32 mode = 0;
+
+	if (!ndev) {
+		ETHQOSERR("Netdevice is NULL\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(ndev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!priv->plat->mac2mac_en)
+		stmmac_phy_setup(priv);
+
+	if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_enable_sgmii_usxgmii_clks(ethqos, priv->plat->interface);
+		if (ret)
+			return -1;
+		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII) {
+			serdes_node = of_get_child_by_name(ethqos->pdev->dev.of_node,
+							   "serdes-config");
+			if (serdes_node) {
+				ret = of_property_read_u32(serdes_node, "usxgmii-mode",
+							   &mode);
+				switch (mode) {
+				case 10000:
+					ethqos->usxgmii_mode = USXGMII_MODE_10G;
+					break;
+				case 5000:
+					ethqos->usxgmii_mode = USXGMII_MODE_5G;
+					break;
+				case 2500:
+					ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
+					break;
+				default:
+					ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
+					ethqos->usxgmii_mode = USXGMII_MODE_NA;
+					return -1;
+				}
+			} else {
+				ETHQOSERR("Unable to find Serdes node from device tree\n");
+				ethqos->usxgmii_mode = USXGMII_MODE_NA;
+				return -1;
+			}
+			of_node_put(serdes_node);
+			ETHQOSINFO("%s :usxgmii_mode = %d", __func__, ethqos->usxgmii_mode);
+		}
+		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
+		if (ret)
+			return -1;
+	}
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret)
+			return -EINVAL;
+	}
+	ret = ethqos_xpcs_init(ndev);
+	if (ret < 0)
+		return -1;
+
+	if (priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII && !priv->plat->mac2mac_en)
+		priv->phydev->drv->get_features(priv->phydev);
+
+	if (!priv->plat->mac2mac_en) {
+		phydev = priv->phydev;
+		rtnl_lock();
+		phylink_connect_phy(priv->phylink, priv->phydev);
+		rtnl_unlock();
+
+		if (priv->plat->phy_intr_en_extn_stm && phydev) {
+			ETHQOSDBG("PHY interrupt Mode enabled\n");
+			phydev->irq = PHY_MAC_INTERRUPT;
+			phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+			if (phydev->drv->config_intr &&
+			    !phydev->drv->config_intr(phydev))
+				ETHQOSDBG("config_phy_intr successful after phy on\n");
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
+			phydev->irq = PHY_POLL;
+			ETHQOSDBG("PHY Polling Mode enabled\n");
+		} else {
+			ETHQOSERR("phydev is null , intr value=%d\n",
+				  priv->plat->phy_intr_en_extn_stm);
+		}
+
+		if (!priv->phy_irq_enabled && !priv->plat->mac2mac_en)
+			priv->plat->phy_irq_enable(priv);
+	}
+
+	ret = stmmac_resume(&ethqos->pdev->dev);
+	return ret;
+}
+
+static int qcom_ethqos_bring_down_phy_if(struct device *dev)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	struct resource *resource = NULL;
+	unsigned long xpcs_size = 0;
+	void __iomem *xpcs_addr;
+	int ret;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	resource = platform_get_resource_byname(ethqos->pdev,
+						IORESOURCE_MEM, "xpcs");
+	if (!resource) {
+		ETHQOSERR("Resource xpcs not found\n");
+		return -1;
+	}
+	xpcs_size = resource_size(resource);
+
+	ret = stmmac_suspend(&ethqos->pdev->dev);
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+	}
+
+	if (priv->hw->qxpcs) {
+		if (priv->hw->qxpcs->intr_en)
+			free_irq(priv->hw->qxpcs->pcs_intr, priv);
+		xpcs_addr = priv->hw->qxpcs->addr;
+		qcom_xpcs_destroy(priv->hw->qxpcs);
+		devm_iounmap(&ethqos->pdev->dev, xpcs_addr);
+		xpcs_addr = NULL;
+		devm_release_mem_region(&ethqos->pdev->dev, resource->start,
+					xpcs_size);
+	}
+
+	if (priv->phy_irq_enabled && !priv->plat->mac2mac_en) {
+		priv->plat->phy_irq_disable(priv);
+
+		rtnl_lock();
+		phylink_disconnect_phy(priv->phylink);
+		rtnl_unlock();
+		if (!priv->plat->mac2mac_en && priv->phylink)
+			phylink_destroy(priv->phylink);
+	}
+
+	return ret;
+}
+
+static ssize_t change_if_sysfs_read(struct device *dev,
+				    struct device_attribute *attr,
+				    char *user_buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+
+	if (!netdev)
+		return -EINVAL;
+
+	priv = netdev_priv(netdev);
+	if (!priv)
+		return -EINVAL;
+
+	if (priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII)
+		return scnprintf(user_buf, BUFF_SZ,
+				"Current-Interface :: PHY_INTERFACE_MODE_USXGMII");
+	else if (priv->plat->interface ==  PHY_INTERFACE_MODE_SGMII)
+		return scnprintf(user_buf, BUFF_SZ,
+				"Current-Interface :: PHY_INTERFACE_MODE_SGMII");
+
+	return scnprintf(user_buf, BUFF_SZ,
+			"Current-Interface :: unknown");
+}
+
+static ssize_t change_if_sysfs_write(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *user_buf,
+				     size_t count)
+{
+	s8 option = 0;
+	struct net_device *ndev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+
+	if (!ndev) {
+		ETHQOSERR("changing I/F not possible\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(ndev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	if (kstrtos8(user_buf, 0, &option))
+		return -EFAULT;
+
+	if (option == 1) {
+		priv->plat->interface = PHY_INTERFACE_MODE_SGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_SGMII;
+		priv->phydev->interface = PHY_INTERFACE_MODE_SGMII;
+	} else if (option == 2) {
+		priv->plat->interface = PHY_INTERFACE_MODE_USXGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_USXGMII;
+		priv->phydev->interface = PHY_INTERFACE_MODE_USXGMII;
+	}
+	return count;
+}
+
+static DEVICE_ATTR(change_if, TN_SYSFS_DEV_ATTR_PERMS,
+		   change_if_sysfs_read,
+		   change_if_sysfs_write);
+
+static int ethqos_change_if_cleanup_sysfs(struct qcom_ethqos *ethqos)
+{
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	sysfs_remove_file(&netdev->dev.kobj,
+			  &dev_attr_change_if.attr);
+	return 0;
+}
+
+/**
+ * ethqos_change_if_create_sysfs() - Called to create sysfs node
+ * for creating change_if entry.
+ */
+static int ethqos_change_if_create_sysfs(struct qcom_ethqos *ethqos)
+{
+	int ret;
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	ret = sysfs_create_file(&netdev->dev.kobj,
+				&dev_attr_change_if.attr);
+	if (ret) {
+		ETHQOSERR("unable to create change_if sysfs node\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static ssize_t thermal_netlink_sysfs_read(struct device *dev,
+					  struct device_attribute *attr,
+					  char *user_buf)
+{
+	return scnprintf(user_buf, BUFF_SZ,
+			"option 1 for bringdown, 2 for bringup");
+}
+
+static ssize_t thermal_netlink_sysfs_write(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *user_buf,
+					   size_t count)
+{
+	s8 option = 0;
+
+	if (kstrtos8(user_buf, 0, &option))
+		return -EFAULT;
+
+	if (option == 1)
+		qcom_ethqos_bring_down_phy_if(dev);
+	else if (option == 0)
+		qcom_ethqos_bring_up_phy_if(dev);
+
+	return count;
+}
+
+static DEVICE_ATTR(thermal_netlink, TN_SYSFS_DEV_ATTR_PERMS,
+		   thermal_netlink_sysfs_read,
+		   thermal_netlink_sysfs_write);
+
+static int ethqos_thermal_netlink_cleanup_sysfs(struct qcom_ethqos *ethqos)
+{
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	sysfs_remove_file(&netdev->dev.kobj,
+			  &dev_attr_thermal_netlink.attr);
+	return 0;
+}
+
+/**
+ * ethqos_thermal_netlink_create_sysfs() - Called to create sysfs node
+ * for creating thermal_netlink entry.
+ */
+static int ethqos_thermal_netlink_create_sysfs(struct qcom_ethqos *ethqos)
+{
+	int ret;
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	ret = sysfs_create_file(&netdev->dev.kobj,
+				&dev_attr_thermal_netlink.attr);
+	if (ret) {
+		ETHQOSERR("unable to create thermal_netlink sysfs node\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -6778,6 +7145,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos_create_sysfs(ethqos);
+	ethqos_change_if_create_sysfs(ethqos);
+	ethqos_thermal_netlink_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
 
 	return ret;
@@ -6823,7 +7192,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	ethqos_remove_sysfs(ethqos);
 	qcom_ethqos_unregister_vm_notifier(ethqos);
-
+	ethqos_change_if_cleanup_sysfs(ethqos);
+	ethqos_thermal_netlink_cleanup_sysfs(ethqos);
 	ret = stmmac_pltfr_remove(pdev);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
