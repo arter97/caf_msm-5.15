@@ -2190,6 +2190,7 @@ static int ethqos_phy_intr_config(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 static int ethqos_wol_intr_config(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
@@ -2206,6 +2207,7 @@ static int ethqos_wol_intr_config(struct qcom_ethqos *ethqos)
 
 	return ret;
 }
+#endif
 
 static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 {
@@ -2309,6 +2311,7 @@ static irqreturn_t ETHQOS_PHY_ISR(int irq, void *dev_data)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 static void ethqos_defer_wol_isr_work(struct work_struct *work)
 {
 	struct qcom_ethqos *ethqos =
@@ -2333,6 +2336,7 @@ static irqreturn_t ETHQOS_WOL_ISR(int irq, void *dev_data)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static void ethqos_phy_irq_enable(void *priv_n)
 {
@@ -2404,6 +2408,7 @@ static int ethqos_phy_intr_enable(struct qcom_ethqos *ethqos)
 	return ret;
 }
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 static int ethqos_wol_intr_enable(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
@@ -2423,6 +2428,7 @@ static int ethqos_wol_intr_enable(struct qcom_ethqos *ethqos)
 	priv->wol_irq_enabled = true;
 	return ret;
 }
+#endif
 
 static const struct of_device_id qcom_ethqos_match[] = {
 	{ .compatible = "qcom,stmmac-ethqos", },
@@ -6503,13 +6509,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			ethqos_phy_intr_enable(ethqos);
 		else
 			ETHQOSERR("Phy interrupt configuration failed");
-
+#ifdef CONFIG_DWMAC_QCOM_VER3
 		if (!ethqos_wol_intr_config(ethqos)) {
 			ETHQOSDBG("WOL found in dtsi\n");
 			ethqos_wol_intr_enable(ethqos);
 		} else {
 			ETHQOSERR("WOL interrupt configuration failed");
 		}
+#endif
 	}
 	if (ethqos->emac_ver == EMAC_HW_v2_3_2_RG) {
 		ethqos_pps_irq_config(ethqos);
@@ -6696,9 +6703,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (priv->plat->phy_intr_en_extn_stm)
 		free_irq(ethqos->phy_intr, ethqos);
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 	if (priv->wol_irq_enabled)
 		free_irq(ethqos->wol_intr, ethqos);
-
+#endif
 	priv->phy_irq_enabled = false;
 #ifdef CONFIG_DWMAC_QCOM_VER3
 	priv->wol_irq_enabled = false;
