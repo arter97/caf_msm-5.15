@@ -75,7 +75,7 @@
 
 #ifndef LOG_LEVEL
 /*! LOG LEVEL DEFINATION */
-#define LOG_LEVEL LOG_LEVEL_A
+#define LOG_LEVEL LOG_LEVEL_I
 #endif
 
 #ifdef BOSCH_DRIVER_LOG_FUNC

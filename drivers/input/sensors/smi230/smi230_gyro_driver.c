@@ -319,7 +319,7 @@ static int smi_gyro_read_bootsampl(struct smi230_client_data *client_data,
 	/*SYN_CONFIG indicates end of data*/
 	input_event(client_data->gyrobuf_dev, EV_SYN, SYN_CONFIG, 0xFFFFFFFF);
 	input_sync(client_data->gyrobuf_dev);
-	PDEBUG("End of gyro samples bufsample_cnt=%d\n",
+	PDEBUG("smi230: End of gyro samples bufsample_cnt=%d\n",
 			client_data->gyro_bufsample_cnt);
 	return 0;
 }
@@ -629,7 +629,7 @@ static void store_gyro_boot_sample(struct smi230_client_data *client_data,
 			client_data->gyro_bufsample_cnt++;
 		}
 	} else {
-		PINFO("End of GYRO buffering %d",
+		PINFO("smi230: End of GYRO buffering %d",
 				client_data->gyro_bufsample_cnt);
 		client_data->gyro_buffer_smi230_samples = false;
 		if (!client_data->gyro_enable) {
@@ -717,9 +717,11 @@ static int smi230_gyro_early_buff_init(struct smi230_client_data *client_data)
 	/* gyro driver should be initialized before acc */
 	p_smi230_dev->gyro_cfg.power = SMI230_GYRO_PM_NORMAL;
 	smi230_gyro_set_power_mode(p_smi230_dev);
+
 	PINFO("GYRO FIFO set water mark");
 	smi230_gyro_set_fifo_wm(10, p_smi230_dev);
 	p_smi230_dev->gyro_cfg.fifo_wm = 10;
+
 	client_data->timestamp_old = ktime_get_boottime_ns();
 	is_gyro_ready = false;
 	mod_timer(&pm_mode_timer, jiffies + msecs_to_jiffies(200));
@@ -778,6 +780,11 @@ static void smi230_gyro_fifo_handle(struct smi230_client_data *client_data)
 
 	err = smi230_gyro_extract_fifo(fifo_gyro_data, &fifo_frames, &fifo,
 				       p_smi230_dev);
+	if (is_gyro_ready == false) {
+		PINFO("smi230: gyro not ready, discard data of first 200ms period after active");
+		client_data->timestamp_old = client_data->timestamp;
+		return;
+	}
 
 	tsamp = div_u64(client_data->timestamp - client_data->timestamp_old,
 			fifo_frames);
@@ -928,7 +935,6 @@ int smi230_gyro_probe(struct device *dev, struct smi230_dev *smi230_dev)
 		err = -ENOMEM;
 		goto exit_directly;
 	}
-
 	client_data->dev = dev;
 
 	/* gyro driver should be initialized before acc */
@@ -1015,6 +1021,7 @@ int smi230_gyro_probe(struct device *dev, struct smi230_dev *smi230_dev)
 		PERR("FIFO HW init failed");
 		goto exit_free_client_data;
 	}
+	smi230_delay(100);
 
 #else /* new data */
 

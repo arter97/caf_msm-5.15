@@ -335,7 +335,7 @@ static int smi_acc_read_bootsampl(struct smi230_client_data *client_data,
 	/*SYN_CONFIG indicates end of data*/
 	input_event(client_data->accbuf_dev, EV_SYN, SYN_CONFIG, 0xFFFFFFFF);
 	input_sync(client_data->accbuf_dev);
-	PDEBUG("End of acc samples bufsample_cnt=%d\n",
+	PDEBUG("smi230: End of acc samples bufsample_cnt=%d\n",
 			client_data->acc_bufsample_cnt);
 	return 0;
 }
@@ -671,6 +671,7 @@ static ssize_t smi230_acc_show_sensor_temperature(struct device *dev,
 {
 	int err;
 	int32_t sensor_temp;
+	struct smi230_client_data *client_data = dev_get_drvdata(dev);
 
 	mutex_lock(&client_data->acc_temp_read);
 	err = smi230_acc_get_sensor_temperature(p_smi230_dev, &sensor_temp);
@@ -678,7 +679,7 @@ static ssize_t smi230_acc_show_sensor_temperature(struct device *dev,
 		return err;
 	mutex_unlock(&client_data->acc_temp_read);
 
-	return snprintf(buf, PAGE_SIZE, "acc temperature: %d\n", sensor_temp);
+	return scnprintf(buf, PAGE_SIZE, "temperature: %d\n", sensor_temp);
 }
 
 static ssize_t smi230_acc_store_fifo_reset(struct device *dev,
@@ -743,7 +744,7 @@ static ssize_t smi230_acc_anymotion_enable_store(struct device *dev,
 	int_config.accel_int_config_2.int_type = SMI230_ACCEL_ANYMOTION_INT;
 	err |= smi230_acc_set_int_config(&int_config.accel_int_config_2,
 					 p_smi230_dev);
-#endiunf
+#endif
 
 	if (err != SMI230_OK) {
 		PERR("set anymotion interrupt failed");
@@ -1665,7 +1666,7 @@ static struct attribute *smi230_attributes[] = {
 #endif
 	&dev_attr_acc_value.attr,
 	&dev_attr_fifo_reset.attr,
-	&dev_attr_temp.attr,
+	&dev_attr_temperature.attr,
 	&dev_attr_self_test.attr,
 	&dev_attr_anymotion_enable.attr,
 	&dev_attr_anymotion_threshold.attr,
@@ -1762,7 +1763,7 @@ static void store_acc_boot_sample(struct smi230_client_data *client_data,
 			client_data->acc_bufsample_cnt++;
 		}
 	} else {
-		PINFO("End of ACC buffering %d\n",
+		PINFO("smi230: End of ACC buffering %d\n",
 				client_data->acc_bufsample_cnt);
 		client_data->acc_buffer_smi230_samples = false;
 		if (!client_data->acc_enable) {
@@ -2332,15 +2333,26 @@ static int smi230_acc_configuration(struct smi230_dev *p_smi230_dev)
 	int_config.accel_int_config_1.int_type = SMI230_ACCEL_FIFO_WM_INT;
 	int_config.accel_int_config_2.int_type = SMI230_ACCEL_FIFO_WM_INT;
 
-	err |= smi230_acc_set_fifo_wm(100, p_smi230_dev);
+	err |= smi230_acc_set_fifo_wm(70, p_smi230_dev);
 #endif
 #ifdef CONFIG_SMI230_ACC_FIFO_FULL
 	PINFO("ACC FIFO full is enabled");
+	int_config.accel_int_config_1.int_type = SMI230_ACCEL_FIFO_FULL_INT;
 	int_config.accel_int_config_2.int_type = SMI230_ACCEL_FIFO_FULL_INT;
 #endif
 
+#ifdef CONFIG_SMI230_ACC_INT1
+	err |= smi230_acc_set_int_config(&int_config.accel_int_config_1,
+					 p_smi230_dev);
+#endif
+#ifdef CONFIG_SMI230_ACC_INT2
 	err |= smi230_acc_set_int_config(&int_config.accel_int_config_2,
 					 p_smi230_dev);
+#endif
+	if (err != SMI230_OK) {
+		PERR("Set int config failed");
+		return err;
+	}
 
 	fifo_config.mode = SMI230_ACC_FIFO_MODE;
 	fifo_config.accel_en = 1;
@@ -2653,7 +2665,7 @@ int smi230_acc_probe(struct device *dev, struct smi230_dev *smi230_dev)
 	if (err != 1)
 		return err;
 
-	PINFO("Sensor %s was probed successfully11", SENSOR_ACC_NAME);
+	PINFO("Sensor %s was probed successfully", SENSOR_ACC_NAME);
 
 	return 0;
 exit_cleanup_sysfs:
