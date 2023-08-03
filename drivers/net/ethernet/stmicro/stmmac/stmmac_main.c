@@ -4522,8 +4522,10 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 	if (!priv->wol_irq_enabled)
 		priv->plat->wol_irq_enable(priv);
+#endif
 
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
@@ -4603,8 +4605,10 @@ static int stmmac_release(struct net_device *dev)
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
 	if (priv->wol_irq_enabled)
 		priv->plat->wol_irq_disable(priv);
+#endif
 
 	if (priv->avb_vlan_id > 1)
 		if (dev->netdev_ops->ndo_vlan_rx_kill_vid)
