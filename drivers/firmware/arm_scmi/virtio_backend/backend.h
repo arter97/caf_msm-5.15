@@ -17,4 +17,5 @@ void scmi_virtio_set_client_priv(
 	void __exit scmi_virtio_##protocol##_unregister(void)
 
 DECLARE_SCMI_VIRTIO_REGISTER_UNREGISTER(base);
+DECLARE_SCMI_VIRTIO_REGISTER_UNREGISTER(clock);
 #endif /* _SCMI_VIRTIO_BE_H */
