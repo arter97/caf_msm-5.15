@@ -103,6 +103,8 @@ static struct ep_pcie_clk_info_t
 	{NULL, "pcie_ddrss_sf_tbu_clk", 0, false},
 	{NULL, "pcie_aggre_noc_0_axi_clk", 0, false},
 	{NULL, "gcc_cnoc_pcie_sf_axi_clk", 0, false},
+	{NULL, "pcie_pipediv2_clk", 0, false},
+	{NULL, "pcie_phy_refgen_clk", 0, false},
 	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
@@ -2147,10 +2149,6 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			writel_relaxed(0, dev->tcsr_perst_en +
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
 		}
-
-		if (dev->pcie_cesta_clkreq_offset)
-			ep_pcie_write_reg_field(dev->parf,
-						dev->pcie_cesta_clkreq_offset, BIT(0), 0);
 
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {

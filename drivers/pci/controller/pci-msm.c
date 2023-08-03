@@ -5627,13 +5627,14 @@ out:
 }
 EXPORT_SYMBOL(msm_pcie_enumerate);
 
-static void msm_pcie_notify_client(struct msm_pcie_dev_t *dev,
+static bool msm_pcie_notify_client(struct msm_pcie_dev_t *dev,
 					enum msm_pcie_event event)
 {
 	struct msm_pcie_register_event *reg_itr, *temp;
 	struct msm_pcie_notify *notify;
 	struct msm_pcie_notify client_notify;
 	unsigned long flags;
+	bool notified = false;
 
 	spin_lock_irqsave(&dev->evt_reg_list_lock, flags);
 	list_for_each_entry_safe(reg_itr, temp, &dev->event_reg_list, node) {
@@ -5656,6 +5657,7 @@ static void msm_pcie_notify_client(struct msm_pcie_dev_t *dev,
 			spin_unlock_irqrestore(&dev->evt_reg_list_lock, flags);
 
 			reg_itr->callback(&client_notify);
+			notified = true;
 
 			spin_lock_irqsave(&dev->evt_reg_list_lock, flags);
 			if ((reg_itr->options & MSM_PCIE_CONFIG_NO_RECOVERY) &&
@@ -5670,6 +5672,8 @@ static void msm_pcie_notify_client(struct msm_pcie_dev_t *dev,
 		}
 	}
 	spin_unlock_irqrestore(&dev->evt_reg_list_lock, flags);
+
+	return notified;
 }
 
 static void handle_sbr_func(struct work_struct *work)
@@ -7663,6 +7667,17 @@ void msm_pcie_allow_l1(struct pci_dev *pci_dev)
 	pcie_dev = PCIE_BUS_PRIV_DATA(root_pci_dev->bus);
 
 	mutex_lock(&pcie_dev->aspm_lock);
+
+	/* Reject the allow_l1 call if we are already in drv state */
+	if (pcie_dev->link_status == MSM_PCIE_LINK_DRV) {
+		PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: Error\n",
+				pcie_dev->rc_idx, pci_dev->bus->number,
+				PCI_SLOT(pci_dev->devfn),
+				PCI_FUNC(pci_dev->devfn));
+		mutex_unlock(&pcie_dev->aspm_lock);
+		return;
+	}
+
 	if (unlikely(--pcie_dev->prevent_l1 < 0))
 		PCIE_ERR(pcie_dev,
 			"PCIe: RC%d: %02x:%02x.%01x: unbalanced prevent_l1: %d < 0\n",
@@ -7704,6 +7719,18 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 
 	/* disable L1 */
 	mutex_lock(&pcie_dev->aspm_lock);
+
+	/* Reject the prevent_l1 call if we are already in drv state */
+	if (pcie_dev->link_status == MSM_PCIE_LINK_DRV) {
+		ret = -EINVAL;
+		PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x:ret %d exit\n",
+				pcie_dev->rc_idx, pci_dev->bus->number,
+				PCI_SLOT(pci_dev->devfn),
+				PCI_FUNC(pci_dev->devfn), ret);
+		mutex_unlock(&pcie_dev->aspm_lock);
+		goto out;
+	}
+
 	if (pcie_dev->prevent_l1++) {
 		mutex_unlock(&pcie_dev->aspm_lock);
 		return 0;
@@ -7748,6 +7775,7 @@ err:
 	mutex_unlock(&pcie_dev->aspm_lock);
 	msm_pcie_allow_l1(pci_dev);
 
+out:
 	return ret;
 }
 EXPORT_SYMBOL(msm_pcie_prevent_l1);
@@ -8439,7 +8467,7 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 	int i;
 
 	/* rpmsg probe hasn't happened yet */
-	if (!pcie_drv->rpdev)
+	if (!pcie_drv->rpdev || !pcie_dev->enumerated)
 		return;
 
 	pcie_itr = pcie_dev;
@@ -8450,8 +8478,9 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 		if (!drv_info || drv_info->ep_connected)
 			continue;
 
-		msm_pcie_notify_client(pcie_itr,
-				       MSM_PCIE_EVENT_DRV_CONNECT);
+		if (!msm_pcie_notify_client(pcie_itr,
+					    MSM_PCIE_EVENT_DRV_CONNECT))
+			continue;
 
 		mutex_lock(&pcie_itr->drv_pc_lock);
 		drv_info->ep_connected = true;
@@ -8463,11 +8492,15 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 
 	if (!pcie_dev->drv_name)
 		return;
-	pcie_drv->notifier = qcom_register_early_ssr_notifier(pcie_dev->drv_name, &pcie_drv->nb);
-	if (IS_ERR(pcie_drv->notifier)) {
-		PCIE_ERR(pcie_dev, "PCIe: RC%d: DRV: failed to register ssr notifier\n",
-			 pcie_dev->rc_idx);
-		pcie_drv->notifier = NULL;
+
+	if (!pcie_drv->notifier) {
+		pcie_drv->notifier = qcom_register_early_ssr_notifier(pcie_dev->drv_name,
+								      &pcie_drv->nb);
+		if (IS_ERR(pcie_drv->notifier)) {
+			PCIE_ERR(pcie_dev, "PCIe: RC%d: DRV: failed to register ssr notifier\n",
+				 pcie_dev->rc_idx);
+			pcie_drv->notifier = NULL;
+		}
 	}
 }
 
@@ -9064,7 +9097,9 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	spin_lock_irq(&pcie_dev->cfg_lock);
 	pcie_dev->cfg_access = true;
 	spin_unlock_irq(&pcie_dev->cfg_lock);
+	mutex_lock(&pcie_dev->aspm_lock);
 	pcie_dev->link_status = MSM_PCIE_LINK_ENABLED;
+	mutex_unlock(&pcie_dev->aspm_lock);
 
 	/* resume access to MSI register as link is resumed */
 	if (!pcie_dev->lpi_enable)
@@ -9115,7 +9150,9 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 	pcie_dev->cfg_access = false;
 	spin_unlock_irq(&pcie_dev->cfg_lock);
 	mutex_lock(&pcie_dev->setup_lock);
+	mutex_lock(&pcie_dev->aspm_lock);
 	pcie_dev->link_status = MSM_PCIE_LINK_DRV;
+	mutex_unlock(&pcie_dev->aspm_lock);
 
 	/* turn off all unsuppressible clocks */
 	clk_info = pcie_dev->pipe_clk;
