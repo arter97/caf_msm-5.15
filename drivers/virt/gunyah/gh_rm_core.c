@@ -79,6 +79,7 @@ const static struct {
 	{GH_OEM_VM, "oem_vm", "qcom,oemvm"},
 	{GH_TELE_VM, "tele_vm", "qcom,televm"},
 	{GH_AUTO_VM, "autoghgvm", "qcom,autoghgvm"},
+	{GH_FOTA_VM, "fota_vm", "qcom,fotavm"},
 };
 
 static struct task_struct *gh_rm_drv_recv_task;
