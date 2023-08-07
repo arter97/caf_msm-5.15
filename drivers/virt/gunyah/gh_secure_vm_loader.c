@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -21,6 +21,7 @@
 #include <linux/list.h>
 #include <linux/fs.h>
 #include <linux/of.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "gh_private.h"
 #include "gh_secure_vm_virtio_backend.h"
@@ -95,7 +96,7 @@ static u64 gh_sec_load_metadata(struct gh_sec_vm_dev *vm_dev,
 	void *metadata_start;
 	u64 image_start_addr = 0;
 	size_t mdata_size = 0;
-	u64 image_end_addr;
+	u64 image_end_addr = 0;
 	u64 image_size = 0;
 	u32 max_paddr = 0;
 	u64 moffset = 0;
@@ -278,6 +279,7 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 	struct gh_fw_name vm_fw_name;
 	struct device *dev;
 	long ret = -EINVAL;
+	char marker_svm_creating[80] = {'\0'};
 
 	if (copy_from_user(&vm_fw_name, (void __user *)arg, sizeof(vm_fw_name)))
 		return -EFAULT;
@@ -311,6 +313,11 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 						"%s", vm_fw_name.name);
 
 	mutex_unlock(&vm->vm_lock);
+
+	snprintf(marker_svm_creating, sizeof(marker_svm_creating), "M - Creating SVM : %s",
+		vm->fw_name);
+	update_marker(marker_svm_creating);
+
 	gh_uevent_notify_change(GH_EVENT_CREATE_VM, vm);
 	return ret;
 

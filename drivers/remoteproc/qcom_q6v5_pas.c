@@ -985,6 +985,7 @@ static int adsp_alloc_memory_region(struct qcom_adsp *adsp)
 	}
 
 	ret = of_address_to_resource(node, 0, &r);
+	of_node_put(node);
 	if (ret)
 		return ret;
 
@@ -1230,6 +1231,7 @@ detach_active_pds:
 deinit_wakeup_source:
 	device_init_wakeup(adsp->dev, false);
 free_rproc:
+	device_init_wakeup(adsp->dev, false);
 	rproc_free(rproc);
 
 	return ret;
@@ -1245,6 +1247,7 @@ static int adsp_remove(struct platform_device *pdev)
 	qcom_remove_sysmon_subdev(adsp->sysmon);
 	qcom_remove_smd_subdev(adsp->rproc, &adsp->smd_subdev);
 	qcom_remove_ssr_subdev(adsp->rproc, &adsp->ssr_subdev);
+	adsp_pds_detach(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 	device_init_wakeup(adsp->dev, false);
 	rproc_free(adsp->rproc);
 
@@ -1578,9 +1581,7 @@ static const struct adsp_data kalama_mpss_resource = {
 static const struct adsp_data crow_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
-	.dtb_firmware_name = "modem_dtb.mdt",
 	.pas_id = 4,
-	.dtb_pas_id = 0x26,
 	.free_after_auth_reset = true,
 	.minidump_id = 3,
 	.uses_elf64 = true,
@@ -1979,6 +1980,18 @@ static const struct adsp_data kona_slpi_resource = {
 	.ssctl_id = 0x16,
 };
 
+static const struct adsp_data crow_wpss_resource = {
+	.crash_reason_smem = 626,
+	.firmware_name = "wpss.mdt",
+	.pas_id = 6,
+	.minidump_id = 4,
+	.uses_elf64 = true,
+	.ssr_name = "wpss",
+	.sysmon_name = "wpss",
+	.qmp_name = "wpss",
+	.ssctl_id = 0x19,
+};
+
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &adsp_resource_init},
@@ -2024,6 +2037,20 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ .compatible = "qcom,sdxpinn-modem-pas", .data = &sdxpinn_mpss_resource},
 	{ .compatible = "qcom,sdxbaagha-modem-pas", .data = &sdxbaagha_mpss_resource},
+	{ .compatible = "qcom,monaco-adsp-pas", .data = &monaco_adsp_resource},
+	{ .compatible = "qcom,monaco-modem-pas", .data = &monaco_modem_resource},
+	{ .compatible = "qcom,lemans-adsp-pas", .data = &lemans_adsp_resource},
+	{ .compatible = "qcom,lemans-cdsp-pas", .data = &lemans_cdsp_resource},
+	{ .compatible = "qcom,lemans-cdsp1-pas", .data = &lemans_cdsp1_resource},
+	{ .compatible = "qcom,lemans-gpdsp0-pas", .data = &lemans_gpdsp0_resource},
+	{ .compatible = "qcom,lemans-gpdsp1-pas", .data = &lemans_gpdsp1_resource},
+	{ .compatible = "qcom,kona-adsp-pas", .data = &kona_adsp_resource},
+	{ .compatible = "qcom,kona-cdsp-pas", .data = &kona_cdsp_resource},
+	{ .compatible = "qcom,kona-slpi-pas", .data = &kona_slpi_resource},
+	{ .compatible = "qcom,crow-wpss-pas", .data = &crow_wpss_resource},
+	{ .compatible = "qcom,crow-adsp-pas", .data = &crow_adsp_resource},
+	{ .compatible = "qcom,crow-cdsp-pas", .data = &crow_cdsp_resource},
+	{ .compatible = "qcom,crow-modem-pas", .data = &crow_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);

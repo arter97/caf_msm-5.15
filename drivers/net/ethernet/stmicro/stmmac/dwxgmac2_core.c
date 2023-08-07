@@ -355,12 +355,6 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
-	if ((status & BIT(4)) && !chan) {
-		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(4));
-		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(4));
-	}
-#endif
 	return ret;
 }
 
