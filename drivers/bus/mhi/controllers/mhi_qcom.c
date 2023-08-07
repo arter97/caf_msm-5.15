@@ -252,6 +252,57 @@ static struct mhi_event_config qcom_lemans_mhi_events[] = {
 			false, true, false, 47),
 };
 
+static const struct mhi_channel_config modem_qcom_sa525m_mhi_channels[] = {
+	/* SBL channels  */
+	MHI_CHANNEL_CONFIG_UL(2, "SAHARA", 128, 1, MHI_EE_SBL,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(3, "SAHARA", 128, 1, MHI_EE_SBL,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
+	/* AMSS channels */
+	MHI_CHANNEL_CONFIG_UL(0, "LOOPBACK", 64, 2, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(1, "LOOPBACK", 64, 2, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
+	MHI_CHANNEL_CONFIG_UL(4, "DIAG", 64, 1, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(5, "DIAG", 64, 3, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
+	MHI_CHANNEL_CONFIG_UL(20, "IPCR", 32, 2, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(21, "IPCR", 32, 2, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, true, 0, 0),
+	MHI_CHANNEL_CONFIG_UL(46, "IP_SW1", 512, 4, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(47, "IP_SW1", 512, 5, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
+};
+
+static struct mhi_event_config modem_qcom_sa525m_mhi_events[] = {
+	MHI_EVENT_CONFIG(0, 1, MHI_ER_CTRL, 64, 0,
+			MHI_ER_PRIORITY_HI_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 0),
+	MHI_EVENT_CONFIG(1, 2, MHI_ER_DATA, 256, 0,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 0),
+	MHI_EVENT_CONFIG(2, 3, MHI_ER_DATA, 256, 0,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 0),
+	MHI_EVENT_CONFIG(3, 4, MHI_ER_DATA, 256, 0,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 0),
+	MHI_EVENT_CONFIG(4, 5, MHI_ER_DATA, 1024, 5,
+			MHI_ER_PRIORITY_HI_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 46),
+	MHI_EVENT_CONFIG(5, 6, MHI_ER_DATA, 1024, 5,
+			MHI_ER_PRIORITY_HI_NOSLEEP, MHI_DB_BRST_DISABLE,
+			false, false, false, 47),
+};
+
 static const struct mhi_controller_config modem_qcom_sdx65_mhi_config = {
 	.max_channels = 128,
 	.timeout_ms = 2000,
@@ -310,6 +361,16 @@ static const struct mhi_controller_config qcom_lemans_mhi_config = {
 	.event_cfg = qcom_lemans_mhi_events,
 };
 
+static const struct mhi_controller_config modem_qcom_sa525m_mhi_config = {
+	.max_channels = 128,
+	.timeout_ms = 22000,
+	.buf_len = 0x8000,
+	.num_channels = ARRAY_SIZE(modem_qcom_sa525m_mhi_channels),
+	.ch_cfg = modem_qcom_sa525m_mhi_channels,
+	.num_events = ARRAY_SIZE(modem_qcom_sa525m_mhi_events),
+	.event_cfg = modem_qcom_sa525m_mhi_events,
+};
+
 static const struct mhi_pci_dev_info mhi_qcom_sdx65_info = {
 	.device_id = 0x0308,
 	.name = "esoc0",
@@ -353,6 +414,21 @@ static const struct mhi_pci_dev_info mhi_qcom_sdx75_info = {
 	.drv_support = false,
 };
 
+static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
+	.device_id = 0x030a,
+	.name = "esoc0",
+	.fw_image = "sdx75m/xbl_s.melf",
+	.edl_image = "sdx75m/edl.mbn",
+	.config = &modem_qcom_sa525m_mhi_config,
+	.bar_num = MHI_PCI_BAR_NUM,
+	.dma_data_width = 64,
+	.allow_m1 = false,
+	.skip_forced_suspend = true,
+	.sfr_support = false,
+	.timesync = false,
+	.drv_support = false,
+};
+
 static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
 	.device_id = MHI_PCIE_DEBUG_ID,
 	.name = "qcom-debug",
@@ -389,6 +465,8 @@ static const struct pci_device_id mhi_pcie_device_id[] = {
 		.driver_data = (kernel_ulong_t) &mhi_qcom_sxr_info },
 	{ PCI_DEVICE(MHI_PCIE_VENDOR_ID, 0x0116),
 		.driver_data = (kernel_ulong_t) &mhi_qcom_lemans_info },
+	{ PCI_DEVICE(MHI_PCIE_VENDOR_ID, 0x030a),
+		.driver_data = (kernel_ulong_t) &mhi_qcom_sa525m_info },
 	{ PCI_DEVICE(MHI_PCIE_VENDOR_ID, MHI_PCIE_DEBUG_ID),
 		.driver_data = (kernel_ulong_t) &mhi_qcom_debug_info },
 	{  }
