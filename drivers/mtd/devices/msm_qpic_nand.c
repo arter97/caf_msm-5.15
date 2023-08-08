@@ -21,6 +21,7 @@
 #define ONE_CODEWORD_SIZE 516
 
 static struct device *dev_node;
+
 /*
  * Get the DMA memory for requested amount of size. It returns the pointer
  * to free memory available from the allocated pool. Returns NULL if there
@@ -3595,7 +3596,6 @@ static int msm_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	} else {
 		instr->fail_addr = 0xffffffff;
 	}
-
 	goto unlock_mutex;
 put_dev:
 	msm_nand_put_device(chip->dev);
@@ -4756,32 +4756,18 @@ static int msm_nand_remove(struct platform_device *pdev)
 	if (pm_runtime_suspended(&(pdev)->dev))
 		pm_runtime_resume(&(pdev)->dev);
 
+	pm_runtime_disable(&(pdev)->dev);
+	pm_runtime_set_suspended(&(pdev)->dev);
+
 	dev_set_drvdata(&pdev->dev, NULL);
 
 	if (info) {
-		mtd_device_unregister(&info->mtd);
-		msm_nand_bam_free(info);
 		msm_nand_setup_clocks_and_bus_bw(info, false);
 		msm_nand_bus_unregister(info);
+		mtd_device_unregister(&info->mtd);
+		msm_nand_bam_free(info);
 	}
-
-	pm_runtime_disable(&(pdev)->dev);
-	pm_runtime_set_suspended(&(pdev)->dev);
-
 	return 0;
-}
-
-static void msm_nand_shutdown(struct platform_device *pdev)
-{
-	struct msm_nand_info *info = dev_get_drvdata(&pdev->dev);
-
-	mutex_lock(&info->lock);
-	pr_info("reboot handler\n");
-
-	pm_runtime_disable(&(pdev)->dev);
-	pm_runtime_set_suspended(&(pdev)->dev);
-
-	mutex_unlock(&info->lock);
 }
 
 #define DRIVER_NAME "msm_qpic_nand"
@@ -4800,7 +4786,6 @@ static const struct dev_pm_ops msm_nand_pm_ops = {
 static struct platform_driver msm_nand_driver = {
 	.probe		= msm_nand_probe,
 	.remove		= msm_nand_remove,
-	.shutdown	= msm_nand_shutdown,
 	.driver = {
 		.name		= DRIVER_NAME,
 		.of_match_table = msm_nand_match_table,
