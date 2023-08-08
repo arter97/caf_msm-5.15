@@ -34,6 +34,7 @@
 #include <linux/panic_notifier.h>
 #include <net/inet_common.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
+#include <linux/gunyah/gh_vm.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -6263,6 +6264,46 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
+				   unsigned long event, void *ptr)
+{
+	struct qcom_ethqos *ethqos = container_of(nb, struct qcom_ethqos, vm_nb);
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	pr_info("qcom-ethqos: ethqos 0x%p stmmac_priv 0x%p event = %d\n",
+		ethqos, ethqos->priv, event);
+
+	if (event == GH_VM_EARLY_POWEROFF) {
+		stmmac_stop_rx(priv, priv->ioaddr, 4);
+		stmmac_stop_tx(priv, priv->ioaddr, 4);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static int qcom_ethqos_register_vm_notifier(struct qcom_ethqos *ethqos)
+{
+	ethqos->vm_nb.notifier_call = qcom_ethqos_vm_notifier;
+	return gh_register_vm_notifier(&ethqos->vm_nb);
+}
+
+static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
+{
+	return gh_unregister_vm_notifier(&ethqos->vm_nb);
+}
+#else
+static int qcom_ethqos_register_vm_notifier(struct qcom_ethqos *ethqos)
+{
+	return 0;
+}
+
+static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
+{
+	return 0;
+}
+#endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -6549,6 +6590,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
+	qcom_ethqos_register_vm_notifier(ethqos);
+
 	ret = qcom_ethmsgq_init(&pdev->dev);
 	if (ret < 0)
 		goto err_mem;
@@ -6763,6 +6806,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	}
 
 	ethqos_remove_sysfs(ethqos);
+	qcom_ethqos_unregister_vm_notifier(ethqos);
 
 	ret = stmmac_pltfr_remove(pdev);
 
