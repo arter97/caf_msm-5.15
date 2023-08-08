@@ -27,7 +27,7 @@
 #include "hwif.h"
 #include "mmc.h"
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4) || IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 #define DMA_OFFLOAD_ENABLE
 #endif
 
@@ -42,7 +42,6 @@
 #define DWXGMAC_CORE_2_10	0x21
 #define DWXLGMAC_CORE_2_00	0x20
 #define DWXLGMAC_CORE_3_10	0x31
-
 
 /* Device ID */
 #define DWXGMAC_ID		0x76
@@ -116,6 +115,7 @@ struct stmmac_extra_stats {
 	unsigned long sa_rx_filter_fail;
 	unsigned long rx_missed_cntr;
 	unsigned long rx_overflow_cntr;
+	unsigned long q_rx_overflow_cntr[5];
 	unsigned long rx_vlan;
 	unsigned long rx_split_hdr_pkt_n;
 	/* Tx/Rx IRQ error info */
@@ -364,7 +364,7 @@ enum request_irq_err {
 	REQ_IRQ_ERR_NO,
 };
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4) || IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 enum ipa_queue_type {
 	IPA_QUEUE_BE = 0,
 };
@@ -458,6 +458,8 @@ struct dma_features {
 	unsigned int tbssel;
 	/* Numbers of Auxiliary Snapshot Inputs */
 	unsigned int aux_snapshot_n;
+	/* L3/L4 filter parameters */
+	int num_l3_l4_filters;
 };
 
 /* RX Buffer size must be multiple of 4/8/16 bytes */

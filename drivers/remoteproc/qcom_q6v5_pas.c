@@ -31,7 +31,6 @@
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <soc/qcom/secure_buffer.h>
 #include <trace/events/rproc_qcom.h>
-#include <soc/qcom/qcom_ramdump.h>
 
 #include "qcom_common.h"
 #include "qcom_pil_info.h"
@@ -47,7 +46,6 @@ static struct icc_path *scm_perf_client;
 static int scm_pas_bw_count;
 static DEFINE_MUTEX(scm_pas_bw_mutex);
 bool timeout_disabled;
-static bool mpss_dsm_mem_setup;
 
 struct adsp_data {
 	int crash_reason_smem;
@@ -61,7 +59,7 @@ struct adsp_data {
 	bool has_aggre2_clk;
 	bool auto_boot;
 	bool dma_phys_below_32b;
-	bool needs_dsm_mem_setup;
+	bool needs_extended_mem_setup;
 
 	char **active_pd_names;
 	char **proxy_pd_names;
@@ -74,7 +72,6 @@ struct adsp_data {
 
 struct qcom_adsp {
 	struct device *dev;
-	struct device *minidump_dev;
 	struct rproc *rproc;
 
 	struct qcom_q6v5 q6v5;
@@ -179,7 +176,7 @@ static void adsp_minidump(struct rproc *rproc)
 	if (rproc->dump_conf == RPROC_COREDUMP_DISABLED)
 		goto exit;
 
-	qcom_minidump(rproc, adsp->minidump_dev, adsp->minidump_id, adsp_segment_dump);
+	qcom_minidump(rproc, adsp->minidump_id, adsp_segment_dump);
 
 exit:
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_minidump", "exit");
@@ -988,6 +985,7 @@ static int adsp_alloc_memory_region(struct qcom_adsp *adsp)
 	}
 
 	ret = of_address_to_resource(node, 0, &r);
+	of_node_put(node);
 	if (ret)
 		return ret;
 
@@ -1047,9 +1045,9 @@ out:
 	return ret;
 }
 
-static int setup_mpss_dsm_mem(struct platform_device *pdev)
+static int setup_mpss_extended_mem(struct platform_device *pdev)
 {
-	struct device_node *node;
+	struct of_phandle_iterator it;
 	struct resource res;
 	int hlosvm[1] = {VMID_HLOS};
 	int mssvm[1] = {VMID_MSS_MSA};
@@ -1058,27 +1056,24 @@ static int setup_mpss_dsm_mem(struct platform_device *pdev)
 	u64 mem_size;
 	int ret;
 
-	node = of_parse_phandle(pdev->dev.of_node, "mpss_dsm_mem_reg", 0);
-	if (!node) {
-		dev_err(&pdev->dev, "mpss dsm mem region is missing\n");
-		return -EINVAL;
+	of_for_each_phandle(&it, ret, pdev->dev.of_node, "extended-memory-regions", NULL, 0) {
+		ret = of_address_to_resource(it.node, 0, &res);
+		if (ret) {
+			dev_err(&pdev->dev, "address to resource failed for extended-memory-regions[%d]\n",
+								it.cur_count);
+			return ret;
+		}
+
+		mem_phys = res.start;
+		mem_size = resource_size(&res);
+		ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
+		if (ret) {
+			dev_err(&pdev->dev, "hyp assign for extended-memory-regions[%d] failed\n",
+				it.cur_count);
+			return ret;
+		}
 	}
 
-	ret = of_address_to_resource(node, 0, &res);
-	if (ret) {
-		dev_err(&pdev->dev, "address to resource failed for mpss dsm mem\n");
-		return ret;
-	}
-
-	mem_phys = res.start;
-	mem_size = resource_size(&res);
-	ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
-	if (ret) {
-		dev_err(&pdev->dev, "hyp assign for mpss dsm mem failed\n");
-		return ret;
-	}
-
-	mpss_dsm_mem_setup = true;
 	return 0;
 }
 
@@ -1089,7 +1084,6 @@ static int adsp_probe(struct platform_device *pdev)
 	struct rproc *rproc;
 	const char *fw_name;
 	const struct rproc_ops *ops = &adsp_ops;
-	char md_dev_name[32];
 	int ret;
 	bool signal_aop;
 
@@ -1106,11 +1100,10 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret < 0 && ret != -EINVAL)
 		return ret;
 
-	if (desc->needs_dsm_mem_setup && !mpss_dsm_mem_setup &&
-			!strcmp(fw_name, "modem.mdt")) {
-		ret = setup_mpss_dsm_mem(pdev);
+	if (desc->needs_extended_mem_setup && !strcmp(fw_name, "modem.mdt")) {
+		ret = setup_mpss_extended_mem(pdev);
 		if (ret) {
-			dev_err(&pdev->dev, "failed to setup mpss dsm mem\n");
+			dev_err(&pdev->dev, "failed to setup mpss extended mem\n");
 			return -EINVAL;
 		}
 	}
@@ -1221,21 +1214,13 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_subdevs;
 
-	snprintf(md_dev_name, ARRAY_SIZE(md_dev_name), "%s-md", pdev->dev.of_node->name);
-	adsp->minidump_dev = qcom_create_ramdump_device(md_dev_name, NULL);
-	if (!adsp->minidump_dev)
-		dev_err(&pdev->dev, "Unable to create %s minidump device.\n", md_dev_name);
-
 	ret = rproc_add(rproc);
 	if (ret)
-		goto destroy_minidump_dev;
+		goto remove_attr_txn_id;
 
 	return 0;
 
-destroy_minidump_dev:
-	if (adsp->minidump_dev)
-		qcom_destroy_ramdump_device(adsp->minidump_dev);
-
+remove_attr_txn_id:
 	device_remove_file(adsp->dev, &dev_attr_txn_id);
 remove_subdevs:
 	qcom_remove_sysmon_subdev(adsp->sysmon);
@@ -1246,6 +1231,7 @@ detach_active_pds:
 deinit_wakeup_source:
 	device_init_wakeup(adsp->dev, false);
 free_rproc:
+	device_init_wakeup(adsp->dev, false);
 	rproc_free(rproc);
 
 	return ret;
@@ -1256,13 +1242,12 @@ static int adsp_remove(struct platform_device *pdev)
 	struct qcom_adsp *adsp = platform_get_drvdata(pdev);
 
 	rproc_del(adsp->rproc);
-	if (adsp->minidump_dev)
-		qcom_destroy_ramdump_device(adsp->minidump_dev);
 	device_remove_file(adsp->dev, &dev_attr_txn_id);
 	qcom_remove_glink_subdev(adsp->rproc, &adsp->glink_subdev);
 	qcom_remove_sysmon_subdev(adsp->sysmon);
 	qcom_remove_smd_subdev(adsp->rproc, &adsp->smd_subdev);
 	qcom_remove_ssr_subdev(adsp->rproc, &adsp->ssr_subdev);
+	adsp_pds_detach(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 	device_init_wakeup(adsp->dev, false);
 	rproc_free(adsp->rproc);
 
@@ -1585,7 +1570,7 @@ static const struct adsp_data kalama_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
-	.needs_dsm_mem_setup = true,
+	.needs_extended_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
@@ -1596,9 +1581,7 @@ static const struct adsp_data kalama_mpss_resource = {
 static const struct adsp_data crow_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
-	.dtb_firmware_name = "modem_dtb.mdt",
 	.pas_id = 4,
-	.dtb_pas_id = 0x26,
 	.free_after_auth_reset = true,
 	.minidump_id = 3,
 	.uses_elf64 = true,
@@ -1622,6 +1605,7 @@ static const struct adsp_data cinder_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
+	.needs_extended_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
@@ -1652,7 +1636,7 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.uses_elf64 = true,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
-	.needs_dsm_mem_setup = true,
+	.needs_extended_mem_setup = true,
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
@@ -1996,6 +1980,18 @@ static const struct adsp_data kona_slpi_resource = {
 	.ssctl_id = 0x16,
 };
 
+static const struct adsp_data crow_wpss_resource = {
+	.crash_reason_smem = 626,
+	.firmware_name = "wpss.mdt",
+	.pas_id = 6,
+	.minidump_id = 4,
+	.uses_elf64 = true,
+	.ssr_name = "wpss",
+	.sysmon_name = "wpss",
+	.qmp_name = "wpss",
+	.ssctl_id = 0x19,
+};
+
 static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &adsp_resource_init},
@@ -2041,6 +2037,20 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ .compatible = "qcom,sdxpinn-modem-pas", .data = &sdxpinn_mpss_resource},
 	{ .compatible = "qcom,sdxbaagha-modem-pas", .data = &sdxbaagha_mpss_resource},
+	{ .compatible = "qcom,monaco-adsp-pas", .data = &monaco_adsp_resource},
+	{ .compatible = "qcom,monaco-modem-pas", .data = &monaco_modem_resource},
+	{ .compatible = "qcom,lemans-adsp-pas", .data = &lemans_adsp_resource},
+	{ .compatible = "qcom,lemans-cdsp-pas", .data = &lemans_cdsp_resource},
+	{ .compatible = "qcom,lemans-cdsp1-pas", .data = &lemans_cdsp1_resource},
+	{ .compatible = "qcom,lemans-gpdsp0-pas", .data = &lemans_gpdsp0_resource},
+	{ .compatible = "qcom,lemans-gpdsp1-pas", .data = &lemans_gpdsp1_resource},
+	{ .compatible = "qcom,kona-adsp-pas", .data = &kona_adsp_resource},
+	{ .compatible = "qcom,kona-cdsp-pas", .data = &kona_cdsp_resource},
+	{ .compatible = "qcom,kona-slpi-pas", .data = &kona_slpi_resource},
+	{ .compatible = "qcom,crow-wpss-pas", .data = &crow_wpss_resource},
+	{ .compatible = "qcom,crow-adsp-pas", .data = &crow_adsp_resource},
+	{ .compatible = "qcom,crow-cdsp-pas", .data = &crow_cdsp_resource},
+	{ .compatible = "qcom,crow-modem-pas", .data = &crow_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);

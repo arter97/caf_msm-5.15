@@ -312,7 +312,7 @@ void (*nf_nat_sip_seq_adjust_hook)
 			unsigned int protoff,
 			s16 off);
 
-static unsigned int (*nf_nat_sip_expect_hook)
+unsigned int (*nf_nat_sip_expect_hook)
 					(struct sk_buff *skb,
 					unsigned int protoff,
 					unsigned int dataoff,
@@ -324,7 +324,7 @@ static unsigned int (*nf_nat_sip_expect_hook)
 					__read_mostly;
 EXPORT_SYMBOL(nf_nat_sip_expect_hook);
 
-static unsigned int (*nf_nat_sdp_addr_hook)
+unsigned int (*nf_nat_sdp_addr_hook)
 					(struct sk_buff *skb,
 					unsigned int protoff,
 					unsigned int dataoff,
@@ -337,7 +337,7 @@ static unsigned int (*nf_nat_sdp_addr_hook)
 					__read_mostly;
 EXPORT_SYMBOL(nf_nat_sdp_addr_hook);
 
-static unsigned int (*nf_nat_sdp_port_hook)
+unsigned int (*nf_nat_sdp_port_hook)
 					(struct sk_buff *skb,
 					unsigned int protoff,
 					unsigned int dataoff,
@@ -348,7 +348,7 @@ static unsigned int (*nf_nat_sdp_port_hook)
 					u_int16_t port) __read_mostly;
 EXPORT_SYMBOL(nf_nat_sdp_port_hook);
 
-static unsigned int (*nf_nat_sdp_session_hook)
+unsigned int (*nf_nat_sdp_session_hook)
 					(struct sk_buff *skb,
 					unsigned int protoff,
 					unsigned int dataoff,
@@ -359,7 +359,7 @@ static unsigned int (*nf_nat_sdp_session_hook)
 					__read_mostly;
 EXPORT_SYMBOL(nf_nat_sdp_session_hook);
 
-static unsigned int (*nf_nat_sdp_media_hook)
+unsigned int (*nf_nat_sdp_media_hook)
 					(struct sk_buff *skb,
 					unsigned int protoff,
 					unsigned int dataoff,
@@ -409,7 +409,7 @@ static void nf_hook_drop_sip(struct net *net)
 
 static const struct nf_queue_handler nf_sip_qh = {
 	.outfn	= &nf_sip_enqueue_packet,
-	.nf_hook_drop»       = &nf_hook_drop_sip,
+	.nf_hook_drop	= &nf_hook_drop_sip,
 };
 
 static
@@ -421,13 +421,13 @@ int proc_sip_segment(struct ctl_table *ctl, int write,
 	ret = proc_dointvec(ctl, write, buffer, lenp, ppos);
 	if (nf_ct_enable_sip_segmentation) {
 		pr_debug("de-registering queue handler before register for sip\n");
-		nf_unregister_queue_handler(&init_net);
+		nf_unregister_queue_handler();
 
 		pr_debug("registering queue handler\n");
-		nf_register_queue_handler(&init_net, &nf_sip_qh);
+		nf_register_queue_handler(&nf_sip_qh);
 	} else {
 		pr_debug("de-registering queue handler\n");
-		nf_unregister_queue_handler(&init_net);
+		nf_unregister_queue_handler();
 	}
 	return ret;
 }
@@ -1915,7 +1915,7 @@ static void sip_tcp_skb_combined_processing(bool skb_is_combined, struct sk_buff
 		oldlen = combined_skb->len - protoff;
 		/* Reset skb->len and skb->tail params before skb split. */
 		skb->len = 0;
-		skb->tail = skb->data;
+		skb_reset_tail_pointer(skb);
 		skb_split(combined_skb, skb, splitlen);
 		/* Headers need to be recalculated since during SIP processing
 		 * headers are calculated based on the change in length of the

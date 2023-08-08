@@ -305,7 +305,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	unsigned int eth_type, priority;
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv->plat->bsp_priv;
-
+	s8 eprio;
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
@@ -327,13 +327,26 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	} else if (eth_type == ETH_P_1588) {
 		/*gPTP seelct tx queue 1*/
 		txqueue_select = NON_TAGGED_IP_TRAFFIC_TX_CHANNEL;
-	} else {
+	} else if (ethqos->cv2x_pvm_only_enabled && skb_vlan_tag_present(skb)) {
 		/* VLAN tagged IP packet or any other non vlan packets (PTP)*/
-		if (ethqos->ipa_enabled)
+		/* Getting VLAN priority field from skb */
+		priority =  skb_vlan_tag_get_prio(skb);
+		#if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
+			eprio = -1;
+		#else
+			eprio = ethqos->cv2x_priority;
+		#endif
+
+		if (priority == eprio)
+			txqueue_select = ethqos->cv2x_queue;
+		else if (ethqos->ipa_enabled)
 			txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
 		else
 			txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
-	}
+	} else if (ethqos->ipa_enabled)
+		txqueue_select = ALL_OTHER_TRAFFIC_TX_CHANNEL;
+	else
+		txqueue_select = ALL_OTHER_TX_TRAFFIC_IPA_DISABLED;
 
 	return txqueue_select;
 }
@@ -3033,6 +3046,39 @@ static ssize_t pcs_reg_write(struct file *file,
 	return count;
 }
 
+static ssize_t serdes_reg_write(struct file *file,
+				const char __user *buf, size_t count, loff_t *ppos)
+{
+	char in_buf[400];
+	u32 offset = 0;
+	u32 value = 0;
+	unsigned long ret;
+	struct qcom_ethqos *ethqos = file->private_data;
+
+	ret = copy_from_user(in_buf, buf, count);
+	if (ret) {
+		pr_err("%s: unable to copyfromuser\n", __func__);
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x", &offset, &value);
+	if (ret != 2) {
+		pr_err("number of arguments are invalid, operation requires both offset and value\n");
+		return -EINVAL;
+	}
+
+	if (offset % 4 != 0) {
+		pr_err("offset is invalid\n");
+		return -EINVAL;
+	}
+
+	pr_info("Old Value: 0X%x\n", readl_relaxed(ethqos->sgmii_base + offset));
+	writel_relaxed(value, ethqos->sgmii_base + offset);
+	pr_info("New Value: 0X%x\n", readl_relaxed(ethqos->sgmii_base + offset));
+
+	return count;
+}
+
 static ssize_t read_ethqos_rx_clock(struct device *dev,
 				    struct device_attribute *attr,
 				    char *user_buf)
@@ -4345,6 +4391,78 @@ static ssize_t icb_read(struct file *file,
 	return ret_cnt;
 }
 
+static ssize_t phy_reg_read(struct file *file, const char __user *user_buf,
+			    size_t count, loff_t *position)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv;
+	int ret;
+	u32 mmd = 0, offset = 0, reg_value = 0;
+	char in_buf[400];
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, user_buf, count);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x\n", &mmd, &offset);
+	reg_value = phy_read_mmd(priv->phydev, mmd, offset);
+
+	pr_info("PHY register device = 0x%x offset = 0x%x value:0x%x\n", mmd, offset, reg_value);
+
+	return count;
+}
+
+static ssize_t phy_reg_write(struct file *file,
+			     const char __user *user_buf,
+			     size_t count,
+			     loff_t *ppos)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv;
+	int ret;
+	u32 mmd = 0, offset = 0, reg_value = 0, value = 0;
+	char in_buf[400];
+
+	if (!ethqos) {
+		ETHQOSERR("NULL Pointer\n");
+		return -EINVAL;
+	}
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	ret = copy_from_user(in_buf, user_buf, count);
+	if (ret) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EFAULT;
+	}
+
+	ret = sscanf(in_buf, "%x %x %x\n", &mmd, &offset, &value);
+	if (ret != 3) {
+		ETHQOSERR("No of arguments are invalid. Requires device, offset, value");
+		return -EINVAL;
+	}
+
+	ret = phy_write_mmd(priv->phydev, mmd, offset, value);
+	if (ret < 0) {
+		ETHQOSERR("Error writing mmd register");
+		return -EFAULT;
+	}
+
+	reg_value = phy_read_mmd(priv->phydev, mmd, offset);
+	pr_info("PHY Write cmd value In :0x%x value out :0x%x\n", value, reg_value);
+
+	return count;
+}
+
 static const struct file_operations fops_phy_reg_dump = {
 	.read = read_phy_reg_dump,
 	.open = simple_open,
@@ -4454,6 +4572,13 @@ static const struct file_operations fops_mac_serdes_dump = {
 
 static const struct file_operations fops_mac_pcs_write = {
 	.write = pcs_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_mac_serdes_write = {
+	.write = serdes_reg_write,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -4600,6 +4725,7 @@ static ssize_t store_cv2x_priority(struct device *dev,
 	struct net_device *netdev = to_net_dev(dev);
 	struct stmmac_priv *priv;
 	struct qcom_ethqos *ethqos;
+	u32 prio;
 	s8 input = 0;
 
 	if (!netdev) {
@@ -4624,7 +4750,7 @@ static ssize_t store_cv2x_priority(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (input < 0 || input > 7) {
+	if (input < 1 || input > 7) {
 		ETHQOSERR("Invalid option set by user\n");
 		return -EINVAL;
 	}
@@ -4633,6 +4759,11 @@ static ssize_t store_cv2x_priority(struct device *dev,
 		ETHQOSERR("No effect as duplicate input\n");
 
 	ethqos->cv2x_priority = input;
+	prio  = 1 << input;
+	ethqos->cv2x_pvm_only_enabled = true;
+	// Configuring the priority for q4
+	priv->plat->rx_queues_cfg[ethqos->cv2x_queue].prio = prio;
+	stmmac_rx_queue_prio(priv, priv->hw, prio, ethqos->cv2x_queue);
 
 	return size;
 }
@@ -4725,6 +4856,72 @@ fail:
 	return ethqos_remove_sysfs(ethqos);
 }
 
+static const struct file_operations fops_phy_reg_read = {
+	.write = phy_reg_read,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations fops_phy_reg_write = {
+	.write = phy_reg_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static int create_debufs_for_sgmii_usxgmii(struct qcom_ethqos *ethqos)
+{
+	struct stmmac_priv *priv;
+	static struct dentry *mac_serdes_dump;
+	static struct dentry *mac_pcs_write;
+	static struct dentry *mac_serdes_write;
+	static struct dentry *mac_pcs_dump;
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0400),
+					   ethqos->debugfs_dir, ethqos,
+					   &fops_mac_pcs_read);
+	if (!mac_pcs_dump || IS_ERR(mac_pcs_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_dump %x\n",
+			  mac_pcs_dump);
+		goto fail;
+	}
+
+	mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
+					    ethqos->debugfs_dir, ethqos,
+					    &fops_mac_pcs_write);
+	if (!mac_pcs_write || IS_ERR(mac_pcs_write)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
+			  mac_pcs_write);
+		goto fail;
+	}
+
+	mac_serdes_write = debugfs_create_file("serdes_reg_write", (0220),
+					       ethqos->debugfs_dir, ethqos,
+					       &fops_mac_serdes_write);
+	if (!mac_serdes_write || IS_ERR(mac_serdes_write)) {
+		ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
+			  mac_serdes_write);
+		goto fail;
+	}
+
+	mac_serdes_dump = debugfs_create_file("serdes_reg_read", (0400),
+					      ethqos->debugfs_dir, ethqos,
+					      &fops_mac_serdes_dump);
+	if (!mac_serdes_dump || IS_ERR(mac_serdes_dump)) {
+		ETHQOSERR("Cannot create debugfs mac_serdes_dump %x\n",
+			  mac_serdes_dump);
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	return -ENOMEM;
+}
+
 static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 {
 	static struct dentry *phy_reg_dump;
@@ -4734,12 +4931,11 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *nw_loopback_enable_mode;
 	static struct dentry *enforce_max_speed;
 	static struct dentry *mac_dump;
-	static struct dentry *mac_pcs_dump;
 	static struct dentry *mac_iomacro_dump;
-	static struct dentry *mac_serdes_dump;
-	static struct dentry *mac_pcs_write;
 	static struct dentry *mac_write;
 	static struct dentry *icb_dump;
+	static struct dentry *phy_reg_read;
+	static struct dentry *phyreg_write;
 	struct stmmac_priv *priv;
 	char dir_name[32];
 	struct net_device *netdev;
@@ -4803,33 +4999,26 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 		goto fail;
 	}
 
+	phy_reg_read = debugfs_create_file("phy_reg_read", (0660),
+					   ethqos->debugfs_dir, ethqos, &fops_phy_reg_read);
+	if (!phy_reg_read || IS_ERR(phy_reg_read)) {
+		ETHQOSERR("Cannot create debugfs phy_reg_read %x\n",
+			  mac_write);
+		goto fail;
+	}
+
+	phyreg_write = debugfs_create_file("phy_reg_write", (0220),
+					   ethqos->debugfs_dir, ethqos, &fops_phy_reg_write);
+	if (!phyreg_write || IS_ERR(phyreg_write)) {
+		ETHQOSERR("Cannot create debugfs phy_reg_write %x\n",
+			  phyreg_write);
+		goto fail;
+	}
+
 	if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
 	    priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
-		mac_pcs_dump = debugfs_create_file("pcs_reg_read", (0400),
-						   ethqos->debugfs_dir, ethqos, &fops_mac_pcs_read);
-		if (!mac_pcs_dump || IS_ERR(mac_pcs_dump)) {
-			ETHQOSERR("Cannot create debugfs mac_pcs_dump %x\n",
-				  mac_pcs_dump);
+		if (create_debufs_for_sgmii_usxgmii(ethqos))
 			goto fail;
-		}
-
-		mac_pcs_write = debugfs_create_file("pcs_reg_write", (0220),
-						    ethqos->debugfs_dir, ethqos,
-						    &fops_mac_pcs_write);
-		if (!mac_pcs_write || IS_ERR(mac_pcs_write)) {
-			ETHQOSERR("Cannot create debugfs mac_pcs_write %x\n",
-				  mac_pcs_write);
-			goto fail;
-		}
-
-		mac_serdes_dump = debugfs_create_file("serdes_reg_read", (0400),
-						      ethqos->debugfs_dir, ethqos,
-						      &fops_mac_serdes_dump);
-		if (!mac_serdes_dump || IS_ERR(mac_serdes_dump)) {
-			ETHQOSERR("Cannot create debugfs mac_serdes_dump %x\n",
-				  mac_serdes_dump);
-			goto fail;
-		}
 	}
 
 	icb_dump = debugfs_create_file("icb_dump", (0400),
@@ -5344,6 +5533,35 @@ static const struct file_operations emac_rec_fops = {
 	.poll = ethqos_poll_rec_dev_emac,
 };
 
+static int ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
+					      struct cdev **emac_cdev,
+					      struct class **emac_class)
+{
+	if (!*emac_class) {
+		ETHQOSERR("failed to destroy device and class\n");
+		goto fail_to_del_node;
+	}
+
+	if (!emac_dev_t) {
+		ETHQOSERR("failed to unregister chrdev region\n");
+		goto fail_to_del_node;
+	}
+
+	if (!*emac_cdev) {
+		ETHQOSERR("failed to delete cdev\n");
+		goto fail_to_del_node;
+	}
+
+	device_destroy(*emac_class, *emac_dev_t);
+	class_destroy(*emac_class);
+	cdev_del(*emac_cdev);
+	unregister_chrdev_region(*emac_dev_t, 1);
+
+fail_to_del_node:
+	ETHQOSERR("failed to delete chrdev node\n");
+	return -EINVAL;
+}
+
 static int ethqos_create_emac_rec_device_node(dev_t *emac_dev_t,
 					      struct cdev **emac_cdev,
 					      struct class **emac_class,
@@ -5405,6 +5623,52 @@ static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
 				      unsigned long event, void *ptr)
 {
 	struct qcom_ethqos *ethqos;
+	u32 i, j, k = 0, reg_size = 4;
+	unsigned long num_registers = MAC_DUMP_SIZE / reg_size;
+	#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	u32 mac_reg_sizes[MAC_DATA_SIZE] = {0x18, 0xc, 0x8, 0x30, 0x1c, 0x10, 0x8,
+						0x14, 0x8, 0x28, 0xc, 0xc, 0xc,
+						0xc, 0xc, 0x4, 0x100, 0x10, 0x8,
+						0xac, 0x1c, 0xc0, 0x1c, 0x8, 0x10,
+						0x18, 0xe8, 0x8, 0x4, 0x4, 0x8,
+						0x4, 0xc, 0x4, 0x8, 0x1c, 0xc,
+						0x4, 0x8, 0x8, 0x8, 0x8, 0x10,
+						0xc, 0x4, 0x10, 0x4, 0x8, 0x14,
+						0x8, 0x24, 0xc, 0x4, 0x20, 0x4,
+						0x54, 0xc, 0xc, 0x14, 0x8, 0xc,
+						0x18, 0x14, 0x8, 0xc, 0x18, 0x14,
+						0x8, 0xc, 0x18, 0x14, 0x8, 0xc,
+						0x18, 0x14, 0x8, 0xc, 0x18, 0x8,
+						0x20, 0x4, 0x14, 0x4, 0x34, 0x20,
+						0x4, 0x14, 0x4, 0x34, 0x20, 0x4,
+						0x14, 0x4, 0x34, 0x20, 0x4, 0x14,
+						0x4, 0x34, 0x20, 0x4, 0x14, 0x4,
+						0x34, 0x8, 0xc, 0x4, 0x4, 0x4,
+						0x4, 0x8, 0xc, 0x10};
+	u32 mac_reg_offsets[MAC_DATA_SIZE] = {0x0, 0x50, 0x60, 0x6c, 0xa0, 0xd0, 0x110,
+						0x11c, 0x140, 0x200, 0x230, 0x240, 0x250,
+						0x260, 0x278, 0x290, 0x300, 0x700, 0x730,
+						0x800, 0x8cc, 0x900, 0x9d0, 0x9f0, 0xa00,
+						0xa20, 0xa5c, 0xc00, 0xc10, 0xc80, 0xc88,
+						0x1000, 0x1008, 0x1020, 0x1030, 0x1040, 0x1060,
+						0x1070, 0x1080, 0x1090, 0x10a0, 0x10b0, 0x10e8,
+						0x3000, 0x3010, 0x3018, 0x302c, 0x3040, 0x3050,
+						0x3080, 0x7000, 0x7030, 0x7040, 0x7048, 0x7070,
+						0x7080, 0x8000, 0x8010, 0x8040, 0x8070, 0x9000,
+						0x9010, 0x9040, 0x9070, 0xa000, 0xa010, 0xa040,
+						0xa070, 0xb000, 0xb010, 0xb040, 0xb070, 0xc000,
+						0xc010, 0xc040, 0xc070, 0xd000, 0xd010, 0xd070,
+						0xe000, 0xe024, 0xe02c, 0xe044, 0xe04c, 0xf000,
+						0xf024, 0xf02c, 0xf044, 0xf04c, 0x10000, 0x10024,
+						0x1002c, 0x10044, 0x1004c, 0x11000, 0x11024,
+						0x1102c, 0x11044, 0x1104c, 0x12000, 0x12024,
+						0x1202c, 0x12044, 0x1204c, 0x13000, 0x1300c,
+						0x13024, 0x13030, 0x13038, 0x13044, 0x13050,
+						0x13060, 0x13070};
+	#else
+	u32 mac_reg_sizes[MAC_DATA_SIZE] = {0};
+	u32 mac_reg_offsets[MAC_DATA_SIZE] = {0};
+	#endif
 
 	ethqos = container_of(nb, struct qcom_ethqos, panic_nb);
 	if (!ethqos) {
@@ -5412,6 +5676,28 @@ static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
 		return -EINVAL;
 	}
 
+	if (!num_registers)
+		goto panic_done;
+
+	pr_info("Dumping EMAC registers\n");
+
+	ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data), GFP_KERNEL);
+	if (!ethqos->mac_reg_list) {
+		ETHQOSERR("Failed to allocate memory for EMAC register list\n");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < MAC_DATA_SIZE; i++) {
+		for (j = 0; j < mac_reg_sizes[i]; j += reg_size) {
+			ethqos->mac_reg_list[k++].offset = mac_reg_offsets[i] + j;
+			ethqos->mac_reg_list[k++].value = readl(ethqos->ioaddr +
+								mac_reg_offsets[i] + j);
+		}
+	}
+
+	pr_info("EMAC register dump complete\n");
+
+panic_done:
 	pr_info("qcom-ethqos: ethqos 0x%p\n", ethqos);
 
 	pr_info("qcom-ethqos: stmmac_priv 0x%p\n", ethqos->priv);
@@ -5990,6 +6276,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
+	ret = qcom_ethmsgq_init(&pdev->dev);
+	if (ret < 0)
+		goto err_mem;
+
 	/* Use phy_addr passed from the partition only when the address
 	 * is a valid one and when "snps,phy-addr" is not present in the dtsi
 	 */
@@ -6139,11 +6429,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		ethqos->passthrough_en = 0;
 #else
 	ethqos->cv2x_priority = 0;
+	if (of_property_read_bool(np, "cv2x-queue"))
+		of_property_read_u32(np, "cv2x-queue",
+				     &ethqos->cv2x_queue);
+	else
+		ethqos->cv2x_queue = CV2X_TAG_TX_CHANNEL;
 #endif
-
-	ret = qcom_ethmsgq_init(priv->device);
-	if (ret < 0)
-		goto err_clk;
 
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
@@ -6222,6 +6513,14 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	icc_put(ethqos->apb_icc_path);
 
+	if (plat_dat->mac_err_rec) {
+		ret = ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
+							 &ethqos->emac_rec_cdev,
+							 &ethqos->emac_rec_class);
+		if (ret == -EINVAL)
+			return ret;
+	}
+
 	debugfs_remove_recursive(ethqos->debugfs_dir);
 
 	if (priv->plat->phy_intr_en_extn_stm)
@@ -6251,18 +6550,6 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 
 	return ret;
-}
-
-/*  qcom_ethqos_shutdown(): shutdown call back function for stmmac-ethqos
- *  @pdev: platform device
- *
- *  This function will be called as a part of device reboot or shutdown
- *
- *  Return: None
- */
-static void qcom_ethqos_shutdown(struct platform_device *pdev)
-{
-	qcom_ethqos_remove(pdev);
 }
 
 static int qcom_ethqos_suspend(struct device *dev)
@@ -6302,19 +6589,18 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	disable_irq(priv->dev->irq);
 
-	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 
-		if (priv->plat->pm_lite) {
-			ret = ethqos_disable_serdes_consumers(ethqos);
-			if (ret < 0)
-				return ret;
-		}
+		ret = ethqos_disable_serdes_consumers(ethqos);
+		if (ret < 0)
+			return ret;
 	}
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
+
+	ethqos_free_gpios(ethqos);
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -6361,22 +6647,21 @@ static int qcom_ethqos_resume(struct device *dev)
 		return -EINVAL;
 	}
 
-	qcom_ethqos_phy_resume_clks(ethqos);
-
-	enable_irq(priv->dev->irq);
-
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
 		ethqos_phy_power_on(ethqos);
 	}
 
-	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
-		if (priv->plat->pm_lite) {
-			ret = ethqos_enable_serdes_consumers(ethqos);
-			if (ret < 0)
-				return ret;
-		}
+	ethqos_init_gpio(ethqos);
+
+	qcom_ethqos_phy_resume_clks(ethqos);
+
+	enable_irq(priv->dev->irq);
+
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		ret = ethqos_enable_serdes_consumers(ethqos);
+		if (ret < 0)
+			return ret;
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
@@ -6387,7 +6672,6 @@ static int qcom_ethqos_resume(struct device *dev)
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret)
 			return -EINVAL;
-
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
@@ -6536,6 +6820,10 @@ static int qcom_ethqos_hib_restore(struct device *dev)
 	if (ret)
 		return ret;
 
+	ret = ethqos_init_sgmii_regulators(ethqos);
+	if (ret)
+		return ret;
+
 	ret = ethqos_init_gpio(ethqos);
 	if (ret)
 		return ret;
@@ -6647,7 +6935,6 @@ static const struct dev_pm_ops qcom_ethqos_pm_ops = {
 static struct platform_driver qcom_ethqos_driver = {
 	.probe  = qcom_ethqos_probe,
 	.remove = qcom_ethqos_remove,
-	.shutdown = qcom_ethqos_shutdown,
 	.driver = {
 		.name           = DRV_NAME,
 		.pm		= &qcom_ethqos_pm_ops,

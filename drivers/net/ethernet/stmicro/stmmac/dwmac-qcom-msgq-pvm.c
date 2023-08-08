@@ -42,7 +42,6 @@ struct msg_format {
 struct emac_msgq_priv {
 	struct device *dev;
 	void *msgq_hdl;
-	u32 gunyah_label;
 	struct wakeup_source *wakeup_source;
 	bool notify_hw_events;
 	struct workqueue_struct *wq;
@@ -208,8 +207,7 @@ static int recv_thread(void *data)
 
 int qcom_ethmsgq_init(struct device *dev)
 {
-	struct device_node *node = dev->of_node;
-	int ret;
+	int ret = 0;
 
 	msgq_priv = devm_kzalloc(dev, sizeof(*msgq_priv), GFP_KERNEL);
 	if (!msgq_priv)
@@ -217,13 +215,7 @@ int qcom_ethmsgq_init(struct device *dev)
 
 	msgq_priv->dev = dev;
 
-	ret = of_property_read_u32(node, "msgq-label", &msgq_priv->gunyah_label);
-	if (ret) {
-		dev_err(dev, "Can't find gunyah label\n");
-		return ret;
-	}
-
-	msgq_priv->msgq_hdl = gh_msgq_register(msgq_priv->gunyah_label);
+	msgq_priv->msgq_hdl = gh_msgq_register(GH_MSGQ_LABEL_ETH);
 	if (IS_ERR_OR_NULL(msgq_priv->msgq_hdl)) {
 		ret = PTR_ERR(msgq_priv->msgq_hdl);
 		dev_err(dev, "failed to get gunyah msgq %d\n", ret);

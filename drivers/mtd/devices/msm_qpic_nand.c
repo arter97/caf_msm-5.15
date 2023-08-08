@@ -21,7 +21,6 @@
 #define ONE_CODEWORD_SIZE 516
 
 static struct device *dev_node;
-
 /*
  * Get the DMA memory for requested amount of size. It returns the pointer
  * to free memory available from the allocated pool. Returns NULL if there
@@ -218,10 +217,10 @@ static int msm_nand_suspend(struct device *dev)
 	struct msm_nand_info *info = dev_get_drvdata(dev);
 	struct msm_nand_chip *chip = &info->nand_chip;
 
+	mutex_lock(&info->lock);
+
 	/* Returns true for Deep sleep/Quick boot case else false */
 	if (pm_suspend_via_firmware()) {
-		mutex_lock(&info->lock);
-
 		/* sps_deregister_bam_device  is accessing bam registers so enable clocks*/
 		ret = msm_nand_get_device(chip->dev);
 		if (ret)
@@ -243,8 +242,7 @@ static int msm_nand_suspend(struct device *dev)
 		ret = msm_nand_runtime_suspend(dev);
 
 out:
-	if (pm_suspend_via_firmware())
-		mutex_unlock(&info->lock);
+	mutex_unlock(&info->lock);
 	return ret;
 }
 
@@ -253,8 +251,12 @@ static int msm_nand_resume(struct device *dev)
 	int ret = 0;
 	struct msm_nand_info *info = dev_get_drvdata(dev);
 
+	mutex_lock(&info->lock);
+
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_resume(dev);
+
+	mutex_unlock(&info->lock);
 
 	/* Returns true for Deep sleep/Quick boot case else false */
 	if (pm_suspend_via_firmware()) {
@@ -3596,6 +3598,7 @@ static int msm_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	} else {
 		instr->fail_addr = 0xffffffff;
 	}
+
 	goto unlock_mutex;
 put_dev:
 	msm_nand_put_device(chip->dev);
@@ -4247,18 +4250,6 @@ static int msm_nand_bam_init(struct msm_nand_info *nand_info)
 	 */
 	bam.manage = SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE;
 
-	/* In normal bootup, TZ/UEFI does pipe reset/initialization. And later
-	 * BAM driver don’t reconfigure pipes based on the flag
-	 * SPS_BAM_MGR_DEVICE_REMOTE being set.
-	 * When system is going to DeepSleep and QuickBoot UEFI is not present,
-	 * and we need to reconfigure the BAM Pipes during QuickBoot.
-	 * Clear the flag SPS_BAM_MGR_DEVICE_REMOTE for HLOS BAM driver to
-	 * configure the BAM pipes and reinitialize the BAM hw registers
-	 * during QuickBoot.
-	 */
-	if (pm_suspend_via_firmware())
-		bam.manage &= ~SPS_BAM_MGR_DEVICE_REMOTE;
-
 	bam.ipc_loglevel = QPIC_BAM_DEFAULT_IPC_LOGLVL;
 	mutex_lock(&nand_info->lock);
 	rc = msm_nand_get_device(chip->dev);
@@ -4756,18 +4747,32 @@ static int msm_nand_remove(struct platform_device *pdev)
 	if (pm_runtime_suspended(&(pdev)->dev))
 		pm_runtime_resume(&(pdev)->dev);
 
-	pm_runtime_disable(&(pdev)->dev);
-	pm_runtime_set_suspended(&(pdev)->dev);
-
 	dev_set_drvdata(&pdev->dev, NULL);
 
 	if (info) {
-		msm_nand_setup_clocks_and_bus_bw(info, false);
-		msm_nand_bus_unregister(info);
 		mtd_device_unregister(&info->mtd);
 		msm_nand_bam_free(info);
+		msm_nand_setup_clocks_and_bus_bw(info, false);
+		msm_nand_bus_unregister(info);
 	}
+
+	pm_runtime_disable(&(pdev)->dev);
+	pm_runtime_set_suspended(&(pdev)->dev);
+
 	return 0;
+}
+
+static void msm_nand_shutdown(struct platform_device *pdev)
+{
+	struct msm_nand_info *info = dev_get_drvdata(&pdev->dev);
+
+	mutex_lock(&info->lock);
+	pr_debug("reboot handler\n");
+
+	pm_runtime_disable(&(pdev)->dev);
+	pm_runtime_set_suspended(&(pdev)->dev);
+
+	mutex_unlock(&info->lock);
 }
 
 #define DRIVER_NAME "msm_qpic_nand"
@@ -4786,6 +4791,7 @@ static const struct dev_pm_ops msm_nand_pm_ops = {
 static struct platform_driver msm_nand_driver = {
 	.probe		= msm_nand_probe,
 	.remove		= msm_nand_remove,
+	.shutdown	= msm_nand_shutdown,
 	.driver = {
 		.name		= DRIVER_NAME,
 		.of_match_table = msm_nand_match_table,

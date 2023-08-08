@@ -199,6 +199,17 @@ do {\
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_14MA ((unsigned long)(0x6))
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_16MA ((unsigned long)(0x7))
 
+/* Data for MAC register dump in panic notifier */
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+/* # of elements required for 1:1 mapping of base address offset to its size of contiguous memory */
+#define MAC_DATA_SIZE 113
+/* Total bytes: # registers * size of registers, rounded up to nearest multiple of 8 */
+#define MAC_DUMP_SIZE 2632
+#else
+#define MAC_DATA_SIZE 1
+#define MAC_DUMP_SIZE 0
+#endif
+
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
 	return (GENMASK(PPS_MINIDX(x) + 3, PPS_MINIDX(x)) &
@@ -352,6 +363,11 @@ static struct emac_icc_data emac_apb_icc_data[] = {
 	},
 };
 
+struct mac_csr_data {
+	u32 offset;
+	u32 value;
+};
+
 struct qcom_ethqos {
 	struct platform_device *pdev;
 	void __iomem *rgmii_base;
@@ -481,12 +497,14 @@ struct qcom_ethqos {
 	/* QMI over ethernet parameter */
 	u32 qoe_mode;
 	struct ethqos_vlan_info qoe_vlan;
+	bool cv2x_pvm_only_enabled;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
 	bool last_event_linkup;
 	s8 passthrough_en;
 #else
 	s8 cv2x_priority;
 #endif
+	unsigned int cv2x_queue;
 
 	/* Mac recovery parameters */
 	int mac_err_cnt[MAC_ERR_CNT];
@@ -497,6 +515,8 @@ struct qcom_ethqos {
 	struct delayed_work tdu_rec;
 	bool tdu_scheduled;
 	int tdu_chan;
+
+	struct mac_csr_data *mac_reg_list;
 };
 
 struct pps_cfg {
@@ -576,6 +596,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 #define IPA_DMA_RX_CH 0
 
 #define QMI_TAG_TX_CHANNEL 2
+#define CV2X_TAG_TX_CHANNEL 4
 
 #define VLAN_TAG_UCP_SHIFT 13
 #define CLASS_A_TRAFFIC_UCP 3

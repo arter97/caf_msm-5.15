@@ -111,10 +111,10 @@ static struct stmmac_axi *stmmac_axi_setup(struct platform_device *pdev)
 
 	axi->axi_lpi_en = of_property_read_bool(np, "snps,lpi_en");
 	axi->axi_xit_frm = of_property_read_bool(np, "snps,xit_frm");
-	axi->axi_kbbe = of_property_read_bool(np, "snps,axi_kbbe");
-	axi->axi_fb = of_property_read_bool(np, "snps,axi_fb");
-	axi->axi_mb = of_property_read_bool(np, "snps,axi_mb");
-	axi->axi_rb =  of_property_read_bool(np, "snps,axi_rb");
+	axi->axi_kbbe = of_property_read_bool(np, "snps,kbbe");
+	axi->axi_fb = of_property_read_bool(np, "snps,fb");
+	axi->axi_mb = of_property_read_bool(np, "snps,mb");
+	axi->axi_rb =  of_property_read_bool(np, "snps,rb");
 
 	if (of_property_read_u32(np, "snps,wr_osr_lmt", &axi->axi_wr_osr_lmt))
 		axi->axi_wr_osr_lmt = 1;
@@ -220,6 +220,10 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 					     &plat->rx_queues_cfg[queue].threshold_byte);
 			plat->rx_queues_cfg[queue].thresholdmode = true;
 		}
+
+		if (of_property_read_bool(q_node, "snps,fifo_depth"))
+			of_property_read_u32(q_node, "snps,fifo_depth",
+					     &plat->rx_queues_cfg[queue].fifo_sz_bytes);
 
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
 			plat->rx_queues_cfg[queue].skip_sw = true;
