@@ -102,4 +102,6 @@ static inline const char *qcom_clk_hw_get_name(const struct clk_hw *hw)
 	return hw->init ? hw->init->name : clk_hw_get_name(hw);
 }
 
+int qcom_cc_virt_probe(struct platform_device *pdev);
+
 #endif

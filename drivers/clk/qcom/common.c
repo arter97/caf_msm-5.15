@@ -17,6 +17,8 @@
 #include <linux/interconnect.h>
 #include <linux/pm_clock.h>
 #include <linux/pm_runtime.h>
+#include <linux/scmi_protocol.h>
+#include <linux/of_device.h>
 
 #include "common.h"
 #include "clk-opp.h"
@@ -435,6 +437,55 @@ int qcom_cc_probe_by_index(struct platform_device *pdev, int index,
 	return qcom_cc_really_probe(pdev, desc, regmap);
 }
 EXPORT_SYMBOL_GPL(qcom_cc_probe_by_index);
+
+int qcom_cc_virt_probe(struct platform_device *pdev)
+{
+	char scmi_name[SCMI_MAX_STR_SIZE];
+	const struct qcom_cc_desc *desc;
+	struct clk_regmap *rclk;
+	struct clk_hw *hw;
+	int i, ret;
+	struct qcom_cc *cc;
+
+	desc = of_device_get_match_data(&pdev->dev);
+	if (!desc)
+		return -ENODEV;
+
+	cc = devm_kzalloc(&pdev->dev, sizeof(*cc), GFP_KERNEL);
+	if (!cc)
+		return -ENOMEM;
+
+	cc->clk_hws = devm_kzalloc(&pdev->dev, sizeof(*cc->clk_hws) * desc->num_clks, GFP_KERNEL);
+	if (!cc->clk_hws)
+		return -ENOMEM;
+
+	cc->num_clk_hws = desc->num_clks;
+
+	for (i = 0; i < desc->num_clks; i++) {
+		rclk = desc->clks[i];
+		if (!rclk || !rclk->unique_id)
+			continue;
+
+		snprintf(scmi_name, SCMI_MAX_STR_SIZE, "0x%08x", rclk->unique_id);
+
+		hw = clk_hw_register_fixed_factor(&pdev->dev, rclk->hw.init->name,
+						  scmi_name, CLK_SET_RATE_PARENT,
+						  1, 1);
+		if (!hw)
+			return PTR_ERR(hw);
+
+		cc->clk_hws[i] = hw;
+	}
+
+	ret = devm_of_clk_add_hw_provider(&pdev->dev, qcom_cc_clk_hw_get, cc);
+	if (ret)
+		return ret;
+
+	dev_info(&pdev->dev, "Registered virtual clock controller\n");
+
+	return 0;
+}
+EXPORT_SYMBOL(qcom_cc_virt_probe);
 
 void qcom_cc_sync_state(struct device *dev, const struct qcom_cc_desc *desc)
 {

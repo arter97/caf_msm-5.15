@@ -9,6 +9,8 @@
 #include <linux/regmap.h>
 #include <linux/export.h>
 #include <linux/pm_runtime.h>
+#include <linux/scmi_virtio_backend.h>
+#include <linux/scmi_protocol.h>
 
 #include "clk-regmap.h"
 #include "clk-debug.h"
@@ -266,6 +268,23 @@ bool clk_is_regmap_clk(struct clk_hw *hw)
 }
 EXPORT_SYMBOL(clk_is_regmap_clk);
 
+static int register_scmi_regmap(struct clk_regmap *rclk)
+{
+	char scmi_name[SCMI_MAX_STR_SIZE];
+	int ret;
+
+	if (!rclk->unique_id)
+		return 0;
+
+	snprintf(scmi_name, SCMI_MAX_STR_SIZE, "0x%08x", rclk->unique_id);
+
+	ret = scmi_virtio_register_clock(&rclk->hw, scmi_name);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 /**
  * devm_clk_register_regmap - register a clk_regmap clock
  *
@@ -303,6 +322,8 @@ int devm_clk_register_regmap(struct device *dev, struct clk_regmap *rclk)
 		spin_lock(&clk_regmap_lock);
 		list_add(&rclk->list_node, &clk_regmap_list);
 		spin_unlock(&clk_regmap_lock);
+
+		register_scmi_regmap(rclk);
 
 		ret = clk_hw_debug_register(dev, &rclk->hw);
 	}
