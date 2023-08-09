@@ -487,6 +487,7 @@ enum msm_pcie_debugfs_option {
 	MSM_PCIE_DISABLE_L1SS,
 	MSM_PCIE_ENABLE_L1SS,
 	MSM_PCIE_ENUMERATION,
+	MSM_PCIE_DEENUMERATION,
 	MSM_PCIE_READ_PCIE_REGISTER,
 	MSM_PCIE_WRITE_PCIE_REGISTER,
 	MSM_PCIE_DUMP_PCIE_REGISTER_SPACE,
@@ -515,6 +516,7 @@ static const char * const
 	"DISABLE L1SS",
 	"ENABLE L1SS",
 	"ENUMERATE",
+	"DE-ENUMERATE",
 	"READ A PCIE REGISTER",
 	"WRITE TO PCIE REGISTER",
 	"DUMP PCIE REGISTER SPACE",
@@ -2087,6 +2089,23 @@ static void msm_pcie_sel_debug_testcase(struct msm_pcie_dev_t *dev,
 			else
 				PCIE_DBG_FS(dev,
 					"PCIe: RC%d enumeration failed\n",
+					dev->rc_idx);
+		}
+		break;
+	case MSM_PCIE_DEENUMERATION:
+		PCIE_DBG_FS(dev, "\n\nPCIe: attempting to de enumerate RC%d\n\n",
+			dev->rc_idx);
+		if (!dev->enumerated)
+			PCIE_DBG_FS(dev, "PCIe: RC%d is already de enumerated\n",
+				dev->rc_idx);
+		else {
+			if (!msm_pcie_deenumerate(dev->rc_idx))
+				PCIE_DBG_FS(dev,
+					"PCIe: RC%d is successfully de enumerated\n",
+					dev->rc_idx);
+			else
+				PCIE_DBG_FS(dev,
+					"PCIe: RC%d de enumeration failed\n",
 					dev->rc_idx);
 		}
 		break;
@@ -5562,6 +5581,8 @@ int msm_pcie_enumerate(u32 rc_idx)
 		goto out;
 	}
 
+	dev->cfg_access = true;
+
 	/* kick start ARM PCI configuration framework */
 	ids = readl_relaxed(dev->dm_core);
 	vendor_id = ids & 0xffff;
@@ -5570,16 +5591,26 @@ int msm_pcie_enumerate(u32 rc_idx)
 	PCIE_DBG(dev, "PCIe: RC%d: vendor-id:0x%x device_id:0x%x\n",
 		dev->rc_idx, vendor_id, device_id);
 
-	bridge = devm_pci_alloc_host_bridge(&dev->pdev->dev, sizeof(*dev));
-	if (!bridge) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (!dev->bridge) {
+		bridge = devm_pci_alloc_host_bridge(&dev->pdev->dev, sizeof(*dev));
+		if (!bridge) {
 
-	if (!dev->lpi_enable) {
-		ret = msm_msi_init(&dev->pdev->dev);
-		if (ret)
+			PCIE_ERR(dev, "PCIe: RC%d: bridge allocation failed\n", dev->rc_idx);
+			ret = -ENOMEM;
 			goto out;
+		}
+
+		dev->bridge = bridge;
+
+		if (!dev->lpi_enable) {
+			ret = msm_msi_init(&dev->pdev->dev);
+			if (ret)
+				goto out;
+		}
+	} else {
+		bridge = dev->bridge;
+		msm_msi_config_access(dev_get_msi_domain(&dev->dev->dev),
+			true);
 	}
 
 	bridge->sysdata = dev;
@@ -5626,6 +5657,52 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(msm_pcie_enumerate);
+
+int msm_pcie_deenumerate(u32 rc_idx)
+{
+	struct msm_pcie_dev_t *dev = &msm_pcie_dev[rc_idx];
+	struct pci_host_bridge *bridge = dev->bridge;
+
+	mutex_lock(&dev->enumerate_lock);
+
+	PCIE_DBG(dev, "RC%d: Entry\n", dev->rc_idx);
+
+	if (!dev->enumerated) {
+		PCIE_DBG(dev, "RC%d:device is not enumerated\n", dev->rc_idx);
+		mutex_unlock(&dev->enumerate_lock);
+		return 0;
+	}
+
+	if (dev->config_recovery) {
+		PCIE_DBG(dev, "RC%d: cancel link_recover_wq\n", dev->rc_idx);
+		cancel_work_sync(&dev->link_recover_wq);
+	}
+
+	spin_lock_irqsave(&dev->cfg_lock, dev->irqsave_flags);
+	dev->cfg_access = false;
+	spin_unlock_irqrestore(&dev->cfg_lock, dev->irqsave_flags);
+
+	pci_stop_root_bus(bridge->bus);
+	pci_remove_root_bus(bridge->bus);
+
+	if(!dev->power_on || dev->user_suspend)
+		goto out;
+
+	/* Mask all the interrupts */
+	msm_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_MASK, 0);
+
+	msm_pcie_disable(dev);
+
+out:
+	dev->enumerated = false;
+
+	mutex_unlock(&dev->enumerate_lock);
+
+	PCIE_DBG(dev, "RC%d: exit\n", dev->rc_idx);
+	return 0;
+
+}
+EXPORT_SYMBOL(msm_pcie_deenumerate);
 
 static void msm_pcie_notify_client(struct msm_pcie_dev_t *dev,
 					enum msm_pcie_event event)
@@ -7515,9 +7592,8 @@ static int msm_pcie_remove(struct platform_device *pdev)
 		pci_load_and_free_saved_state(msm_pcie_dev[rc_idx].dev,
 				      &msm_pcie_dev[rc_idx].default_state);
 
+	msm_pcie_deenumerate(rc_idx);
 	msm_pcie_irq_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_vreg_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_clk_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_gpio_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_release_resources(&msm_pcie_dev[rc_idx]);
 
@@ -7539,6 +7615,12 @@ out:
 	mutex_unlock(&pcie_drv.drv_lock);
 
 	return ret;
+}
+
+static void msm_pcie_shutdown(struct platform_device *pdev)
+{
+	pr_info("%s\n", __func__);
+	msm_pcie_remove(pdev);
 }
 
 static int msm_pcie_link_retrain(struct msm_pcie_dev_t *pcie_dev,
@@ -8221,6 +8303,7 @@ static const struct of_device_id msm_pcie_match[] = {
 static struct platform_driver msm_pcie_driver = {
 	.probe	= msm_pcie_probe,
 	.remove	= msm_pcie_remove,
+	.shutdown = msm_pcie_shutdown,
 	.driver	= {
 		.name		= "pci-msm",
 		.pm = &qcom_pcie_pm_ops,
@@ -9529,4 +9612,3 @@ int msm_pcie_deregister_event(struct msm_pcie_register_event *reg)
 EXPORT_SYMBOL(msm_pcie_deregister_event);
 
 MODULE_DESCRIPTION("Qualcomm Technologies, Inc. PCIe RC driver");
-MODULE_LICENSE("GPL v2");
