@@ -5050,35 +5050,10 @@ void mhi_dev_resume_init_with_link_up(struct ep_pcie_notify *notify)
 static void mhi_dev_pcie_handle_event(struct work_struct *work)
 {
 	int rc = 0;
-	enum ep_pcie_link_status link_state;
 	struct mhi_dev *mhi = container_of(work, struct mhi_dev, pcie_event);
 
 	if (!mhi_dma_fun_ops && !mhi->use_edma) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "MHI DMA fun ops missing, defering\n");
-		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "0x%x\n", mhi_hw_ctx->event_reg.callback);
-		mhi_hw_ctx->event_reg.events = EP_PCIE_EVENT_LINKUP;
-		mhi_hw_ctx->event_reg.user = mhi_hw_ctx;
-		mhi_hw_ctx->event_reg.mode = EP_PCIE_TRIGGER_CALLBACK;
-		mhi_hw_ctx->event_reg.callback = mhi_dev_resume_init_with_link_up;
-		mhi_hw_ctx->event_reg.options = MHI_INIT;
-		rc = ep_pcie_register_event(mhi_hw_ctx->phandle, &mhi_hw_ctx->event_reg);
-		if (rc) {
-			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
-				"Failed to register for events from PCIe\n");
-		}
-		return;
-	}
-
-	mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Link up or IPA DMA event\n");
-	link_state = ep_pcie_get_linkstatus(mhi_hw_ctx->phandle);
-	if (link_state != EP_PCIE_LINK_ENABLED) {
-		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Link state = %d\n", link_state);
-		rc = ep_pcie_wakeup_host(mhi_hw_ctx->phandle, EP_PCIE_EVENT_INVALID);
-		if (rc) {
-			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
-					"Failed to wake up Host\n");
-		}
-		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Host wake up requested\n");
 		return;
 	}
 

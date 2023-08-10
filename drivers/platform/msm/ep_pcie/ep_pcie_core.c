@@ -2901,20 +2901,13 @@ static irqreturn_t ep_pcie_handle_perst_irq(int irq, void *data)
 			"PCIe V%d: No. %ld PERST assertion\n",
 			dev->rev, dev->perst_ast_counter);
 
-		if (dev->event_reg->events & EP_PCIE_EVENT_PM_D3_COLD) {
-			EP_PCIE_DBG(dev,
-				"PCIe V%d: Registered for event %d\n",
-				dev->rev, dev->event_reg->events);
-
+		if (dev->client_ready) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_COLD);
 		} else {
 			dev->no_notify = true;
 			EP_PCIE_DBG(dev,
 				"PCIe V%d: Client driver is not ready when this PERST assertion happens; shutdown link now\n",
 				dev->rev);
-			EP_PCIE_DBG(dev,
-				"PCIe V%d: Not Registered for event %d\n",
-				dev->rev, dev->event_reg->events);
 			schedule_work(&dev->handle_d3cold_work);
 		}
 	}
@@ -2938,12 +2931,6 @@ static irqreturn_t ep_pcie_handle_perst_deassert(int irq, void *data)
 		"PCIe V%d: Start enumeration due to PERST deassertion\n",
 		dev->rev);
 		ep_pcie_enumeration(dev);
-	} else if (dev->ipa_wakeup) {
-		EP_PCIE_ERR(dev,
-		"PCIe V%d: Start enumeration due to PERST deassertion in IPA CB\n",
-		dev->rev);
-		ep_pcie_enumeration(dev);
-		dev->ipa_wakeup = false;
 	} else {
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_RST_DEAST);
 	}
@@ -3814,7 +3801,6 @@ static void ep_pcie_core_issue_inband_pme(void)
 static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 {
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
-	int bme;
 
 	if (!atomic_read(&dev->perst_deast)) {
 		/*D3 cold handling*/
@@ -3830,20 +3816,6 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: request to assert WAKE# when in D0\n",
 			dev->rev);
-		bme = readl_relaxed(dev->dm_core + PCIE20_COMMAND_STATUS) & BIT(2);
-		if (!bme)
-		{
-			EP_PCIE_ERR(dev, "PCIe V%d: BME is not set, BME = %d\n",
-					dev->rev, bme);
-
-		}
-
-	}
-
-	if(event == EP_PCIE_EVENT_INVALID) {
-		EP_PCIE_ERR(dev, "PCIe V%d: Wake from IPA DMA CB\n",
-					dev->rev);
-		dev->ipa_wakeup = true;
 	}
 
 	atomic_set(&dev->host_wake_pending, 1);
