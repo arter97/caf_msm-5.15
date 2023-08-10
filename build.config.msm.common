@@ -257,10 +257,11 @@ function make_vm_dtb_img() {
   for i in "${!MKDTIMGDTBS[@]}"; do
     if [[ ${MKDTIMGDTBS[$i]} == *"-vm"* ]]; then
       mkdtboimg.py create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*-vm*.dtb
-    fi
-
-    if [[ ${MKDTIMGDTBS[$i]} == *"oemvm"* ]]; then
+    elif [[ ${MKDTIMGDTBS[$i]} == *"oemvm"* ]]; then
       mkdtboimg.py create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*-oemvm*.dtb
+    else
+     mkdtboimg.py create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/${MKDTIMGDTBS[
+$i]}*.dtb
     fi
   done
 }
