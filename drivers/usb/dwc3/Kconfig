@@ -167,4 +167,12 @@ config USB_DWC3_MSM
 	  Driver supports host, device and dual-role modes of operation.
 	  Say 'Y' or 'M' if you have one such device.
 
+config USB_DWC3_MSM_DEBUG
+        bool "Registering trace kretprobes"
+        depends on USB_DWC3_MSM
+        help
+	  Select this If you want to enable the debug logs for the
+	  msm drivers. This will enable the logging feature for
+	  the msm glue driver, accessible via IPC logging for the
+	  associated controller
 endif
