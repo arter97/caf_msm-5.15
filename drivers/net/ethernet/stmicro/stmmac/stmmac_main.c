@@ -4551,7 +4551,7 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
-	if (priv->plat->has_xgmac) {
+	if (priv->plat->has_xgmac && priv->plat->port_num == 0) {
 		if (STMMAC_add_ptp_filters(dev))
 			netdev_err(priv->dev, "failed to add PTP over UDP filters\n");
 	}
@@ -4601,6 +4601,9 @@ static int stmmac_release(struct net_device *dev)
 	int ret = 0;
 
 	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
+
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
@@ -8259,6 +8262,9 @@ int stmmac_dvr_remove(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
 	netdev_info(priv->dev, "%s: removing driver", __func__);
+
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
 
 	if (priv->plat->rgmii_rst) {
 		reset_control_put(priv->plat->rgmii_rst);
