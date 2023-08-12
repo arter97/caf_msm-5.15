@@ -501,7 +501,7 @@ static void mhi_dev_event_rd_offset_completion_cb(void *req)
 	struct mhi_dev_channel *ch;
 	struct event_req *ereq = req;
 
-	if (!ereq || !ereq->event_rd_dma)
+	if (!ereq)
 		return;
 
 	if (ereq->is_cmd_cpl)
