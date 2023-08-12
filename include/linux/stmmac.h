@@ -339,5 +339,6 @@ struct plat_stmmacenet_data {
 	atomic_t phy_clks_suspended;
 	struct completion mdio_op;
 	bool mac_suspended;
+	bool separate_wol_pin;
 };
 #endif
