@@ -165,6 +165,8 @@ static int smi230_acc_i2c_probe(struct i2c_client *client,
 	else {
 		PERR("Bosch Sensor Device %s initialization failed, error %d",
 		     SENSOR_ACC_NAME, err);
+		err = -EIO;
+		return err;
 	}
 
 	return smi230_acc_probe(&client->dev, &smi230_i2c_dev);
@@ -232,6 +234,8 @@ static int smi230_gyro_i2c_probe(struct i2c_client *client,
 	else {
 		PERR("Bosch Sensor Device %s initialization failed, error %d",
 		     SENSOR_GYRO_NAME, err);
+		err = -EIO;
+		return err;
 	}
 
 	return smi230_gyro_probe(&client->dev, &smi230_i2c_dev);
