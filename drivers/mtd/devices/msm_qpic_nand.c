@@ -288,6 +288,11 @@ static int msm_nand_resume(struct device *dev)
 			pr_err("Failed to enable DMA in NANDc\n");
 			goto out;
 		}
+
+		ret = msm_nand_boost_mode_enable(info);
+		if (unlikely(ret))
+			pr_err("Failed to enable Boost Mode Err: %d\n", ret);
+
 		if (info->nand_chip.qpic_version >= 2 &&
 			info->nand_chip.qpic_min_version >= 1) {
 			ret = msm_nand_init_status_pipe(info);
@@ -506,13 +511,13 @@ static inline void msm_nand_prep_single_desc(struct msm_nand_sps_cmd *sps_cmd,
 	msm_nand_prep_ce(&sps_cmd->ce, addr, command, data);
 	sps_cmd->flags = SPS_IOVEC_FLAG_CMD | flags;
 }
+
 /*
- * Read a single NANDc register as mentioned by its parameter addr. The return
- * value indicates whether read is successful or not. The register value read
- * is stored in val.
+ * Read or Write a single NANDc register as mentioned by its parameter addr.
+ * The return value indicates whether read or write is successful or not.
  */
-static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
-				uint32_t *val)
+static int msm_nand_flash_rd_rw_reg(struct msm_nand_info *info, uint32_t addr,
+				uint32_t *val, uint32_t command)
 {
 	int ret = 0, submitted_num_desc = 1;
 	struct msm_nand_sps_cmd *cmd;
@@ -526,8 +531,9 @@ static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
 	wait_event(chip->dma_wait_queue, (dma_buffer = msm_nand_get_dma_buffer(
 		    chip, sizeof(*dma_buffer))));
 	cmd = &dma_buffer->cmd;
-	msm_nand_prep_single_desc(cmd, addr, READ, msm_virt_to_dma(chip,
-			&dma_buffer->data), SPS_IOVEC_FLAG_INT);
+	msm_nand_prep_single_desc(cmd, addr, command,
+			(command == READ) ? msm_virt_to_dma(chip, &dma_buffer->data) : *val,
+			SPS_IOVEC_FLAG_INT);
 
 	mutex_lock(&info->lock);
 	ret = msm_nand_get_device(chip->dev);
@@ -552,7 +558,9 @@ static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
 	ret = msm_nand_put_device(chip->dev);
 	if (ret)
 		goto out;
-	*val = dma_buffer->data;
+
+	if (command == READ)
+		*val = dma_buffer->data;
 out:
 	mutex_unlock(&info->lock);
 	msm_nand_release_dma_buffer(chip, dma_buffer, sizeof(*dma_buffer));
@@ -764,8 +772,8 @@ static int msm_nand_version_check(struct msm_nand_info *info,
 	int err = 0;
 
 	/* Lookup the version to identify supported features */
-	err = msm_nand_flash_rd_reg(info, MSM_NAND_VERSION(info),
-		&nand_ver);
+	err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_VERSION(info),
+		&nand_ver, READ);
 	if (err) {
 		pr_err("Failed to read NAND_VERSION, err=%d\n", err);
 		goto out;
@@ -775,8 +783,8 @@ static int msm_nand_version_check(struct msm_nand_info *info,
 	nandc_version->nand_minor = (nand_ver & MSM_NAND_VERSION_MINOR_MASK) >>
 		MSM_NAND_VERSION_MINOR_SHIFT;
 
-	err = msm_nand_flash_rd_reg(info, MSM_NAND_QPIC_VERSION(info),
-		&qpic_ver);
+	err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_QPIC_VERSION(info),
+		&qpic_ver, READ);
 	if (err) {
 		pr_err("Failed to read QPIC_VERSION, err=%d\n", err);
 		goto out;
@@ -1020,6 +1028,7 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 					flash->blksize;
 	flash->ecc_correctability =
 			onfi_param_page_ptr->number_of_bits_ecc_correctability;
+	flash->timing_mode_support = onfi_param_page_ptr->timing_mode_support;
 
 	pr_info("Found an ONFI compliant device %s\n",
 			onfi_param_page_ptr->device_model);
@@ -4376,6 +4385,26 @@ out:
 
 }
 
+/* Enable the boost mode based on flags */
+static int msm_nand_boost_mode_enable(struct msm_nand_info *info)
+{
+	int err = 0;
+	uint32_t reg = 0;
+
+	if ((info->nand_chip.caps & MSM_NAND_CAP_BOOST_MODE) &&
+		(info->flash_dev.timing_mode_support == 0x1F)) {
+		err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info),
+				&reg, READ);
+		if (!err) {
+			reg |= (1 << BOOST_MODE_EN);
+			err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info),
+					&reg, WRITE);
+		}
+	}
+
+	return err;
+}
+
 static int msm_nand_parse_smem_ptable(int *nr_parts)
 {
 
@@ -4605,6 +4634,9 @@ static int msm_nand_probe(struct platform_device *pdev)
 	}
 	info->nand_phys = res->start;
 
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,boost_mode"))
+		info->nand_chip.caps |= MSM_NAND_CAP_BOOST_MODE;
+
 	err = of_property_read_u32(pdev->dev.of_node,
 				   "qcom,reg-adjustment-offset",
 				   &adjustment_offset);
@@ -4712,7 +4744,7 @@ static int msm_nand_probe(struct platform_device *pdev)
 	info->nand_chip.qpic_min_version = qpic_version.qpic_minor;
 	if (info->nand_chip.qpic_version >= 2 &&
 			info->nand_chip.qpic_min_version >= 1) {
-		info->nand_chip.caps = MSM_NAND_CAP_PAGE_SCOPE_READ;
+		info->nand_chip.caps |= MSM_NAND_CAP_PAGE_SCOPE_READ;
 		err = msm_nand_init_status_pipe(info);
 		if (err)
 			goto free_bam;
@@ -4727,6 +4759,11 @@ static int msm_nand_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto free_bam;
 	}
+
+	err = msm_nand_boost_mode_enable(info);
+	if (unlikely(err))
+		pr_err("Failed to enable Boost Mode Err: %d\n", err);
+
 	for (i = 0; i < nr_parts; i++) {
 		mtd_part[i].offset *= info->mtd.erasesize;
 		mtd_part[i].size *= info->mtd.erasesize;
