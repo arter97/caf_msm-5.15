@@ -137,6 +137,8 @@ int mhi_dma_provide_ops(const struct mhi_dma_ops *ops)
 		return -EINVAL;
 	}
 
+	mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_VERBOSE, "Received MHI DMA fun ops\n");
+
 	memcpy(&mhi_hw_ctx->mhi_dma_fun_ops, ops, sizeof(struct mhi_dma_ops));
 	mhi_dma_fun_ops = &mhi_hw_ctx->mhi_dma_fun_ops;
 
@@ -789,8 +791,7 @@ static int mhi_dev_flush_transfer_completion_events(struct mhi_dev *mhi,
 		struct mhi_dev_channel *ch, u32 snd_cmpl_num)
 {
 	int rc = 0;
-	unsigned long flags = 0;
-	struct event_req *flush_ereq;
+	struct event_req *flush_ereq = NULL;
 	struct event_req *itr, *tmp;
 
 	do {
@@ -828,14 +829,17 @@ static int mhi_dev_flush_transfer_completion_events(struct mhi_dev *mhi,
 		if (mhi->use_edma) {
 			list_for_each_entry_safe(itr, tmp, &ch->flush_event_req_buffers, list) {
 				flush_ereq = itr;
-				if (flush_ereq->snd_cmpl == snd_cmpl_num)
+				if (flush_ereq && flush_ereq->snd_cmpl == snd_cmpl_num)
 					break;
 			}
 
-			if (flush_ereq->snd_cmpl != snd_cmpl_num) {
-				spin_unlock_irqrestore(&mhi->lock, flags);
+			if (flush_ereq && (flush_ereq->snd_cmpl != snd_cmpl_num))
 				break;
-			}
+		}
+
+		if (!flush_ereq) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "failed to assign flush_ereq\n");
+			return -EINVAL;
 		}
 
 		list_del_init(&flush_ereq->list);
@@ -2059,6 +2063,11 @@ static void mhi_dev_trigger_cb(uint32_t vf_id, enum mhi_client_channel ch_id)
 	/* Currently no clients register for HW channel notification */
 	if (ch_id >= MHI_MAX_SOFTWARE_CHANNELS)
 		return;
+
+	if (!mhi_ctx) {
+		mhi_log(vf_id, MHI_MSG_ERROR, "mhi_ctx is NULL\n");
+		return;
+	}
 
 	list_for_each_entry(info, &mhi_ctx->client_cb_list, list)
 		if (info->cb && info->cb_data.channel == ch_id) {
@@ -4425,6 +4434,11 @@ int mhi_ctrl_state_info(uint32_t ch_id, uint32_t *info)
 {
 	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
 
+	if (!mhi) {
+		mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_ERROR, "MHI is NULL, defering\n");
+		return -EINVAL;
+	}
+
 	return __mhi_ctrl_state_info(mhi, mhi->vf_id, ch_id, info);
 }
 EXPORT_SYMBOL(mhi_ctrl_state_info);
@@ -4432,6 +4446,11 @@ EXPORT_SYMBOL(mhi_ctrl_state_info);
 int mhi_vf_ctrl_state_info(uint32_t vf_id, uint32_t ch_id, uint32_t *info)
 {
 	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, vf_id);
+
+	if (!mhi) {
+		mhi_log(vf_id, MHI_MSG_ERROR, "MHI is NULL, defering\n");
+		return -EINVAL;
+	}
 
 	return __mhi_ctrl_state_info(mhi, vf_id, ch_id, info);
 }
@@ -5050,11 +5069,44 @@ void mhi_dev_resume_init_with_link_up(struct ep_pcie_notify *notify)
 static void mhi_dev_pcie_handle_event(struct work_struct *work)
 {
 	int rc = 0;
+	enum ep_pcie_link_status link_state;
 	struct mhi_dev *mhi = container_of(work, struct mhi_dev, pcie_event);
 
 	if (!mhi_dma_fun_ops && !mhi->use_edma) {
+		/*
+		 * Register for linkup event if it is not registered in
+		 * mhi_dev_probe, to get linkup event after host wake
+		 * as part of mhi_dma_provide_ops.
+		 */
+		if (!(mhi_hw_ctx->event_reg.events & EP_PCIE_EVENT_LINKUP)) {
+			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Register for Link up event if not registered in mhi_dev_probe\n");
+			mhi_hw_ctx->event_reg.events = EP_PCIE_EVENT_LINKUP;
+			mhi_hw_ctx->event_reg.user = mhi_hw_ctx;
+			mhi_hw_ctx->event_reg.mode = EP_PCIE_TRIGGER_CALLBACK;
+			mhi_hw_ctx->event_reg.callback = mhi_dev_resume_init_with_link_up;
+			mhi_hw_ctx->event_reg.options = MHI_INIT;
+			rc = ep_pcie_register_event(mhi_hw_ctx->phandle, &mhi_hw_ctx->event_reg);
+			if (rc)
+				mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
+						"Failed to register for events from PCIe\n");
+		}
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "MHI DMA fun ops missing, defering\n");
 		return;
+	}
+
+	mhi_hw_ctx->phandle = ep_pcie_get_phandle(mhi_hw_ctx->ifc_id);
+	if (mhi_hw_ctx->phandle) {
+		link_state = ep_pcie_get_linkstatus(mhi_hw_ctx->phandle);
+		if (link_state != EP_PCIE_LINK_ENABLED) {
+			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+					"Link disabled, link state = %d\n", link_state);
+			/* Wake host if the link is not enabled in mhi_dma_provide_ops call. */
+			rc = ep_pcie_wakeup_host(mhi_hw_ctx->phandle, EP_PCIE_EVENT_INVALID);
+			if (rc)
+				mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Failed to wake up Host\n");
+			return;
+		}
 	}
 
 	/* Get EP PCIe capabilities to check if it supports SRIOV capability */
@@ -5209,6 +5261,13 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		}
 
 		mhi_pf = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
+
+		if (!mhi_pf) {
+			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
+					"mhi_pf is NULL, defering\n");
+			return -EINVAL;
+		}
+
 		/*
 		 * The below list and mutex should be initialized
 		 * before calling mhi_uci_init to avoid crash in
@@ -5232,6 +5291,13 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		 * completion to make sure VF's are initialized in mission
 		 * mode directly, if not host assumes it in PBL state.
 		 */
+
+		if (!mhi_pf) {
+			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
+					"mhi_pf is NULL, defering\n");
+			return -EINVAL;
+		}
+
 		mhi_dev_setup_virt_device(mhi_hw_ctx);
 		queue_work(mhi_pf->pcie_event_wq, &mhi_pf->pcie_event);
 	} else {

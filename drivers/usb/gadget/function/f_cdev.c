@@ -54,6 +54,7 @@
 #define GS_LOG2_NOTIFY_INTERVAL		5  /* 1 << 5 == 32 msec */
 #define GS_NOTIFY_MAXPACKET		10 /* notification + 2 bytes */
 
+#define REMOTEWAKEUP_RETRY_MAX	5  /* MAXIMUM remote wakeup retry */
 struct cserial {
 	struct usb_function		func;
 	struct usb_ep			*in;
@@ -1707,6 +1708,8 @@ static ssize_t cser_rw_write(struct file *file, const char __user *ubuf,
 	struct usb_function *func;
 	struct usb_gadget *gadget;
 	int ret;
+	u8 remote_wakeup_retry = 0;
+
 
 	cser = &port->port_usb;
 	if (!cser) {
@@ -1747,6 +1750,7 @@ static ssize_t cser_rw_write(struct file *file, const char __user *ubuf,
 	port->debugfs_rw_enable = !!input;
 	if (port->debugfs_rw_enable) {
 		gadget = cser->func.config->cdev->gadget;
+retry_wakeup:
 		if (func->func_suspended) {
 			pr_debug("Calling usb_func_wakeup\n");
 			ret = usb_func_wakeup(func);
@@ -1755,8 +1759,14 @@ static ssize_t cser_rw_write(struct file *file, const char __user *ubuf,
 			ret = usb_gadget_wakeup(gadget);
 		}
 
-		if (ret)
-			pr_err("wakeup failed. ret=%d.\n", ret);
+		if (ret && (++remote_wakeup_retry <
+				REMOTEWAKEUP_RETRY_MAX)) {
+			msleep(20);
+			goto retry_wakeup;
+		} else
+			pr_info("wakeup %s. ret=%d\n",
+				ret ? "failed" : "passed", ret);
+
 	} else {
 		pr_debug("RW disabled.\n");
 	}

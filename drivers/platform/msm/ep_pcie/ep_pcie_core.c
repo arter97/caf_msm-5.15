@@ -52,6 +52,7 @@
 #define PCIE_L1SUB_AHB_TIMEOUT_MIN		100
 #define PCIE_L1SUB_AHB_TIMEOUT_MAX		120
 
+#define PCIE_DISCONNECT_REQ_REG			BIT(6)
 #define PERST_RAW_RESET_STATUS			BIT(0)
 #define LINK_STATUS_REG_SHIFT			16
 
@@ -103,6 +104,8 @@ static struct ep_pcie_clk_info_t
 	{NULL, "pcie_ddrss_sf_tbu_clk", 0, false},
 	{NULL, "pcie_aggre_noc_0_axi_clk", 0, false},
 	{NULL, "gcc_cnoc_pcie_sf_axi_clk", 0, false},
+	{NULL, "pcie_pipediv2_clk", 0, false},
+	{NULL, "pcie_phy_refgen_clk", 0, false},
 	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
@@ -910,7 +913,8 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 
 		if (!dev->tcsr_not_supported)
 			ep_pcie_write_reg_field(dev->tcsr_perst_en,
-					ep_pcie_dev.tcsr_reset_separation_offset, BIT(5), 0);
+					ep_pcie_dev.tcsr_reset_separation_offset,
+					ep_pcie_dev.pcie_disconnect_req_reg_mask, 0);
 	}
 
 	if (!dev->enumerated) {
@@ -2148,10 +2152,6 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
 		}
 
-		if (dev->pcie_cesta_clkreq_offset)
-			ep_pcie_write_reg_field(dev->parf,
-						dev->pcie_cesta_clkreq_offset, BIT(0), 0);
-
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
 			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
@@ -2503,7 +2503,8 @@ int ep_pcie_core_disable_endpoint(void)
 
 	if (!dev->tcsr_not_supported)
 		ep_pcie_write_reg_field(dev->tcsr_perst_en,
-					ep_pcie_dev.tcsr_reset_separation_offset, BIT(5), 1);
+					ep_pcie_dev.tcsr_reset_separation_offset,
+					ep_pcie_dev.pcie_disconnect_req_reg_mask, 1);
 
 	ep_pcie_pipe_clk_deinit(dev);
 	ep_pcie_clk_deinit(dev);
@@ -2901,7 +2902,7 @@ static irqreturn_t ep_pcie_handle_perst_irq(int irq, void *data)
 			"PCIe V%d: No. %ld PERST assertion\n",
 			dev->rev, dev->perst_ast_counter);
 
-		if (dev->client_ready) {
+		if (dev->event_reg->events & EP_PCIE_EVENT_PM_D3_COLD) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_COLD);
 		} else {
 			dev->no_notify = true;
@@ -2926,11 +2927,16 @@ static irqreturn_t ep_pcie_handle_perst_deassert(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
 
-	if (!dev->enumerated) {
+	if (!dev->enumerated || dev->dma_wake) {
 		EP_PCIE_DBG(dev,
 		"PCIe V%d: Start enumeration due to PERST deassertion\n",
 		dev->rev);
 		ep_pcie_enumeration(dev);
+		if (dev->dma_wake) {
+			EP_PCIE_DBG(dev,
+				"PCIe V%d: Handle perst deassert for dma wake\n", dev->rev);
+			dev->dma_wake = false;
+		}
 	} else {
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_RST_DEAST);
 	}
@@ -3806,16 +3812,21 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 	} else if (dev->l23_ready) {
-		EP_PCIE_ERR(dev,
+		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);
 		/*D3 hot handling*/
 		ep_pcie_core_issue_inband_pme();
 	} else {
 		/*D0 handling*/
-		EP_PCIE_ERR(dev,
+		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D0\n",
 			dev->rev);
+	}
+
+	if (event == EP_PCIE_EVENT_INVALID) {
+		EP_PCIE_DBG(dev, "PCIe V%d: Wake from DMA Call Back\n", dev->rev);
+		dev->dma_wake = true;
 	}
 
 	atomic_set(&dev->host_wake_pending, 1);
@@ -4101,6 +4112,22 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 		EP_PCIE_DBG(&ep_pcie_dev,
 			"PCIe V%d: TCSR Reset Separation Offset: 0x%x\n",
 			ep_pcie_dev.rev, ep_pcie_dev.tcsr_reset_separation_offset);
+
+		ret = of_property_read_u32((&pdev->dev)->of_node, "qcom,pcie-disconnect-req-reg-b",
+					&ep_pcie_dev.pcie_disconnect_req_reg_mask);
+
+		ep_pcie_dev.pcie_disconnect_req_reg_mask =
+						BIT(ep_pcie_dev.pcie_disconnect_req_reg_mask);
+		if (ret) {
+			EP_PCIE_DBG(&ep_pcie_dev,
+				"PCIe V%d: Pcie disconnect req reg bit is not supplied from DT",
+				ep_pcie_dev.rev);
+			ep_pcie_dev.pcie_disconnect_req_reg_mask = PCIE_DISCONNECT_REQ_REG;
+		}
+
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: Pcie disconnect req reg Mask: 0x%x\n",
+			ep_pcie_dev.rev, ep_pcie_dev.pcie_disconnect_req_reg_mask);
 
 		ret = of_property_read_u32((&pdev->dev)->of_node, "qcom,tcsr-perst-enable-offset",
 					&ep_pcie_dev.tcsr_perst_enable_offset);

@@ -422,7 +422,7 @@ static inline void stmmac_hw_fix_mac_speed(struct stmmac_priv *priv)
 					priv->speed);
 			return;
 		}
-		if (priv->phydev->link)
+		if (priv->phydev && priv->phydev->link)
 			priv->plat->fix_mac_speed(priv->plat->bsp_priv,
 						  priv->speed);
 		else
@@ -1059,7 +1059,7 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
 
-	if (!priv->phydev->autoneg && !priv->plat->early_eth) {
+	if (priv->phydev && !priv->phydev->autoneg && !priv->plat->early_eth) {
 		linkmode_copy(state->advertising, priv->adv_old);
 		/* If PCS is supported, check which modes it supports. */
 		if (priv->hw->xpcs)
@@ -1221,10 +1221,16 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
 	priv->eee_enabled = stmmac_eee_init(priv);
+	priv->speed = SPEED_UNKNOWN;
 	stmmac_set_eee_pls(priv, priv->hw, false);
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+					       priv->plat->bsp_priv, false, false);
+
 }
 
 static void stmmac_mac_link_up(struct phylink_config *config,
@@ -1237,6 +1243,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+							  priv->plat->bsp_priv, true, true);
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1322,7 +1332,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
-	    duplex &&
+	    duplex && priv->phydev && priv->phydev->drv &&
 	   ((priv->phydev->phy_id & priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 		phy_data = priv->mii->read(priv->mii, priv->plat->phy_addr, KSZ9131RNX_LBR);
 		phy_data = phy_data | (1 << 2);
@@ -1331,6 +1341,11 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (priv->plat->fix_mac_speed)
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
+
+	if (priv->plat->serdes_powerup) {
+		ret = priv->plat->serdes_powerup(to_net_dev(config->dev),
+						 priv->plat->bsp_priv);
+	}
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1482,6 +1497,17 @@ static int stmmac_init_phy(struct net_device *dev)
 		}
 		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
+#ifdef CONFIG_DWMAC_QCOM_VER3
+		if (priv->phydev->drv &&
+		    priv->phydev->drv->config_intr &&
+		    !priv->phydev->drv->config_intr(priv->phydev)) {
+			pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
+			       __func__);
+			priv->plat->request_phy_wol(priv->plat);
+		}
+		pr_info("stmmac phy polling mode\n");
+		priv->phydev->irq = PHY_POLL;
+#else
 		if (priv->plat->phy_intr_en_extn_stm) {
 			priv->phydev->irq = PHY_MAC_INTERRUPT;
 			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
@@ -1497,12 +1523,24 @@ static int stmmac_init_phy(struct net_device *dev)
 			pr_info("stmmac phy polling mode\n");
 			priv->phydev->irq = PHY_POLL;
 		}
+#endif
 		phy_attached_info(priv->phydev);
 	}
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
 		__func__);
 
-	dev->phydev = priv->phydev;
+	if (priv->phydev) {
+		pr_info(" qcom-ethqos: %s dev phydev = priv phydev\n", __func__);
+		dev->phydev = priv->phydev;
+	} else {
+		pr_info(" qcom-ethqos: %s priv phydev is null\n", __func__);
+		if (dev->phydev) {
+			priv->phydev = dev->phydev;
+			priv->plat->phy_addr = priv->phydev->mdio.addr;
+			pr_info(" qcom-ethqos: %s priv->phydev is set with dev->phydev\n",
+				__func__);
+		}
+	}
 
 	if (!priv->plat->pmt) {
 		struct ethtool_wolinfo wol = { .cmd = ETHTOOL_GWOL };
@@ -4484,6 +4522,11 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
+#ifdef CONFIG_DWMAC_QCOM_VER3
+	if (!priv->wol_irq_enabled)
+		priv->plat->wol_irq_enable(priv);
+#endif
+
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
@@ -4561,6 +4604,11 @@ static int stmmac_release(struct net_device *dev)
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
+
+#ifdef CONFIG_DWMAC_QCOM_VER3
+	if (priv->wol_irq_enabled)
+		priv->plat->wol_irq_disable(priv);
+#endif
 
 	if (priv->avb_vlan_id > 1)
 		if (dev->netdev_ops->ndo_vlan_rx_kill_vid)
@@ -8314,7 +8362,7 @@ int stmmac_suspend(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_suspend(priv->phylink, false);
 		} else {
@@ -8404,7 +8452,7 @@ int stmmac_resume(struct device *dev)
 			stmmac_mdio_reset(priv->mii);
 	}
 
-	if (priv->plat->serdes_powerup) {
+	if (priv->plat->serdes_powerup && priv->speed != SPEED_UNKNOWN) {
 		ret = priv->plat->serdes_powerup(ndev,
 						 priv->plat->bsp_priv);
 
@@ -8416,7 +8464,7 @@ int stmmac_resume(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_resume(priv->phylink);
 		} else {
