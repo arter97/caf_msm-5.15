@@ -230,6 +230,12 @@ static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
 	 * Fetching MSI config to read the MSI capability and setting the
 	 * msi_disable flag based on it.
 	 */
+
+	if (!mhi) {
+		mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_ERROR, "MHI is NULL, defering\n");
+		return -EINVAL;
+	}
+
 	rc = ep_pcie_get_msi_config(phandle, cfg, vf_id);
 	if (rc == -EOPNOTSUPP) {
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "MSI is disabled\n");
