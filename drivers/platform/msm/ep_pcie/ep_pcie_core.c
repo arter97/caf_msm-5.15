@@ -51,7 +51,8 @@
 #define PCIE_L1SUB_AHB_TIMEOUT_MIN		100
 #define PCIE_L1SUB_AHB_TIMEOUT_MAX		120
 
-#define PERST_RAW_RESET_STATUS			BIT(11)
+#define PCIE_DISCONNECT_REQ_REG			BIT(6)
+#define PERST_RAW_RESET_STATUS			BIT(0)
 #define LINK_STATUS_REG_SHIFT			16
 
 #define LODWORD(addr)             (addr & 0xFFFFFFFF)
@@ -101,6 +102,8 @@ static struct ep_pcie_clk_info_t
 	{NULL, "pcie_ddrss_sf_tbu_clk", 0, false},
 	{NULL, "pcie_aggre_noc_0_axi_clk", 0, false},
 	{NULL, "gcc_cnoc_pcie_sf_axi_clk", 0, false},
+	{NULL, "pcie_pipediv2_clk", 0, false},
+	{NULL, "pcie_phy_refgen_clk", 0, false},
 	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
@@ -908,7 +911,8 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 
 		if (!dev->tcsr_not_supported)
 			ep_pcie_write_reg_field(dev->tcsr_perst_en,
-					ep_pcie_dev.tcsr_reset_separation_offset, BIT(5), 0);
+					ep_pcie_dev.tcsr_reset_separation_offset,
+					ep_pcie_dev.pcie_disconnect_req_reg_mask, 0);
 	}
 
 	if (!dev->enumerated) {
@@ -1085,6 +1089,9 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 			readl_relaxed(dev->dm_core + pos + PCI_L1SS_CAP));
 		}
 
+		/* Set CLK_PM_EN which allows to configure the clock-power-man bit below for EP */
+		ep_pcie_write_mask(dev->elbi + PCIE20_ELBI_SYS_CTRL, 1, BIT(7));
+
 		/* Enable Clock Power Management */
 		ep_pcie_write_reg_field(dev->dm_core, PCIE20_LINK_CAPABILITIES,
 			PCIE20_MASK_CLOCK_POWER_MAN, 0x1);
@@ -1145,14 +1152,14 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 	if (dev->active_config) {
 		ep_pcie_write_reg(dev->dm_core, PCIE20_AUX_CLK_FREQ_REG, dev->aux_clk_val);
 
-		/* Prevent L1ss wakeup after 100ms */
-		ep_pcie_write_mask(dev->dm_core + PCIE20_GEN3_RELATED_OFF,
-							BIT(0), 0);
-
 		/* Disable SRIS_MODE */
 		ep_pcie_write_mask(dev->parf + PCIE20_PARF_SRIS_MODE,
 								BIT(0), 0);
 	}
+
+	/* Prevent L1ss wakeup after 100ms */
+	ep_pcie_write_mask(dev->dm_core + PCIE20_GEN3_RELATED_OFF,
+						BIT(0), 0);
 
 	ep_pcie_sriov_init(dev);
 	if (!configured) {
@@ -2369,6 +2376,13 @@ checkbme:
 	if (dev->aoss_rst_clear && dev->aoss_rst_perst)
 		writel_relaxed(ep_pcie_dev.perst_raw_rst_status_mask, dev->aoss_rst_perst);
 
+	/* Make sure clkreq control is with controller, not CESTA */
+	if (dev->pcie_cesta_clkreq_offset) {
+		ep_pcie_write_reg_field(dev->parf, dev->pcie_cesta_clkreq_offset, BIT(0), 0);
+		val = readl_relaxed(dev->parf + dev->pcie_cesta_clkreq_offset);
+		EP_PCIE_DBG(dev, "PCIe V%d: CESTA_CLKREQ_CTRL:0x%x.\n", dev->rev, val);
+	}
+
 	/*
 	 * De-assert WAKE# GPIO following link until L2/3 and WAKE#
 	 * is triggered to send data from device to host at which point
@@ -2484,7 +2498,8 @@ int ep_pcie_core_disable_endpoint(void)
 
 	if (!dev->tcsr_not_supported)
 		ep_pcie_write_reg_field(dev->tcsr_perst_en,
-					ep_pcie_dev.tcsr_reset_separation_offset, BIT(5), 1);
+					ep_pcie_dev.tcsr_reset_separation_offset,
+					ep_pcie_dev.pcie_disconnect_req_reg_mask, 1);
 
 	ep_pcie_pipe_clk_deinit(dev);
 	ep_pcie_clk_deinit(dev);
@@ -4075,6 +4090,22 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 			"PCIe V%d: TCSR Reset Separation Offset: 0x%x\n",
 			ep_pcie_dev.rev, ep_pcie_dev.tcsr_reset_separation_offset);
 
+		ret = of_property_read_u32((&pdev->dev)->of_node, "qcom,pcie-disconnect-req-reg-b",
+					&ep_pcie_dev.pcie_disconnect_req_reg_mask);
+
+		ep_pcie_dev.pcie_disconnect_req_reg_mask =
+						BIT(ep_pcie_dev.pcie_disconnect_req_reg_mask);
+		if (ret) {
+			EP_PCIE_DBG(&ep_pcie_dev,
+				"PCIe V%d: Pcie disconnect req reg bit is not supplied from DT",
+				ep_pcie_dev.rev);
+			ep_pcie_dev.pcie_disconnect_req_reg_mask = PCIE_DISCONNECT_REQ_REG;
+		}
+
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: Pcie disconnect req reg Mask: 0x%x\n",
+			ep_pcie_dev.rev, ep_pcie_dev.pcie_disconnect_req_reg_mask);
+
 		ret = of_property_read_u32((&pdev->dev)->of_node, "qcom,tcsr-perst-enable-offset",
 					&ep_pcie_dev.tcsr_perst_enable_offset);
 		if (ret) {
@@ -4106,8 +4137,8 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 		}
 
 		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: Perset Raw Reset Status Bit: %d",
-			ep_pcie_dev.rev, BIT(ep_pcie_dev.perst_raw_rst_status_mask));
+			"PCIe V%d: Perst Raw Reset Status Mask: 0x%x\n",
+			ep_pcie_dev.rev, ep_pcie_dev.perst_raw_rst_status_mask);
 	}
 }
 
@@ -4324,6 +4355,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	EP_PCIE_DBG(&ep_pcie_dev,
 		"PCIe V%d: pcie edma is %s enabled\n",
 		ep_pcie_dev.rev, ep_pcie_dev.use_iatu_msi ? "" : "not");
+
+	ret = of_property_read_u32((&pdev->dev)->of_node,
+				"qcom,pcie-cesta-clkreq-offset",
+				&ep_pcie_dev.pcie_cesta_clkreq_offset);
+	if (ret)
+		ep_pcie_dev.pcie_cesta_clkreq_offset = 0;
 
 	memcpy(ep_pcie_dev.vreg, ep_pcie_vreg_info,
 				sizeof(ep_pcie_vreg_info));

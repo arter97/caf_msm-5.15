@@ -881,9 +881,6 @@ int hab_hypervisor_register(void)
 		pr_err("failed to reserve 16MB cma region base_pfn %lX cnt %lX\n",
 			   cma_get_base(c), cma_get_size(c));
 #endif
-
-	/* one virtio device */
-	register_virtio_driver(&virtio_hab_driver);
 	pr_info("alloc virtio_pchan_array of %d devices\n",
 			hab_driver.ndevices);
 	return 0;
@@ -1078,7 +1075,7 @@ static int habvirtio_pchan_create(struct hab_device *dev, char *pchan_name)
 	}
 
 	pchan->closed = 0;
-	strlspy(pchan->name, pchan_name, sizeof(pchan->name));
+	strscpy(pchan->name, pchan_name, sizeof(pchan->name));
 
 	link = kmalloc(sizeof(*link), GFP_KERNEL);
 	if (!link) {
@@ -1094,7 +1091,7 @@ static int habvirtio_pchan_create(struct hab_device *dev, char *pchan_name)
 	link->vhab = NULL;
 
 	/* create PCHAN first then wait for virtq later during probe */
-	pr_info("virtio device has NOT been initialized yet. %s has to wait for probe\n",
+	pr_debug("virtio device has NOT been initialized yet. %s has to wait for probe\n",
 			pchan->name);
 
 	return 0;
@@ -1117,7 +1114,7 @@ int habhyp_commdev_alloc(void **commdev, int is_be, char *name, int vmid_remote,
 		return ret;
 	}
 
-	pr_info("create virtio pchan on %s return %d, loopback mode(%d), total pchan %d\n",
+	pr_debug("create virtio pchan on %s return %d, loopback mode(%d), total pchan %d\n",
 		name, ret, hab_driver.b_loopback, mmid_device->pchan_cnt);
 	pchan = hab_pchan_find_domid(mmid_device, HABCFG_VMID_DONT_CARE);
 	/* in this implementation, commdev is same as pchan */
@@ -1174,4 +1171,11 @@ int hab_stat_log(struct physical_channel **pchans, int pchan_cnt, char *dest,
 	}
 
 	return ret;
+}
+
+int hab_hypervisor_register_post(void)
+{
+	/* one virtio device */
+	register_virtio_driver(&virtio_hab_driver);
+	return 0;
 }
