@@ -1860,12 +1860,14 @@ struct ipa_ipsec_preencap_procparams {
  * struct ipa_ipsec_predecap_procparams -
  * @retain_l2_header: Specifies if L2 header is retained or not
  * @input_ip_version: Specifies if Input header is IPV4(0) or IPV6(1)
+ * @is_dummy: Indicates HPC for special packets
  * @reserved: for future use
  */
 struct ipa_ipsec_predecap_procparams {
 	uint32_t retain_l2_header    :1;
 	uint32_t input_ip_version    :1;
-	uint32_t reserved            :30;
+	uint32_t is_dummy            :1;
+	uint32_t reserved            :29;
 };
 
 /**
