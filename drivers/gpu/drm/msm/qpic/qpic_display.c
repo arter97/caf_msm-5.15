@@ -616,7 +616,7 @@ int qpic_display_init(struct qpic_display_data *qpic_display)
 	if (use_irq && (!qpic_display->irq_requested)) {
 		ret = devm_request_irq(&qpic_display->pdev->dev,
 			qpic_display->irq_id, qpic_lcdc_irq_handler,
-			IRQF_TRIGGER_NONE, "QPIC", &qpic_display);
+			IRQF_TRIGGER_NONE, "QPIC", qpic_display);
 		if (ret) {
 			DRM_ERROR("qpic lcdc irq request failed! irq:%d\n", qpic_display->irq_id);
 			use_irq = false;
