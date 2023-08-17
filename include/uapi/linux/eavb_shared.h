@@ -11,15 +11,13 @@
 #define EAVB_IOCTL_MAGIC    'B'
 
 /* ioctl request */
+/* EAVB_IOCTL_CREATE_STREAM DEPRECATED Do not use this in new code */
 #define EAVB_IOCTL_CREATE_STREAM \
 	_IOWR(EAVB_IOCTL_MAGIC, 1, struct eavb_ioctl_create_stream)
 #define EAVB_IOCTL_GET_STREAM_INFO \
 	_IOWR(EAVB_IOCTL_MAGIC, 2, struct eavb_ioctl_get_stream_info)
-
-/* DEPRECATED Do not use this in new code */
 #define EAVB_IOCTL_CONNECT_STREAM \
 	_IOWR(EAVB_IOCTL_MAGIC, 3, struct eavb_ioctl_connect_stream)
-
 #define EAVB_IOCTL_RECEIVE \
 	_IOWR(EAVB_IOCTL_MAGIC, 4, struct eavb_ioctl_receive)
 #define EAVB_IOCTL_RECV_DONE \
