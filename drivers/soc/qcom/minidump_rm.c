@@ -4,24 +4,24 @@
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#define pr_fmt(fmt) "Minidump: " fmt
+#define pr_fmt(fmt) "minidump: " fmt
 
-#include <linux/init.h>
+#include <linux/android_debug_symbols.h>
+#include <linux/elf.h>
+#include <linux/err.h>
+#include <linux/errno.h>
 #include <linux/export.h>
+#include <linux/gunyah/gh_rm_drv.h>
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/err.h>
-#include <linux/elf.h>
-#include <linux/errno.h>
-#include <linux/string.h>
 #include <linux/slab.h>
-#include <linux/android_debug_symbols.h>
-#include <linux/gunyah/gh_rm_drv.h>
+#include <linux/string.h>
 #include <soc/qcom/minidump.h>
-#include "minidump_private.h"
 #include "elf.h"
+#include "minidump_private.h"
 
 struct md_rm_table {
 	struct workqueue_struct *minidump_rm_wq;
@@ -31,7 +31,7 @@ struct md_rm_table {
 /* Protect elfheader and smem table from deferred calls contention */
 static DEFINE_SPINLOCK(mdt_lock);
 static DEFINE_RWLOCK(mdt_remove_lock);
-static struct md_rm_table	minidump_rm_table;
+static struct md_rm_table   minidump_rm_table;
 static bool md_init_done;
 
 static int md_rm_init_md_table(void)
@@ -436,7 +436,7 @@ static int md_rm_update_region(int regno, const struct md_region *entry)
 
 static int md_rm_get_available_region(void)
 {
-	int res = -EBUSY;
+	int res;
 
 	res = gh_rm_minidump_get_info();
 	if (res < 0)
@@ -448,13 +448,8 @@ static int md_rm_get_available_region(void)
 
 static bool md_rm_md_enable(void)
 {
-	bool ret = false;
-
 	/* If minidump driver init successfully, minidump is enabled */
-	if (smp_load_acquire(&md_init_done))
-		ret = true;
-
-	return ret;
+	return smp_load_acquire(&md_init_done);
 }
 
 static struct md_region md_rm_get_region(char *name)
@@ -483,16 +478,16 @@ out:
 }
 
 static const struct md_ops md_rm_ops = {
-	.init_md_table = md_rm_init_md_table,
-	.add_pending_entry = md_rm_add_pending_entry,
-	.reg_kelfhdr_entry = md_rm_reg_kelfhdr_entry,
-	.get_md_table = md_rm_get_md_table,
-	.remove_region = md_rm_remove_md_region,
-	.add_region = md_rm_add_md_region,
-	.update_region = md_rm_update_region,
-	.get_available_region = md_rm_get_available_region,
-	.md_enable = md_rm_md_enable,
-	.get_region = md_rm_get_region,
+	.init_md_table			= md_rm_init_md_table,
+	.add_pending_entry		= md_rm_add_pending_entry,
+	.reg_kelfhdr_entry		= md_rm_reg_kelfhdr_entry,
+	.get_md_table			= md_rm_get_md_table,
+	.remove_region			= md_rm_remove_md_region,
+	.add_region				= md_rm_add_md_region,
+	.update_region			= md_rm_update_region,
+	.get_available_region	= md_rm_get_available_region,
+	.md_enable				= md_rm_md_enable,
+	.get_region				= md_rm_get_region,
 };
 
 static struct md_init_data md_rm_init_data = {

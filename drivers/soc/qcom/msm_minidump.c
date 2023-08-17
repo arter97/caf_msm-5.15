@@ -28,7 +28,7 @@ struct md_core {
 };
 
 static bool md_init_done;
-static struct md_core	md_core;
+static struct md_core md_core;
 
 unsigned int md_num_regions;
 EXPORT_SYMBOL(md_num_regions);
@@ -251,15 +251,13 @@ int msm_minidump_add_region(const struct md_region *entry)
 	int ret;
 	struct md_pending_region *pending_region;
 
-	if (validate_region(entry)) {
+	if (validate_region(entry))
 		return -EINVAL;
-	}
 
-	if (!strcmp(entry->name, "KWDOGDATA")) {
-		pr_info("SMEM not initialized, add region to pending list\n");
-		/* Local table not initialized
-		 * add to pending list, need free after initialized
-		 */
+	if (md_core.ops)
+		ret = md_core.ops->add_region(entry, &pending_list);
+	else {
+		pr_info("Minidump driver hasn't probe, add region to pending list\n");
 		pending_region = kzalloc(sizeof(*pending_region), GFP_ATOMIC);
 		if (!pending_region) {
 			ret = -ENOMEM;
@@ -269,13 +267,6 @@ int msm_minidump_add_region(const struct md_region *entry)
 		list_add_tail(&pending_region->list, &pending_list);
 		ret = md_num_regions;
 		md_num_regions++;
-	} else {
-		if (md_core.ops)
-			ret = md_core.ops->add_region(entry, &pending_list);
-		else {
-			ret = -EINVAL;
-			goto out;
-		}
 	}
 
 out:

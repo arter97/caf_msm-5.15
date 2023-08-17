@@ -68,6 +68,7 @@ static void ssr_register(void);
 static int setup_pmic_gpio15(void);
 static unsigned int pmic_gpio15 = -1;
 static int slate_boot_status;
+struct rproc *slatecom_rproc;
 
 /* tzapp command list.*/
 enum slate_tz_commands {
@@ -119,6 +120,7 @@ struct slatedaemon_priv {
 	struct device *platform_dev;
 	bool slatecom_rpmsg;
 	bool slate_resp_cmplt;
+	bool slate_unload;
 	void *lhndl;
 	wait_queue_head_t link_state_wait;
 	char rx_buf[SCOM_GLINK_INTENT_SIZE];
@@ -354,12 +356,12 @@ static int slatechar_read_cmd(struct slate_ui_data *fui_obj_msg,
 	if (read_buf == NULL)
 		return -ENOMEM;
 	switch (type) {
-	case REG_READ:
+	case SLATECOM_REG_READ:
 		ret = slatecom_reg_read(handle, fui_obj_msg->cmd,
 				fui_obj_msg->num_of_words,
 				read_buf);
 		break;
-	case AHB_READ:
+	case SLATECOM_AHB_READ:
 		ret = slatecom_ahb_read(handle,
 				fui_obj_msg->slate_address,
 				fui_obj_msg->num_of_words,
@@ -396,12 +398,12 @@ static int slatechar_write_cmd(struct slate_ui_data *fui_obj_msg, unsigned int t
 		return ret;
 	}
 	switch (type) {
-	case REG_WRITE:
+	case SLATECOM_REG_WRITE:
 		ret = slatecom_reg_write(handle, fui_obj_msg->cmd,
 				fui_obj_msg->num_of_words,
 				write_buf);
 		break;
-	case AHB_WRITE:
+	case SLATECOM_AHB_WRITE:
 		ret = slatecom_ahb_write(handle,
 				fui_obj_msg->slate_address,
 				fui_obj_msg->num_of_words,
@@ -444,6 +446,7 @@ static int slatecom_get_rproc_handle(struct slatedaemon_priv *priv)
 		if (of_property_read_u32(pdev->dev.of_node, "qcom,rproc-handle",
 					 &rproc_phandle)) {
 			pr_err("error reading rproc phandle\n");
+			goto fail;
 		}
 
 		priv->pil_h = rproc_get_by_phandle(rproc_phandle);
@@ -451,8 +454,9 @@ static int slatecom_get_rproc_handle(struct slatedaemon_priv *priv)
 			pr_err("rproc not found\n");
 			goto fail;
 		}
+		slatecom_rproc = (struct rproc *)priv->pil_h;
+		return 0;
 	}
-	return 0;
 
 fail:
 	pr_err("%s: SLATE get handle failed\n", __func__);
@@ -461,9 +465,12 @@ fail:
 
 static int slatecom_fw_load(struct slatedaemon_priv *priv)
 {
-	int ret;
+	int ret = 0;
 
-	ret = slatecom_get_rproc_handle(priv);
+	if (!priv->pil_h) {
+		pr_err("%s: Getting rproc handle\n", __func__);
+		ret = slatecom_get_rproc_handle(priv);
+	}
 	if (ret == 0) {
 		ret = rproc_boot(priv->pil_h);
 		if (ret) {
@@ -474,10 +481,9 @@ static int slatecom_fw_load(struct slatedaemon_priv *priv)
 			goto fail;
 		}
 		slate_boot_status = 1;
+		pr_info("%s: SLATE image is loaded\n", __func__);
+		return 0;
 	}
-	pr_info("%s: SLATE image is loaded\n", __func__);
-	return 0;
-
 fail:
 	pr_err("%s: SLATE image loading failed\n", __func__);
 	return -EFAULT;
@@ -491,7 +497,9 @@ static void slatecom_fw_unload(struct slatedaemon_priv *priv)
 	}
 	if (priv->pil_h) {
 		pr_err("%s: calling subsystem put\n", __func__);
+		priv->slate_unload = true;
 		rproc_shutdown(priv->pil_h);
+		priv->slate_unload = false;
 		priv->pil_h = NULL;
 		slate_boot_status = 0;
 	}
@@ -770,6 +778,15 @@ int get_slate_boot_mode(void)
 }
 EXPORT_SYMBOL(get_slate_boot_mode);
 
+bool is_slate_unload_only(void)
+{
+	struct slatedaemon_priv *dev =
+		container_of(slatecom_intf_drv, struct slatedaemon_priv, lhndl);
+
+	return dev->slate_unload;
+}
+EXPORT_SYMBOL(is_slate_unload_only);
+
 static int send_get_fw_version(struct slate_ui_data *ui_obj_msg)
 {
 	int ret = 0;
@@ -850,9 +867,9 @@ static int send_boot_cmd_to_slate(struct slate_ui_data *ui_obj_msg)
 		if (!dev->pil_h)
 			ret = slatecom_get_rproc_handle(dev);
 		if (ret == 0)
-			rproc_report_crash(dev->pil_h, RPROC_WATCHDOG);
+			slatecom_rproc->ops->coredump(slatecom_rproc);
 		else
-			pr_err("failed to get rproc_handle, skip RPROC_WATCHDOG\n");
+			pr_err("failed to get rproc, skip coredump collection\n");
 		break;
 	case BOOT_STATUS:
 		ret = send_slate_boot_status(ui_obj_msg->write);
@@ -870,8 +887,10 @@ static long slate_com_ioctl(struct file *filp,
 	int ret = 0;
 	struct slate_ui_data ui_obj_msg;
 
-	if (filp == NULL)
+	if (!dev || (dev->slatecom_current_state == SLATECOM_STATE_UNKNOWN) || (filp == NULL)) {
+		pr_err("slatecom driver not initialized\n");
 		return -EINVAL;
+	}
 
 	if (arg != 0) {
 		if (copy_from_user(&ui_obj_msg, (void __user *) arg,

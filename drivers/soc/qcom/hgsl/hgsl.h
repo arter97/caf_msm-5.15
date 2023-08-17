@@ -25,6 +25,8 @@
 #define MAX_DB_QUEUE 9
 #define HGSL_TCSR_NUM 4
 
+#define HGSL_CONTEXT_NUM 256
+
 struct qcom_hgsl;
 struct hgsl_hsync_timeline;
 
@@ -122,6 +124,7 @@ struct qcom_hgsl {
 	struct idr isync_timeline_idr;
 	spinlock_t isync_timeline_lock;
 	atomic64_t total_mem_size;
+	bool default_iocoherency;
 };
 
 /**
@@ -139,8 +142,9 @@ struct hgsl_context {
 	bool dbq_assigned;
 	uint32_t dbq_info;
 	struct doorbell_queue *dbq;
-	struct hgsl_mem_node shadow_ts_node;
+	struct hgsl_mem_node *shadow_ts_node;
 	uint32_t shadow_ts_flags;
+	bool is_fe_shadow;
 	bool in_destroy;
 	bool destroyed;
 	struct kref kref;

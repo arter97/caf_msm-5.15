@@ -86,7 +86,7 @@ static int md_smem_init_md_table(void)
 	}
 
 	/*Check global minidump support initialization */
-	if (!md_global_toc->md_toc_init) {
+	if (size < sizeof(*md_global_toc) || !md_global_toc->md_toc_init) {
 		pr_err("System Minidump TOC not initialized\n");
 		return -ENODEV;
 	}
@@ -393,16 +393,16 @@ out:
 }
 
 static const struct md_ops md_smem_ops = {
-	.init_md_table = md_smem_init_md_table,
-	.add_pending_entry = md_smem_add_pending_entry,
-	.reg_kelfhdr_entry = md_smem_reg_kelfhdr_entry,
-	.get_md_table = md_smem_get_md_table,
-	.remove_region = md_smem_remove_region,
-	.add_region = md_smem_add_region,
-	.update_region = md_smem_update_region,
-	.get_available_region = md_smem_get_available_region,
-	.md_enable = md_smem_md_enable,
-	.get_region = md_smem_get_region,
+	.init_md_table			= md_smem_init_md_table,
+	.add_pending_entry		= md_smem_add_pending_entry,
+	.reg_kelfhdr_entry		= md_smem_reg_kelfhdr_entry,
+	.get_md_table			= md_smem_get_md_table,
+	.remove_region			= md_smem_remove_region,
+	.add_region				= md_smem_add_region,
+	.update_region			= md_smem_update_region,
+	.get_available_region	= md_smem_get_available_region,
+	.md_enable				= md_smem_md_enable,
+	.get_region				= md_smem_get_region,
 };
 
 static struct md_init_data md_smem_init_data = {

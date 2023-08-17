@@ -29,8 +29,8 @@
 #define MD_SS_ENABLED		('E' << 24 | 'N' << 16 | 'B' << 8 | 'L' << 0)
 #define MD_SS_DISABLED		('D' << 24 | 'S' << 16 | 'B' << 8 | 'L' << 0)
 
-#define MAX_NUM_ENTRIES         (CONFIG_MINIDUMP_MAX_ENTRIES + 1)
-#define MAX_STRTBL_SIZE                (MAX_NUM_ENTRIES * MAX_REGION_NAME_LENGTH)
+#define MAX_NUM_ENTRIES		(CONFIG_MINIDUMP_MAX_ENTRIES + 1)
+#define MAX_STRTBL_SIZE		(MAX_NUM_ENTRIES * MAX_REGION_NAME_LENGTH)
 
 extern unsigned int md_num_regions;
 extern struct md_elfhdr minidump_elfheader;
@@ -102,20 +102,20 @@ struct md_elfhdr {
 };
 
 struct md_ops {
-	int (*init_md_table)(void);
-	int (*add_pending_entry)(struct list_head *pending_list);
-	void (*reg_kelfhdr_entry)(unsigned int elfh_size);
-	elf_addr_t (*get_md_table)(void);
-	int (*remove_region)(const struct md_region *entry);
-	int (*add_region)(const struct md_region *entry, struct list_head *pending_list);
-	int (*update_region)(int regno, const struct md_region *entry);
-	int (*get_available_region)(void);
-	bool (*md_enable)(void);
-	struct md_region (*get_region)(char *name);
+	int	(*init_md_table)(void);
+	int	(*add_pending_entry)(struct list_head *pending_list);
+	void	(*reg_kelfhdr_entry)(unsigned int elfh_size);
+	elf_addr_t	(*get_md_table)(void);
+	int	(*remove_region)(const struct md_region *entry);
+	int	(*add_region)(const struct md_region *entry, struct list_head *pending_list);
+	int	(*update_region)(int regno, const struct md_region *entry);
+	int	(*get_available_region)(void);
+	bool	(*md_enable)(void);
+	struct	md_region (*get_region)(char *name);
 };
 
 struct md_init_data {
-	const struct md_ops *ops;
+	const struct	md_ops *ops;
 };
 
 extern int msm_minidump_driver_probe(const struct md_init_data *data);
