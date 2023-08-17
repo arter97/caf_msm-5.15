@@ -620,6 +620,11 @@ struct tsens_priv {
 	const struct reg_field		*fields;
 	const struct tsens_ops		*ops;
 
+	/* add to save irq number to re-use it at runtime */
+	int				uplow_irq;
+	int				crit_irq;
+	int				cold_irq;
+
 	struct dentry			*debug_root;
 	struct dentry			*debug;
 	void				*ipc_log;
@@ -641,6 +646,8 @@ int get_temp_tsens_valid(const struct tsens_sensor *s, int *temp);
 int get_temp_common(const struct tsens_sensor *s, int *temp);
 int get_cold_int_status(const struct tsens_sensor *s, bool *cold_status);
 int get_max_temp_tsens_valid(const struct tsens_sensor *s, int *temp);
+int tsens_v2_tsens_suspend(struct tsens_priv *priv);
+int tsens_v2_tsens_resume(struct tsens_priv *priv);
 
 /* TSENS target */
 extern struct tsens_plat_data data_8960;
