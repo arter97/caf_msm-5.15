@@ -56,8 +56,8 @@
 #include "smi230_log.h"
 #include "smi230.h"
 
-#define SMI230_MAX_RETRY_I2C_XFER   10
-#define SMI230_I2C_WRITE_DELAY_TIME 10
+#define SMI230_MAX_RETRY_I2C_XFER   1
+#define SMI230_I2C_WRITE_DELAY_TIME 1
 
 struct i2c_adapter *smi230_i2c_adapter;
 
