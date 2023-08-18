@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2013-2014,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DRIVERS_MMC_SDHCI_MSM_H
@@ -23,10 +23,20 @@
 #include <linux/reset.h>
 
 #include "sdhci-pltfm.h"
+#if IS_ENABLED(CONFIG_MMC_SDHCI_MSM_SCALING)
 #include "sdhci-msm-scaling.h"
+#endif
 #include "cqhci.h"
 
 #define MMC_CAP2_CLK_SCALE      (1 << 28)       /* Allow dynamic clk scaling */
+
+/* CPU Clusters Info */
+enum cpu_cluster_info {
+	SILVER_CORE,
+	GOLD_CORE,
+	GOLD_PRIME_CORE,
+	MAX_NUM_CLUSTERS,
+};
 
 enum dev_state {
 	DEV_SUSPENDING = 1,
@@ -62,6 +72,7 @@ enum sdhci_msm_mmc_load {
  * @enable: flag indicating if the clock scaling logic is enabled for this host
  * @is_suspended: to make devfreq request queued when mmc is suspened
  */
+#if IS_ENABLED(CONFIG_MMC_SDHCI_MSM_SCALING)
 struct sdhci_msm_mmc_devfeq_clk_scaling {
 	spinlock_t	lock;
 	struct		devfreq *devfreq;
@@ -89,7 +100,7 @@ struct sdhci_msm_mmc_devfeq_clk_scaling {
 	bool		enable;
 	bool		is_suspended;
 };
-
+#endif
 struct sdhci_msm_variant_ops {
 	u32 (*msm_readl_relaxed)(struct sdhci_host *host, u32 offset);
 	void (*msm_writel_relaxed)(u32 val, struct sdhci_host *host,
@@ -317,7 +328,9 @@ struct sdhci_msm_host {
 	bool dbg_en;
 	bool err_occurred;
 	bool crash_on_err;
+#if IS_ENABLED(CONFIG_MMC_SDHCI_MSM_SCALING)
 	struct sdhci_msm_mmc_devfeq_clk_scaling clk_scaling;
+#endif
 	unsigned long           clk_scaling_lowest;     /* lowest scaleable
 							 * frequency.
 							 */
@@ -335,6 +348,7 @@ struct sdhci_msm_host {
 	u8 raw_ext_csd_bus_width;
 	u8 raw_ext_csd_hs_timing;
 	struct mmc_ios cached_ios;
+	bool rst_n_disable;
 };
 
 struct mmc_pwrseq_ops {

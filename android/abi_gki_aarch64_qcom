@@ -148,10 +148,10 @@
   blocking_notifier_chain_register
   blocking_notifier_chain_unregister
   bmap
-  bpf_trace_run1
   bpf_trace_run10
   bpf_trace_run11
   bpf_trace_run12
+  bpf_trace_run1
   bpf_trace_run2
   bpf_trace_run3
   bpf_trace_run4
@@ -261,6 +261,7 @@
   contig_page_data
   _copy_from_iter
   copy_from_kernel_nofault
+  copy_page
   __cpu_active_mask
   cpu_bit_bitmap
   cpufreq_cpu_get
@@ -323,6 +324,7 @@
   crypto_destroy_tfm
   crypto_enqueue_request
   crypto_has_alg
+  crypto_inc
   crypto_init_queue
   crypto_unregister_ahash
   crypto_unregister_skcipher
@@ -424,6 +426,7 @@
   devm_iio_channel_get_all
   devm_iio_device_alloc
   __devm_iio_device_register
+  devm_iio_triggered_buffer_setup_ext
   devm_input_allocate_device
   devm_ioremap
   devm_ioremap_resource
@@ -778,6 +781,7 @@
   geni_se_tx_dma_unprep
   genphy_check_and_restart_aneg
   __genphy_config_aneg
+  genphy_c45_read_status
   genphy_read_abilities
   genphy_read_lpa
   genphy_read_mmd_unsupported
@@ -825,6 +829,7 @@
   get_unused_fd_flags
   get_user_ifreq
   get_zeroed_page
+  gf128mul_lle
   gic_cpu_init
   gic_dist_init
   gic_dist_wait_for_rwp
@@ -846,6 +851,7 @@
   gpiod_direction_input
   gpiod_direction_output
   gpiod_direction_output_raw
+  gpiod_get_direction
   gpiod_get_optional
   gpiod_get_raw_value
   gpiod_get_value
@@ -953,14 +959,21 @@
   iio_device_claim_direct_mode
   iio_device_id
   iio_device_release_direct_mode
+  iio_get_time_ns
   iio_kfifo_allocate
   iio_push_event
   iio_push_to_buffers
   iio_read_channel_processed
   iio_read_channel_raw
   iio_read_const_attr
+  iio_trigger_alloc
   iio_triggered_buffer_cleanup
   iio_triggered_buffer_setup_ext
+  iio_trigger_free
+  iio_trigger_notify_done
+  iio_trigger_poll
+  __iio_trigger_register
+  iio_trigger_unregister
   iio_update_buffers
   iio_validate_scan_mask_onehot
   iio_write_channel_raw
@@ -1032,6 +1045,7 @@
   iommu_group_set_iommudata
   iommu_iova_to_phys
   iommu_map
+  iommu_map_atomic
   iommu_map_sg
   iommu_present
   iommu_put_dma_cookie
@@ -1269,8 +1283,8 @@
   mempool_kmalloc
   memremap
   mem_section
-  memset
   memset64
+  memset
   __memset_io
   memstart_addr
   memunmap
@@ -1297,8 +1311,8 @@
   mmc_retune_release
   mmc_select_bus_width
   mmc_select_card
-  mmc_select_hs
   mmc_select_hs400
+  mmc_select_hs
   mmc_select_hs_ddr
   mmc_select_timing
   mmc_send_status
@@ -1331,8 +1345,8 @@
   netdev_rss_key_fill
   netif_receive_skb_list
   nla_find
-  nla_reserve
   nla_reserve_64bit
+  nla_reserve
   __nla_validate
   no_llseek
   nonseekable_open
@@ -1885,6 +1899,7 @@
   rproc_put
   rproc_remove_subdev
   rproc_report_crash
+  rproc_set_firmware
   rproc_shutdown
   rtc_time64_to_tm
   rtc_tm_to_time64
@@ -2171,6 +2186,7 @@
   task_may_not_preempt
   __task_pid_nr_ns
   __task_rq_lock
+  task_rq_lock
   tcp_hashinfo
   thermal_cooling_device_register
   thermal_cooling_device_unregister
@@ -2303,6 +2319,7 @@
   __traceiter_android_vh_ufs_check_int_errors
   __traceiter_android_vh_ufs_clock_scaling
   __traceiter_android_vh_ufs_compl_command
+  __traceiter_android_vh_ufs_prepare_command
   __traceiter_android_vh_ufs_send_command
   __traceiter_android_vh_ufs_send_tm_command
   __traceiter_android_vh_ufs_send_uic_command
@@ -2425,6 +2442,7 @@
   __tracepoint_android_vh_ufs_check_int_errors
   __tracepoint_android_vh_ufs_clock_scaling
   __tracepoint_android_vh_ufs_compl_command
+  __tracepoint_android_vh_ufs_prepare_command
   __tracepoint_android_vh_ufs_send_command
   __tracepoint_android_vh_ufs_send_tm_command
   __tracepoint_android_vh_ufs_send_uic_command
@@ -2545,6 +2563,7 @@
   usb_control_msg_send
   usb_debug_root
   usb_decode_ctrl
+  usb_driver_set_configuration
   usb_ep_alloc_request
   usb_ep_autoconfig
   usb_ep_dequeue
@@ -2558,6 +2577,8 @@
   usb_free_coherent
   usb_function_register
   usb_function_unregister
+  usb_gadget_connect
+  usb_gadget_disconnect
   usb_gadget_wakeup
   usb_ifnum_to_if
   usb_interface_id

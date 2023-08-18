@@ -2,7 +2,7 @@
 /*
  * Copyright(C) 2016 Linaro Limited. All rights reserved.
  * Author: Mathieu Poirier <mathieu.poirier@linaro.org>
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -1354,6 +1354,13 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 		ret = tmc_eth_enable(drvdata->eth_data);
 
 	if (ret) {
+		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
+			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW) {
+			spin_lock_irqsave(&drvdata->spinlock, flags);
+			tmc_etr_disable_hw(drvdata);
+			spin_unlock_irqrestore(&drvdata->spinlock, flags);
+		}
+
 		atomic_dec(csdev->refcnt);
 		drvdata->mode = CS_MODE_DISABLED;
 	}
@@ -1845,12 +1852,14 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 	if (drvdata->out_mode == TMC_ETR_OUT_MODE_MEM ||
 		(drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
 			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)) {
+		tmc_etr_disable_hw(drvdata);
 		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 			spin_unlock_irqrestore(&drvdata->spinlock, flags);
 			tmc_usb_disable(drvdata->usb_data);
+			tmc_etr_free_sysfs_buf(drvdata->sysfs_buf);
 			spin_lock_irqsave(&drvdata->spinlock, flags);
+			drvdata->sysfs_buf = NULL;
 		}
-		tmc_etr_disable_hw(drvdata);
 	} else if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
 		drvdata->usb_data->usb_mode == TMC_ETR_USB_BAM_TO_BAM){
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);

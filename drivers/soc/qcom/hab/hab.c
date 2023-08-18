@@ -63,6 +63,7 @@ struct hab_driver hab_driver = {
 	.drvlock = __SPIN_LOCK_UNLOCKED(hab_driver.drvlock),
 	.imp_list = LIST_HEAD_INIT(hab_driver.imp_list),
 	.imp_lock = __SPIN_LOCK_UNLOCKED(hab_driver.imp_lock),
+	.hab_init_success = 0,
 };
 
 struct uhab_context *hab_ctx_alloc(int kernel)
@@ -120,6 +121,7 @@ void hab_ctx_free(struct kref *ref)
 	struct uhab_context *ctxdel, *ctxtmp;
 	struct hab_open_node *open_node;
 	struct export_desc *exp = NULL, *exp_tmp = NULL;
+	struct export_desc_super *exp_super = NULL;
 
 	/* garbage-collect exp/imp buffers */
 	write_lock_bh(&ctx->exp_lock);
@@ -142,7 +144,8 @@ void hab_ctx_free(struct kref *ref)
 			exp->export_id, exp->vcid_local,
 			ctx->import_total);
 		habmm_imp_hyp_unmap(ctx->import_ctx, exp, ctx->kernel);
-		kfree(exp);
+		exp_super = container_of(exp, struct export_desc_super, exp);
+		kfree(exp_super);
 	}
 	spin_unlock_bh(&ctx->imp_lock);
 
