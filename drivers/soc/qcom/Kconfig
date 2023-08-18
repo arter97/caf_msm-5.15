@@ -258,6 +258,16 @@ config MSM_BOOT_TIME_MARKER
 	  To create an entry, call "place_marker" function.
 	  At userspace, write marker name to "/sys/kernel/boot_kpi/kpi_values"
 
+config MSM_GVM_BOOT_TIME_MARKER
+	bool "Use MSM GVM boot time marker reporting in GVM"
+	depends on MSM_BOOT_STATS
+	default n
+	help
+	  Use this to mark msm boot kpi in guest VMs for measurement.
+	  An instrumentation for boot time measurement.
+	  To create an entry, call "update_marker" function.
+	  At userspace, write marker name to "/sys/kernel/boot_kpi/kpi_values"
+
 config QCOM_QMI_HELPERS
 	tristate
 	depends on NET
