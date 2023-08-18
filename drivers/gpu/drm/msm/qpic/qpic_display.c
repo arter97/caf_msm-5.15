@@ -942,8 +942,8 @@ static void qpic_display_fb_mark_dirty(struct drm_framebuffer *fb, struct drm_re
 	size = fb->width * fb->height * fb->format->depth / 8;
 	DRM_INFO("%s: prepare to send fb to panel\n", __func__);
 
-	qpic_send_frame(qpic_display, rect->x1, rect->x2,
-		rect->y1 - 1, rect->y2 - 1,
+	qpic_send_frame(qpic_display, rect->x1, rect->y1,
+		rect->x2 - 1, rect->y2 - 1,
 		use_bam ? (u32 *)cma_obj->paddr:(u32 *)cma_obj->vaddr, size);
 
 	msm_qpic_bus_set_vote(qpic_display, 0);
