@@ -2602,17 +2602,29 @@ static int __dwc3_gadget_start(struct dwc3 *dwc);
 static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 {
 	unsigned long flags;
-	int ret;
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	dwc->connected = false;
 
 	/*
-	 * Attempt to end pending SETUP status phase, and not wait for the
-	 * function to do so.
+	 * Per databook, when we want to stop the gadget, if a control transfer
+	 * is still in process, complete it and get the core into setup phase.
 	 */
-	if (dwc->delayed_status)
-		dwc3_ep0_send_delayed_status(dwc);
+	if (dwc->ep0state != EP0_SETUP_PHASE) {
+		int ret;
+
+		if (dwc->delayed_status)
+			dwc3_ep0_send_delayed_status(dwc);
+
+		reinit_completion(&dwc->ep0_in_setup);
+
+		spin_unlock_irqrestore(&dwc->lock, flags);
+		ret = wait_for_completion_timeout(&dwc->ep0_in_setup,
+				msecs_to_jiffies(DWC3_PULL_UP_TIMEOUT));
+		spin_lock_irqsave(&dwc->lock, flags);
+		if (ret == 0)
+			dev_warn(dwc->dev, "timed out waiting for SETUP phase\n");
+	}
 
 	/*
 	 * In the Synopsys DesignWare Cores USB3 Databook Rev. 3.30a
@@ -2626,6 +2638,7 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	/*
+<<<<<<< HEAD   (5c263a Merge "Revert "defconfig[NO MERGE]: Enable console log for p)
 	 * Per databook, when we want to stop the gadget, if a control transfer
 	 * is still in process, complete it and get the core into setup phase.
 	 * In case the host is unresponsive to a SETUP transaction, forcefully
@@ -2653,6 +2666,8 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	}
 
 	/*
+=======
+>>>>>>> CHANGE (139a81 Revert "UPSTREAM: usb: dwc3: gadget: Stall and restart EP0 i)
 	 * Note: if the GEVNTCOUNT indicates events in the event buffer, the
 	 * driver needs to acknowledge them before the controller can halt.
 	 * Simply let the interrupt handler acknowledges and handle the
