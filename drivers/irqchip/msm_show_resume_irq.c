@@ -14,7 +14,14 @@
 #include <linux/irqdomain.h>
 #include <linux/irqchip/arm-gic-v3.h>
 #include <trace/hooks/cpuidle_psci.h>
+
+#if (IS_ENABLED(CONFIG_ARM_GIC) && !IS_ENABLED(CONFIG_ARM_GIC_V3))
+#include <trace/hooks/gic.h>
+void gic_v2_resume(void);
+#elif IS_ENABLED(CONFIG_ARM_GIC_V3)
 #include <trace/hooks/gic_v3.h>
+
+
 #include <linux/notifier.h>
 #include <linux/suspend.h>
 
@@ -36,9 +43,11 @@ struct gic_chip_data_ds {
 };
 
 static struct gic_chip_data_ds gic_data_ds __read_mostly;
+#endif
 int msm_show_resume_irq_mask;
 module_param_named(debug_mask, msm_show_resume_irq_mask, int, 0664);
 
+#if IS_ENABLED(CONFIG_ARM_GIC_V3)
 static void gic_suspend_ds(void *data, struct gic_chip_data *gic_data)
 {
 	int i;
@@ -85,24 +94,17 @@ static void gic_resume_ds(void *data, struct gic_chip_data *gic_data)
 	}
 	gic_dist_wait_for_rwp();
 }
-
-static void msm_show_resume_irqs(void *data, struct gic_chip_data *gic_data)
+#endif
+static void msm_show_resume_irqs(void *data, struct irq_domain *domain, void __iomem *base)
 {
-	struct irq_domain *domain;
-	void __iomem *base;
 	unsigned int i;
 	u32 enabled;
 	u32 pending[32];
 	u32 gic_line_nr;
 	u32 typer;
 
-	if (unlikely(hibernation))
-		gic_resume_ds(data, gic_data);
 	if (!msm_show_resume_irq_mask)
 		return;
-
-	base = gic_data->dist_base;
-	domain = gic_data->domain;
 
 	typer = readl_relaxed(base + GICD_TYPER);
 	gic_line_nr = min(GICD_TYPER_SPIS(typer), 1023u);
@@ -132,6 +134,16 @@ static void msm_show_resume_irqs(void *data, struct gic_chip_data *gic_data)
 	}
 }
 
+#if IS_ENABLED(CONFIG_ARM_GIC_V3)
+static void msm_show_resume_irqs_wrapper(void *data, struct gic_chip_data *gic_data)
+{
+	if (unlikely(hibernation))
+		gic_resume_ds(data, gic_data);
+
+	msm_show_resume_irqs(data, gic_data->domain, gic_data->dist_base);
+}
+#endif
+
 static atomic_t cpus_in_s2idle;
 
 static void gic_s2idle_enter(void *unused, struct cpuidle_device *dev, bool s2idle)
@@ -147,12 +159,17 @@ static void gic_s2idle_exit(void *unused, struct cpuidle_device *dev, bool s2idl
 	if (!s2idle)
 		return;
 
-	if (atomic_read(&cpus_in_s2idle) == num_online_cpus())
+	if (atomic_read(&cpus_in_s2idle) == num_online_cpus()) {
+#if (IS_ENABLED(CONFIG_ARM_GIC) && !IS_ENABLED(CONFIG_ARM_GIC_V3))
+		gic_v2_resume();
+#elif IS_ENABLED(CONFIG_ARM_GIC_V3)
 		gic_resume();
-
+#endif
+	}
 	atomic_dec(&cpus_in_s2idle);
 }
 
+#if IS_ENABLED(CONFIG_ARM_GIC_V3)
 static int gic_suspend_notifier(struct notifier_block *nb, unsigned long event, void *dummy)
 {
 	if ((event == PM_HIBERNATION_PREPARE) || ((event == PM_SUSPEND_PREPARE)
@@ -167,16 +184,28 @@ static int gic_suspend_notifier(struct notifier_block *nb, unsigned long event, 
 static struct notifier_block gic_notif_block = {
 		.notifier_call = gic_suspend_notifier,
 };
-
+#endif
 static int __init msm_show_resume_irq_init(void)
 {
+	int ret = 0;
+
 	register_trace_prio_android_vh_cpuidle_psci_enter(gic_s2idle_enter, NULL, INT_MAX);
 	register_trace_prio_android_vh_cpuidle_psci_exit(gic_s2idle_exit, NULL, INT_MAX);
 
-	register_trace_android_vh_gic_resume(msm_show_resume_irqs, NULL);
+#if (IS_ENABLED(CONFIG_ARM_GIC) && !IS_ENABLED(CONFIG_ARM_GIC_V3))
+	ret = register_trace_android_vh_gic_v2_resume(msm_show_resume_irqs, NULL);
+#elif IS_ENABLED(CONFIG_ARM_GIC_V3)
+	ret = register_trace_android_vh_gic_resume(msm_show_resume_irqs_wrapper, NULL);
+#endif
+	if (ret)
+		goto exit;
 
+#if IS_ENABLED(CONFIG_ARM_GIC_V3)
 	register_pm_notifier(&gic_notif_block);
-	return register_trace_android_vh_gic_suspend(gic_suspend_ds, NULL);
+	ret = register_trace_android_vh_gic_suspend(gic_suspend_ds, NULL);
+#endif
+exit:
+	return ret;
 }
 
 #if IS_MODULE(CONFIG_QCOM_SHOW_RESUME_IRQ)
