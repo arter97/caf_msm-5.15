@@ -443,6 +443,11 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 	dma_cap->number_rx_queues =
 		((hw_cap & XGMAC_HWFEAT_RXQCNT) >> 0) + 1;
 
+	/* IEEE 1588-2002 */
+	dma_cap->time_stamp = 0;
+	/* Number of Auxiliary Snapshot Inputs */
+	dma_cap->aux_snapshot_n = (hw_cap & GMAC_HW_FEAT_AUXSNAPNUM) >> 28;
+
 	/* MAC HW feature 3 */
 	hw_cap = readl(ioaddr + XGMAC_HW_FEATURE3);
 	dma_cap->tbssel = (hw_cap & XGMAC_HWFEAT_TBSSEL) >> 27;
