@@ -1263,7 +1263,7 @@ static int mhi_qcom_register_controller(struct mhi_controller *mhi_cntrl,
 		     PCI_SLOT(pci_dev->devfn));
 	mhi_dev->name = dev_name(&mhi_dev->dev);
 
-	mhi_priv->cntrl_ipc_log = ipc_log_context_create(MHI_IPC_LOG_PAGES,
+	mhi_priv->cntrl_ipc_log = ipc_log_context_create(CONFIG_MHI_BUS_LOG_PAGES,
 							 dev_info->name, 0);
 
 	return 0;

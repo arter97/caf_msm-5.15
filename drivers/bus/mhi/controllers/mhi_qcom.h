@@ -14,8 +14,6 @@
 
 #define PCI_INVALID_READ(val) ((val) == U32_MAX)
 
-#define MHI_IPC_LOG_PAGES (100)
-
 #define MHI_CNTRL_LOG(fmt, ...) do {	\
 	struct mhi_qcom_priv *mhi_priv = \
 			mhi_controller_get_privdata(mhi_cntrl); \
