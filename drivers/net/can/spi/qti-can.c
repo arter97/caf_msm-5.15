@@ -654,7 +654,7 @@ static int qti_can_process_response(struct qti_can *priv_data,
 exit:
 	if (resp->cmd == priv_data->wait_cmd) {
 		priv_data->probe_query_resp = true;
-		priv_data->cmd_result = ret;
+		priv_data->cmd_result = 0;
 		complete(&priv_data->response_completion);
 	}
 	return ret;
@@ -1839,7 +1839,7 @@ static int qti_can_query_probe(struct qti_can *priv_data)
 		priv_data->assembly_buffer_size = 0;
 		retry++;
 	}
-	if (priv_data->time_sync_from_soc_to_mcu)
+	if (priv_data->time_sync_from_soc_to_mcu && !query_err)
 		Init_timer_thread(priv_data);
 	return query_err;
 }
@@ -1990,7 +1990,7 @@ static int qti_can_probe(struct spi_device *spi)
 
 	query_err = qti_can_query_probe(priv_data);
 
-	if (query_err) {
+	if (query_err != 0) {
 		dev_err(&priv_data->spidev->dev, "QTI CAN probe failed\n");
 		err = -ENODEV;
 		goto free_irq;
@@ -1999,7 +1999,8 @@ static int qti_can_probe(struct spi_device *spi)
 
 free_irq:
 	free_irq(spi->irq, priv_data);
-	kthread_stop(priv_data->timer_thread);
+	if (priv_data->timer_thread)
+		kthread_stop(priv_data->timer_thread);
 unregister_candev:
 	for (i = 0; i < priv_data->max_can_channels; i++)
 		unregister_candev(priv_data->netdev[i]);
