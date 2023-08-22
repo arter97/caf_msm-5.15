@@ -412,6 +412,7 @@ static void mhi_dev_net_write_completion_cb(void *req)
 				chan_to_net_client(wreq->vf_id, wreq->chan);
 	struct sk_buff *skb = wreq->context;
 	unsigned long   flags;
+
 	kfree_skb(skb);
 
 	if (!client_handle) {

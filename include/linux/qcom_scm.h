@@ -178,6 +178,11 @@ extern int qcom_scm_iommu_secure_map(phys_addr_t sg_list_addr, size_t num_sg,
 				unsigned long iova, size_t total_len);
 extern int qcom_scm_iommu_secure_unmap(u64 sec_id, int cbndx,
 				unsigned long iova, size_t total_len);
+extern int qcom_scm_paravirt_smmu_attach(u64 sid, u64 asid, u64 ste_pa,
+				u64 ste_size, u64 cd_pa, u64 cd_size);
+extern int qcom_scm_paravirt_tlb_inv(u64 asid, u64 sid);
+extern int qcom_scm_paravirt_smmu_detach(u64 sid);
+
 extern int
 qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
 			    size_t mem_regions_sz, u32 *srcvms, size_t src_sz,
@@ -297,15 +302,6 @@ extern int qcom_scm_call_loopback_configure(u32 emac_base_addr, u32 loopback_mod
 extern int qcom_scm_call_iomacro_dump(u32 emac_base_addr, phys_addr_t buffer, u32 len);
 extern int qcom_scm_call_get_emac_maxspeed(u32 emac_base_addr, u32 *maxspeed);
 extern int qcom_scm_call_ipa_intr_config(u32 emac_base_addr, u32 value);
-static inline int qcom_scm_paravirt_smmu_attach(u64 sid, u64 asid, u64 ste_pa,
-			u64 ste_size, u64 cd_pa, u64 cd_size)
-		{ return -ENODEV; }
-
-static inline int qcom_scm_paravirt_smmu_detach(u64 sid)
-		{ return -ENODEV; }
-
-static inline int qcom_scm_paravirt_tlb_inv(u64 asid)
-		{ return -ENODEV; }
 
 
 #endif

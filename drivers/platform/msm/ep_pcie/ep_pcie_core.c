@@ -3549,7 +3549,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		n = vf_id - 1;
 	}
 
-
 	if (ep_pcie_dev.link_status == EP_PCIE_LINK_DISABLED) {
 		EP_PCIE_ERR(&ep_pcie_dev,
 			"PCIe V%d: PCIe link is currently disabled\n",
@@ -3569,25 +3568,17 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 	EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
 			ep_pcie_dev.rev, cap);
 
-	if (!(cap & BIT(16))) {
-		EP_PCIE_ERR(&ep_pcie_dev,
-			"PCIe V%d: MSI is not enabled yet\n",
-			ep_pcie_dev.rev);
-		return EP_PCIE_ERROR;
-	}
+	if (cap & BIT(16)) {
+		cfg->msi_type = MSI;
 
-	cfg->msi_type = MSI;
+		lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
+		upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
+		data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
 
-	lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
-	upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
-	data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
-	ctrl_reg = readl_relaxed(dbi + PCIE20_MSI_CAP_ID_NEXT_CTRL(n));
+		EP_PCIE_DBG(&ep_pcie_dev,
+				"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
+				ep_pcie_dev.rev, lower, upper, data, vf_id);
 
-	EP_PCIE_DBG(&ep_pcie_dev,
-		"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
-		ep_pcie_dev.rev, lower, upper, data, vf_id);
-
-	if (ctrl_reg & BIT(16)) {
 		if (ep_pcie_dev.use_iatu_msi) {
 			if (ep_pcie_dev.active_config)
 				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
@@ -3658,10 +3649,10 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		return 0;
 	}
 
-	EP_PCIE_ERR(&ep_pcie_dev,
-		"PCIe V%d: Wrong MSI info found when MSI is enabled: lower:0x%x; data:0x%x\n",
-		ep_pcie_dev.rev, lower, data);
-	return EP_PCIE_ERROR;
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: MSI is not enabled yet or not supported\n",
+		ep_pcie_dev.rev);
+	return -EOPNOTSUPP;
 }
 
 int ep_pcie_core_trigger_msix(u32 idx, u32 vf_id)
@@ -3780,10 +3771,9 @@ int ep_pcie_core_trigger_msi(u32 idx, u32 vf_id)
 		return 0;
 	}
 
-	EP_PCIE_ERR(&ep_pcie_dev,
-		"PCIe V%d: MSI is not enabled yet. MSI addr:0x%x; data:0x%x; index from client:%d\n",
-		ep_pcie_dev.rev, addr, data, idx);
-	return EP_PCIE_ERROR;
+	EP_PCIE_DBG(&ep_pcie_dev, "MSI is disabled or not supported\n",
+				ep_pcie_dev.rev);
+	return -EOPNOTSUPP;
 }
 
 static void ep_pcie_core_issue_inband_pme(void)

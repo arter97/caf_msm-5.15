@@ -1375,7 +1375,8 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
 	if (phy && priv->dma_cap.eee) {
-		priv->eee_active = phy_init_eee(phy, 1) >= 0;
+		priv->eee_active =
+			phy_init_eee(phy, !priv->plat->rx_clk_runs_in_lpi) >= 0;
 		priv->eee_enabled = stmmac_eee_init(priv);
 		priv->tx_lpi_enabled = priv->eee_enabled;
 		stmmac_set_eee_pls(priv, priv->hw, true);
@@ -1497,21 +1498,7 @@ static int stmmac_init_phy(struct net_device *dev)
 		}
 		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
-#ifdef CONFIG_DWMAC_QCOM_VER3
-		if (priv->phydev->drv &&
-		    priv->phydev->drv->config_intr &&
-		    !priv->phydev->drv->config_intr(priv->phydev)) {
-			pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
-			       __func__);
-			priv->plat->request_phy_wol(priv->plat);
-		}
-		pr_info("stmmac phy polling mode\n");
-		priv->phydev->irq = PHY_POLL;
-#else
-		if (priv->plat->phy_intr_en_extn_stm) {
-			priv->phydev->irq = PHY_MAC_INTERRUPT;
-			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
-
+		if (priv->plat->separate_wol_pin) {
 			if (priv->phydev->drv &&
 			    priv->phydev->drv->config_intr &&
 			    !priv->phydev->drv->config_intr(priv->phydev)) {
@@ -1519,11 +1506,25 @@ static int stmmac_init_phy(struct net_device *dev)
 				       __func__);
 				priv->plat->request_phy_wol(priv->plat);
 			}
-		} else {
 			pr_info("stmmac phy polling mode\n");
 			priv->phydev->irq = PHY_POLL;
+		} else {
+			if (priv->plat->phy_intr_en_extn_stm) {
+				priv->phydev->irq = PHY_MAC_INTERRUPT;
+				priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+				if (priv->phydev->drv &&
+				    priv->phydev->drv->config_intr &&
+				    !priv->phydev->drv->config_intr(priv->phydev)) {
+					pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
+					       __func__);
+					priv->plat->request_phy_wol(priv->plat);
+				}
+			} else {
+				pr_info("stmmac phy polling mode\n");
+				priv->phydev->irq = PHY_POLL;
+			}
 		}
-#endif
 		phy_attached_info(priv->phydev);
 	}
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
@@ -1547,6 +1548,7 @@ static int stmmac_init_phy(struct net_device *dev)
 
 		phylink_ethtool_get_wol(priv->phylink, &wol);
 		device_set_wakeup_capable(priv->device, !!wol.supported);
+		device_set_wakeup_enable(priv->device, !!wol.wolopts);
 	}
 
 	return ret;
@@ -4522,10 +4524,10 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
-#ifdef CONFIG_DWMAC_QCOM_VER3
-	if (!priv->wol_irq_enabled)
-		priv->plat->wol_irq_enable(priv);
-#endif
+	if (priv->plat->separate_wol_pin) {
+		if (!priv->wol_irq_enabled)
+			priv->plat->wol_irq_enable(priv);
+	}
 
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
@@ -4551,7 +4553,7 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
-	if (priv->plat->has_xgmac) {
+	if (priv->plat->has_xgmac && priv->plat->port_num == 0) {
 		if (STMMAC_add_ptp_filters(dev))
 			netdev_err(priv->dev, "failed to add PTP over UDP filters\n");
 	}
@@ -4602,13 +4604,16 @@ static int stmmac_release(struct net_device *dev)
 
 	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
 
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
+
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
 
-#ifdef CONFIG_DWMAC_QCOM_VER3
-	if (priv->wol_irq_enabled)
-		priv->plat->wol_irq_disable(priv);
-#endif
+	if (priv->plat->separate_wol_pin) {
+		if (priv->wol_irq_enabled)
+			priv->plat->wol_irq_disable(priv);
+	}
 
 	if (priv->avb_vlan_id > 1)
 		if (dev->netdev_ops->ndo_vlan_rx_kill_vid)
@@ -8259,6 +8264,9 @@ int stmmac_dvr_remove(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
 	netdev_info(priv->dev, "%s: removing driver", __func__);
+
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
 
 	if (priv->plat->rgmii_rst) {
 		reset_control_put(priv->plat->rgmii_rst);

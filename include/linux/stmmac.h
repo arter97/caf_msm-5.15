@@ -284,6 +284,7 @@ struct plat_stmmacenet_data {
 	int rss_en;
 	int mac_port_sel_speed;
 	bool en_tx_lpi_clockgating;
+	bool rx_clk_runs_in_lpi;
 	int has_xgmac;
 	bool vlan_fail_q_en;
 	u8 vlan_fail_q;
@@ -339,5 +340,6 @@ struct plat_stmmacenet_data {
 	atomic_t phy_clks_suspended;
 	struct completion mdio_op;
 	bool mac_suspended;
+	bool separate_wol_pin;
 };
 #endif
