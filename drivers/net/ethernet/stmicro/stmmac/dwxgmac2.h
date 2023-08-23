@@ -106,6 +106,7 @@
 #define XGMAC_INT_STATUS		0x000000b0
 #define XGMAC_LPIIS			BIT(5)
 #define XGMAC_PMTIS			BIT(4)
+#define XGMAC_LSI			BIT(0)
 #define XGMAC_INT_EN			0x000000b4
 #define XGMAC_TSIE			BIT(12)
 #define XGMAC_LPIIE			BIT(5)

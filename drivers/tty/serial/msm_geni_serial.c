@@ -154,7 +154,7 @@ static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_MSM_GENI_CONSOLE_DEFAULT_ENAB
 
 /* In KHz */
 #define DEFAULT_SE_CLK  19200
-#define UART_CORE2X_VOTE    100000
+#define UART_CORE2X_VOTE    50000
 #define UART_CONSOLE_CORE2X_VOTE    19200
 
 #define DEFAULT_BUS_WIDTH   (4)
@@ -351,7 +351,6 @@ struct msm_geni_serial_port {
 	void *ipc_log_irqstatus;
 	unsigned int cur_baud;
 	int ioctl_count;
-	int edge_count;
 	bool manual_flow;
 	struct msm_geni_serial_ver_info ver_info;
 	u32 cur_tx_remaining;
@@ -387,6 +386,10 @@ struct msm_geni_serial_port {
 	bool resuming_from_deep_sleep;
 	bool shutdown_in_progress;
 	int hs_uart_operation;
+	atomic_t check_wakeup_byte;
+	struct workqueue_struct *wakeup_irq_wq;
+	struct delayed_work wakeup_irq_dwork;
+	struct completion wakeup_comp;
 };
 
 static const struct uart_ops msm_geni_serial_pops;
@@ -467,7 +470,7 @@ void geni_se_dump_dbg_regs(struct uart_port *uport)
 
 	if (device_pending_suspend(uport)) {
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
-			     "%s: Device is suspended, Return\n");
+			     "%s: Device is suspended, Return\n", __func__);
 		return;
 	}
 
@@ -999,17 +1002,25 @@ static int vote_clock_on(struct uart_port *uport)
 	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
 		     "Enter %s:%s ioctl_count:%d\n",
 		     __func__, current->comm, port->ioctl_count);
+
+	if (port->ioctl_count) {
+		UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
+			     "%s clock already on\n", __func__);
+		return ret;
+	}
 	ret = msm_geni_serial_power_on(uport);
+
 	if (ret) {
 		dev_err(uport->dev, "Failed to vote clock on\n");
 		return ret;
 	}
+	atomic_set(&port->check_wakeup_byte, 0);
+	complete(&port->wakeup_comp);
 	port->ioctl_count++;
 	usage_count = atomic_read(&uport->dev->power.usage_count);
 	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
-		     "Exit %s:%s ioctl_count:%d usage_count:%d edge_count:%d\n",
-		     __func__, current->comm, port->ioctl_count, usage_count,
-		     port->edge_count);
+		     "%s :%s ioctl:%d usage_count:%d\n",
+		     __func__, current->comm, port->ioctl_count, usage_count);
 	return 0;
 }
 
@@ -1035,17 +1046,17 @@ static int vote_clock_off(struct uart_port *uport)
 		return -EPERM;
 	}
 	ret = wait_for_transfers_inflight(uport);
-	if (ret)
+	if (ret) {
 		UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
 			"%s wait_for_transfer_inflight return ret: %d", __func__, ret);
+		return -EAGAIN;
+	}
 
 	port->ioctl_count--;
 	msm_geni_serial_power_off(uport);
 	usage_count = atomic_read(&uport->dev->power.usage_count);
-	UART_LOG_DBG(port->ipc_log_pwr, uport->dev,
-		     "Exit %s:%s ioctl_count:%d usage_count:%d edge_count:%d\n",
-		     __func__, current->comm, port->ioctl_count, usage_count,
-		     port->edge_count);
+	UART_LOG_DBG(port->ipc_log_pwr, uport->dev, "%s:%s ioctl:%d usage_count:%d\n",
+		     __func__, current->comm, port->ioctl_count, usage_count);
 	return 0;
 };
 
@@ -1998,7 +2009,12 @@ static void msm_geni_uart_gsi_cancel_rx(struct work_struct *work)
 
 	UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
 		     "%s: Start\n", __func__);
-
+	if (!msm_port->gsi_rx_done) {
+		UART_LOG_DBG(msm_port->ipc_log_misc, msm_port->uport.dev,
+			     "%s: gsi_rx not yet done\n", __func__);
+		atomic_set(&msm_port->stop_rx_inprogress, 0);
+		return;
+	}
 	if (msm_port->gsi->rx_c)
 		dmaengine_terminate_all(msm_port->gsi->rx_c);
 	complete(&msm_port->xfer);
@@ -2569,7 +2585,7 @@ static int stop_rx_sequencer(struct uart_port *uport)
 	}
 
 	if (port->gsi_mode) {
-		if (!port->port_setup || !port->gsi_rx_done) {
+		if (!port->port_setup && !port->gsi_rx_done) {
 			UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 				     "%s: Port setup not yet done\n", __func__);
 			atomic_set(&port->stop_rx_inprogress, 0);
@@ -2917,6 +2933,31 @@ exit_handle_tx:
 	return 0;
 }
 
+/*
+ * msm_geni_find_wakeup_byte() - Checks if wakeup byte is present
+ * in rx buffer
+ *
+ * @uport: pointer to uart port
+ * @size: size of rx data
+ *
+ * Return: true if wakeup byte found else false
+ */
+static bool msm_geni_find_wakeup_byte(struct uart_port *uport, int size)
+{
+	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
+	unsigned char *buf = (unsigned char *)port->rx_buf;
+
+	if (buf[0] == port->wakeup_byte) {
+		UART_LOG_DBG(port->ipc_log_rx, uport->dev,
+			     "%s Found wakeup byte\n", __func__);
+		atomic_set(&port->check_wakeup_byte, 0);
+		return true;
+	}
+	dump_ipc(uport, port->ipc_log_rx, "Dropped Rx", buf, 0, size);
+
+	return false;
+}
+
 static void check_rx_buf(char *buf, struct uart_port *uport, int size)
 {
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
@@ -2976,29 +3017,37 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 	if (unlikely(!rx_bytes)) {
 		UART_LOG_DBG(msm_port->ipc_log_rx, uport->dev, "%s: Size %d\n",
 					__func__, rx_bytes);
-		goto exit_handle_dma_rx;
+		return 0;
 	}
 
 	/* Check RX buffer data for faulty pattern*/
 	check_rx_buf((char *)msm_port->rx_buf, uport, rx_bytes);
 
 	if (drop_rx)
-		goto exit_handle_dma_rx;
+		return 0;
+
+	if (atomic_read(&msm_port->check_wakeup_byte)) {
+		ret = msm_geni_find_wakeup_byte(uport, rx_bytes);
+		if (!ret) {
+			/* wakeup byte not found, drop the rx data */
+			UART_LOG_DBG(msm_port->ipc_log_rx, uport->dev,
+				     "%s dropping Rx data as wakeup byte not found in %d bytes\n",
+				     __func__, rx_bytes);
+			memset(msm_port->rx_buf, 0, rx_bytes);
+			return 0;
+		}
+	}
 
 	tport = &uport->state->port;
-	ret = tty_insert_flip_string(tport, (unsigned char *)(msm_port->rx_buf),
-				     rx_bytes);
+	ret = tty_insert_flip_string(tport, (unsigned char *)(msm_port->rx_buf), rx_bytes);
 	if (ret != rx_bytes) {
-		UART_LOG_DBG(msm_port->ipc_log_rx, uport->dev,
-			     "%s: ret %d rx_bytes %d\n",
-			     __func__, ret, rx_bytes);
+		dev_err(uport->dev, "%s: ret %d rx_bytes %d\n", __func__, ret, rx_bytes);
 		msm_geni_update_uart_error_code(msm_port, UART_ERROR_RX_TTY_INSERT_FAIL);
 		WARN_ON_ONCE(1);
 	}
 	uport->icount.rx += ret;
 	tty_flip_buffer_push(tport);
-	dump_ipc(uport, msm_port->ipc_log_rx, "DMA Rx", (char *)msm_port->rx_buf, 0,
-								rx_bytes);
+	dump_ipc(uport, msm_port->ipc_log_rx, "DMA Rx", (char *)msm_port->rx_buf, 0, rx_bytes);
 	/*
 	 * DMA_DONE interrupt doesn't confirm that the DATA is copied to
 	 * DDR memory, sometimes we are queuing the stale data from previous
@@ -3006,8 +3055,6 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 	 * change to idenetify such scenario.
 	 */
 	memset(msm_port->rx_buf, 0, rx_bytes);
-exit_handle_dma_rx:
-
 	return ret;
 }
 
@@ -3333,6 +3380,41 @@ static irqreturn_t msm_geni_serial_isr(int isr, void *dev)
 	return IRQ_HANDLED;
 }
 
+/*
+ * msm_geni_wakeup_work() - Worker function invoked by wakeup isr,
+ * powers on uart for data transfer and power off after
+ * WAKEBYTE_TIMEOUT_MSEC(2secs)
+ *
+ * @work: pointer to work structure
+ *
+ * Return: None
+ */
+static void msm_geni_wakeup_work(struct work_struct *work)
+{
+	struct msm_geni_serial_port *port;
+	struct uart_port *uport;
+
+	port = container_of(work, struct msm_geni_serial_port,
+			    wakeup_irq_dwork.work);
+	if (!atomic_read(&port->check_wakeup_byte))
+		return;
+	uport = &port->uport;
+	reinit_completion(&port->wakeup_comp);
+	if (msm_geni_serial_power_on(uport)) {
+		atomic_set(&port->check_wakeup_byte, 0);
+		UART_LOG_DBG(port->ipc_log_rx, uport->dev,
+			     "%s:Failed to power on\n", __func__);
+		return;
+	}
+	/* wait to receive wakeup byte in rx path */
+	if (!wait_for_completion_timeout(&port->wakeup_comp,
+					 msecs_to_jiffies(WAKEBYTE_TIMEOUT_MSEC)))
+		UART_LOG_DBG(port->ipc_log_rx, uport->dev,
+			     "%s completion of wakeup_comp task timedout %dmsec\n",
+			     __func__, WAKEBYTE_TIMEOUT_MSEC);
+	msm_geni_serial_power_off(uport);
+}
+
 static irqreturn_t msm_geni_wakeup_isr(int isr, void *dev)
 {
 	struct uart_port *uport = dev;
@@ -3340,35 +3422,29 @@ static irqreturn_t msm_geni_wakeup_isr(int isr, void *dev)
 	struct tty_struct *tty;
 	unsigned long flags;
 
+	UART_LOG_DBG(port->ipc_log_rx, uport->dev, "%s %d\n", __func__, true);
 	spin_lock_irqsave(&uport->lock, flags);
-	UART_LOG_DBG(port->ipc_log_rx, uport->dev, "%s: Edge-Count %d\n", __func__,
-				port->edge_count);
-
-	if (port->wakeup_byte && (port->edge_count == 2)) {
-		tty = uport->state->port.tty;
-		/* uport->state->port.tty pointer initialized as part of
-		 * UART port_open. Adding null check to ensure tty should
-		 * have a valid value before dereference it in wakeup_isr.
-		 */
-		if (!tty) {
-			UART_LOG_DBG(port->ipc_log_rx, uport->dev,
-				"%s: Unexpected wakeup ISR %d\n",
-					__func__, port->edge_count);
-			WARN_ON_ONCE(1);
-		} else {
-			tty_insert_flip_char(tty->port,
-					port->wakeup_byte, TTY_NORMAL);
-			UART_LOG_DBG(port->ipc_log_rx, uport->dev, "%s: Inject 0x%x\n",
-					__func__, port->wakeup_byte);
-			port->edge_count = 0;
-			tty_flip_buffer_push(tty->port);
-			__pm_wakeup_event(port->geni_wake,
-						WAKEBYTE_TIMEOUT_MSEC);
-		}
-	} else if (port->edge_count < 2) {
-		port->edge_count++;
+	if (atomic_read(&port->check_wakeup_byte)) {
+		spin_unlock_irqrestore(&uport->lock, flags);
+		return IRQ_HANDLED;
 	}
+	tty = uport->state->port.tty;
+	/* uport->state->port.tty pointer initialized as part of
+	 * UART port_open. Adding null check to ensure tty should
+	 * have a valid value before dereference it in wakeup_isr.
+	 */
+	if (!tty) {
+		UART_LOG_DBG(port->ipc_log_rx, uport->dev,
+			     "%s: Unexpected wakeup ISR\n", __func__);
+		WARN_ON(1);
+		spin_unlock_irqrestore(&uport->lock, flags);
+		return IRQ_HANDLED;
+	}
+
+	atomic_set(&port->check_wakeup_byte, 1);
+	queue_delayed_work(port->wakeup_irq_wq, &port->wakeup_irq_dwork, 0);
 	spin_unlock_irqrestore(&uport->lock, flags);
+	UART_LOG_DBG(port->ipc_log_rx, uport->dev, "%s: End %d\n", __func__, true);
 	return IRQ_HANDLED;
 }
 
@@ -3532,8 +3608,6 @@ static void msm_geni_serial_shutdown(struct uart_port *uport)
 					     __func__, ret);
 		}
 
-		msm_port->edge_count = 0;
-
 		if (!IS_ERR_OR_NULL(msm_port->serial_rsc.geni_gpio_shutdown)) {
 			ret = pinctrl_select_state(
 				msm_port->serial_rsc.geni_pinctrl,
@@ -3662,14 +3736,6 @@ static int msm_geni_serial_startup(struct uart_port *uport)
 	if (uart_console(uport) ||  msm_port->pm_auto_suspend_disable)
 		enable_irq(uport->irq);
 
-	if (msm_port->wakeup_irq > 0) {
-		ret = irq_set_irq_wake(msm_port->wakeup_irq, 1);
-		if (unlikely(ret)) {
-			dev_err(uport->dev, "%s:Failed to set IRQ wake:%d\n",
-					__func__, ret);
-			goto exit_startup;
-		}
-	}
 exit_startup:
 	if (likely(!uart_console(uport)))
 		msm_geni_serial_power_off(&msm_port->uport);
@@ -4534,6 +4600,14 @@ static int msm_geni_serial_get_irq_pinctrl(struct platform_device *pdev,
 	}
 
 	if (dev_port->wakeup_irq > 0) {
+		dev_port->wakeup_irq_wq = alloc_workqueue("%s", WQ_HIGHPRI, 1,
+							  dev_name(uport->dev));
+		if (!dev_port->wakeup_irq_wq) {
+			dev_err(uport->dev, "%s:WQ alloc failed for Wakeup IRQ\n",
+					__func__);
+			return -ENOMEM;
+		}
+		INIT_DELAYED_WORK(&dev_port->wakeup_irq_dwork, msm_geni_wakeup_work);
 		irq_set_status_flags(dev_port->wakeup_irq, IRQ_NOAUTOEN);
 		ret = devm_request_irq(uport->dev, dev_port->wakeup_irq,
 					msm_geni_wakeup_isr,
@@ -4541,7 +4615,8 @@ static int msm_geni_serial_get_irq_pinctrl(struct platform_device *pdev,
 					"hs_uart_wakeup", uport);
 		if (unlikely(ret)) {
 			dev_err(uport->dev, "%s:Failed to get WakeIRQ ret%d\n",
-								__func__, ret);
+					 __func__, ret);
+			destroy_workqueue(dev_port->wakeup_irq_wq);
 			return ret;
 		}
 		dev_port->wakeup_enabled = false;
@@ -4609,8 +4684,13 @@ static int msm_geni_serial_read_dtsi(struct platform_device *pdev,
 		return ret;
 	}
 
-	ret = geni_se_common_resources_init(&dev_port->se, GENI_DEFAULT_BW,
-			GENI_DEFAULT_BW, GENI_DEFAULT_BW);
+	if (!is_console)
+		ret = geni_se_common_resources_init(&dev_port->se, UART_CORE2X_VOTE,
+						    APPS_PROC_TO_QUP_VOTE,
+						    (DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
+	else
+		ret = geni_se_common_resources_init(&dev_port->se, GENI_DEFAULT_BW,
+						    GENI_DEFAULT_BW, GENI_DEFAULT_BW);
 	if (ret) {
 		msm_geni_update_uart_error_code(dev_port, UART_ERROR_SE_RESOURCES_INIT_FAIL);
 		return ret;
@@ -4768,6 +4848,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	init_completion(&dev_port->xfer);
 	init_completion(&dev_port->tx_xfer);
 
+	init_completion(&dev_port->wakeup_comp);
 	uport->private_data = (void *)drv;
 	platform_set_drvdata(pdev, dev_port);
 	ret = msm_geni_serial_get_ver_info(uport);
@@ -4861,6 +4942,8 @@ static int msm_geni_serial_remove(struct platform_device *pdev)
 	 */
 	if (port->is_console && !con_enabled)
 		return 0;
+	if (port->wakeup_irq > 0)
+		destroy_workqueue(port->wakeup_irq_wq);
 	if (!uart_console(&port->uport)) {
 		wakeup_source_unregister(port->geni_wake);
 		port->geni_wake = NULL;
@@ -5018,7 +5101,7 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 	 */
 	if (!port->shutdown_in_progress &&
 	    port->wakeup_irq > 0  && port->uport.state->port.tty) {
-		port->edge_count = 0;
+		atomic_set(&port->check_wakeup_byte, 0);
 		enable_irq(port->wakeup_irq);
 		port->wakeup_enabled = true;
 		ret = irq_set_irq_wake(port->wakeup_irq, 1);
@@ -5132,7 +5215,6 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_DEEPSLEEP
 static int msm_geni_serial_sys_hib_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -5156,14 +5238,9 @@ static int msm_geni_serial_sys_hib_resume(struct device *dev)
 		 */
 		port->port_setup = false;
 	}
+	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: End %d\n", __func__, true);
 	return 0;
 }
-#else
-static int msm_geni_serial_sys_hib_resume(struct device *dev)
-{
-	return 0;
-}
-#endif
 
 static int msm_geni_serial_sys_resume(struct device *dev)
 {
@@ -5172,6 +5249,9 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 	struct uart_port *uport = &port->uport;
 
 #ifdef CONFIG_DEEPSLEEP
+	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: Deep Sleep Sys resume Start %d\n",
+		     __func__, true);
+
 	if (pm_suspend_via_firmware()) {
 		IPC_LOG_MSG(port->ipc_log_pwr, "deepsleep: %s\n",
 			    __func__);
@@ -5182,6 +5262,8 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 		return msm_geni_serial_sys_hib_resume(dev);
 	}
 #endif
+	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: Start %d\n", __func__, true);
+
 	/* Platform driver is registered for console and when console
 	 * is disabled from cmdline simply return success.
 	 */
@@ -5215,6 +5297,10 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 }
 
 static int msm_geni_serial_sys_resume(struct device *dev)
+{
+	return 0;
+}
+static int msm_geni_serial_sys_hib_resume(struct device *dev)
 {
 	return 0;
 }

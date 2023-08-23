@@ -144,6 +144,43 @@ enum hdr_total_len_or_pad_type {
 };
 
 /**
+ * enum ipa_rmnet_tx_queue: RMNET TX queue numbers
+ * (regular traffic is unmapped: skb->queue_mapping = 0)
+ * IPA_RMNET_TX_QUEUE_DEFAULT: regular traffic
+ * IPA_RMNET_TX_QUEUE_V2X: V2X traffic
+ * IPA_RMNET_TX_QUEUE_ETH_PDU: Eth PDU traffic
+ * IPA_RMNET_TX_QUEUE_IPSEC_ENCAP: traffic for HW offloaded IPsec encapsulation
+ * IPA_RMNET_TX_QUEUE_IPSEC_DECAP: traffic for HW offloaded IPsec decapsulation
+ * IPA_RMNET_TX_QUEUE_MAX: enum size, for error reporting and boundaries
+ */
+enum ipa_rmnet_tx_queue {
+	IPA_RMNET_TX_QUEUE_DEFAULT = 0,
+	IPA_RMNET_TX_QUEUE_V2X,
+	IPA_RMNET_TX_QUEUE_ETH_PDU = IPA_RMNET_TX_QUEUE_V2X,
+	IPA_RMNET_TX_QUEUE_IPSEC_ENCAP,
+	IPA_RMNET_TX_QUEUE_IPSEC_DECAP,
+	IPA_RMNET_TX_QUEUE_MAX = U16_MAX - 1,
+};
+
+/**
+ * enum ipa_rmnet_rx_queue - RMNET RX queue numbers
+ * IPA_RMNET_RX_QUEUE_DEFAULT: regular traffic
+ * IPA_RMNET_RX_QUEUE_V2X: V2X traffic
+ * IPA_RMNET_RX_QUEUE_ETH_PDU: Eth PDU traffic
+ * IPA_RMNET_RX_QUEUE_IPSEC: traffic after HW offloaded IPsec decapsulation
+ * IPA_RMNET_RX_QUEUE_IPSEC_DECAP: exception after/during HW offloaded IPsec decapsulation
+ * IPA_RMNET_RX_QUEUE_MAX: enum size, for error reporting and boundaries
+ */
+enum ipa_rmnet_rx_queue {
+	IPA_RMNET_RX_QUEUE_DEFAULT = 0,
+	IPA_RMNET_RX_QUEUE_V2X,
+	IPA_RMNET_RX_QUEUE_ETH_PDU = IPA_RMNET_RX_QUEUE_V2X,
+	IPA_RMNET_RX_QUEUE_IPSEC,
+	IPA_RMNET_RX_QUEUE_IPSEC_ERROR,
+	IPA_RMNET_RX_QUEUE_MAX = U16_MAX - 1,
+};
+
+/**
  * struct ipa_ep_cfg_nat - NAT configuration in IPA end-point
  * @nat_en:	This defines the default NAT mode for the pipe: in case of
  *		filter miss - the default NAT mode defines the NATing operation
@@ -285,8 +322,13 @@ struct ipa_ep_cfg_hdr_ext {
  *		This parameter is valid for Mode=DMA and not valid for
  *		Mode=Basic
  *		Valid for Input Pipes only (IPA Consumer)
- * @drbip_en: config DRBIP accelerator 1 enable, 0 disabled
- * @bearer_ctx_en: config bearer_ctx 1 enable, 0 disabled
+ * @drbip_en:	Set bit to indicate HPS-sequence configured on this pipe passes
+ *		through DRBIP-accelerator. can only be set if BEARER_CNTX_ENABLE field
+ *		for same consumer is set as well. Valid for consumer pipes only.
+ * @bearer_ctx_en: Set bit to allow support for deciphering (or ciphering)
+ *		and/or integrity-protection (DRBIP) for packets on this consumer pipe.
+ *		Deciphering/ciphering/IP-check will never be executed on pipes
+ *		with this bit off. Valid for consumer pipes only.
  */
 struct ipa_ep_cfg_mode {
 	enum ipa_mode_type mode;
@@ -500,6 +542,7 @@ struct ipa_ep_cfg_cfg {
  * producer.
  * @egress_tc_highest: Highest egress traffic-class index assignes to this
  * producer.
+ * @error_qmap_en: Enable IPsec error QMAP header insertion.
  */
 struct ipa_ep_cfg_prod_cfg {
 	u8 tx_instance;
@@ -509,6 +552,7 @@ struct ipa_ep_cfg_prod_cfg {
 	u8 max_output_size;
 	u8 egress_tc_lowest;
 	u8 egress_tc_highest;
+	bool error_qmap_en;
 };
 
 /**
@@ -1435,6 +1479,14 @@ struct ipa_ipv6_nat_uc_tmpl {
 	uint64_t rsv11;
 	uint64_t rsv12;
 } __packed;
+
+struct ipa_ipsec_skb_cb {
+	u32 magic	:24;
+	u32 sa_dir      :2;
+	u32 sa_idx	:6;
+};
+#define IPA_IPSEC_SKB_MAGIC 0xFF10AD
+#define IPA_IPSEC_SKB_CB(__skb) ((struct ipa_ipsec_skb_cb *)&((__skb)->cb[44]))
 
 #if IS_ENABLED(CONFIG_IPA3)
 /*

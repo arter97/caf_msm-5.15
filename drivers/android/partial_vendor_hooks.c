@@ -18,6 +18,9 @@
 #include <trace/hooks/sched.h>
 #endif
 
+#if defined(CONFIG_ARM_GIC)
+#include <trace/hooks/gic.h>
+#endif
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
  * associated with them) to allow external modules to probe them.
@@ -35,4 +38,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_rproc_recovery_set);
 #endif
 #if defined(CONFIG_QCOM_DCVS)
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_jiffies_update);
+#endif
+#if defined(CONFIG_ARM_GIC)
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_gic_v2_resume);
 #endif

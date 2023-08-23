@@ -17,6 +17,7 @@
 #include <linux/kthread.h>
 #include <linux/mhi.h>
 #include <linux/mhi_misc.h>
+#include <linux/etherdevice.h>
 
 #define MHI_NETDEV_DRIVER_NAME "mhi_netdev"
 #define WATCHDOG_TIMEOUT (30 * HZ)
@@ -81,6 +82,7 @@ struct mhi_netdev {
 	int pool_size;
 	bool chain_skb;
 	struct mhi_net_chain *chain;
+	bool ethernet_interface;
 
 	struct task_struct *alloc_task;
 	wait_queue_head_t alloc_event;
@@ -122,6 +124,7 @@ struct mhi_netdev_driver_data {
 	bool is_rsc_chan;
 	bool has_rsc_child;
 	const char *interface_name;
+	bool ethernet_interface;
 };
 
 static struct mhi_netdev *rsc_parent_netdev;
@@ -677,6 +680,14 @@ static void mhi_netdev_setup(struct net_device *dev)
 	dev->watchdog_timeo = WATCHDOG_TIMEOUT;
 }
 
+static void mhi_netdev_ether_setup(struct net_device *dev)
+{
+	dev->netdev_ops = &mhi_netdev_ops_ip;
+	ether_setup(dev);
+	dev->max_mtu = ETH_MIN_MTU;
+	dev->min_mtu = ETH_MIN_MTU;
+}
+
 /* enable mhi_netdev netdev, call only after grabbing mhi_netdev.mutex */
 static int mhi_netdev_enable_iface(struct mhi_netdev *mhi_netdev)
 {
@@ -690,7 +701,15 @@ static int mhi_netdev_enable_iface(struct mhi_netdev *mhi_netdev)
 	rtnl_lock();
 	mhi_netdev->ndev = alloc_netdev(sizeof(*mhi_netdev_priv),
 					ifname, NET_NAME_PREDICTABLE,
+					mhi_netdev->ethernet_interface ?
+					mhi_netdev_ether_setup :
 					mhi_netdev_setup);
+
+	if (mhi_netdev->ethernet_interface) {
+		eth_random_addr(mhi_netdev->ndev->dev_addr);
+			if (!is_valid_ether_addr(mhi_netdev->ndev->dev_addr))
+				return -EADDRNOTAVAIL;
+	}
 	if (!mhi_netdev->ndev) {
 		rtnl_unlock();
 		return -ENOMEM;
@@ -765,10 +784,17 @@ static void mhi_netdev_push_skb(struct mhi_netdev *mhi_netdev,
 		return;
 	}
 
-	skb_add_rx_frag(skb, 0, netbuf->page, 0,
-			mhi_result->bytes_xferd, mhi_netdev->mru);
 	skb->dev = mhi_netdev->ndev;
-	skb->protocol = mhi_netdev_ip_type_trans(*(u8 *)mhi_buf->buf);
+
+	if (mhi_netdev->ethernet_interface) {
+		skb_put(skb, mhi_result->bytes_xferd);
+		skb_copy_to_linear_data(skb, mhi_buf->buf, mhi_result->bytes_xferd);
+		skb->protocol = eth_type_trans(skb, mhi_netdev->ndev);
+	} else {
+		skb_add_rx_frag(skb, 0, netbuf->page, 0,
+				mhi_result->bytes_xferd, mhi_netdev->mru);
+		skb->protocol = mhi_netdev_ip_type_trans(*(u8 *)mhi_buf->buf);
+	}
 	netif_receive_skb(skb);
 }
 
@@ -1045,6 +1071,7 @@ static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 	mhi_netdev->mru = data->mru;
 	mhi_netdev->rsc_parent = data->has_rsc_child ? mhi_netdev : NULL;
 	mhi_netdev->rsc_dev = data->is_rsc_chan ? mhi_netdev : NULL;
+	mhi_netdev->ethernet_interface = data->ethernet_interface;
 
 	/* MRU must be multiplication of page size */
 	mhi_netdev->order = __ilog2_u32(mhi_netdev->mru / PAGE_SIZE);
@@ -1143,6 +1170,16 @@ static const struct mhi_netdev_driver_data hw0_308_data = {
 	.is_rsc_chan = false,
 	.has_rsc_child = true,
 	.interface_name = "rmnet_mhi",
+	.ethernet_interface = false,
+};
+
+static const struct mhi_netdev_driver_data hw1_308_data = {
+	.mru = 0x4000,
+	.chain_skb = false,
+	.is_rsc_chan = false,
+	.has_rsc_child = false,
+	.interface_name = "mhi_swip",
+	.ethernet_interface = false,
 };
 
 static const struct mhi_netdev_driver_data hw0_rsc_308_data = {
@@ -1151,11 +1188,22 @@ static const struct mhi_netdev_driver_data hw0_rsc_308_data = {
 	.is_rsc_chan = true,
 	.has_rsc_child = false,
 	.interface_name = "rmnet_mhi",
+	.ethernet_interface = false,
+};
+static const struct mhi_netdev_driver_data sw1_30a_data = {
+	.mru = 0x4000,
+	.chain_skb = false,
+	.is_rsc_chan = false,
+	.has_rsc_child = false,
+	.interface_name = "mhi_swip",
+	.ethernet_interface = true,
 };
 
 static const struct mhi_device_id mhi_netdev_match_table[] = {
 	{ .chan = "IP_HW0", .driver_data = (kernel_ulong_t)&hw0_308_data },
 	{ .chan = "IP_HW0_RSC", .driver_data = (kernel_ulong_t)&hw0_rsc_308_data },
+	{ .chan = "IP_SW0", .driver_data = (kernel_ulong_t)&hw1_308_data },
+	{ .chan = "IP_SW1", .driver_data = (kernel_ulong_t)&sw1_30a_data },
 	{},
 };
 

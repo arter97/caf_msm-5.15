@@ -422,7 +422,7 @@ static inline void stmmac_hw_fix_mac_speed(struct stmmac_priv *priv)
 					priv->speed);
 			return;
 		}
-		if (priv->phydev->link)
+		if (priv->phydev && priv->phydev->link)
 			priv->plat->fix_mac_speed(priv->plat->bsp_priv,
 						  priv->speed);
 		else
@@ -1059,7 +1059,7 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
 
-	if (!priv->phydev->autoneg && !priv->plat->early_eth) {
+	if (priv->phydev && !priv->phydev->autoneg && !priv->plat->early_eth) {
 		linkmode_copy(state->advertising, priv->adv_old);
 		/* If PCS is supported, check which modes it supports. */
 		if (priv->hw->xpcs)
@@ -1221,10 +1221,16 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
 	priv->eee_enabled = stmmac_eee_init(priv);
+	priv->speed = SPEED_UNKNOWN;
 	stmmac_set_eee_pls(priv, priv->hw, false);
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+					       priv->plat->bsp_priv, false, false);
+
 }
 
 static void stmmac_mac_link_up(struct phylink_config *config,
@@ -1237,6 +1243,10 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	u32 ctrl;
 	int phy_data = 0;
 	int ret = 0;
+
+	if (priv->plat->serdes_powersaving)
+		priv->plat->serdes_powersaving(to_net_dev(config->dev),
+							  priv->plat->bsp_priv, true, true);
 
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
@@ -1322,7 +1332,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (!priv->plat->fixed_phy_mode &&
 	    priv->speed == SPEED_10 &&
-	    duplex &&
+	    duplex && priv->phydev && priv->phydev->drv &&
 	   ((priv->phydev->phy_id & priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
 		phy_data = priv->mii->read(priv->mii, priv->plat->phy_addr, KSZ9131RNX_LBR);
 		phy_data = phy_data | (1 << 2);
@@ -1332,14 +1342,27 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	if (priv->plat->fix_mac_speed)
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
 
+	if (priv->plat->serdes_powerup) {
+		ret = priv->plat->serdes_powerup(to_net_dev(config->dev),
+						 priv->plat->bsp_priv);
+	}
+
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
 	else
 		ctrl |= priv->hw->link.duplex;
 
 	/* Flow Control operation */
-	if (tx_pause && rx_pause)
-		stmmac_mac_flow_ctrl(priv, duplex);
+	if (rx_pause && tx_pause)
+		priv->flow_ctrl = FLOW_AUTO;
+	else if (rx_pause && !tx_pause)
+		priv->flow_ctrl = FLOW_RX;
+	else if (!rx_pause && tx_pause)
+		priv->flow_ctrl = FLOW_TX;
+	else
+		priv->flow_ctrl = FLOW_OFF;
+
+	stmmac_mac_flow_ctrl(priv, duplex);
 
 		writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
 
@@ -1352,7 +1375,8 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	stmmac_mac_set(priv, priv->ioaddr, true);
 	if (phy && priv->dma_cap.eee) {
-		priv->eee_active = phy_init_eee(phy, 1) >= 0;
+		priv->eee_active =
+			phy_init_eee(phy, !priv->plat->rx_clk_runs_in_lpi) >= 0;
 		priv->eee_enabled = stmmac_eee_init(priv);
 		priv->tx_lpi_enabled = priv->eee_enabled;
 		stmmac_set_eee_pls(priv, priv->hw, true);
@@ -1474,10 +1498,7 @@ static int stmmac_init_phy(struct net_device *dev)
 		}
 		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
-		if (priv->plat->phy_intr_en_extn_stm) {
-			priv->phydev->irq = PHY_MAC_INTERRUPT;
-			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
-
+		if (priv->plat->separate_wol_pin) {
 			if (priv->phydev->drv &&
 			    priv->phydev->drv->config_intr &&
 			    !priv->phydev->drv->config_intr(priv->phydev)) {
@@ -1485,22 +1506,49 @@ static int stmmac_init_phy(struct net_device *dev)
 				       __func__);
 				priv->plat->request_phy_wol(priv->plat);
 			}
-		} else {
 			pr_info("stmmac phy polling mode\n");
 			priv->phydev->irq = PHY_POLL;
+		} else {
+			if (priv->plat->phy_intr_en_extn_stm) {
+				priv->phydev->irq = PHY_MAC_INTERRUPT;
+				priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+				if (priv->phydev->drv &&
+				    priv->phydev->drv->config_intr &&
+				    !priv->phydev->drv->config_intr(priv->phydev)) {
+					pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
+					       __func__);
+					priv->plat->request_phy_wol(priv->plat);
+				}
+			} else {
+				pr_info("stmmac phy polling mode\n");
+				priv->phydev->irq = PHY_POLL;
+			}
 		}
 		phy_attached_info(priv->phydev);
 	}
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
 		__func__);
 
-	dev->phydev = priv->phydev;
+	if (priv->phydev) {
+		pr_info(" qcom-ethqos: %s dev phydev = priv phydev\n", __func__);
+		dev->phydev = priv->phydev;
+	} else {
+		pr_info(" qcom-ethqos: %s priv phydev is null\n", __func__);
+		if (dev->phydev) {
+			priv->phydev = dev->phydev;
+			priv->plat->phy_addr = priv->phydev->mdio.addr;
+			pr_info(" qcom-ethqos: %s priv->phydev is set with dev->phydev\n",
+				__func__);
+		}
+	}
 
 	if (!priv->plat->pmt) {
 		struct ethtool_wolinfo wol = { .cmd = ETHTOOL_GWOL };
 
 		phylink_ethtool_get_wol(priv->phylink, &wol);
 		device_set_wakeup_capable(priv->device, !!wol.supported);
+		device_set_wakeup_enable(priv->device, !!wol.wolopts);
 	}
 
 	return ret;
@@ -1788,6 +1836,9 @@ static void stmmac_free_rx_buffer(struct stmmac_priv *priv, u32 queue, int i)
 static void stmmac_free_tx_buffer(struct stmmac_priv *priv, u32 queue, int i)
 {
 	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
+
+	if (priv->plat->tx_queues_cfg[queue].skip_sw)
+		return;
 
 	if (tx_q->tx_skbuff_dma[i].buf &&
 	    tx_q->tx_skbuff_dma[i].buf_type != STMMAC_TXBUF_T_XDP_TX) {
@@ -2155,6 +2206,9 @@ static void dma_free_tx_skbufs(struct stmmac_priv *priv, u32 queue)
 	int i;
 
 	tx_q->xsk_frames_done = 0;
+
+	if (priv->plat->tx_queues_cfg[queue].skip_sw)
+		return;
 
 	for (i = 0; i < priv->dma_tx_size; i++)
 		stmmac_free_tx_buffer(priv, queue, i);
@@ -3243,10 +3297,12 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		dev_info(priv->device, "XPCS LINK not ready\n");
 	}
 
-	ret = stmmac_reset(priv, priv->ioaddr);
-	if (ret) {
-		dev_err(priv->device, "Failed to reset the dma\n");
-		return ret;
+	if (!priv->plat->mac_suspended) {
+		ret = stmmac_reset(priv, priv->ioaddr);
+		if (ret) {
+			dev_err(priv->device, "Failed to reset the dma\n");
+			return ret;
+		}
 	}
 
 	if (priv->plat->rgmii_rst) {
@@ -4074,6 +4130,265 @@ void stmmac_mac2mac_adjust_link(int speed, struct stmmac_priv *priv)
 	writel_relaxed(ctrl, priv->ioaddr + MAC_CTRL_REG);
 }
 
+stmmac_check_l4_proto_info(struct l4_filter_info  *l4_filter)
+{
+	/*no l4 filter installed*/
+	if (l4_filter->l4_proto_number == 0)
+		return true;
+
+	if (l4_filter->l4_proto_number != IPPROTO_UDP &&
+	    l4_filter->l4_proto_number != IPPROTO_TCP)
+		return false;
+
+	if (l4_filter->src_port != 0)
+		return true;
+
+	if (l4_filter->dest_port != 0)
+		return true;
+
+	return false;
+}
+
+bool stmmac_is_ipv4_filter_valid(struct l3_l4_ipv4_filter *filter)
+{
+	if (filter->src_addr != 0 && filter->src_addr_mask >= 32)
+		return false;
+
+	if (filter->dest_addr != 0 && filter->dest_addr_mask >= 32)
+		return false;
+
+	return
+		stmmac_check_l4_proto_info(&filter->l4_filter);
+}
+
+bool stmmac_is_ipv6_addr_valid(struct l3_l4_ipv6_filter *filter)
+{
+	bool check = false;
+	int i;
+
+	for (i = 0; i < 16; i++) {
+		if (filter->src_or_dest_addr[i] != 0)
+			check = true;
+	}
+
+	if (check && filter->src_or_dest_addr_mask < 128)
+		return true;
+
+	return false;
+}
+
+bool stmmac_is_ipv6_filter_valid(struct l3_l4_ipv6_filter *filter)
+{
+	bool check;
+
+	check = stmmac_is_ipv6_addr_valid(filter);
+
+	if (!check)
+		return stmmac_check_l4_proto_info(&filter->l4_filter);
+
+	return check;
+}
+
+void stmmac_program_l4_filter(struct stmmac_priv *priv, struct l4_filter_info *filter,
+			      int cur_filter_num, bool udp)
+{
+	bool enable = false;
+
+	if (filter->src_port || filter->dest_port)
+		enable = true;
+
+	if (filter->src_port) {
+		priv->hw->mac->config_l4_filter(priv->hw, cur_filter_num, enable, udp,
+						true, false, filter->src_port);
+	}
+
+	if (filter->dest_port) {
+		priv->hw->mac->config_l4_filter(priv->hw, cur_filter_num, enable, udp,
+						false, false, filter->dest_port);
+	}
+}
+
+static int STMMAC_handle_prv_ioctl_filter_ipv4(struct net_device *dev,
+					       struct ifreq *ifr)
+{
+	struct l3_l4_ipv4_filter *filter;
+	int ret = 0;
+	unsigned long missing;
+	int cur_filter_num;
+	bool enable = false;
+	struct stmmac_priv *priv;
+	u32 read_value;
+	bool udp = false;
+
+	priv = netdev_priv(dev);
+
+	if (!ifr || !ifr->ifr_ifru.ifru_data)
+		return -EINVAL;
+
+	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+		pr_err("no more L3/L4 filters can be added\n");
+		return -EOPNOTSUPP;
+	}
+
+	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
+	if (!filter)
+		return -ENOMEM;
+
+	missing = copy_from_user(filter, ifr->ifr_ifru.ifru_data,
+				 sizeof(*filter));
+	if (missing)
+		return -EFAULT;
+
+	if (!stmmac_is_ipv4_filter_valid(filter))
+		return -EOPNOTSUPP;
+
+	priv->dma_cap.num_l3_l4_filters++;
+	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+
+	if (filter->src_addr || filter->dest_addr)
+		enable = true;
+
+	/*enable dynamic mapping*/
+	read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+	read_value |= XGMAC_QDDMACH;
+	writel(read_value, priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+
+	/*config to receive unmatched packets too*/
+	read_value = (u32)readl(priv->ioaddr + XGMAC_PACKET_FILTER);
+	read_value |= XGMAC_FILTER_RA;
+	writel(read_value, priv->ioaddr + XGMAC_PACKET_FILTER);
+
+	if (filter->src_addr) {
+		/* configure L3 src addr */
+		priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, enable,
+						      false, true, false, filter->src_addr, NULL);
+	}
+
+	if (filter->dest_addr) {
+		/* configure L3 dest addr */
+		priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, enable,
+						      false, false, false, filter->dest_addr, NULL);
+	}
+
+	if (filter->l4_filter.l4_proto_number == IPPROTO_UDP)
+		udp = true;
+
+	stmmac_program_l4_filter(priv, &filter->l4_filter, cur_filter_num, udp);
+
+	return ret;
+}
+
+static int STMMAC_handle_prv_ioctl_filter_ipv6(struct net_device *dev,
+					       struct ifreq *ifr)
+{
+	struct l3_l4_ipv6_filter *filter;
+	int ret = 0;
+	unsigned long missing;
+	int cur_filter_num;
+	struct stmmac_priv *priv;
+	u32 read_value;
+	bool udp = false;
+
+	priv = netdev_priv(dev);
+
+	if (!ifr || !ifr->ifr_ifru.ifru_data)
+		return -EINVAL;
+
+	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+		pr_err("no more L3/L4 filters can be added\n");
+		return -EOPNOTSUPP;
+	}
+
+	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
+	if (!filter)
+		return -ENOMEM;
+
+	missing = copy_from_user(filter, ifr->ifr_ifru.ifru_data,
+				 sizeof(*filter));
+	if (missing)
+		return -EFAULT;
+
+	if (!stmmac_is_ipv6_filter_valid(filter))
+		return -EOPNOTSUPP;
+
+	priv->dma_cap.num_l3_l4_filters++;
+	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+
+	/*enable dynamic mapping*/
+	read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+	read_value |= XGMAC_QDDMACH;
+	writel(read_value, priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+	/*config to receive unmatched packets too*/
+	read_value = (u32)readl(priv->ioaddr + XGMAC_PACKET_FILTER);
+	read_value |= XGMAC_FILTER_RA;
+	writel(read_value, priv->ioaddr + XGMAC_PACKET_FILTER);
+
+	if (stmmac_is_ipv6_addr_valid(filter)) {
+		if (filter->src_or_dest_ip)
+			/* enable L3 src addr */
+			priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, true,
+							      true, true, false, 0,
+							      filter->src_or_dest_addr);
+		else
+			/* enable L3 dest addr */
+			priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, true,
+							      true, false, false, 0,
+							      filter->src_or_dest_addr);
+	}
+
+	if (filter->l4_filter.l4_proto_number == IPPROTO_UDP)
+		udp = true;
+
+	stmmac_program_l4_filter(priv, &filter->l4_filter, cur_filter_num, udp);
+
+	return ret;
+}
+
+static int STMMAC_add_ptp_filters(struct net_device *dev)
+{
+	struct stmmac_priv *priv;
+	struct l3_l4_ipv4_filter *filter;
+	int cur_filter_num = 0, i, ret = 0;
+	u32 read_value;
+
+	priv = netdev_priv(dev);
+
+	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
+
+	if (!priv->dma_cap.num_l3_l4_filters) {
+		/*enable dynamic mapping*/
+		read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+		read_value |= XGMAC_QDDMACH;
+		writel(read_value, priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
+
+		/*config to receive unmatched packets too*/
+		read_value = (u32)readl(priv->ioaddr + XGMAC_PACKET_FILTER);
+		read_value |= XGMAC_FILTER_RA;
+		writel(read_value, priv->ioaddr + XGMAC_PACKET_FILTER);
+	}
+
+	/* Add PTP over UDP filter */
+	filter->l4_filter.l4_proto_number = IPPROTO_UDP;
+
+	/* Add filter rules to receive PTP messages */
+	for (i = PTP_UDP_PORT1; i <= PTP_UDP_PORT2; i++) {
+		if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+			pr_err("no more L3/L4 filters can be added\n");
+			kfree(filter);
+			return -EOPNOTSUPP;
+		}
+
+		priv->dma_cap.num_l3_l4_filters++;
+		cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+		filter->l4_filter.dest_port = i;
+
+		stmmac_program_l4_filter(priv, &filter->l4_filter, cur_filter_num, true);
+	}
+
+	kfree(filter);
+	return ret;
+}
+
 /**
  *  stmmac_open - open entry point of the driver
  *  @dev : pointer to the device structure.
@@ -4209,6 +4524,11 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
+	if (priv->plat->separate_wol_pin) {
+		if (!priv->wol_irq_enabled)
+			priv->plat->wol_irq_enable(priv);
+	}
+
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
@@ -4231,6 +4551,11 @@ static int stmmac_open(struct net_device *dev)
 							     priv->avb_vlan_id);
 	} else {
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
+	}
+
+	if (priv->plat->has_xgmac && priv->plat->port_num == 0) {
+		if (STMMAC_add_ptp_filters(dev))
+			netdev_err(priv->dev, "failed to add PTP over UDP filters\n");
 	}
 
 	return 0;
@@ -4279,8 +4604,16 @@ static int stmmac_release(struct net_device *dev)
 
 	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
 
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
+
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
+
+	if (priv->plat->separate_wol_pin) {
+		if (priv->wol_irq_enabled)
+			priv->plat->wol_irq_disable(priv);
+	}
 
 	if (priv->avb_vlan_id > 1)
 		if (dev->netdev_ops->ndo_vlan_rx_kill_vid)
@@ -6433,213 +6766,6 @@ static void stmmac_poll_controller(struct net_device *dev)
 }
 #endif
 
-check_l4_proto_info(struct l4_filter_info  *l4_filter)
-{
-	/*no l4 filter installed*/
-	if (l4_filter->l4_proto_number == 0)
-		return true;
-
-	if (l4_filter->l4_proto_number != IPPROTO_UDP &&
-	    l4_filter->l4_proto_number != IPPROTO_TCP)
-		return false;
-
-	if (l4_filter->src_port != 0)
-		return true;
-
-	if (l4_filter->dest_port != 0)
-		return true;
-
-	return false;
-}
-
-bool is_ipv4_filter_valid(struct l3_l4_ipv4_filter *filter)
-{
-	if (filter->src_addr != 0 && filter->src_addr_mask >= 32)
-		return false;
-
-	if (filter->dest_addr != 0 && filter->dest_addr_mask >= 32)
-		return false;
-
-	return
-		check_l4_proto_info(&filter->l4_filter);
-}
-
-bool is_ipv6_addr_valid(struct l3_l4_ipv6_filter *filter)
-{
-	bool check = false;
-	int i;
-
-	for (i = 0; i < 16; i++) {
-		if (filter->src_or_dest_addr[i] != 0)
-			check = true;
-	}
-
-	if (check && filter->src_or_dest_addr_mask < 128)
-		return true;
-
-	return false;
-}
-
-bool is_ipv6_filter_valid(struct l3_l4_ipv6_filter *filter)
-{
-	bool check;
-
-	check = is_ipv6_addr_valid(filter);
-
-	if (!check)
-		return check_l4_proto_info(&filter->l4_filter);
-
-	return check;
-}
-
-void program_l4_filter(struct stmmac_priv *priv, struct l4_filter_info *filter,
-		       int cur_filter_num, bool udp)
-{
-	bool enable = false;
-
-	if (filter->src_port || filter->dest_port)
-		enable = true;
-
-	if (filter->src_port) {
-		priv->hw->mac->config_l4_filter(priv->hw, cur_filter_num, enable, udp,
-						true, false, filter->src_port);
-	}
-
-	if (filter->dest_port) {
-		priv->hw->mac->config_l4_filter(priv->hw, cur_filter_num, enable, udp,
-						false, false, filter->dest_port);
-	}
-}
-
-static int STMMAC_handle_prv_ioctl_filter_ipv4(struct net_device *dev,
-					       struct ifreq *ifr)
-{
-	struct l3_l4_ipv4_filter *filter;
-	int ret = 0;
-	unsigned long missing;
-	int cur_filter_num;
-	bool enable = false;
-	struct stmmac_priv *priv;
-	u32 read_value;
-
-	priv = netdev_priv(dev);
-
-	if (!ifr || !ifr->ifr_ifru.ifru_data)
-		return -EINVAL;
-
-	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
-		pr_err("no more L3/L4 filters can be added\n");
-		return -EOPNOTSUPP;
-	}
-
-	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
-	if (!filter)
-		return -ENOMEM;
-
-	missing = copy_from_user(filter, ifr->ifr_ifru.ifru_data,
-				 sizeof(*filter));
-	if (missing)
-		return -EFAULT;
-
-	if (!is_ipv4_filter_valid(filter))
-		return -EOPNOTSUPP;
-
-	priv->dma_cap.num_l3_l4_filters++;
-	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
-
-	if (filter->src_addr || filter->dest_addr)
-		enable = true;
-
-	/*enable dynamic mapping*/
-	read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
-	read_value |= XGMAC_QDDMACH;
-	writel(read_value, priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
-
-	/*config to receive unmatched packets too*/
-	read_value = (u32)readl(priv->ioaddr + XGMAC_PACKET_FILTER);
-	read_value |= XGMAC_FILTER_RA;
-	writel(read_value, priv->ioaddr + XGMAC_PACKET_FILTER);
-
-	if (filter->src_addr) {
-		/* configure L3 src addr */
-		priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, enable,
-						      false, true, false, filter->src_addr, NULL);
-	}
-
-	if (filter->dest_addr) {
-		/* configure L3 dest addr */
-		priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, enable,
-						      false, false, false, filter->dest_addr, NULL);
-	}
-
-	program_l4_filter(priv, &filter->l4_filter, cur_filter_num, false);
-
-	return ret;
-}
-
-static int STMMAC_handle_prv_ioctl_filter_ipv6(struct net_device *dev,
-					       struct ifreq *ifr)
-{
-	struct l3_l4_ipv6_filter *filter;
-	int ret = 0;
-	unsigned long missing;
-	int cur_filter_num;
-	struct stmmac_priv *priv;
-	u32 read_value;
-
-	priv = netdev_priv(dev);
-
-	if (!ifr || !ifr->ifr_ifru.ifru_data)
-		return -EINVAL;
-
-	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
-		pr_err("no more L3/L4 filters can be added\n");
-		return -EOPNOTSUPP;
-	}
-
-	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
-	if (!filter)
-		return -ENOMEM;
-
-	missing = copy_from_user(filter, ifr->ifr_ifru.ifru_data,
-				 sizeof(*filter));
-	if (missing)
-		return -EFAULT;
-
-	if (!is_ipv6_filter_valid(filter))
-		return -EOPNOTSUPP;
-
-	priv->dma_cap.num_l3_l4_filters++;
-	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
-
-	/*enable dynamic mapping*/
-	read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
-	read_value |= XGMAC_QDDMACH;
-	writel(read_value, priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
-
-	/*config to receive unmatched packets too*/
-	read_value = (u32)readl(priv->ioaddr + XGMAC_PACKET_FILTER);
-	read_value |= XGMAC_FILTER_RA;
-	writel(read_value, priv->ioaddr + XGMAC_PACKET_FILTER);
-
-	if (is_ipv6_addr_valid(filter)) {
-		if (filter->src_or_dest_ip)
-			/* enable L3 src addr */
-			priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, true,
-							      true, true, false, 0,
-							      filter->src_or_dest_addr);
-		else
-			/* enable L3 dest addr */
-			priv->hw->mac->config_l3_filter_xgmac(priv->hw, cur_filter_num, true,
-							      true, false, false, 0,
-							      filter->src_or_dest_addr);
-	}
-
-	program_l4_filter(priv, &filter->l4_filter, cur_filter_num, true);
-
-	return ret;
-}
-
 /**
  *  stmmac_ioctl - Entry point for the Ioctl
  *  @dev: Device pointer.
@@ -7317,6 +7443,9 @@ void stmmac_xdp_release(struct net_device *dev)
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 chan;
 
+	/* Ensure tx function is not running */
+	netif_tx_disable(dev);
+
 	/* Disable NAPI process */
 	stmmac_disable_all_queues(priv);
 
@@ -7870,7 +7999,8 @@ int stmmac_dvr_probe(struct device *device,
 	priv->wq = create_singlethread_workqueue("stmmac_wq");
 	if (!priv->wq) {
 		dev_err(priv->device, "failed to create workqueue\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto error_wq_init;
 	}
 
 	INIT_WORK(&priv->service_task, stmmac_service_task);
@@ -8115,6 +8245,7 @@ error_mdio_register:
 	stmmac_napi_del(ndev);
 error_hw_init:
 	destroy_workqueue(priv->wq);
+error_wq_init:
 	bitmap_free(priv->af_xdp_zc_qps);
 
 	return ret;
@@ -8133,6 +8264,9 @@ int stmmac_dvr_remove(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
 	netdev_info(priv->dev, "%s: removing driver", __func__);
+
+	/*Reset num filters so ndo_open can reinit everything*/
+	priv->dma_cap.num_l3_l4_filters = 0;
 
 	if (priv->plat->rgmii_rst) {
 		reset_control_put(priv->plat->rgmii_rst);
@@ -8236,7 +8370,7 @@ int stmmac_suspend(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_suspend(priv->phylink, false);
 		} else {
@@ -8257,6 +8391,7 @@ int stmmac_suspend(struct device *dev)
 		stmmac_fpe_stop_wq(priv);
 	}
 
+	priv->plat->mac_suspended = true;
 	priv->speed = SPEED_UNKNOWN;
 	return 0;
 }
@@ -8288,22 +8423,6 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 
 		netdev_tx_reset_queue(netdev_get_tx_queue(priv->dev, queue));
 	}
-}
-
-static int stmmac_resume_lite(struct stmmac_priv *priv, struct net_device *ndev)
-{
-	stmmac_enable_all_queues(priv);
-	netif_device_attach(ndev);
-	stmmac_start_all_dma(priv);
-	stmmac_mac_set(priv, priv->ioaddr, true);
-
-	if (priv->dma_cap.fpesel) {
-		stmmac_fpe_start_wq(priv);
-		if (priv->plat->fpe_cfg->enable)
-			stmmac_fpe_handshake(priv, true);
-	}
-
-	return 0;
 }
 
 /**
@@ -8341,7 +8460,7 @@ int stmmac_resume(struct device *dev)
 			stmmac_mdio_reset(priv->mii);
 	}
 
-	if (priv->plat->serdes_powerup) {
+	if (priv->plat->serdes_powerup && priv->speed != SPEED_UNKNOWN) {
 		ret = priv->plat->serdes_powerup(ndev,
 						 priv->plat->bsp_priv);
 
@@ -8353,7 +8472,7 @@ int stmmac_resume(struct device *dev)
 		rtnl_lock();
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
-		} else if (priv->phydev->mac_managed_pm) {
+		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
 			if (!priv->dev->wol_enabled)
 				phylink_resume(priv->phylink);
 		} else {
@@ -8363,9 +8482,6 @@ int stmmac_resume(struct device *dev)
 		}
 		rtnl_unlock();
 	}
-
-	if (priv->plat->pm_lite)
-		return stmmac_resume_lite(priv, ndev);
 
 	rtnl_lock();
 	mutex_lock(&priv->lock);
@@ -8395,6 +8511,7 @@ int stmmac_resume(struct device *dev)
 	rtnl_unlock();
 
 	netif_device_attach(ndev);
+	priv->plat->mac_suspended = false;
 
 	return 0;
 }

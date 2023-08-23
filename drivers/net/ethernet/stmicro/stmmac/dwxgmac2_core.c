@@ -54,6 +54,11 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 		intr_en |= XGMAC_LPIIE;
 		writel(intr_en, ioaddr + XGMAC_INT_EN);
 	}
+
+	// Disable link status interrupt
+	intr_en = readl(ioaddr + XGMAC_INT_EN);
+	intr_en &= ~XGMAC_LSI;
+	writel(intr_en, ioaddr + XGMAC_INT_EN);
 }
 
 static void dwxgmac2_set_mac(void __iomem *ioaddr, bool enable)

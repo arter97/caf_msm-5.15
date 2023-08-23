@@ -518,7 +518,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	case MHI_DEV_READY_STATE:
 		res = ep_pcie_get_msi_config(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
 			&cfg, mhi_sm_ctx->mhi_dev->vf_id);
-		if (res) {
+		if (res && res != -EOPNOTSUPP) {
 			MHI_SM_ERR(mhi->vf_id, "Error retrieving pcie msi logic\n");
 			goto exit;
 		}
@@ -531,10 +531,12 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 				goto exit;
 			}
 
-			res = mhi_pcie_config_db_routing(mhi_sm_ctx->mhi_dev);
-			if (res) {
-				MHI_SM_ERR(mhi->vf_id, "Error configuring db routing\n");
-				goto exit;
+			if (mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie) {
+				res = mhi_pcie_config_db_routing(mhi_sm_ctx->mhi_dev);
+				if (res) {
+					MHI_SM_ERR(mhi->vf_id, "Error configuring db routing\n");
+					goto exit;
+				}
 			}
 		}
 		break;
@@ -573,7 +575,8 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 		}
 	}
 
-	if (mhi_dma_fun_ops->mhi_dma_update_mstate) {
+	if (mhi_dma_fun_ops->mhi_dma_update_mstate &&
+		!(mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie)) {
 		res = mhi_dma_fun_ops->mhi_dma_update_mstate(mhi_dma_fun_params,
 									MHI_DMA_STATE_M0);
 		if (res) {
@@ -700,7 +703,8 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 		}
 
 		/* Notify MHI DMA of state change */
-		if (mhi_dma_fun_ops->mhi_dma_update_mstate) {
+		if (mhi_dma_fun_ops->mhi_dma_update_mstate &&
+			!(mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie)) {
 			if (new_state == MHI_DEV_M2_STATE)
 				res = mhi_dma_fun_ops->mhi_dma_update_mstate(mhi_dma_fun_params,
 						MHI_DMA_STATE_M2);
@@ -1081,6 +1085,28 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 			MHI_SM_DBG(mhi->vf_id, "Nothing to do, already in D3_COLD state\n");
 			break;
 		}
+
+		/*
+		 * We are here because host reset MHI EP and now transiting to
+		 * D3_COLD. In this case, ring_init_cb_work, queued during host
+		 * reset, would get stuck at M0 polling because host is not
+		 * going to set M0 because host is either uninstallig MHI host
+		 * driver or entering hibernate. What we are doing here is to -
+		 * 1. flush ring_init_wq workqueue before disable EP to avoid
+		 *    race condition.
+		 * 2. update stop_polling_m0 flag to make sure ring_init_cb_work
+		 *    can see it and stop polling M0.
+		 */
+		if (mhi->ctrl_info == MHI_STATE_DISCONNECTED) {
+			mhi->stop_polling_m0 = true;
+			MHI_SM_DBG(mhi->vf_id, "Flush ring_init_wq before disable endpoint\n");
+			flush_workqueue(mhi->ring_init_wq);
+			mhi->stop_polling_m0 = false;
+			/* Avoid backing up mmio twice */
+			if (old_dstate != EP_PCIE_EVENT_PM_D3_HOT)
+				mhi_dev_backup_mmio(mhi_sm_ctx->mhi_dev);
+		}
+
 		ep_pcie_disable_endpoint(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle);
 		mhi_sm_ctx->d_state = MHI_SM_EP_PCIE_D3_COLD_STATE;
 		mhi_sm_ctx->one_d3 = true;
@@ -1123,6 +1149,16 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 		pm_relax(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
 		break;
 	case EP_PCIE_EVENT_PM_D0:
+		/*
+		 * See also above comments in D3_COLD's case. Previously, since
+		 * ring_init_cb_work has bailed from M0 polling, let's requeue
+		 * it so that it can complete its job.
+		 */
+		if (mhi->ctrl_info == MHI_STATE_DISCONNECTED) {
+			MHI_SM_DBG(mhi->vf_id, "mhi_dev_enable() got interrupted, re-start it\n");
+			queue_work(mhi->ring_init_wq, &mhi->ring_init_cb_work);
+		}
+
 		if (old_dstate == MHI_SM_EP_PCIE_D0_STATE) {
 			MHI_SM_DBG(mhi->vf_id, "Nothing to do, already in D0 state\n");
 			break;
@@ -1602,40 +1638,6 @@ exit:
 }
 EXPORT_SYMBOL(mhi_dev_sm_pcie_handler);
 
-/**
- * mhi_dev_sm_syserr() - switch to system error state.
- *
- * Called on system error condition.
- * Switch MHI to SYSERR state, notify MHI-host and ASSERT on the device.
- * Synchronic function.
- *
- * Return:	0: success
- *		negative: failure
- */
-int mhi_dev_sm_syserr(void)
-{
-	int res, i;
-	struct mhi_sm_dev *mhi_sm_ctx;
-
-	MHI_SM_FUNC_ENTRY(MHI_PF_VALUE);
-
-	for (i = 0; i < MHI_MAX_NUM_INSTANCES; i++) {
-		if (!mhi_dev_sm_ctx[i])
-			continue;
-
-		mhi_sm_ctx = mhi_dev_sm_ctx[i];
-		mutex_lock(&mhi_sm_ctx->mhi_state_lock);
-		res = mhi_sm_handle_syserr(mhi_sm_ctx);
-		if (res)
-			MHI_SM_ERR(i, "mhi_sm_handle_syserr failed %d\n", res);
-		mutex_unlock(&mhi_sm_ctx->mhi_state_lock);
-	}
-
-	MHI_SM_FUNC_EXIT(MHI_PF_VALUE);
-	return res;
-}
-EXPORT_SYMBOL(mhi_dev_sm_syserr);
-
 #ifdef CONFIG_DEBUG_FS
 static ssize_t mhi_sm_debugfs_read(struct file *file, char __user *ubuf,
 				size_t count, loff_t *ppos)
@@ -1720,12 +1722,14 @@ static ssize_t mhi_sm_debugfs_write(struct file *file,
 	unsigned long missing;
 	s8 in_num = 0;
 	struct mhi_sm_dev *mhi_sm_ctx = mhi_dev_sm_ctx[0];
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
 
 	if (!mhi_sm_ctx) {
 		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Not initialized\n");
 		return -EFAULT;
 	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
 
 	if (sizeof(dbg_buff) < count + 1)
 		return -EFAULT;
