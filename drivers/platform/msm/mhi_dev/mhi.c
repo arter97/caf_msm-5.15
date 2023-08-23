@@ -213,6 +213,7 @@ static inline struct mhi_dev *mhi_get_dev_ctx(struct mhi_dev_ctx *mhi_hw_ctx, en
 }
 
 /*
+<<<<<<< HEAD   (74be79 Merge 74403e432f11a69cef2477a2aa201a0cdccfa8fc on remote bra)
  * mhi_dev_get_msi_config () - Fetch the MSI config from
  * PCIe and set the msi_disable flag accordingly
  *
@@ -248,6 +249,8 @@ static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
 }
 
 /*
+=======
+>>>>>>> CHANGE (a7952f Revert "msm: mhi_dev: Add support for MSI disable")
  * mhi_dev_ring_cache_completion_cb () - Call back function called
  * by MHI DMA driver when ring element cache is done
  *
@@ -446,15 +449,11 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 	union mhi_dev_ring_ctx *ctx;
 	int rc;
 
-	rc = mhi_dev_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
+	rc = ep_pcie_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
 	if (rc) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Error retrieving pcie msi logic\n");
 		return rc;
 	}
-
-	/* If MSI is disabled, bailing out */
-	if (mhi->mhi_hw_ctx->msi_disable)
-		return 0;
 
 	ctx = (union mhi_dev_ring_ctx *)&mhi->ev_ctx_cache[ereq->event_ring];
 
@@ -516,24 +515,6 @@ static void mhi_dev_event_rd_offset_completion_cb(void *req)
 
 	if (ereq->event_rd_dma)
 		unmap_single(mhi, ereq->event_rd_dma, sizeof(uint64_t), DMA_TO_DEVICE);
-
-	/*
-	 * The mhi_dev_cmd_event_msi_cb and mhi_dev_event_msi_cb APIs does
-	 * add back the flushed events space to the event buffer and returns
-	 * the event req back to the list. These are registered in the API
-	 * mhi_dev_schedule_msi_ipa and get invoked when MSI triggering is
-	 * complete.
-	 * In the case of MSI being disabled by the host, these callbacks will
-	 * not get invoked as triggering MSI is suppressed from device side.
-	 * Hence, invoking these callbacks as part of this API to ensure we do
-	 * not run out on ereq buffer space in this scenario.
-	 */
-	if (mhi->mhi_hw_ctx->msi_disable) {
-		if (ereq->is_cmd_cpl)
-			mhi_dev_cmd_event_msi_cb(ereq);
-		else
-			mhi_dev_event_msi_cb(ereq);
-	}
 }
 
 static void mhi_dev_cmd_event_msi_cb(void *req)
@@ -609,16 +590,12 @@ static int mhi_trigger_msi_edma(struct mhi_dev_ring *ring, u32 idx, struct event
 	struct mhi_dev *mhi = ring->mhi_dev;
 
 	if (!mhi->msi_lower) {
-		rc = mhi_dev_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
+		rc = ep_pcie_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"Error retrieving pcie msi logic\n");
 			return rc;
 		}
-
-		/* If MSI is disabled, bailing out */
-		if (mhi->mhi_hw_ctx->msi_disable)
-			return 0;
 
 		mhi->msi_data = cfg.data;
 		mhi->msi_lower = cfg.lower;
@@ -1712,7 +1689,7 @@ static int mhi_hwc_init(struct mhi_dev *mhi_ctx)
 	}
 
 	/* Call MHI DMA HW_ACC Init with MSI Address and db routing info */
-	rc = mhi_dev_get_msi_config(mhi_ctx->mhi_hw_ctx->phandle, &cfg, mhi_ctx->vf_id);
+	rc = ep_pcie_get_msi_config(mhi_ctx->mhi_hw_ctx->phandle, &cfg, mhi_ctx->vf_id);
 	if (rc) {
 		mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR,
 			"Error retrieving pcie msi logic\n");
@@ -1727,7 +1704,6 @@ static int mhi_hwc_init(struct mhi_dev *mhi_ctx)
 	mhi_init_dma_params.first_er_idx = mhi_ctx->cfg.event_rings -
 						(mhi_ctx->cfg.hw_event_rings);
 	mhi_init_dma_params.first_ch_idx = mhi_ctx->mhi_chan_hw_base;
-	mhi_init_dma_params.disable_msi = mhi_ctx->mhi_hw_ctx->msi_disable;
 
 	if (mhi_ctx->config_iatu)
 		mhi_init_dma_params.mmio_addr =
@@ -1971,7 +1947,7 @@ int mhi_dev_send_event(struct mhi_dev *mhi, int evnt_ring,
 	struct ep_pcie_msi_config cfg;
 	struct mhi_addr transfer_addr;
 
-	rc = mhi_dev_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
+	rc = ep_pcie_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
 	if (rc) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Error retrieving pcie msi logic\n");
 		return rc;
@@ -4176,19 +4152,16 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "mhi_state = 0x%X, reset = %d\n",
 				state, mhi_reset);
 
-		if (mhi->mhi_hw_ctx->msi_disable)
-			goto poll_for_reset;
-
 		rc = mhi_dev_mmio_read(mhi, BHI_INTVEC, &bhi_intvec);
 		if (rc)
 			return rc;
 
 		while (bhi_intvec == 0xffffffff &&
-			bhi_max_cnt < MHI_BHI_INTVEC_MAX_CNT) {
+				bhi_max_cnt < MHI_BHI_INTVEC_MAX_CNT) {
 			/* Wait for Host to set the bhi_intvec */
 			msleep(MHI_BHI_INTVEC_WAIT_MS);
 			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
-				"Wait for Host to set BHI_INTVEC\n");
+					"Wait for Host to set BHI_INTVEC\n");
 			rc = mhi_dev_mmio_read(mhi, BHI_INTVEC, &bhi_intvec);
 			if (rc) {
 				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -4200,12 +4173,12 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 
 		if (bhi_max_cnt == MHI_BHI_INTVEC_MAX_CNT) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
-				"Host failed to set BHI_INTVEC\n");
+					"Host failed to set BHI_INTVEC\n");
 			return -EINVAL;
 		}
 
 		if (bhi_intvec != 0xffffffff) {
-			/* Indicate the host that device is ready */
+			/* Indicate the host that the device is ready */
 			rc = ep_pcie_trigger_msi(mhi->mhi_hw_ctx->phandle, bhi_intvec, mhi->vf_id);
 			if (rc) {
 				mhi_log(mhi->vf_id, MHI_MSG_ERROR, "error sending msi\n");
@@ -4213,7 +4186,6 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 			}
 		}
 
-poll_for_reset:
 		/* Poll for the host to set the reset bit */
 		rc = mhi_dev_mmio_get_mhi_state(mhi, &state, &mhi_reset);
 		if (rc) {
@@ -4922,7 +4894,6 @@ static void mhi_dev_reinit(struct work_struct *work)
 static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 {
 	struct platform_device *pdev;
-	struct ep_pcie_msi_config cfg;
 	int rc = 0;
 
 	/*
@@ -4974,14 +4945,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 			mutex_unlock(&mhi_ctx->mhi_lock);
 			return -EINVAL;
 		}
-	}
-
-	rc = mhi_dev_get_msi_config(mhi_ctx->mhi_hw_ctx->phandle, &cfg, mhi_ctx->vf_id);
-	if (rc) {
-		mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR,
-				"Error retrieving pcie msi logic\n");
-		mutex_unlock(&mhi_ctx->mhi_lock);
-		return rc;
 	}
 
 	rc = mhi_dev_recover(mhi_ctx);
