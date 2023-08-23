@@ -677,7 +677,6 @@ struct mhi_dev_ctx {
 	struct ep_pcie_register_event	event_reg;
 	u32				ifc_id;
 	struct ep_pcie_hw		*phandle;
-	bool				msi_disable;
 	struct mhi_dev			*mhi_dev[MHI_MAX_NUM_INSTANCES];
 
 	/*
