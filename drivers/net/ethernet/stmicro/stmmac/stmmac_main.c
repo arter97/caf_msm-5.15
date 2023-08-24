@@ -8392,7 +8392,6 @@ int stmmac_suspend(struct device *dev)
 	}
 
 	priv->plat->mac_suspended = true;
-	priv->speed = SPEED_UNKNOWN;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(stmmac_suspend);
