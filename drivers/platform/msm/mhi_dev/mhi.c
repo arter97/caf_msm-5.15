@@ -213,44 +213,6 @@ static inline struct mhi_dev *mhi_get_dev_ctx(struct mhi_dev_ctx *mhi_hw_ctx, en
 }
 
 /*
-<<<<<<< HEAD   (74be79 Merge 74403e432f11a69cef2477a2aa201a0cdccfa8fc on remote bra)
- * mhi_dev_get_msi_config () - Fetch the MSI config from
- * PCIe and set the msi_disable flag accordingly
- *
- * @phandle : phandle structure
- * @cfg :     PCIe MSI config structure
- * @vf_id:    VF ID
- */
-static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
-				struct ep_pcie_msi_config *cfg, u32 vf_id)
-{
-	int rc;
-	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
-
-	/*
-	 * Fetching MSI config to read the MSI capability and setting the
-	 * msi_disable flag based on it.
-	 */
-	rc = ep_pcie_get_msi_config(phandle, cfg, vf_id);
-	if (rc == -EOPNOTSUPP) {
-		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "MSI is disabled\n");
-		mhi->mhi_hw_ctx->msi_disable = true;
-	} else if (!rc) {
-		mhi->mhi_hw_ctx->msi_disable = false;
-	} else {
-		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
-				"Error retrieving pcie msi logic\n");
-		return rc;
-	}
-
-	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "msi_disable = %d\n",
-					mhi->mhi_hw_ctx->msi_disable);
-	return 0;
-}
-
-/*
-=======
->>>>>>> CHANGE (a7952f Revert "msm: mhi_dev: Add support for MSI disable")
  * mhi_dev_ring_cache_completion_cb () - Call back function called
  * by MHI DMA driver when ring element cache is done
  *
