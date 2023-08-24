@@ -232,6 +232,9 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		if (of_property_read_bool(q_node, "snps,route-multi-broad"))
 			plat->rx_queues_cfg[queue].mbcast_route = true;
 
+		if (of_property_read_bool(q_node, "snps,skip-queue"))
+			plat->rx_queues_cfg[queue].skip_sw = true;
+
 		queue++;
 	}
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
@@ -298,6 +301,9 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		}
 
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
+			plat->tx_queues_cfg[queue].skip_sw = true;
+
+		if (of_property_read_bool(q_node, "snps,skip-queue"))
 			plat->tx_queues_cfg[queue].skip_sw = true;
 
 		queue++;
