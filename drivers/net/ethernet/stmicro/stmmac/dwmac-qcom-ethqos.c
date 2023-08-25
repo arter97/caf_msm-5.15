@@ -6775,7 +6775,7 @@ err_clk:
 
 err_mem:
 	stmmac_remove_config_dt(pdev, plat_dat);
-
+	ethqos_disable_regulators(ethqos);
 	return ret;
 }
 
