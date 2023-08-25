@@ -1342,10 +1342,9 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	if (priv->plat->fix_mac_speed)
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
 
-	if (priv->plat->serdes_powerup) {
-		ret = priv->plat->serdes_powerup(to_net_dev(config->dev),
-						 priv->plat->bsp_priv);
-	}
+	if (priv->plat->xpcs_linkup)
+		priv->plat->xpcs_linkup(priv->plat->bsp_priv, speed);
+
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
