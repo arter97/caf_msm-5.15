@@ -156,7 +156,6 @@ static void gh_vm_cleanup(struct gh_vm *vm)
 		ret = gh_rm_vm_dealloc_vmid(vmid);
 		if (ret)
 			pr_warn("Failed to dealloc VMID: %d: %d\n", vmid, ret);
-		vm->vmid = 0;
 	}
 
 	vm->status.vm_status = GH_RM_VM_STATUS_NO_STATE;
