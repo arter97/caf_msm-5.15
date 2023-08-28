@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_qpic_nand.h"
@@ -21,7 +21,6 @@
 #define ONE_CODEWORD_SIZE 516
 
 static struct device *dev_node;
-
 /*
  * Get the DMA memory for requested amount of size. It returns the pointer
  * to free memory available from the allocated pool. Returns NULL if there
@@ -215,20 +214,28 @@ static void msm_nand_print_rpm_info(struct device *dev)
 static int msm_nand_suspend(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
+
+	mutex_lock(&info->lock);
 
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_suspend(dev);
 
+	mutex_unlock(&info->lock);
 	return ret;
 }
 
 static int msm_nand_resume(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
+
+	mutex_lock(&info->lock);
 
 	if (!pm_runtime_suspended(dev))
 		ret = msm_nand_runtime_resume(dev);
 
+	mutex_unlock(&info->lock);
 	return ret;
 }
 #else
@@ -953,6 +960,7 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 
 	manid  = flash->flash_id & 0xFF;
 	devid  = (flash->flash_id >> 8) & 0xFF;
+	flash->is_onfi_compliant = true;
 
 	/* hack for 8 x 8 JSC MCP part */
 	if (manid == 0xAD && devid == 0xA3)
@@ -3547,6 +3555,7 @@ static int msm_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	} else {
 		instr->fail_addr = 0xffffffff;
 	}
+
 	goto unlock_mutex;
 put_dev:
 	msm_nand_put_device(chip->dev);
@@ -3570,18 +3579,22 @@ struct msm_nand_blk_isbad_data {
 
 /*
  * Function that gets called from upper layers such as MTD/YAFFS2 to check if
- * a block is bad. This is done by reading the first page within a block and
+ * a block is bad. This is done by reading the first and second page within a block
+ * for a NON-ONFI device and first and last page for a ONFI device and
  * checking whether the bad block byte location contains 0xFF or not. If it
  * doesn't contain 0xFF, then it is considered as bad block.
  */
 #define ISBAD_CMDS 10
+#define BAD_BLOCK_CHECK_PAGES 2
 static int msm_nand_block_isbad(struct mtd_info *mtd, loff_t ofs)
 {
 	struct msm_nand_info *info = mtd->priv;
 	struct msm_nand_chip *chip = &info->nand_chip;
+	struct flash_identification *flash = &info->flash_dev;
 	int i = 0, ret = 0, bad_block = 0, submitted_num_desc = 1;
+	int bad_block_page = 0, bad_page_count = 0;
 	uint8_t *buf;
-	uint32_t page = 0, rdata, cwperpage;
+	uint32_t page = 0, rdata, cwperpage, pages_per_block;
 	struct msm_nand_sps_cmd *cmd, *curr_cmd;
 	struct msm_nand_blk_isbad_data data;
 	struct sps_iovec *iovec;
@@ -3598,11 +3611,15 @@ static int msm_nand_block_isbad(struct mtd_info *mtd, loff_t ofs)
 		uint32_t flash_status;
 	} *dma_buffer;
 
-	if (mtd->writesize == PAGE_SIZE_2K)
+	if (mtd->writesize == PAGE_SIZE_2K) {
 		page = ofs >> 11;
+		pages_per_block = mtd->erasesize >> 11;
+	}
 
-	if (mtd->writesize == PAGE_SIZE_4K)
+	if (mtd->writesize == PAGE_SIZE_4K) {
 		page = ofs >> 12;
+		pages_per_block = mtd->erasesize >> 12;
+	}
 
 	cwperpage = (mtd->writesize >> 9);
 
@@ -3621,126 +3638,141 @@ static int msm_nand_block_isbad(struct mtd_info *mtd, loff_t ofs)
 				chip, sizeof(*dma_buffer) + 4)));
 	buf = (uint8_t *)dma_buffer + sizeof(*dma_buffer);
 
-	cmd = dma_buffer->cmd;
-	memset(&data, 0, sizeof(struct msm_nand_blk_isbad_data));
-	data.cfg.cmd = MSM_NAND_CMD_PAGE_READ_ALL;
-	data.cfg.cfg0 = chip->cfg0_raw & ~(7U << CW_PER_PAGE);
-	data.cfg.cfg1 = chip->cfg1_raw;
+	do {
+		memset(buf, 0, 4);
+		cmd = dma_buffer->cmd;
+		memset(&data, 0, sizeof(struct msm_nand_blk_isbad_data));
+		data.cfg.cmd = MSM_NAND_CMD_PAGE_READ_ALL;
+		data.cfg.cfg0 = chip->cfg0_raw & ~(7U << CW_PER_PAGE);
+		data.cfg.cfg1 = chip->cfg1_raw;
 
-	if (chip->cfg1 & (1 << WIDE_FLASH))
-		data.cfg.addr0 = (page << 16) |
-			((chip->cw_size * (cwperpage-1)) >> 1);
-	else
-		data.cfg.addr0 = (page << 16) |
-			(chip->cw_size * (cwperpage-1));
+		if (chip->cfg1 & (1 << WIDE_FLASH))
+			data.cfg.addr0 = (page << 16) |
+				((chip->cw_size * (cwperpage-1)) >> 1);
+		else
+			data.cfg.addr0 = (page << 16) |
+				(chip->cw_size * (cwperpage-1));
 
-	data.cfg.addr1 = (page >> 16) & 0xff;
-	data.ecc_bch_cfg = 1 << ECC_CFG_ECC_DISABLE;
-	data.exec = 1;
-	data.read_offset = (mtd->writesize - (chip->cw_size * (cwperpage-1)));
-	dma_buffer->flash_status = 0xeeeeeeee;
+		data.cfg.addr1 = (page >> 16) & 0xff;
+		data.ecc_bch_cfg = 1 << ECC_CFG_ECC_DISABLE;
+		data.exec = 1;
+		data.read_offset = (mtd->writesize - (chip->cw_size * (cwperpage-1)));
+		dma_buffer->flash_status = 0xeeeeeeee;
 
-	curr_cmd = cmd;
-	msm_nand_prep_cfg_cmd_desc(info, data.cfg, &curr_cmd);
+		curr_cmd = cmd;
+		msm_nand_prep_cfg_cmd_desc(info, data.cfg, &curr_cmd);
 
-	cmd = curr_cmd;
-	msm_nand_prep_single_desc(cmd, MSM_NAND_DEV0_ECC_CFG(info), WRITE,
+		cmd = curr_cmd;
+		msm_nand_prep_single_desc(cmd, MSM_NAND_DEV0_ECC_CFG(info), WRITE,
 			data.ecc_bch_cfg, 0);
-	cmd++;
+		cmd++;
 
-	rdata = (data.read_offset << 0) | (4 << 16) | (1 << 31);
-	msm_nand_prep_single_desc(cmd, MSM_NAND_READ_LOCATION_0(info), WRITE,
-			rdata, 0);
-	cmd++;
-
-	if (chip->qpic_version >= 2) {
-		msm_nand_prep_single_desc(cmd,
-			MSM_NAND_READ_LOCATION_LAST_CW_0(info), WRITE,
+		rdata = (data.read_offset << 0) | (4 << 16) | (1 << 31);
+		msm_nand_prep_single_desc(cmd, MSM_NAND_READ_LOCATION_0(info), WRITE,
 			rdata, 0);
 		cmd++;
-	}
 
-	msm_nand_prep_single_desc(cmd, MSM_NAND_EXEC_CMD(info), WRITE,
-			data.exec, SPS_IOVEC_FLAG_NWD);
-	cmd++;
+		if (chip->qpic_version >= 2) {
+			msm_nand_prep_single_desc(cmd,
+				MSM_NAND_READ_LOCATION_LAST_CW_0(info), WRITE,
+				rdata, 0);
+			cmd++;
+		}
 
-	msm_nand_prep_single_desc(cmd, MSM_NAND_FLASH_STATUS(info), READ,
-		msm_virt_to_dma(chip, &dma_buffer->flash_status),
-		SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_UNLOCK);
-	cmd++;
+		msm_nand_prep_single_desc(cmd, MSM_NAND_EXEC_CMD(info), WRITE,
+				data.exec, SPS_IOVEC_FLAG_NWD);
+		cmd++;
 
-	WARN_ON(cmd - dma_buffer->cmd > ISBAD_CMDS);
-	dma_buffer->xfer.iovec_count = (cmd - dma_buffer->cmd);
-	dma_buffer->xfer.iovec = dma_buffer->cmd_iovec;
-	dma_buffer->xfer.iovec_phys = msm_virt_to_dma(chip,
+		msm_nand_prep_single_desc(cmd, MSM_NAND_FLASH_STATUS(info), READ,
+			msm_virt_to_dma(chip, &dma_buffer->flash_status),
+			SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_UNLOCK);
+		cmd++;
+
+		WARN_ON(cmd - dma_buffer->cmd > ISBAD_CMDS);
+		dma_buffer->xfer.iovec_count = (cmd - dma_buffer->cmd);
+		dma_buffer->xfer.iovec = dma_buffer->cmd_iovec;
+		dma_buffer->xfer.iovec_phys = msm_virt_to_dma(chip,
 					&dma_buffer->cmd_iovec);
-	iovec = dma_buffer->xfer.iovec;
+		iovec = dma_buffer->xfer.iovec;
 
-	for (i = 0; i < dma_buffer->xfer.iovec_count; i++) {
-		iovec->addr =  msm_virt_to_dma(chip, &dma_buffer->cmd[i].ce);
-		iovec->size = sizeof(struct sps_command_element);
-		iovec->flags = dma_buffer->cmd[i].flags;
-		iovec++;
-	}
-	mutex_lock(&info->lock);
-	ret = msm_nand_get_device(chip->dev);
-	if (ret) {
+		for (i = 0; i < dma_buffer->xfer.iovec_count; i++) {
+			iovec->addr =  msm_virt_to_dma(chip, &dma_buffer->cmd[i].ce);
+			iovec->size = sizeof(struct sps_command_element);
+			iovec->flags = dma_buffer->cmd[i].flags;
+			iovec++;
+		}
+		mutex_lock(&info->lock);
+		ret = msm_nand_get_device(chip->dev);
+		if (ret) {
+			mutex_unlock(&info->lock);
+			goto free_dma;
+		}
+		/* Submit data descriptor */
+		ret = sps_transfer_one(info->sps.data_prod.handle,
+				msm_virt_to_dma(chip, buf),
+				4, NULL, SPS_IOVEC_FLAG_INT);
+
+		if (ret) {
+			pr_err("Failed to submit data desc %d\n", ret);
+			goto put_dev;
+		}
+		/* Submit command descriptor */
+		ret =  sps_transfer(info->sps.cmd_pipe.handle, &dma_buffer->xfer);
+		if (ret) {
+			pr_err("Failed to submit commands %d\n", ret);
+			goto put_dev;
+		}
+
+		ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
+				info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
+				&iovec_temp);
+		if (ret) {
+			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
+					(info->sps.cmd_pipe.index), ret);
+			goto put_dev;
+		}
+		ret = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
+				info->sps.data_prod.index, submitted_num_desc,
+				&iovec_temp);
+		if (ret) {
+			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
+					(info->sps.data_prod.index), ret);
+			goto put_dev;
+		}
+
+		ret = msm_nand_put_device(chip->dev);
 		mutex_unlock(&info->lock);
-		goto free_dma;
-	}
-	/* Submit data descriptor */
-	ret = sps_transfer_one(info->sps.data_prod.handle,
-			msm_virt_to_dma(chip, buf),
-			4, NULL, SPS_IOVEC_FLAG_INT);
+		if (ret)
+			goto free_dma;
 
-	if (ret) {
-		pr_err("Failed to submit data desc %d\n", ret);
-		goto put_dev;
-	}
-	/* Submit command descriptor */
-	ret =  sps_transfer(info->sps.cmd_pipe.handle, &dma_buffer->xfer);
-	if (ret) {
-		pr_err("Failed to submit commands %d\n", ret);
-		goto put_dev;
-	}
+		/* Check for flash status errors */
+		if (dma_buffer->flash_status & (FS_OP_ERR | FS_MPU_ERR)) {
+			pr_err("MPU/OP err set: %x for page:%d\n",
+					dma_buffer->flash_status, page);
+			bad_page_count++;
+			goto next_page;
+		}
 
-	ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
-			&iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
-				(info->sps.cmd_pipe.index), ret);
-		goto put_dev;
-	}
-	ret = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-			info->sps.data_prod.index, submitted_num_desc,
-			&iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
-				(info->sps.data_prod.index), ret);
-		goto put_dev;
-	}
+		/* Check for bad block marker byte */
+		if (chip->cfg1 & (1 << WIDE_FLASH)) {
+			if (buf[0] != 0xFF || buf[1] != 0xFF)
+				bad_block = 1;
+		} else {
+			if (buf[0] != 0xFF)
+				bad_block = 1;
+		}
+next_page:
+		/* Check for 2nd page for NON-ONFI and last page for ONFI */
+		if (!flash->is_onfi_compliant)
+			page += 1;
+		else
+			page += pages_per_block - 1;
 
-	ret = msm_nand_put_device(chip->dev);
-	mutex_unlock(&info->lock);
-	if (ret)
-		goto free_dma;
+	} while ((++bad_block_page < BAD_BLOCK_CHECK_PAGES) && !bad_block);
 
-	/* Check for flash status errors */
-	if (dma_buffer->flash_status & (FS_OP_ERR | FS_MPU_ERR)) {
-		pr_err("MPU/OP err set: %x\n", dma_buffer->flash_status);
+	if (bad_page_count == BAD_BLOCK_CHECK_PAGES)
 		bad_block = -EIO;
-		goto free_dma;
-	}
 
-	/* Check for bad block marker byte */
-	if (chip->cfg1 & (1 << WIDE_FLASH)) {
-		if (buf[0] != 0xFF || buf[1] != 0xFF)
-			bad_block = 1;
-	} else {
-		if (buf[0] != 0xFF)
-			bad_block = 1;
-	}
 	goto free_dma;
 put_dev:
 	msm_nand_put_device(chip->dev);
@@ -3753,15 +3785,19 @@ out:
 
 /*
  * Function that gets called from upper layers such as MTD/YAFFS2 to mark a
- * block as bad. This is done by writing the first page within a block with 0,
- * thus setting the bad block byte location as well to 0.
+ * block as bad. This is done by writing the first and second page
+ * within a block for a NON_ONFI device  with 0 and first and last page for
+ * an ONFI device, thus setting the bad block byte location as well to 0.
  */
 static int msm_nand_block_markbad(struct mtd_info *mtd, loff_t ofs)
 {
+	struct msm_nand_info *info = mtd->priv;
+	struct flash_identification *flash = &info->flash_dev;
 	struct mtd_oob_ops ops;
-	int ret;
+	int ret, mark_block_bad_page = 0;
 	uint8_t *buf;
 	size_t len;
+	uint32_t pages_per_block;
 
 	if (ofs > mtd->size) {
 		pr_err("Invalid offset 0x%llx\n", ofs);
@@ -3779,13 +3815,32 @@ static int msm_nand_block_markbad(struct mtd_info *mtd, loff_t ofs)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ops.mode = MTD_OPS_RAW;
-	ops.len = len;
-	ops.retlen = 0;
-	ops.ooblen = 0;
-	ops.datbuf = buf;
-	ops.oobbuf = NULL;
-	ret =  msm_nand_write_oob(mtd, ofs, &ops);
+	if (mtd->writesize == PAGE_SIZE_2K)
+		pages_per_block = mtd->erasesize >> 11;
+
+	if (mtd->writesize == PAGE_SIZE_4K)
+		pages_per_block = mtd->erasesize >> 12;
+	do {
+		ops.mode = MTD_OPS_RAW;
+		ops.len = len;
+		ops.retlen = 0;
+		ops.ooblen = 0;
+		ops.datbuf = buf;
+		ops.oobbuf = NULL;
+		ret =  msm_nand_write_oob(mtd, ofs, &ops);
+		if (ret) {
+			pr_err("write failed with err:%d for ofs:0x%x\n",
+						ret, (uint32_t)ofs);
+			goto free_mem;
+		}
+		/* Mark 2nd page for NON-ONFI with zeroes else last page with zeros */
+		if (!flash->is_onfi_compliant)
+			ofs += (loff_t)mtd->writesize;
+		else
+			ofs += (loff_t)((pages_per_block - 1) * mtd->writesize);
+	} while (++mark_block_bad_page < BAD_BLOCK_CHECK_PAGES);
+
+free_mem:
 	kfree(buf);
 out:
 	return ret;
@@ -4349,6 +4404,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	struct msm_nand_chip *chip = &info->nand_chip;
 	int err;
 
+	mutex_lock(&info->lock);
 	err = msm_nand_get_device(chip->dev);
 	if (err)
 		goto out;
@@ -4361,6 +4417,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 			 0, 2);
 	err = msm_nand_put_device(chip->dev);
 out:
+	mutex_unlock(&info->lock);
 	if (err)
 		pr_err("Failed to get/put the device.\n");
 	return NOTIFY_DONE;
@@ -4626,18 +4683,32 @@ static int msm_nand_remove(struct platform_device *pdev)
 	if (pm_runtime_suspended(&(pdev)->dev))
 		pm_runtime_resume(&(pdev)->dev);
 
-	pm_runtime_disable(&(pdev)->dev);
-	pm_runtime_set_suspended(&(pdev)->dev);
-
 	dev_set_drvdata(&pdev->dev, NULL);
 
 	if (info) {
-		msm_nand_setup_clocks_and_bus_bw(info, false);
-		msm_nand_bus_unregister(info);
 		mtd_device_unregister(&info->mtd);
 		msm_nand_bam_free(info);
+		msm_nand_setup_clocks_and_bus_bw(info, false);
+		msm_nand_bus_unregister(info);
 	}
+
+	pm_runtime_disable(&(pdev)->dev);
+	pm_runtime_set_suspended(&(pdev)->dev);
+
 	return 0;
+}
+
+static void msm_nand_shutdown(struct platform_device *pdev)
+{
+	struct msm_nand_info *info = dev_get_drvdata(&pdev->dev);
+
+	mutex_lock(&info->lock);
+	pr_debug("reboot handler\n");
+
+	pm_runtime_disable(&(pdev)->dev);
+	pm_runtime_set_suspended(&(pdev)->dev);
+
+	mutex_unlock(&info->lock);
 }
 
 #define DRIVER_NAME "msm_qpic_nand"
@@ -4656,6 +4727,7 @@ static const struct dev_pm_ops msm_nand_pm_ops = {
 static struct platform_driver msm_nand_driver = {
 	.probe		= msm_nand_probe,
 	.remove		= msm_nand_remove,
+	.shutdown	= msm_nand_shutdown,
 	.driver = {
 		.name		= DRIVER_NAME,
 		.of_match_table = msm_nand_match_table,

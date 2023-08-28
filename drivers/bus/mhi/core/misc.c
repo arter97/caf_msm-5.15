@@ -267,6 +267,34 @@ void mhi_reg_write_work(struct work_struct *w)
 	msm_pcie_allow_l1(parent);
 }
 
+int mhi_misc_sysfs_create(struct mhi_controller *mhi_cntrl)
+{
+	struct device *dev = &mhi_cntrl->mhi_dev->dev;
+	int ret = 0;
+
+	ret = sysfs_create_group(&dev->kobj, &mhi_misc_group);
+	if (ret) {
+		MHI_ERR(dev, "Failed to create misc sysfs group\n");
+		return ret;
+	}
+
+	ret = sysfs_create_group(&dev->kobj, &mhi_tsync_group);
+	if (ret) {
+		MHI_ERR(dev, "Failed to create time synchronization sysfs group\n");
+		return ret;
+	}
+
+	return ret;
+}
+
+void  mhi_misc_sysfs_destroy(struct mhi_controller *mhi_cntrl)
+{
+	struct device *dev = &mhi_cntrl->mhi_dev->dev;
+
+	sysfs_remove_group(&dev->kobj, &mhi_tsync_group);
+	sysfs_remove_group(&dev->kobj, &mhi_misc_group);
+}
+
 int mhi_misc_register_controller(struct mhi_controller *mhi_cntrl)
 {
 	struct device *dev = &mhi_cntrl->mhi_dev->dev;
@@ -292,6 +320,9 @@ int mhi_misc_register_controller(struct mhi_controller *mhi_cntrl)
 
 	mhi_priv->log_buf = ipc_log_context_create(MHI_IPC_LOG_PAGES,
 						   mhi_dev->name, 0);
+	if (!mhi_priv->log_buf)
+		MHI_ERR(dev, "Failed to create MHI IPC logs\n");
+
 	mhi_priv->mhi_cntrl = mhi_cntrl;
 
 	/* adding it to this list only for debug purpose */
@@ -322,14 +353,6 @@ int mhi_misc_register_controller(struct mhi_controller *mhi_cntrl)
 
 	atomic_set(&mhi_priv->write_idx, -1);
 
-	ret = sysfs_create_group(&dev->kobj, &mhi_misc_group);
-	if (ret)
-		MHI_ERR(dev, "Failed to create misc sysfs group\n");
-
-	ret = sysfs_create_group(&dev->kobj, &mhi_tsync_group);
-	if (ret)
-		MHI_ERR(dev, "Failed to create time synchronization sysfs group\n");
-
 	return 0;
 
 wq_cleanup:
@@ -342,7 +365,6 @@ ipc_ctx_cleanup:
 
 void mhi_misc_unregister_controller(struct mhi_controller *mhi_cntrl)
 {
-	struct device *dev = &mhi_cntrl->mhi_dev->dev;
 	struct mhi_private *mhi_priv = dev_get_drvdata(&mhi_cntrl->mhi_dev->dev);
 
 	if (!mhi_priv)
@@ -351,9 +373,6 @@ void mhi_misc_unregister_controller(struct mhi_controller *mhi_cntrl)
 	mutex_lock(&mhi_bus.lock);
 	list_del(&mhi_priv->node);
 	mutex_unlock(&mhi_bus.lock);
-
-	sysfs_remove_group(&dev->kobj, &mhi_tsync_group);
-	sysfs_remove_group(&dev->kobj, &mhi_misc_group);
 
 	kfree(mhi_priv->reg_write_q);
 
@@ -955,6 +974,11 @@ void mhi_debug_reg_dump(struct mhi_controller *mhi_cntrl)
 		{ "BHIE_RXVEC_STATUS", BHIE_RXVECSTATUS_OFFS, bhie_base},
 		{ NULL },
 	};
+
+	if (!mhi_cntrl->regs || !mhi_cntrl->bhi || !mhi_cntrl->bhie) {
+		MHI_ERR(dev, "Cannot dump MHI/BHI registers\n");
+		return;
+	}
 
 	MHI_ERR(dev, "host pm_state:%s dev_state:%s ee:%s\n",
 		to_mhi_pm_state_str(mhi_cntrl->pm_state),

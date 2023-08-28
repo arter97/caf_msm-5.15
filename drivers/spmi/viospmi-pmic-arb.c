@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/bitmap.h>
 #include <linux/delay.h>
@@ -22,7 +22,8 @@
 #include <linux/virtio_spmi.h>
 #include <linux/scatterlist.h>
 
-#define VIRTIO_ID_SPMI			33
+/* Virtio ID of SPMI : 0xC003 */
+#define VIRTIO_ID_SPMI			49155
 
 /* Mapping Table */
 #define PMIC_ARB_MAX_PPID		BIT(12) /* PPID is 12bit */
@@ -562,7 +563,7 @@ static int qpnpint_irq_domain_translate(struct irq_domain *d,
 			"intspec[0] 0x%1x intspec[1] 0x%02x intspec[2] 0x%02x\n",
 			intspec[0], intspec[1], intspec[2]);
 
-	if (irq_domain_get_of_node(d) != pa->spmic->dev.of_node)
+	if (irq_domain_get_of_node(d) != (pa->vs->vdev->dev.parent)->of_node)
 		return -EINVAL;
 	if (fwspec->param_count != 4)
 		return -EINVAL;

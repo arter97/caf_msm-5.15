@@ -30,6 +30,7 @@ struct vfastrpc_mmap {
 	 * such as FASTRPC_ATTR_KEEP_MAP.
 	 */
 	unsigned int attr;
+	int ctx_refs; /* Indicates reference count for context map */
 };
 
 struct vfastrpc_buf {
@@ -75,7 +76,7 @@ void vfastrpc_mmap_free(struct vfastrpc_file *vfl,
 
 int vfastrpc_mmap_remove_fd(struct vfastrpc_file *vfl, int fd, u32 *entries);
 
-int vfastrpc_mmap_remove(struct vfastrpc_file *vfl, uintptr_t va,
+int vfastrpc_mmap_remove(struct vfastrpc_file *vfl, int fd, uintptr_t va,
 		size_t len, struct vfastrpc_mmap **ppmap);
 
 void vfastrpc_mmap_add(struct vfastrpc_file *vfl, struct vfastrpc_mmap *map);

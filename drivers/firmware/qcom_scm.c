@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2010,2015,2019,2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)     "qcom-scm: %s: " fmt, __func__
 
@@ -61,6 +61,9 @@ struct qcom_scm {
 
 	u64 dload_mode_addr;
 };
+
+enum qcom_scm_custom_reset_type qcom_scm_custom_reset_type;
+EXPORT_SYMBOL(qcom_scm_custom_reset_type);
 
 #define QCOM_SCM_FLAG_COLDBOOT_CPU0	0x00
 #define QCOM_SCM_FLAG_COLDBOOT_CPU1	0x01
@@ -966,11 +969,9 @@ void qcom_scm_halt_spmi_pmic_arbiter(void)
 		.arginfo = QCOM_SCM_ARGS(1),
 	};
 
-	pr_crit("Calling SCM to disable SPMI PMIC arbiter\n");
-
 	ret = qcom_scm_call_atomic(__scm->dev, &desc, NULL);
 	if (ret)
-		pr_err("Failed to halt_spmi_pmic_arbiter=0x%x\n", ret);
+		pr_debug("Failed to halt_spmi_pmic_arbiter=0x%x\n", ret);
 }
 EXPORT_SYMBOL(qcom_scm_halt_spmi_pmic_arbiter);
 
@@ -997,6 +998,98 @@ void qcom_scm_deassert_ps_hold(void)
 		pr_err("Failed to deassert_ps_hold=0x%x\n", ret);
 }
 EXPORT_SYMBOL(qcom_scm_deassert_ps_hold);
+
+static int __qcom_scm_paravirt_smmu_attach(struct device *dev, u64 sid,
+				    u64 asid, u64 ste_pa, u64 ste_size,
+				    u64 cd_pa, u64 cd_size)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMMU_PROGRAM,
+		.cmd = ARM_SMMU_PARAVIRT_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	int ret;
+	struct qcom_scm_res res;
+
+	desc.args[0] = SMMU_PARAVIRT_OP_ATTACH;
+	desc.args[1] = sid;
+	desc.args[2] = asid;
+	desc.args[3] = 0;
+	desc.args[4] = ste_pa;
+	desc.args[5] = ste_size;
+	desc.args[6] = cd_pa;
+	desc.args[7] = cd_size;
+	desc.arginfo = ARM_SMMU_PARAVIRT_DESCARG;
+	ret = qcom_scm_call(dev, &desc, &res);
+	return ret ? : res.result[0];
+}
+
+static int __qcom_scm_paravirt_tlb_inv(struct device *dev, u64 asid, u64 sid)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMMU_PROGRAM,
+		.cmd = ARM_SMMU_PARAVIRT_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	int ret;
+	struct qcom_scm_res res;
+
+	desc.args[0] = SMMU_PARAVIRT_OP_INVAL_ASID;
+	desc.args[1] = sid;
+	desc.args[2] = asid;
+	desc.args[3] = 0;
+	desc.args[4] = 0;
+	desc.args[5] = 0;
+	desc.args[6] = 0;
+	desc.args[7] = 0;
+	desc.arginfo = ARM_SMMU_PARAVIRT_DESCARG;
+	ret = qcom_scm_call_atomic(dev, &desc, &res);
+	return ret ? : res.result[0];
+}
+
+static int __qcom_scm_paravirt_smmu_detach(struct device *dev, u64 sid)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMMU_PROGRAM,
+		.cmd = ARM_SMMU_PARAVIRT_CMD,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	int ret;
+	struct qcom_scm_res res;
+
+	desc.args[0] = SMMU_PARAVIRT_OP_DETACH;
+	desc.args[1] = sid;
+	desc.args[2] = 0;
+	desc.args[3] = 0;
+	desc.args[4] = 0;
+	desc.args[5] = 0;
+	desc.args[6] = 0;
+	desc.args[7] = 0;
+	desc.arginfo = ARM_SMMU_PARAVIRT_DESCARG;
+	ret = qcom_scm_call(dev, &desc, &res);
+	return ret ? : res.result[0];
+}
+
+int qcom_scm_paravirt_smmu_attach(u64 sid, u64 asid,
+			u64 ste_pa, u64 ste_size, u64 cd_pa,
+			u64 cd_size)
+{
+	return __qcom_scm_paravirt_smmu_attach(__scm ? __scm->dev : NULL, sid, asid,
+					ste_pa, ste_size, cd_pa, cd_size);
+}
+EXPORT_SYMBOL(qcom_scm_paravirt_smmu_attach);
+
+int qcom_scm_paravirt_tlb_inv(u64 asid, u64 sid)
+{
+	return __qcom_scm_paravirt_tlb_inv(__scm ? __scm->dev : NULL, asid, sid);
+}
+EXPORT_SYMBOL(qcom_scm_paravirt_tlb_inv);
+
+int qcom_scm_paravirt_smmu_detach(u64 sid)
+{
+	return __qcom_scm_paravirt_smmu_detach(__scm ? __scm->dev : NULL, sid);
+}
+EXPORT_SYMBOL(qcom_scm_paravirt_smmu_detach);
 
 void qcom_scm_mmu_sync(bool sync)
 {
@@ -2272,6 +2365,21 @@ static int qcom_scm_reboot(struct device *dev)
 	return qcom_scm_call_atomic(dev, &desc, NULL);
 }
 
+int qcom_scm_custom_reboot(struct device *dev,
+			enum qcom_scm_custom_reset_type reboot_type)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_OEM_POWER,
+		.cmd = QCOM_SCM_OEM_POWER_CUSTOM_REBOOT,
+		.owner = ARM_SMCCC_OWNER_OEM,
+	};
+
+	desc.args[0] = reboot_type;
+	desc.arginfo = QCOM_SCM_ARGS(1);
+
+	return qcom_scm_call_atomic(dev, &desc, NULL);
+}
+
 int qcom_scm_ice_restore_cfg(void)
 {
 	struct qcom_scm_desc desc = {
@@ -2560,6 +2668,34 @@ int qcom_scm_qseecom_call(u32 cmd_id, struct qseecom_scm_desc *desc, bool retry)
 }
 EXPORT_SYMBOL(qcom_scm_qseecom_call);
 
+int __qcom_scm_ddrbw_profiler(struct device *dev, phys_addr_t in_buf,
+	size_t in_buf_size, phys_addr_t out_buf, size_t out_buf_size)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_INFO,
+		.cmd = TZ_SVC_BW_PROF_ID,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+
+	desc.args[0] = in_buf;
+	desc.args[1] = in_buf_size;
+	desc.args[2] = out_buf;
+	desc.args[3] = out_buf_size;
+	desc.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL, QCOM_SCM_RW,
+								 QCOM_SCM_VAL);
+	ret = qcom_scm_call(dev, &desc, NULL);
+
+	return ret;
+}
+
+int qcom_scm_ddrbw_profiler(phys_addr_t in_buf,
+	size_t in_buf_size, phys_addr_t out_buf, size_t out_buf_size)
+{
+	return __qcom_scm_ddrbw_profiler(__scm ? __scm->dev : NULL, in_buf,
+			in_buf_size, out_buf, out_buf_size);
+}
+EXPORT_SYMBOL(qcom_scm_ddrbw_profiler);
 
 static int qcom_scm_find_dload_address(struct device *dev, u64 *addr)
 {
@@ -2607,8 +2743,13 @@ static int qcom_scm_do_restart(struct notifier_block *this, unsigned long event,
 {
 	struct qcom_scm *scm = container_of(this, struct qcom_scm, restart_nb);
 
-	if (reboot_mode == REBOOT_WARM)
+	if (reboot_mode == REBOOT_WARM &&
+		qcom_scm_custom_reset_type == QCOM_SCM_RST_NONE)
 		qcom_scm_reboot(scm->dev);
+
+	if (qcom_scm_custom_reset_type > QCOM_SCM_RST_NONE &&
+			qcom_scm_custom_reset_type < QCOM_SCM_RST_MAX)
+		qcom_scm_custom_reboot(scm->dev, qcom_scm_custom_reset_type);
 
 	return NOTIFY_OK;
 }
@@ -2936,7 +3077,11 @@ static int __init qcom_scm_init(void)
 
 	return qtee_shmbridge_driver_init();
 }
+#ifdef CONFIG_QCOM_SCM_HAB
 subsys_initcall(qcom_scm_init);
+#else
+core_initcall(qcom_scm_init);
+#endif
 
 #if IS_MODULE(CONFIG_QCOM_SCM)
 static void __exit qcom_scm_exit(void)

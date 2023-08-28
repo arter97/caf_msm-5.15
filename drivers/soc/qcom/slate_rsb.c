@@ -72,8 +72,9 @@ static int slatersb_tx_msg(struct slatersb_priv *dev, void  *msg, size_t len)
 	int rc = 0;
 	uint8_t resp = 0;
 
-	__pm_stay_awake(dev->slatersb_ws);
 	mutex_lock(&dev->glink_mutex);
+	__pm_stay_awake(dev->slatersb_ws);
+
 	if (!dev->rsb_rpmsg) {
 		pr_err("slatersb-rpmsg is not probed yet, waiting for it to be probed\n");
 		goto err_ret;
@@ -109,8 +110,8 @@ static int slatersb_tx_msg(struct slatersb_priv *dev, void  *msg, size_t len)
 	rc = 0;
 
 err_ret:
-	mutex_unlock(&dev->glink_mutex);
 	__pm_relax(dev->slatersb_ws);
+	mutex_unlock(&dev->glink_mutex);
 	return rc;
 }
 
@@ -150,6 +151,10 @@ void slatersb_rx_msg(void *data, int len)
 	struct slatersb_priv *dev =
 		container_of(slatersb_drv, struct slatersb_priv, lhndl);
 
+	if (len > SLATERSB_GLINK_INTENT_SIZE) {
+		pr_err("Invalid slatersb glink intent size\n");
+		return;
+	}
 	dev->slate_resp_cmplt = true;
 	wake_up(&dev->link_state_wait);
 	memcpy(dev->rx_buf, data, len);

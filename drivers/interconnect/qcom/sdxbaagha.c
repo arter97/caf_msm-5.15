@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -13,6 +13,8 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/suspend.h>
 
 #include "icc-rpmh.h"
 #include "qnoc-qos.h"
@@ -30,7 +32,7 @@ static struct qcom_icc_qosbox qhm_audio_qos = {
 	.config = &(struct qos_config) {
 		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -50,9 +52,9 @@ static struct qcom_icc_qosbox qhm_qdss_bam_qos = {
 	.num_ports = 1,
 	.offsets = { 0x26000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -72,9 +74,9 @@ static struct qcom_icc_qosbox qhm_qpic_qos = {
 	.num_ports = 1,
 	.offsets = { 0x25000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -94,9 +96,9 @@ static struct qcom_icc_qosbox qhm_qup0_qos = {
 	.num_ports = 1,
 	.offsets = { 0x24000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -116,9 +118,9 @@ static struct qcom_icc_qosbox qxm_crypto_qos = {
 	.num_ports = 1,
 	.offsets = { 0x23000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
-		.urg_fwd = 1,
-		.prio_fwd_disable = 0,
+		.prio = 0,
+		.urg_fwd = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -138,9 +140,9 @@ static struct qcom_icc_qosbox qxm_ipa_qos = {
 	.num_ports = 1,
 	.offsets = { 0x2a000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
-		.urg_fwd = 1,
-		.prio_fwd_disable = 0,
+		.prio = 0,
+		.urg_fwd = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -160,9 +162,9 @@ static struct qcom_icc_qosbox xm_emac_0_qos = {
 	.num_ports = 1,
 	.offsets = { 0x29000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -184,7 +186,7 @@ static struct qcom_icc_qosbox xm_qdss_etr0_qos = {
 	.config = &(struct qos_config) {
 		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -204,9 +206,9 @@ static struct qcom_icc_qosbox xm_qdss_etr1_qos = {
 	.num_ports = 1,
 	.offsets = { 0x21000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -226,9 +228,9 @@ static struct qcom_icc_qosbox xm_sdc4_qos = {
 	.num_ports = 1,
 	.offsets = { 0x27000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -248,9 +250,9 @@ static struct qcom_icc_qosbox xm_usb3_qos = {
 	.num_ports = 1,
 	.offsets = { 0x20000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -382,7 +384,7 @@ static struct qcom_icc_qosbox alm_sys_tcu_qos = {
 	.config = &(struct qos_config) {
 		.prio = 6,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -423,7 +425,7 @@ static struct qcom_icc_qosbox qnm_pcie_qos = {
 	.num_ports = 1,
 	.offsets = { 0x2c000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 1,
 		.prio_fwd_disable = 0,
 	},
@@ -469,7 +471,7 @@ static struct qcom_icc_qosbox xm_apps0_qos = {
 	.config = &(struct qos_config) {
 		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -490,9 +492,9 @@ static struct qcom_icc_qosbox xm_pcie3_0_qos = {
 	.num_ports = 1,
 	.offsets = { 0xa000 },
 	.config = &(struct qos_config) {
-		.prio = 3,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -514,7 +516,7 @@ static struct qcom_icc_qosbox qhm_cpucp_qos = {
 	.config = &(struct qos_config) {
 		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -559,24 +561,12 @@ static struct qcom_icc_node qnm_memnoc_pcie = {
 	.links = { SLAVE_PCIE_0 },
 };
 
-static struct qcom_icc_qosbox qxm_mss_nav_ce_qos = {
-	.regs = icc_qnoc_qos_regs[ICC_QNOC_QOSGEN_TYPE_RPMH],
-	.num_ports = 1,
-	.offsets = { 0x12000 },
-	.config = &(struct qos_config) {
-		.prio = 1,
-		.urg_fwd = 1,
-		.prio_fwd_disable = 0,
-	},
-};
-
 static struct qcom_icc_node qxm_mss_nav_ce = {
 	.name = "qxm_mss_nav_ce",
 	.id = MASTER_MSS_NAV,
 	.channels = 1,
 	.buswidth = 8,
 	.noc_ops = &qcom_qnoc4_ops,
-	.qosbox = &qxm_mss_nav_ce_qos,
 	.num_links = 2,
 	.links = { SLAVE_SNOC_MEM_NOC_SF, SLAVE_PCIE_0 },
 };
@@ -586,9 +576,9 @@ static struct qcom_icc_qosbox qxm_tme_qos = {
 	.num_ports = 1,
 	.offsets = { 0x11000 },
 	.config = &(struct qos_config) {
-		.prio = 2,
+		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -610,7 +600,7 @@ static struct qcom_icc_qosbox xm_ipa2pcie_qos = {
 	.config = &(struct qos_config) {
 		.prio = 0,
 		.urg_fwd = 0,
-		.prio_fwd_disable = 0,
+		.prio_fwd_disable = 1,
 	},
 };
 
@@ -1440,6 +1430,21 @@ static int qnoc_probe(struct platform_device *pdev)
 	return ret;
 }
 
+static int qnoc_sdxbaagha_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct qcom_icc_provider *qp = platform_get_drvdata(pdev);
+
+	if (pm_suspend_via_firmware())
+		return qcom_icc_rpmh_configure_qos(qp);
+
+	return 0;
+}
+
+static const struct dev_pm_ops qnoc_sdxbaagha_pm_ops = {
+	.resume = qnoc_sdxbaagha_resume,
+};
+
 static const struct of_device_id qnoc_of_match[] = {
 	{ .compatible = "qcom,sdxbaagha-aggre_noc",
 	  .data = &sdxbaagha_aggre_noc},
@@ -1467,6 +1472,7 @@ static struct platform_driver qnoc_driver = {
 	.driver = {
 		.name = "qnoc-sdxbaagha",
 		.of_match_table = qnoc_of_match,
+		.pm = &qnoc_sdxbaagha_pm_ops,
 		.sync_state = qcom_icc_rpmh_sync_state,
 	},
 };
@@ -1476,12 +1482,6 @@ static int __init qnoc_driver_init(void)
 	return platform_driver_register(&qnoc_driver);
 }
 core_initcall(qnoc_driver_init);
-
-static void __exit qnoc_driver_exit(void)
-{
-	platform_driver_unregister(&qnoc_driver);
-}
-module_exit(qnoc_driver_exit);
 
 MODULE_DESCRIPTION("SDXBAAGHA NoC driver");
 MODULE_LICENSE("GPL v2");
