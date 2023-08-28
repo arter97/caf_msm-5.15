@@ -38,6 +38,9 @@
 #include "ufshci.h"
 #include "ufs_quirks.h"
 #include "ufshcd-crypto-qti.h"
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+#include <linux/crypto-qti-common.h>
+#endif
 
 #define UFS_QCOM_DEFAULT_DBG_PRINT_EN	\
 	(UFS_QCOM_DBG_PRINT_REGS_EN | UFS_QCOM_DBG_PRINT_TEST_BUS_EN)
@@ -169,6 +172,7 @@ static int ufs_qcom_config_shared_ice(struct ufs_qcom_host *host);
 static int ufs_qcom_ber_threshold_set(const char *val, const struct kernel_param *kp);
 static int ufs_qcom_ber_duration_set(const char *val, const struct kernel_param *kp);
 static void ufs_qcom_ber_mon_init(struct ufs_hba *hba);
+static void ufs_qcom_populate_available_cpus(struct ufs_hba *hba);
 
 static s64 idle_time[UFS_QCOM_BER_MODE_MAX];
 static ktime_t idle_start;
@@ -205,7 +209,7 @@ static int ufs_qcom_ber_threshold_set(const char *val, const struct kernel_param
 	int ret;
 
 	ret = kstrtou32(val, 0, &n);
-	if (ret != 0 || n > UFS_QCOM_EVT_LEN)
+	if (ret != 0 || n > (UFS_QCOM_EVT_LEN - 1))
 		return -EINVAL;
 	if (n)
 		override_ber_threshold = true;
@@ -1544,7 +1548,7 @@ static void ufs_qcom_set_affinity_hint(struct ufs_hba *hba, bool prime)
 		affinity_mask = &host->perf_mask;
 	} else {
 		clear = IRQ_NO_BALANCING;
-		affinity_mask = &host->def_mask;
+		affinity_mask = &host->silver_mask;
 	}
 
 	irq_modify_status(hba->irq, clear, set);
@@ -2361,6 +2365,21 @@ static void ufshcd_parse_pm_levels(struct ufs_hba *hba)
 	host->is_dt_pm_level_read = true;
 }
 
+/*
+ * ufs_qcom_parse_pbl_rst_workaround_flag - read bypass-pbl-rst-wa entry from DT
+ */
+static void ufs_qcom_parse_pbl_rst_workaround_flag(struct ufs_qcom_host *host)
+{
+	struct device_node *np = host->hba->dev->of_node;
+	const char *str  = "qcom,bypass-pbl-rst-wa";
+
+	if (!np)
+		return;
+
+	host->bypass_pbl_rst_wa = of_property_read_bool(np, str);
+}
+
+
 static void ufs_qcom_override_pa_tx_hsg1_sync_len(struct ufs_hba *hba)
 {
 #define PA_TX_HSG1_SYNC_LENGTH 0x1552
@@ -2553,8 +2572,16 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 	case PRE_CHANGE:
 		if (on) {
 			err = ufs_qcom_set_bus_vote(hba, true);
-			if (ufs_qcom_is_link_hibern8(hba))
+			if (ufs_qcom_is_link_hibern8(hba)) {
+				err = ufs_qcom_enable_lane_clks(host);
+				if (err) {
+					ufs_qcom_msg(ERR, hba->dev,
+							"%s: enable lane clks failed, ret=%d\n",
+							__func__, err);
+					return err;
+				}
 				ufs_qcom_phy_set_src_clk_h8_exit(phy);
+			}
 
 			if (!host->ref_clki->enabled) {
 				err = clk_prepare_enable(host->ref_clki->clk);
@@ -2597,8 +2624,15 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		break;
 	case POST_CHANGE:
 		if (!on) {
-			if (ufs_qcom_is_link_hibern8(hba))
+			if (ufs_qcom_is_link_hibern8(hba)) {
 				ufs_qcom_phy_set_src_clk_h8_enter(phy);
+				/*
+				 * As XO is set to the source of lane clocks, hence
+				 * disable lane clocks to unvote on XO and allow XO shutdown
+				 */
+				ufs_qcom_disable_lane_clks(host);
+			}
+
 			err = ufs_qcom_set_bus_vote(hba, false);
 			if (err)
 				return err;
@@ -3196,7 +3230,7 @@ static void ufs_qcom_qos_init(struct ufs_hba *hba)
 	struct device_node *group_node;
 	struct ufs_qcom_qos_req *qr;
 	struct qos_cpu_group *qcg;
-	int i, err, mask = 0;
+	int i, err;
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 
 	host->cpufreq_dis = true;
@@ -3221,19 +3255,21 @@ static void ufs_qcom_qos_init(struct ufs_hba *hba)
 	}
 	qr->qcg = qcg;
 	for_each_available_child_of_node(np, group_node) {
-		of_property_read_u32(group_node, "mask", &mask);
-		/* assign only populated cpu mask to qcg mask */
-		qcg->mask.bits[0] = mask & cpu_possible_mask->bits[0];
-		if (!cpumask_subset(&qcg->mask, cpu_possible_mask)) {
-			ufs_qcom_msg(ERR, dev, "Invalid group mask\n");
-			goto out_err;
-		}
-
+		/*
+		 * Due to Logical contiguous CPU numbering, one to one mapping
+		 * between physical and logical cpu is no more applicable.
+		 * Hence we don't need to pass the qos mask from the device tree
+		 * and instead need to populate the mask dynamically
+		 * using available kernel API.
+		 */
 		if (of_property_read_bool(group_node, "perf")) {
 			qcg->perf_core = true;
+			qcg->mask.bits[0] = host->gold_mask.bits[0] |
+					host->gold_prime_mask.bits[0];
 			host->cpufreq_dis = false;
 		} else {
 			qcg->perf_core = false;
+			qcg->mask.bits[0] = host->silver_mask.bits[0];
 		}
 
 		err = of_property_count_u32_elems(group_node, "vote");
@@ -3266,31 +3302,71 @@ out_err:
 	host->ufs_qos = NULL;
 }
 
+/**
+ * ufs_qcom_populate_available_cpus - Populate all the available cpu masks -
+ * Silver, gold and gold prime.
+ * @hba: per adapter instance
+ */
+static void ufs_qcom_populate_available_cpus(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int cid_cpu[MAX_NUM_CLUSTERS] = {-1, -1, -1};
+	int cid = -1;
+	int prev_cid = -1;
+	int cpu;
+
+	/*
+	 * Due to Logical contiguous CPU numbering, one to one mapping
+	 * between physical and logical cpu is no more applicable.
+	 * Hence we are not passing cpu mask from the device tree.
+	 * Hence populate the cpu mask dynamically as below.
+	 */
+	for_each_cpu(cpu, cpu_possible_mask) {
+		cid = topology_physical_package_id(cpu);
+		if (cid != prev_cid) {
+			cid_cpu[cid] = cpu;
+			prev_cid = cid;
+		}
+	}
+
+	/*
+	 * perf_mask which is needed for dynamic irq_affinity feature is updated
+	 * with either gold or gold_prime depending on the availability of the core.
+	 */
+	if (cid_cpu[SILVER_CORE] != -1)
+		host->silver_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[SILVER_CORE])->bits[0];
+
+	if (cid_cpu[GOLD_CORE] != -1) {
+		host->gold_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[GOLD_CORE])->bits[0];
+		host->perf_mask.bits[0] = host->gold_mask.bits[0];
+	}
+
+	if (cid_cpu[GOLD_PRIME_CORE] != -1) {
+		host->gold_prime_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[GOLD_PRIME_CORE])->bits[0];
+		host->perf_mask.bits[0] = host->gold_prime_mask.bits[0];
+	}
+}
+
 static void ufs_qcom_parse_irq_affinity(struct ufs_hba *hba)
 {
 	struct device *dev = hba->dev;
 	struct device_node *np = dev->of_node;
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
-	int mask = 0;
+	int err;
 
 	if (np) {
-		of_property_read_u32(np, "qcom,prime-mask", &mask);
-		/* assign only populated cpu mask to perf mask  */
-		host->perf_mask.bits[0] = mask & cpu_possible_mask->bits[0];
-		if (!cpumask_subset(&host->perf_mask, cpu_possible_mask)) {
-			ufs_qcom_msg(ERR, dev, "Invalid group prime mask\n");
-			host->perf_mask.bits[0] = UFS_QCOM_IRQ_PRIME_MASK;
-		}
-		mask = 0;
-		of_property_read_u32(np, "qcom,silver-mask", &mask);
-		/* assign only populated cpu mask to silver mask */
-		host->def_mask.bits[0] = mask & cpu_possible_mask->bits[0];
-		if (!cpumask_subset(&host->def_mask, cpu_possible_mask)) {
-			ufs_qcom_msg(ERR, dev, "Invalid group silver mask\n");
-			host->def_mask.bits[0] = UFS_QCOM_IRQ_SLVR_MASK;
+		/* check for dynamic irq affinity feature support */
+		err = of_property_read_bool(np, "qcom,dynamic-irq-affinity");
+		if (!err) {
+			ufs_qcom_msg(DBG, host->hba->dev, "dynamic irq affinity not supported\n");
+			return;
 		}
 	}
-	/* If device includes perf mask, enable dynamic irq affinity feature */
+
+	/* If perf mask is available then only enable dynamic irq affinity feature */
 	if (host->perf_mask.bits[0])
 		host->irq_affinity_support = true;
 }
@@ -3633,6 +3709,53 @@ static void ufs_qcom_register_minidump(uintptr_t vaddr, u64 size,
 	}
 }
 
+static int ufs_qcom_panic_handler(struct notifier_block *nb,
+					unsigned long e, void *p)
+{
+	struct ufs_qcom_host *host = container_of(nb, struct ufs_qcom_host, ufs_qcom_panic_nb);
+	struct ufs_hba *hba = host->hba;
+
+	dev_err(hba->dev, "......dumping ufs info .......\n");
+
+	dev_err(hba->dev, "UFS Host state=%d\n", hba->ufshcd_state);
+	dev_err(hba->dev, "outstanding reqs=0x%lx tasks=0x%lx\n",
+		hba->outstanding_reqs, hba->outstanding_tasks);
+	dev_err(hba->dev, "saved_err=0x%x, saved_uic_err=0x%x\n",
+		hba->saved_err, hba->saved_uic_err);
+	dev_err(hba->dev, "Device power mode=%d, UIC link state=%d\n",
+		hba->curr_dev_pwr_mode, hba->uic_link_state);
+	dev_err(hba->dev, "PM in progress=%d, sys. suspended=%d\n",
+		hba->pm_op_in_progress, hba->is_sys_suspended);
+
+	dev_err(hba->dev, "Clk gate=%d\n", hba->clk_gating.state);
+	dev_err(hba->dev, "last_hibern8_exit_tstamp at %lld us, hibern8_exit_cnt=%d\n",
+		ktime_to_us(hba->ufs_stats.last_hibern8_exit_tstamp),
+		hba->ufs_stats.hibern8_exit_cnt);
+	dev_err(hba->dev, "last intr at %lld us, last intr status=0x%x\n",
+		ktime_to_us(hba->ufs_stats.last_intr_ts),
+		hba->ufs_stats.last_intr_status);
+	dev_err(hba->dev, "error handling flags=0x%x, req. abort count=%d\n",
+		hba->eh_flags, hba->req_abort_count);
+	dev_err(hba->dev, "hba->ufs_version=0x%x, Host capabilities=0x%x, caps=0x%x\n",
+		hba->ufs_version, hba->capabilities, hba->caps);
+	dev_err(hba->dev, "quirks=0x%x, dev. quirks=0x%x\n", hba->quirks,
+		hba->dev_quirks);
+
+	dev_err(hba->dev, "[RX, TX]: gear=[%d, %d], lane[%d, %d], rate = %d\n",
+		hba->pwr_info.gear_rx, hba->pwr_info.gear_tx,
+		hba->pwr_info.lane_rx, hba->pwr_info.lane_tx,
+		hba->pwr_info.hs_rate);
+
+	dev_err(hba->dev, "UFS RPM level = %d\n", hba->rpm_lvl);
+	dev_err(hba->dev, "UFS SPM level = %d\n", hba->spm_lvl);
+
+	dev_err(hba->dev, "host_blocked=%d\n host_failed =%d\n Host self-block=%d\n",
+		hba->host->host_blocked, hba->host->host_failed, hba->host->host_self_blocked);
+	dev_err(hba->dev, "............. ufs dump complete ..........\n");
+
+	return NOTIFY_OK;
+}
+
 /**
  * ufs_qcom_init - bind phy with controller
  * @hba: host controller instance
@@ -3645,7 +3768,7 @@ static void ufs_qcom_register_minidump(uintptr_t vaddr, u64 size,
  */
 static int ufs_qcom_init(struct ufs_hba *hba)
 {
-	int err;
+	int err, host_id = 0;
 	struct device *dev = hba->dev;
 	struct ufs_qcom_host *host;
 	struct ufs_qcom_thermal *ut;
@@ -3785,6 +3908,7 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	if (err)
 		goto out_disable_vccq_parent;
 
+	ufs_qcom_parse_pbl_rst_workaround_flag(host);
 	ufs_qcom_parse_pm_level(hba);
 	ufs_qcom_parse_limits(host);
 	ufs_qcom_parse_g4_workaround_flag(host);
@@ -3853,6 +3977,7 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 
 	ufs_qcom_save_host_ptr(hba);
 
+	ufs_qcom_populate_available_cpus(hba);
 	ufs_qcom_qos_init(hba);
 	ufs_qcom_parse_irq_affinity(hba);
 	ufs_qcom_ber_mon_init(hba);
@@ -3863,12 +3988,27 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 
 	/* register minidump */
 	if (msm_minidump_enabled()) {
+		host_id = of_alias_get_id(hba->dev->of_node, "ufshc");
+
+		if ((host_id < 0) || (host_id > MAX_UFS_QCOM_HOSTS)) {
+			ufs_qcom_msg(ERR, hba->dev, "Failed to get host index %d\n", host_id);
+			host_id = 1;
+		}
+
 		ufs_qcom_register_minidump((uintptr_t)host,
-					sizeof(struct ufs_qcom_host), "UFS_QHOST", 0);
+					sizeof(struct ufs_qcom_host), "UFS_QHOST", host_id);
 		ufs_qcom_register_minidump((uintptr_t)hba,
-					sizeof(struct ufs_hba), "UFS_HBA", 0);
+					sizeof(struct ufs_hba), "UFS_HBA", host_id);
 		ufs_qcom_register_minidump((uintptr_t)hba->host,
-					sizeof(struct Scsi_Host), "UFS_SHOST", 0);
+					sizeof(struct Scsi_Host), "UFS_SHOST", host_id);
+
+		/* Register Panic handler to dump more information in case of kernel panic */
+		host->ufs_qcom_panic_nb.notifier_call = ufs_qcom_panic_handler;
+		host->ufs_qcom_panic_nb.priority = INT_MAX - 1;
+		err = atomic_notifier_chain_register(&panic_notifier_list,
+				&host->ufs_qcom_panic_nb);
+		if (err)
+			ufs_qcom_msg(WARN, dev, "Fail to register UFS panic notifier\n");
 	}
 
 	goto out;
@@ -4179,7 +4319,7 @@ static bool ufs_qcom_cal_ber(struct ufs_qcom_host *host, struct ufs_qcom_ber_his
 	int idx_start, idx_end, i;
 	s64 total_run_time = 0;
 	s64 total_full_time = 0;
-	u32 gear = h->gear[h->pos-1];
+	u32 gear = h->gear[(h->pos + UFS_QCOM_EVT_LEN - 1) % UFS_QCOM_EVT_LEN];
 
 	if (!override_ber_threshold)
 		ber_threshold = ber_table[gear].ber_threshold;
@@ -4313,7 +4453,7 @@ static void ufs_qcom_event_notify(struct ufs_hba *hba,
 		}
 
 		if (host->ber_th_exceeded)
-			dev_err(hba->dev, "Warning: BER exceed threshlod !!!\n");
+			dev_warn_ratelimited(hba->dev, "Warning: UFS BER exceeds threshold !!!\n");
 
 		break;
 	case UFS_EVT_DL_ERR:
@@ -5011,6 +5151,52 @@ static ssize_t ber_th_exceeded_show(struct device *dev,
 
 static DEVICE_ATTR_RO(ber_th_exceeded);
 
+static ssize_t irq_affinity_support_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	bool value;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	if (kstrtobool(buf, &value))
+		return -EINVAL;
+
+	/* if current irq_affinity_support is same as requested one, don't proceed */
+	if (value == host->irq_affinity_support)
+		goto out;
+
+	/* if perf-mask is not set, don't proceed */
+	if (!host->perf_mask.bits[0])
+		goto out;
+
+	host->irq_affinity_support = !!value;
+	/* Reset cpu affinity accordingly */
+	if (host->irq_affinity_support)
+		ufs_qcom_set_affinity_hint(hba, true);
+	else
+		ufs_qcom_set_affinity_hint(hba, false);
+
+	return count;
+
+out:
+	return -EINVAL;
+}
+
+static ssize_t irq_affinity_support_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !!host->irq_affinity_support);
+}
+
+static DEVICE_ATTR_RW(irq_affinity_support);
+
 static struct attribute *ufs_qcom_sysfs_attrs[] = {
 	&dev_attr_err_state.attr,
 	&dev_attr_power_mode.attr,
@@ -5021,6 +5207,7 @@ static struct attribute *ufs_qcom_sysfs_attrs[] = {
 	&dev_attr_crash_on_err.attr,
 	&dev_attr_hibern8_count.attr,
 	&dev_attr_ber_th_exceeded.attr,
+	&dev_attr_irq_affinity_support.attr,
 	NULL
 };
 
@@ -5148,6 +5335,24 @@ static void ufs_qcom_update_sdev(void *param, struct scsi_device *sdev)
 	sdev->broken_fua = 1;
 }
 
+static void ufs_qcom_hook_prepare_command(void *param, struct ufs_hba *hba,
+					   struct request *rq, struct ufshcd_lrb *lrbp, int *err)
+{
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	struct ice_data_setting setting;
+
+	if (!crypto_qti_ice_config_start(rq, &setting)) {
+		if ((rq_data_dir(rq) == WRITE) ? setting.encr_bypass : setting.decr_bypass) {
+			lrbp->crypto_key_slot = -1;
+		} else {
+			lrbp->crypto_key_slot = setting.crypto_data.key_index;
+			lrbp->data_unit_num = rq->bio->bi_iter.bi_sector >>
+					      ICE_CRYPTO_DATA_UNIT_4_KB;
+		}
+	}
+#endif
+}
+
 /*
  * Refer: common/include/trace/hooks/ufshcd.h for available hooks
  */
@@ -5164,6 +5369,8 @@ static void ufs_qcom_register_hooks(void)
 	register_trace_android_vh_ufs_check_int_errors(
 				ufs_qcom_hook_check_int_errors, NULL);
 	register_trace_android_vh_ufs_update_sdev(ufs_qcom_update_sdev, NULL);
+	register_trace_android_vh_ufs_prepare_command(
+				ufs_qcom_hook_prepare_command, NULL);
 }
 
 #ifdef CONFIG_ARM_QCOM_CPUFREQ_HW
@@ -5297,6 +5504,10 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 	r = host->ufs_qos;
 	qcg = r->qcg;
 
+	if (msm_minidump_enabled())
+		atomic_notifier_chain_unregister(&panic_notifier_list,
+				&host->ufs_qcom_panic_nb);
+
 	pm_runtime_get_sync(&(pdev)->dev);
 	for (i = 0; i < r->num_groups; i++, qcg++)
 		remove_group_qos(qcg);
@@ -5327,7 +5538,8 @@ static void ufs_qcom_shutdown(struct platform_device *pdev)
 	 * reset, so deassert ufs device reset line after UFS device shutdown
 	 * to ensure the UFS_RESET TLMM register value is POR value
 	 */
-	ufs_qcom_device_reset_ctrl(hba, false);
+	if (!host->bypass_pbl_rst_wa)
+		ufs_qcom_device_reset_ctrl(hba, false);
 }
 
 static int ufs_qcom_system_suspend(struct device *dev)
@@ -5387,10 +5599,16 @@ MODULE_DEVICE_TABLE(acpi, ufs_qcom_acpi_match);
 #endif
 
 static const struct dev_pm_ops ufs_qcom_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(ufs_qcom_system_suspend, ufs_qcom_system_resume)
 	SET_RUNTIME_PM_OPS(ufshcd_runtime_suspend, ufshcd_runtime_resume, NULL)
-	.prepare	 = ufs_qcom_suspend_prepare,
-	.complete	 = ufs_qcom_resume_complete,
+	.prepare	= ufs_qcom_suspend_prepare,
+	.complete	= ufs_qcom_resume_complete,
+#ifdef CONFIG_PM_SLEEP
+	.suspend         = ufs_qcom_system_suspend,
+	.resume          = ufs_qcom_system_resume,
+	.freeze          = ufshcd_system_freeze,
+	.restore         = ufshcd_system_restore,
+	.thaw            = ufshcd_system_thaw,
+#endif
 };
 
 static struct platform_driver ufs_qcom_pltform = {

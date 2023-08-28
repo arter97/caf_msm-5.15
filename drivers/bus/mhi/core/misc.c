@@ -320,6 +320,9 @@ int mhi_misc_register_controller(struct mhi_controller *mhi_cntrl)
 
 	mhi_priv->log_buf = ipc_log_context_create(MHI_IPC_LOG_PAGES,
 						   mhi_dev->name, 0);
+	if (!mhi_priv->log_buf)
+		MHI_ERR(dev, "Failed to create MHI IPC logs\n");
+
 	mhi_priv->mhi_cntrl = mhi_cntrl;
 
 	/* adding it to this list only for debug purpose */
@@ -971,6 +974,11 @@ void mhi_debug_reg_dump(struct mhi_controller *mhi_cntrl)
 		{ "BHIE_RXVEC_STATUS", BHIE_RXVECSTATUS_OFFS, bhie_base},
 		{ NULL },
 	};
+
+	if (!mhi_cntrl->regs || !mhi_cntrl->bhi || !mhi_cntrl->bhie) {
+		MHI_ERR(dev, "Cannot dump MHI/BHI registers\n");
+		return;
+	}
 
 	MHI_ERR(dev, "host pm_state:%s dev_state:%s ee:%s\n",
 		to_mhi_pm_state_str(mhi_cntrl->pm_state),
