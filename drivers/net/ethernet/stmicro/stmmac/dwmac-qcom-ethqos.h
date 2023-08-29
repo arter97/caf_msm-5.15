@@ -317,13 +317,13 @@ static struct emac_icc_data emac_axi_icc_data[] = {
 	},
 	{
 		.name = "SPEED_5Gbps",
-		.average_bandwidth = 1250000,
-		.peak_bandwidth = 1250000,
+		.average_bandwidth = 825000,
+		.peak_bandwidth = 825000,
 	},
 	{
 		.name = "SPEED_10Gbps",
-		.average_bandwidth = 2500000,
-		.peak_bandwidth = 2500000,
+		.average_bandwidth = 1100000,
+		.peak_bandwidth = 1100000,
 	},
 };
 
@@ -356,12 +356,12 @@ static struct emac_icc_data emac_apb_icc_data[] = {
 	{
 		.name = "SPEED_5Gbps",
 		.average_bandwidth = 0,
-		.peak_bandwidth = 1250000,
+		.peak_bandwidth = 825000,
 	},
 	{
 		.name = "SPEED_10Gbps",
 		.average_bandwidth = 0,
-		.peak_bandwidth = 2500000,
+		.peak_bandwidth = 1100000,
 	},
 };
 
