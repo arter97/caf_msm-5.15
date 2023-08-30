@@ -6701,11 +6701,17 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		priv->dma_cap.asp = 0;
 
 	if (ethqos->early_eth_enabled) {
-		/* Initialize work*/
-		INIT_WORK(&ethqos->early_eth,
-			  qcom_ethqos_bringup_iface);
-		/* Queue the work*/
-		queue_work(system_wq, &ethqos->early_eth);
+		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID ||
+		    plat_dat->fixed_phy_mode) {
+			/* Initialize work*/
+			INIT_WORK(&ethqos->early_eth,
+				  qcom_ethqos_bringup_iface);
+			/* Queue the work*/
+			queue_work(system_wq, &ethqos->early_eth);
+		}
 		/*Set early eth parameters*/
 		ethqos_set_early_eth_param(priv, ethqos);
 	}
