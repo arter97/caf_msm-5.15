@@ -3802,6 +3802,10 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		return 0;
 
 	if (!atomic_read(&dev->perst_deast)) {
+		if (event == EP_PCIE_EVENT_INVALID) {
+			EP_PCIE_DBG(dev, "PCIe V%d: Wake from DMA Call Back\n", dev->rev);
+			dev->dma_wake = true;
+		}
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 	} else if (dev->l23_ready) {
@@ -3817,10 +3821,6 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 			dev->rev);
 	}
 
-	if (event == EP_PCIE_EVENT_INVALID) {
-		EP_PCIE_DBG(dev, "PCIe V%d: Wake from DMA Call Back\n", dev->rev);
-		dev->dma_wake = true;
-	}
 
 	atomic_set(&dev->host_wake_pending, 1);
 	EP_PCIE_DBG(dev,
