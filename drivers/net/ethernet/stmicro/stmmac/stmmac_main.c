@@ -185,8 +185,6 @@ int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
 }
 EXPORT_SYMBOL_GPL(stmmac_bus_clks_config);
 
-static void stmmac_set_speed100(struct phy_device *phydev);
-
 /**
  * stmmac_verify_args - verify the driver parameters.
  * Description: it checks the driver parameters and set a default in case of
@@ -1036,6 +1034,59 @@ static void stmmac_mac_flow_ctrl(struct stmmac_priv *priv, u32 duplex)
 			priv->pause, tx_cnt);
 }
 
+static void stmmac_set_speed100(struct stmmac_priv *priv)
+{
+	u16 bmcr_val, ctrl1000_val, adv_val, autoneg_10G_ctrl, pma_ctrl;
+	struct phy_device *phydev = priv->phydev;
+	struct plat_stmmacenet_data *plat = priv->plat;
+
+	if (plat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    plat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    plat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    plat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		/* Disable 1000M mode */
+		ctrl1000_val = phy_read(phydev, MII_CTRL1000);
+		ctrl1000_val &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
+		phy_write(phydev, MII_CTRL1000, ctrl1000_val);
+
+		/* Disable 100M mode */
+		adv_val = phy_read(phydev, MII_ADVERTISE);
+		adv_val &= ~(ADVERTISE_100HALF);
+		phy_write(phydev, MII_ADVERTISE, adv_val);
+
+		/* Disable autoneg */
+		bmcr_val = phy_read(phydev, MII_BMCR);
+		bmcr_val &= ~(BMCR_ANENABLE);
+		phy_write(phydev, MII_BMCR, bmcr_val);
+
+		bmcr_val = phy_read(phydev, MII_BMCR);
+		bmcr_val |= BMCR_ANRESTART;
+		phy_write(phydev, MII_BMCR, bmcr_val);
+	} else if (plat->interface == PHY_INTERFACE_MODE_SGMII ||
+		plat->interface == PHY_INTERFACE_MODE_USXGMII) {
+		/* Disable autoneg */
+		bmcr_val = phy_read_mmd(priv->phydev, MDIO_MMD_AN, MDIO_CTRL1);
+		bmcr_val &= ~(MDIO_AN_CTRL1_ENABLE);
+		phy_write_mmd(priv->phydev, MDIO_MMD_AN, MDIO_CTRL1, bmcr_val);
+
+		/* Master-Slave configuration */
+		autoneg_10G_ctrl = phy_read_mmd(priv->phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL);
+		autoneg_10G_ctrl |= MDIO_AN_10GBT_STAT_MS;
+		phy_write_mmd(priv->phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL, autoneg_10G_ctrl);
+
+		/* Configure speed as 100Mbps */
+		pma_ctrl = phy_read_mmd(priv->phydev, MDIO_MMD_PMAPMD, MDIO_CTRL1);
+		pma_ctrl |= MDIO_PMA_CTRL1_SPEED100;
+		pma_ctrl &= ~(MDIO_PMA_CTRL1_SPEED1000);
+		phy_write_mmd(priv->phydev, MDIO_MMD_PMAPMD, MDIO_CTRL1, pma_ctrl);
+
+		/* Restart autonegotiation */
+		bmcr_val = phy_read_mmd(priv->phydev, MDIO_MMD_AN, MDIO_CTRL1);
+		bmcr_val |= MDIO_AN_CTRL1_RESTART;
+		phy_write_mmd(priv->phydev, MDIO_MMD_AN, MDIO_CTRL1, bmcr_val);
+	}
+}
+
 static void stmmac_validate(struct phylink_config *config,
 			    unsigned long *supported,
 			    struct phylink_link_state *state)
@@ -1151,16 +1202,11 @@ static void stmmac_validate(struct phylink_config *config,
 		priv->phydev->autoneg = AUTONEG_DISABLE;
 		priv->phydev->speed = SPEED_100;
 		priv->phydev->duplex = DUPLEX_FULL;
-		phylink_clear(mac_supported, 1000baseT_Full);
-	linkmode_and(state->advertising,
-		     state->advertising, mac_supported);
-	linkmode_andnot(state->advertising,
-			state->advertising, mask);
 
-	pr_info(" qcom-ethqos: %s early eth setting successful\n",
-		__func__);
+		pr_info(" qcom-ethqos: %s early eth setting successful\n",
+			__func__);
 
-		stmmac_set_speed100(priv->phydev);
+		stmmac_set_speed100(priv);
 		/* Validate method will also be called
 		 * when we change speed using ethtool.
 		 * Add check to avoid multiple calls
@@ -1438,30 +1484,6 @@ static void stmmac_check_pcs_mode(struct stmmac_priv *priv)
 			priv->hw->pcs = STMMAC_PCS_SGMII;
 		}
 	}
-}
-
-static void stmmac_set_speed100(struct phy_device *phydev)
-{
-	u16 bmcr_val, ctrl1000_val, adv_val;
-
-	/* Disable 1000M mode */
-	ctrl1000_val = phy_read(phydev, MII_CTRL1000);
-	ctrl1000_val &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
-	phy_write(phydev, MII_CTRL1000, ctrl1000_val);
-
-	/* Disable 100M mode */
-	adv_val = phy_read(phydev, MII_ADVERTISE);
-	adv_val &= ~(ADVERTISE_100HALF);
-	phy_write(phydev, MII_ADVERTISE, adv_val);
-
-	/* Disable autoneg */
-	bmcr_val = phy_read(phydev, MII_BMCR);
-	bmcr_val &= ~(BMCR_ANENABLE);
-	phy_write(phydev, MII_BMCR, bmcr_val);
-
-	bmcr_val = phy_read(phydev, MII_BMCR);
-	bmcr_val |= BMCR_ANRESTART;
-	phy_write(phydev, MII_BMCR, bmcr_val);
 }
 
 /**
