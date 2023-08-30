@@ -27,7 +27,7 @@
 #define EYE_WIDTH_STEP                          (1/32)
 #define MAX_EYE_WIDTH                           64
 #define MAX_EYE_WIDTH_UI                        (MAX_EYE_WIDTH * EYE_WIDTH_STEP)
-#define MAX_NUM_LANES                           8
+#define MAX_NUM_LANES                           16
 #define EOM_TEST_TIME_DEFAULT                   1
 #define EOM_TEST_TIME_MAX                       1000
 
@@ -35,6 +35,8 @@
 #define QSERDES_OFFSET_LANE_SIZE(lanenum)       (lanenum * QSERDES_OFFSET_SIZE)
 #define LINK_STATUS_REG_SPEED_SHFT              0x10
 #define LINK_STATUS_REG_SPEED                   0xf0000
+#define LINK_STATUS_REG_LANES                   0x3f00000
+#define LINK_STATUS_REG_LANES_SHFT              0x14
 #define POSITIVE_SEQUENCE                       1
 #define NEGATIVE_SEQUENCE                       0
 
@@ -71,9 +73,8 @@ static const char * const
 
 static struct dentry *dent_ep_pcie;
 static struct dentry *dfile_case;
-static struct dentry *dfile_eom_lane_sel;
 static struct ep_pcie_dev_t *dev;
-static u32 eom_lane_select;
+
 
 static void ep_ep_pcie_phy_dump_pcs_debug_bus(struct ep_pcie_dev_t *dev,
 					u32 cntrl4, u32 cntrl5,
@@ -345,20 +346,6 @@ static int ep_pcie_cmd_debug_open(struct inode *inode, struct file *file)
 	return single_open(file, ep_pcie_cmd_debug_show, NULL);
 }
 
-static int ep_pcie_sel_debug_show(struct seq_file *m, void *v)
-{
-	int i;
-
-	for (i = 0; i < EP_PCIE_MAX_DEBUGFS_OPTION; i++)
-		seq_printf(m, "\t%d:\t %s\n", i, ep_pcie_debugfs_option_desc[i]);
-
-	return 0;
-}
-
-static int ep_pcie_eom_lane_sel_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, ep_pcie_sel_debug_show, NULL);
-}
 
 static void ep_pcie_aspm_stat(struct ep_pcie_dev_t *ep_dev)
 {
@@ -383,23 +370,32 @@ static void ep_pcie_aspm_stat(struct ep_pcie_dev_t *ep_dev)
 }
 
 /*
- * ep_pcie_check_link_speed - Checks whether GenSpeed
- * is less than Gen 4. Since Lane Margining Control
- * and Status registers exist from Gen4 onwards,
+ * ep_pcie_check_spd_and_lns - Checks whether GenSpeed
+ * is less than Gen 4 and whether all 16 lanes are up.
+ * Since Lane Margining Control and Status registers exist from Gen4 onwards,
  * a GenSpeed less than that would result in termination of execution.
  *
  * Return: true on success, false on error
  */
-static bool ep_pcie_check_link_speed(struct ep_pcie_dev_t *dev, u32 linkspeed)
+static bool ep_pcie_check_spd_and_lns(struct ep_pcie_dev_t *dev, u32 linkspeed, u32 maxlanes)
 {
+
 	if (linkspeed < PCI_EXP_LNKSTA_CLS_16_0GB) {
-		EP_PCIE_DUMP(dev, "Incorrect Link Speed for EOM test%d", dev->rev);
-		EP_PCIE_DUMP(dev,
-		"Negotiated Link Speed value should be at least Gen 4 %d", dev->rev);
-		EP_PCIE_DUMP(dev, "Quitting EOM Test%d", dev->rev);
+		EP_PCIE_DBG_FS("PCIe Link speed detected value is:Gen %d\n", linkspeed);
+		EP_PCIE_DBG_FS("Incorrect Link Speed for EOM test\n", NULL);
+		EP_PCIE_DBG_FS("Negotiated Link Speed value should be at least Gen 4\n", NULL);
+		EP_PCIE_DBG_FS("Quitting EOM Test\n", NULL);
 
 		return false;
 	}
+
+	if (maxlanes != MAX_NUM_LANES) {
+		EP_PCIE_DBG_FS("Detected number of lanes is: %d\n", maxlanes);
+		EP_PCIE_DBG_FS("Ensure all 16 lanes are up. Execution Terminated.\n", NULL);
+
+		return false;
+	}
+
 	return true;
 }
 
@@ -410,46 +406,51 @@ static bool ep_pcie_check_link_speed(struct ep_pcie_dev_t *dev, u32 linkspeed)
  */
 static void ep_pcie_eom_init(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 {
-	u32 lanenum = eom_lane_select;
+	u32 lanenum = 0;
 
 	EP_PCIE_DUMP(dev, "Initializing lanes%d", dev->rev);
 
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_TX0_RESET_GEN_MUXES +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x3);
+	while (lanenum < MAX_NUM_LANES) {
+		EP_PCIE_EOM(lanenum, dev, "*** Margining RC , lane %d ***", lanenum);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_TX0_RESET_GEN_MUXES +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x3);
 
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_CDR_RESET_OVERRIDE +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0xA);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_CDR_RESET_OVERRIDE +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0xA);
 
-	if (is_positive_seq) {
-		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL1 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x98);
-	} else {
-		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL1 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0xD8);
+		if (is_positive_seq) {
+			ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL1 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x98);
+		} else {
+			ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL1 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0xD8);
+		}
+
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL2 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x28);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUX_CONTROL +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x40);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0xfc);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL2 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x80);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_VERTICAL_CTRL +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x2);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUXDATA_TB +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x80);
+
+		ndelay(100);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
+
+		ndelay(100);
+		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
+			QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
+		lanenum = lanenum + 1;
 	}
 
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_EOM_CTRL2 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x28);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUX_CONTROL +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x40);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0xfc);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL2 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x80);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_VERTICAL_CTRL +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x2);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUXDATA_TB +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x80);
-
-	ndelay(100);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
-
-	ndelay(100);
-	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
-		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
 }
 
 /*
@@ -467,149 +468,94 @@ static void ep_pcie_eom_eye_seq(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 	u32 xcoord;
 	u32 ycoord;
 	u32 linkspeed;
+	u32 maxlanes;
 	u32 temp_err_low;
 	u32 temp_err_high;
 	u32 errorcntr;
 
 	char logname[15];
 
-	lanenum = eom_lane_select;
-	EP_PCIE_DUMP(dev, "Starting PCIe EOM tests for lane %d %d", lanenum, dev->rev);
-
+	EP_PCIE_DUMP(dev, "Starting PCIe EOM tests for lane %d", dev->rev);
 
 	regval = readl_relaxed(dev->dm_core + PCIE20_CAP_LINKCTRLSTATUS);
 	linkspeed = (regval & LINK_STATUS_REG_SPEED) >> LINK_STATUS_REG_SPEED_SHFT;
+	maxlanes = (regval & LINK_STATUS_REG_LANES) >> LINK_STATUS_REG_LANES_SHFT;
 
-	EP_PCIE_DUMP(dev, "PCIe Link speed detected value is:Gen %d %d", linkspeed, dev->rev);
-
-	if (!ep_pcie_check_link_speed(dev, linkspeed))
+	if (!ep_pcie_check_spd_and_lns(dev, linkspeed, maxlanes))
 		return;
 
 	EP_PCIE_DUMP(dev, "Entering EOM_INIT%d", dev->rev);
-	ep_pcie_eom_init(dev, is_positive_seq);
 
-	lanenum = eom_lane_select;
-
-	if (!dev->ipc_log_eom) {
-		snprintf(logname, 15, "ep-pcie-eom");
-		dev->ipc_log_eom = ipc_log_context_create(130, logname, 0);
+	lanenum = 0;
+	while (lanenum < MAX_NUM_LANES) {
+		if (!dev->ipc_log_eom[lanenum]) {
+			snprintf(logname, 15, "ep-pcie-eom-%d", lanenum);
+			dev->ipc_log_eom[lanenum] = ipc_log_context_create(130, logname, 0);
+		}
+		lanenum = lanenum+1;
 	}
 
-	EP_PCIE_EOM(lanenum, dev, "*** Margining RC , lane %d ***", lanenum);
+	ep_pcie_eom_init(dev, is_positive_seq);
 
-	ycoord = 0;
+	lanenum = 0;
+	ycoord = 0x0;
 	while (ycoord < MAX_EYE_HEIGHT) {
 		xcoord = 0;
-		temp = ycoord | 0x80;
-		ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUXDATA_TB +
-					QSERDES_OFFSET_LANE_SIZE(lanenum), temp);
-
 		while (xcoord < MAX_EYE_WIDTH) {
-			tmp = (xcoord | 0x40);
+			lanenum = 0;
+			EP_PCIE_DBG_FS("Running for x:%d y:%d\n", xcoord, ycoord);
+			while (lanenum < MAX_NUM_LANES) {
+				temp = ycoord | 0x80;
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUXDATA_TB +
+					QSERDES_OFFSET_LANE_SIZE(lanenum), temp);
+				tmp = (xcoord | 0x40);
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUX_CONTROL +
+					QSERDES_OFFSET_LANE_SIZE(lanenum), tmp);
+				ndelay(100);
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
+					QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
+				ndelay(100);
+				ep_pcie_write_reg(dev->phy,	PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3
+						+ QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
+				ndelay(100);
+				ep_pcie_write_reg(dev->phy,	PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3
+						+ QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL
+						+ QSERDES_OFFSET_LANE_SIZE(lanenum), 0xfc);
+				ndelay(100);
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL
+						+ QSERDES_OFFSET_LANE_SIZE(lanenum), 0xf4);
+				lanenum = lanenum + 1;
+			}
+				usleep_range(200000, 205000);
 
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_AUX_CONTROL +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), tmp);
+			lanenum = 0;
+			while (lanenum < MAX_NUM_LANES) {
+				temp_err_low = readl_relaxed(dev->phy +
+						PCIE20_PHY_QSERDES_RX0_IA_ERROR_COUNTER_LOW +
+						QSERDES_OFFSET_LANE_SIZE(lanenum));
 
-			ndelay(100);
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
+				temp_err_high = readl_relaxed(dev->phy +
+						PCIE20_PHY_QSERDES_RX0_IA_ERROR_COUNTER_HIGH +
+						QSERDES_OFFSET_LANE_SIZE(lanenum));
 
-			ndelay(100);
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
+				errorcntr = (temp_err_low & 0xff);
+				errorcntr = errorcntr | ((temp_err_high & 0xff) << 8);
 
-			ndelay(100);
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
+				EP_PCIE_EOM(lanenum, dev, "L: %d, x: %d, y: %d, E: %d", lanenum,
+					xcoord, ycoord, errorcntr, dev->rev);
 
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0xfc);
+				ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
+					QSERDES_OFFSET_LANE_SIZE(lanenum), 0x23);
 
-			ndelay(100);
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0xf4);
-
-			msleep(200);
-			temp_err_low = readl_relaxed(dev->phy +
-				PCIE20_PHY_QSERDES_RX0_IA_ERROR_COUNTER_LOW +
-				QSERDES_OFFSET_LANE_SIZE(lanenum));
-
-			temp_err_high = readl_relaxed(dev->phy +
-				PCIE20_PHY_QSERDES_RX0_IA_ERROR_COUNTER_HIGH +
-				QSERDES_OFFSET_LANE_SIZE(lanenum));
-
-			errorcntr = (temp_err_low & 0xff);
-			errorcntr = errorcntr | ((temp_err_high & 0xff) << 8);
-
-			EP_PCIE_EOM(lanenum, dev,
-			"L: %d, x: %d, y: %d, E: %d",
-			lanenum, xcoord, ycoord, errorcntr, dev->rev);
-
-			ep_pcie_write_reg(dev->phy,
-				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
-				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x23);
-
+				lanenum = lanenum + 1;
+			}
 			xcoord  = xcoord+1;
 		}
 		ycoord = ycoord+1;
 	}
 }
 
-/*
- * ep_pcie_debugfs_parse_input - Takes in the input as a string
- * and finally converts it to an int before assigning it back to
- * 'data'
- *
- * Return: 0 on success, -EINVAL r -EINFAULT on error
- */
-static int ep_pcie_debugfs_parse_input(const char __user *buf,
-					size_t count, unsigned int *data)
-{
-	unsigned long ret;
-	char *str, *str_temp;
-
-	str = kmalloc(count + 1, GFP_KERNEL);
-	if (!str)
-		return -ENOMEM;
-
-	ret = copy_from_user(str, buf, count);
-	if (ret) {
-		kfree(str);
-		return -EFAULT;
-	}
-
-	str[count] = 0;
-	str_temp = str;
-
-	ret = get_option(&str_temp, data);
-	kfree(str);
-	if (ret != 1)
-		return -EINVAL;
-
-	return 0;
-}
-
-static ssize_t ep_pcie_eom_lane_select(struct file *file,
-				const char __user *buf,
-				size_t count, loff_t *ppos)
-{
-	int ret;
-	u32 new_lane_sel = 0;
-
-	ret = ep_pcie_debugfs_parse_input(buf, count, &new_lane_sel);
-	if (ret)
-		return ret;
-	eom_lane_select = new_lane_sel;
-	pr_alert("PCIe: eom_lane_select is now 0x%x\n", eom_lane_select);
-
-	return count;
-}
 
 static ssize_t ep_pcie_cmd_debug(struct file *file,
 				const char __user *buf,
@@ -745,12 +691,10 @@ static ssize_t ep_pcie_cmd_debug(struct file *file,
 		ep_pcie_aspm_stat(dev);
 		break;
 	case 26: /* positive eye sequence */
-		EP_PCIE_DBG_FS("Running for lane: %d\n", eom_lane_select);
 		ep_pcie_eom_eye_seq(dev, POSITIVE_SEQUENCE);
 		EP_PCIE_DBG_FS("Run complete %d\n", testcase);
 		break;
 	case 27: /* negative eye sequence */
-		EP_PCIE_DBG_FS("Running for lane: %d\n", eom_lane_select);
 		ep_pcie_eom_eye_seq(dev, NEGATIVE_SEQUENCE);
 		EP_PCIE_DBG_FS("Run complete %d\n", testcase);
 		break;
@@ -772,12 +716,6 @@ const struct file_operations ep_pcie_cmd_debug_ops = {
 	.open = ep_pcie_cmd_debug_open,
 };
 
-const struct file_operations ep_pcie_sel_debug_ops = {
-	.write = ep_pcie_eom_lane_select,
-	.release = single_release,
-	.read = seq_read,
-	.open = ep_pcie_eom_lane_sel_open,
-};
 
 void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev)
 {
@@ -799,17 +737,6 @@ void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev)
 			dev->rev);
 		goto case_error;
 	}
-
-	dfile_eom_lane_sel = debugfs_create_file("sel", 0664,
-					dent_ep_pcie, 0,
-					&ep_pcie_sel_debug_ops);
-	if (!dfile_eom_lane_sel || IS_ERR(dfile_eom_lane_sel)) {
-		EP_PCIE_ERR(dev,
-			"PCIe V%d: fail to create the file for case\n",
-			dev->rev);
-		goto case_error1;
-	}
-
 	EP_PCIE_DBG2(dev,
 		"PCIe V%d: debugfs is enabled\n",
 		dev->rev);
@@ -818,9 +745,7 @@ void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev)
 
 case_error:
 	debugfs_remove(dent_ep_pcie);
-case_error1:
-	debugfs_remove(dent_ep_pcie);
-	debugfs_remove(dfile_case);
+
 }
 
 void ep_pcie_debugfs_exit(void)
