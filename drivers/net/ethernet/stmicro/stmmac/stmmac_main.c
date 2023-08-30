@@ -4553,11 +4553,6 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
-	if (priv->plat->has_xgmac && priv->plat->port_num == 0) {
-		if (STMMAC_add_ptp_filters(dev))
-			netdev_err(priv->dev, "failed to add PTP over UDP filters\n");
-	}
-
 	return 0;
 
 irq_error:
@@ -6797,7 +6792,12 @@ static int stmmac_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		break;
 	case SIOCGHWTSTAMP:
 		ret = stmmac_hwtstamp_get(dev, rq);
+		if (priv->plat->has_xgmac && priv->plat->port_num == 0) {
+			if (STMMAC_add_ptp_filters(dev))
+				netdev_err(priv->dev, "failed to add PTP over UDP filters\n");
+		}
 		break;
+
 	default:
 		break;
 	}
