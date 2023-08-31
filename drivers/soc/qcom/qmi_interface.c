@@ -612,20 +612,19 @@ static void qmi_data_ready_work(struct work_struct *work)
 
 static void qmi_data_ready(struct sock *sk)
 {
-	struct qmi_handle *qmi = NULL;
+	struct qmi_handle *qmi = sk->sk_user_data;
 
 	/*
 	 * This will be NULL if we receive data while being in
 	 * qmi_handle_release()
 	 */
-	rcu_read_lock();
-	qmi = rcu_dereference_sk_user_data(sk);
-	if (qmi) {
-		QMI_INFO("qmi recv pkt queued for svc_id:0x%x sock[0x%x:0x%x]\n",
-			 qmi->svc_id, qmi->sq.sq_node, qmi->sq.sq_port);
-		queue_work(qmi->wq, &qmi->work);
-	}
-	rcu_read_unlock();
+	if (!qmi)
+		return;
+
+	QMI_INFO("qmi recv pkt queued for svc_id:0x%x sock[0x%x:0x%x]\n",
+		 qmi->svc_id, qmi->sq.sq_node, qmi->sq.sq_port);
+
+	queue_work(qmi->wq, &qmi->work);
 }
 
 static struct socket *qmi_sock_create(struct qmi_handle *qmi,
@@ -645,7 +644,7 @@ static struct socket *qmi_sock_create(struct qmi_handle *qmi,
 		return ERR_PTR(ret);
 	}
 
-	rcu_assign_sk_user_data(sock->sk, qmi);
+	sock->sk->sk_user_data = qmi;
 	sock->sk->sk_data_ready = qmi_data_ready;
 	sock->sk->sk_error_report = qmi_data_ready;
 	sock->sk->sk_sndtimeo = HZ * 10;
@@ -758,8 +757,7 @@ void qmi_handle_release(struct qmi_handle *qmi)
 
 	mutex_lock(&qmi->sock_lock);
 	sock = qmi->sock;
-	rcu_assign_sk_user_data(sock->sk, NULL);
-	synchronize_rcu();
+	sock->sk->sk_user_data = NULL;
 	sock_release(sock);
 	qmi->sock = NULL;
 	mutex_unlock(&qmi->sock_lock);
