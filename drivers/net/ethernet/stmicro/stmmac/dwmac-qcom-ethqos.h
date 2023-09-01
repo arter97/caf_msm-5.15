@@ -526,6 +526,7 @@ struct qcom_ethqos {
 
 	struct mac_csr_data *mac_reg_list;
 	bool power_state;
+	bool gdsc_off_on_suspend;
 };
 
 struct pps_cfg {
@@ -668,5 +669,7 @@ static inline void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum 
 	/* Not enabled */
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
+#define EMAC_GDSC_EMAC_NAME "gdsc_emac"
 
 #endif

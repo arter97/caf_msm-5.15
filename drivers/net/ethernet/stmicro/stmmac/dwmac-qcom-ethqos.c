@@ -7004,6 +7004,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_mem;
 
+	if (of_property_read_bool(pdev->dev.of_node, "gdsc-off-on-suspend"))
+		ethqos->gdsc_off_on_suspend = true;
+	ETHQOSDBG("gdsc-off-on-suspend = %d\n", ethqos->gdsc_off_on_suspend);
+
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
 		ethqos->ipa_enabled = true;
@@ -7369,6 +7373,13 @@ static int qcom_ethqos_suspend(struct device *dev)
 #endif
 
 	priv->boot_kpi = false;
+
+	if (ethqos->gdsc_off_on_suspend) {
+		if (ethqos->gdsc_emac) {
+			regulator_disable(ethqos->gdsc_emac);
+			ETHQOSDBG("Disabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+		}
+	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
@@ -7396,6 +7407,17 @@ static int qcom_ethqos_resume(struct device *dev)
 	if (!ethqos)
 		return -ENODEV;
 
+	if (ethqos->gdsc_off_on_suspend) {
+		if (ethqos->gdsc_emac) {
+			ret = regulator_enable(ethqos->gdsc_emac);
+			if (ret) {
+				ETHQOSERR("Can not enable <%s>\n", EMAC_GDSC_EMAC_NAME);
+				return ret;
+			}
+		}
+		ETHQOSDBG("Enabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+	}
+
 	ndev = dev_get_drvdata(dev);
 	priv = netdev_priv(ndev);
 
@@ -7410,6 +7432,9 @@ static int qcom_ethqos_resume(struct device *dev)
 	}
 
 	qcom_ethqos_phy_resume_clks(ethqos);
+
+	if (ethqos->gdsc_off_on_suspend)
+		ethqos_set_func_clk_en(ethqos);
 
 	enable_irq(priv->dev->irq);
 
