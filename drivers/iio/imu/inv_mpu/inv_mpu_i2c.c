@@ -30,6 +30,9 @@
 #include <linux/of_device.h>
 #include <linux/errno.h>
 #include <linux/version.h>
+#include <linux/iio/buffer.h>
+#include <linux/iio/buffer_impl.h>
+#include <linux/iio/iio.h>
 
 #include "inv_mpu_iio.h"
 #include "inv_mpu_dts.h"
@@ -283,11 +286,16 @@ static int inv_i2c_mem_read(struct inv_mpu_state *st, u8 mpu_addr, u16 mem_addr,
 static void inv_enable_acc_gyro(struct iio_dev *indio_dev)
 {
 	struct inv_mpu_state *st;
-
 	int accel_hz = 100;
 	int gyro_hz = 100;
 
 	st = iio_priv(indio_dev);
+	iio_buffer_get(indio_dev->buffer);
+	indio_dev->buffer->length = 10;
+	indio_dev->buffer->watermark = 10;
+	set_bit(0, indio_dev->buffer->scan_mask);
+	iio_update_buffers(indio_dev, indio_dev->buffer, NULL);
+
 	/**Enable the ACCEL**/
 	st->sensor_l[SENSOR_L_ACCEL].on = 0;
 	st->trigger_state = RATE_TRIGGER;
@@ -298,6 +306,11 @@ static void inv_enable_acc_gyro(struct iio_dev *indio_dev)
 	st->chip_config.accel_fs = ACCEL_FSR_2G;
 	inv_set_accel_sf(st);
 	st->trigger_state = MISC_TRIGGER;
+	set_inv_enable(indio_dev);
+
+	st->batch.timeout = 100;
+	inv_check_sensor_on(st);
+	st->trigger_state = EVENT_TRIGGER;
 	set_inv_enable(indio_dev);
 
 	st->sensor_l[SENSOR_L_ACCEL].rate = accel_hz;
@@ -617,6 +630,7 @@ static int inv_mpu_probe(struct i2c_client *client,
 	pr_info("Timer based batching\n");
 #endif
 	result = inv_acc_gyro_early_buff_init(indio_dev);
+
 	if (result != 1)
 		return -EIO;
 
