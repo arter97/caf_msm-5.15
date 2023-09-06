@@ -183,7 +183,11 @@ static int gh_stop_vm(struct gh_vm *vm)
 	gh_vmid_t vmid = vm->vmid;
 	int ret = -EINVAL;
 
-	ret = gh_exit_vm(vm, GH_VM_STOP_RESTART, 0);
+	if (vm->proxy_vm)
+		ret = gh_exit_vm(vm, GH_VM_STOP_RESTART,
+				GH_RM_VM_STOP_FLAG_FORCE_STOP);
+	else
+		ret = gh_exit_vm(vm, GH_VM_STOP_RESTART, 0);
 
 	if (ret && ret != -ENODEV)
 		goto err_vm_force_stop;
@@ -317,6 +321,7 @@ start_vcpu_run:
 	 * proxy scheduling APIs
 	 */
 	if (gh_vm_supports_proxy_sched(vm->vmid)) {
+		vm->proxy_vm = true;
 		ret = gh_vcpu_run(vm->vmid, vcpu->vcpu_id,
 						0, 0, 0, &vcpu_run);
 		if (ret < 0) {
