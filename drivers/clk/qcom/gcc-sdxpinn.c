@@ -3430,7 +3430,7 @@ static int __init gcc_sdxpinn_init(void)
 	platform_driver_register(&gcc_sdxpinn_virt_driver);
 	return platform_driver_register(&gcc_sdxpinn_driver);
 }
-subsys_initcall(gcc_sdxpinn_init);
+arch_initcall(gcc_sdxpinn_init);
 
 static void __exit gcc_sdxpinn_exit(void)
 {
