@@ -555,4 +555,19 @@ extern void ep_pcie_clk_dump(struct ep_pcie_dev_t *dev);
 extern void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev);
 extern void ep_pcie_debugfs_exit(void);
 
+#if IS_ENABLED(CONFIG_L1SS_RESOURCES_HANDLING)
+int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev);
+int ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev);
+#else
+static inline int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
+{
+	return 0;
+}
+
+static inline int ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev)
+{
+	return 0;
+}
+#endif /* CONFIG_L1SS_RESOURCES_HANDLING */
+
 #endif

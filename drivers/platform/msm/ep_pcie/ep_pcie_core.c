@@ -717,10 +717,14 @@ static void ep_pcie_pipe_clk_deinit(struct ep_pcie_dev_t *dev)
 				dev->pipeclk[i].hdl);
 }
 
-static int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
+#if IS_ENABLED(CONFIG_L1SS_RESOURCES_HANDLING)
+int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
 {
 	int i, rc = 0;
 	struct ep_pcie_clk_info_t *clki;
+
+	/* Turn on LDOs */
+	ep_pcie_vreg_init(dev);
 
 	/* Set bus bandwidth */
 	if (dev->icc_path) {
@@ -748,10 +752,11 @@ static int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
 	/* Powering up the PHY interface */
 	ep_pcie_write_reg(dev->phy, PCIE_PHY_POWER_DOWN_CONTROL, 0x1);
 
+	EP_PCIE_DBG(dev, "PCIe V%d:Resources turned on M2/L1SS path\n", dev->rev);
 	return rc;
 }
 
-static void ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev)
+int ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev)
 {
 	int i, rc = 0;
 	struct ep_pcie_clk_info_t *clki;
@@ -776,9 +781,17 @@ static void ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev)
 			EP_PCIE_ERR(dev,
 					"PCIe V%d: Relinquish bus bandwidth error code %d\n",
 					dev->rev, rc);
+			return rc;
 		}
 	}
+
+	/* Turn off the LDOs */
+	ep_pcie_vreg_deinit(dev);
+
+	EP_PCIE_DBG(dev, "PCIe V%d: Resources turned off M2/L1SS path\n", dev->rev);
+	return rc;
 }
+#endif
 
 static void ep_pcie_msix_init(struct ep_pcie_dev_t *dev)
 {
@@ -2000,10 +2013,8 @@ int ep_pcie_core_l1ss_sleep_config_disable(void)
 	if (!clkreq_irq_disable)
 		disable_irq(clkreq_irq);
 
-	/* Turning on the LDOs and clocks */
-	ep_pcie_vreg_init(dev);
+	/* Turning on the resources for M2/L1SS path */
 	ep_pcie_l1ss_resources_init(dev);
-	EP_PCIE_DBG(dev, "PCIe V%d:Resources turned on\n", dev->rev);
 
 	/* Configure CLKREQ# pin with default clkreq_n mux */
 	rc = pinctrl_pm_select_default_state(pdev);
@@ -2557,10 +2568,8 @@ int ep_pcie_core_disable_endpoint(void)
 		ep_pcie_clk_deinit(dev);
 		ep_pcie_vreg_deinit(dev);
 	} else {
-		/* Turn off the clocks and LDOs */
+		/* Turn off the resources in M2/L1SS path */
 		ep_pcie_l1ss_resources_deinit(dev);
-		ep_pcie_vreg_deinit(dev);
-		EP_PCIE_DBG(dev, "PCIe V%d: Resources turned off M2 path\n", dev->rev);
 	}
 
 	dev->power_on = false;
