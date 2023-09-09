@@ -204,12 +204,12 @@ static int __maybe_unused gh_guest_memshare_nb_handler(struct notifier_block *th
 	return NOTIFY_DONE;
 }
 
-static int gh_tlmm_vm_mem_release(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
+static int gh_tlmm_vm_mem_release(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data, int gpio_type)
 {
 	int rc = 0;
 	gh_memparcel_handle_t vm_mem_handle;
 
-	vm_mem_handle = gh_tlmm_vm_info_data->mem_info[SHARED_GPIO].vm_mem_handle;
+	vm_mem_handle = gh_tlmm_vm_info_data->mem_info[gpio_type].vm_mem_handle;
 	if (!vm_mem_handle) {
 		dev_err(gh_tlmm_dev, "Invalid memory handle\n");
 		return -EINVAL;
@@ -226,16 +226,16 @@ static int gh_tlmm_vm_mem_release(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 		dev_err(gh_tlmm_dev, "Failed to notify mem release to PVM rc:%d\n",
 							rc);
 
-	gh_tlmm_vm_info_data->mem_info[SHARED_GPIO].vm_mem_handle = 0;
+	gh_tlmm_vm_info_data->mem_info[gpio_type].vm_mem_handle = 0;
 	return rc;
 }
 
-static int gh_tlmm_vm_mem_reclaim(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
+static int gh_tlmm_vm_mem_reclaim(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data, int gpio_type)
 {
 	int rc = 0;
 	gh_memparcel_handle_t vm_mem_handle;
 
-	vm_mem_handle = gh_tlmm_vm_info_data->mem_info[SHARED_GPIO].vm_mem_handle;
+	vm_mem_handle = gh_tlmm_vm_info_data->mem_info[gpio_type].vm_mem_handle;
 	if (!vm_mem_handle) {
 		dev_err(gh_tlmm_dev, "Invalid memory handle\n");
 		return -EINVAL;
@@ -245,7 +245,7 @@ static int gh_tlmm_vm_mem_reclaim(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 	if (rc)
 		dev_err(gh_tlmm_dev, "VM mem reclaim failed rc:%d\n", rc);
 
-	gh_tlmm_vm_info_data->mem_info[SHARED_GPIO].vm_mem_handle = 0;
+	gh_tlmm_vm_info_data->mem_info[gpio_type].vm_mem_handle = 0;
 
 	return rc;
 }
@@ -337,6 +337,7 @@ static int gh_tlmm_vm_populate_vm_info(struct platform_device *dev, struct gh_tl
 		}
 
 		vm_info->mem_info[SHARED_GPIO].vm_mem_handle = vm_mem_handle;
+		vm_info->mem_info[LEND_GPIO].vm_mem_handle = vm_mem_handle;
 	}
 
 	rc = of_property_read_u32(np, "peer-name", &peer_vmid);
@@ -405,12 +406,18 @@ static void __maybe_unused gh_tlmm_vm_mem_on_release_handler(enum gh_mem_notifie
 	}
 
 	release_payload = (struct gh_rm_notif_mem_released_payload  *)notif_msg;
-	if (release_payload->mem_handle != vm_info->vm_mem_handle) {
-		dev_err(gh_tlmm_dev, "Invalid mem handle detected\n");
+	if (release_payload->mem_handle != vm_info->mem_info[SHARED_GPIO].vm_mem_handle &&
+			release_payload->mem_handle != vm_info->mem_info[LEND_GPIO].vm_mem_handle) {
+		dev_err(gh_tlmm_dev, "Invalid mem handle detected mem_handle 0x%x, vm_info->vm_mem_handle 0x%x\n",
+				release_payload->mem_handle, vm_info->vm_mem_handle);
 		return;
 	}
 
-	gh_tlmm_vm_mem_reclaim(vm_info);
+	if (release_payload->mem_handle == vm_info->mem_info[SHARED_GPIO].vm_mem_handle)
+		gh_tlmm_vm_mem_reclaim(vm_info, SHARED_GPIO);
+
+	if (release_payload->mem_handle == vm_info->mem_info[LEND_GPIO].vm_mem_handle)
+		gh_tlmm_vm_mem_reclaim(vm_info, LEND_GPIO);
 }
 
 static int gh_tlmm_vm_mem_access_probe(struct platform_device *pdev)
@@ -460,7 +467,7 @@ static int gh_tlmm_vm_mem_access_probe(struct platform_device *pdev)
 			return ret;
 
 		if (gh_tlmm_vm_info_data.mem_info[SHARED_GPIO].num_regs[SHARED_GPIO] > 0)
-			gh_tlmm_vm_mem_release(&gh_tlmm_vm_info_data);
+			gh_tlmm_vm_mem_release(&gh_tlmm_vm_info_data, SHARED_GPIO);
 
 		qcom_vm_gpio_access_pinctrl = devm_pinctrl_get(gh_tlmm_dev);
 		if (IS_ERR_OR_NULL(qcom_vm_gpio_access_pinctrl)) {
@@ -489,6 +496,9 @@ static int gh_tlmm_vm_mem_access_remove(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	bool master;
+
+	if (gh_tlmm_vm_info_data.mem_info[LEND_GPIO].num_regs[LEND_GPIO] > 0)
+		gh_tlmm_vm_mem_release(&gh_tlmm_vm_info_data, LEND_GPIO);
 
 	master = of_property_read_bool(np, "qcom,master");
 	if (master)
