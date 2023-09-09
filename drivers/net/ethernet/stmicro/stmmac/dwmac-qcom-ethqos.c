@@ -6252,6 +6252,18 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 	return ret;
 }
 
+static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
+{
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!priv || !priv->dev->phydev || !priv->hw->qxpcs)
+		return;
+
+	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+			  speed, priv->dev->phydev->duplex);
+}
+
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
 static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 				   unsigned long event, void *ptr)
@@ -6481,6 +6493,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII) {
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
 		plat_dat->serdes_powersaving = ethqos_serdes_power_saving;
+		plat_dat->xpcs_linkup = ethqos_xpcs_link_up;
 	}
 
 	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");

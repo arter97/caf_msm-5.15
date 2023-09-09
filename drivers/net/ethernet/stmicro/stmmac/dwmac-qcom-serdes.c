@@ -12,9 +12,80 @@
 
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
+	int ret = 0;
+	int retry = 5000;
+	unsigned int val;
+
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	usleep_range(300, 500);
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
+	usleep_range(3000, 5000);
+	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	usleep_range(3000, 5000);
+
+	do {
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
+		val &= BIT(1);
+		if (val)
+			break;
+		usleep_range(1000, 1500);
+		retry--;
+	} while (retry > 0);
+	if (!retry) {
+		ETHQOSERR("PLL Lock Status timedout with retry = %d\n", retry);
+		ret = -1;
+		goto err_ret;
+	}
+
+	retry = 500;
+	do {
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_C_READY_STATUS);
+		val &= BIT(0);
+		if (val)
+			break;
+		usleep_range(1000, 1500);
+		retry--;
+	} while (retry > 0);
+	if (!retry) {
+		ETHQOSERR("C_READY_STATUS timedout with retry = %d\n", retry);
+		ret = -1;
+		goto err_ret;
+	}
+
+	retry = 500;
+	do {
+		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val &= BIT(7);
+		if (val)
+			break;
+		usleep_range(1000, 1500);
+		retry--;
+	} while (retry > 0);
+	if (!retry) {
+		ETHQOSERR("PCS_READY timedout with retry = %d\n", retry);
+		ret = -1;
+		goto err_ret;
+	}
+
+	retry = 500;
+	do {
+		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val &= BIT(0);
+		if (val)
+			break;
+		usleep_range(1000, 1500);
+		retry--;
+	} while (retry > 0);
+	if (!retry) {
+		ETHQOSERR("SGMIIPHY_READY timedout with retry = %d\n", retry);
+		ret = -1;
+		goto err_ret;
+	}
+
+	return;
+
+err_ret:
+	ETHQOSERR("Serdes soft reset failed\n");
+
 }
 EXPORT_SYMBOL(qcom_ethqos_serdes_soft_reset);
 
