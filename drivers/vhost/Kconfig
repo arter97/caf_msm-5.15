@@ -74,6 +74,16 @@ config VHOST_VDPA
 	  To compile this driver as a module, choose M here: the module
 	  will be called vhost_vdpa.
 
+config VHOST_SCMI
+	tristate "Host kernel accelerator for Virtio SCMI"
+	select VHOST
+	help
+	  This kernel module can be loaded in host kernel to accelerate
+	  guest SCMI over Virtio transport.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called vhost_scmi.
+
 config VHOST_CROSS_ENDIAN_LEGACY
 	bool "Cross-endian support for vhost"
 	default n

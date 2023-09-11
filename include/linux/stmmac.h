@@ -251,6 +251,8 @@ struct plat_stmmacenet_data {
 	int (*serdes_powerup)(struct net_device *ndev, void *priv);
 	void (*serdes_powerdown)(struct net_device *ndev, void *priv);
 	void (*speed_mode_2500)(struct net_device *ndev, void *priv);
+	int (*serdes_powersaving)(struct net_device *ndev, void *priv, bool power_on,
+	     bool needs_reset);
 	void (*ptp_clk_freq_config)(void *priv);
 	int (*init)(struct platform_device *pdev, void *priv);
 	void (*exit)(struct platform_device *pdev, void *priv);
@@ -282,6 +284,7 @@ struct plat_stmmacenet_data {
 	int rss_en;
 	int mac_port_sel_speed;
 	bool en_tx_lpi_clockgating;
+	bool rx_clk_runs_in_lpi;
 	int has_xgmac;
 	bool vlan_fail_q_en;
 	u8 vlan_fail_q;
@@ -323,6 +326,8 @@ struct plat_stmmacenet_data {
 	bool sph_disable;
 	void (*phy_irq_enable)(void *priv);
 	void (*phy_irq_disable)(void *priv);
+	void (*wol_irq_enable)(void *priv);
+	void (*wol_irq_disable)(void *priv);
 	int port_num;
 	bool pcs_v3;
 	bool pm_lite;
@@ -335,5 +340,6 @@ struct plat_stmmacenet_data {
 	atomic_t phy_clks_suspended;
 	struct completion mdio_op;
 	bool mac_suspended;
+	bool separate_wol_pin;
 };
 #endif

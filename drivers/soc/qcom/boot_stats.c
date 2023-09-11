@@ -38,6 +38,7 @@
 #define TIMER_KHZ 32768
 #define MSM_ARCH_TIMER_FREQ     19200000
 
+#if defined(CONFIG_MSM_BOOT_TIME_MARKER) && !defined(CONFIG_MSM_GVM_BOOT_TIME_MARKER)
 struct boot_stats {
 	uint32_t bootloader_start;
 	uint32_t bootloader_end;
@@ -49,9 +50,12 @@ struct boot_stats {
 	uint32_t bootloader_load_init_boot_end;
 } __packed;
 
+static struct boot_stats __iomem *boot_stats;
+#endif
+
 static void __iomem *mpm_counter_base;
 static uint32_t mpm_counter_freq;
-static struct boot_stats __iomem *boot_stats;
+static void __iomem *mpm_hr_counter_base;
 
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 
@@ -157,6 +161,25 @@ unsigned long long msm_timer_get_sclk_ticks(void)
 	return t1;
 }
 EXPORT_SYMBOL(msm_timer_get_sclk_ticks);
+
+unsigned long long msm_hr_timer_get_sclk_ticks(void)
+{
+	unsigned long long tl, th;
+	void __iomem *sclk_tick_high;
+	void __iomem *sclk_tick_low;
+
+	if (!mpm_hr_counter_base)
+		return -EINVAL;
+
+	sclk_tick_high = mpm_hr_counter_base + 0xc;
+	sclk_tick_low = mpm_hr_counter_base + 0x8;
+
+	tl = readl_relaxed(sclk_tick_low);
+	th = readl_relaxed(sclk_tick_high);
+
+	return (th << 32) | tl;
+}
+EXPORT_SYMBOL(msm_hr_timer_get_sclk_ticks);
 
 static void _destroy_boot_marker(const char *name)
 {
@@ -275,6 +298,7 @@ void destroy_marker(const char *name)
 }
 EXPORT_SYMBOL(destroy_marker);
 
+#ifndef CONFIG_MSM_GVM_BOOT_TIME_MARKER
 static void set_bootloader_stats(void)
 {
 	unsigned long long ts1, ts2;
@@ -315,6 +339,56 @@ static void set_bootloader_stats(void)
 			readl_relaxed(&boot_stats->bootloader_end));
 }
 
+static int imem_boots_stat_parse_dt(void)
+{
+	struct device_node *np_imem;
+
+	np_imem = of_find_compatible_node(NULL, NULL,
+				"qcom,msm-imem-boot_stats");
+	if (!np_imem) {
+		pr_err("can't find qcom,msm-imem node\n");
+		return -ENODEV;
+	}
+	boot_stats = of_iomap(np_imem, 0);
+	if (!boot_stats) {
+		pr_err("boot_stats: Can't map imem\n");
+		of_node_put(np_imem);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+static void print_boot_stats(void)
+{
+	pr_info("KPI: Bootloader start count = %u\n",
+		readl_relaxed(&boot_stats->bootloader_start));
+	pr_info("KPI: Bootloader end count = %u\n",
+		readl_relaxed(&boot_stats->bootloader_end));
+	pr_info("KPI: Bootloader load kernel count = %u\n",
+		readl_relaxed(&boot_stats->bootloader_load_boot_end) -
+		readl_relaxed(&boot_stats->bootloader_load_boot_start));
+	pr_info("KPI: Kernel MPM timestamp = %u\n",
+		readl_relaxed(mpm_counter_base));
+	pr_info("KPI: Kernel MPM Clock frequency = %u\n",
+		mpm_counter_freq);
+}
+
+static int print_bootloader_stats(void)
+{
+	int ret;
+
+	ret = imem_boots_stat_parse_dt();
+	if (ret < 0)
+		return -ENODEV;
+	print_boot_stats();
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	set_bootloader_stats();
+#endif
+	return 0;
+
+}
+#endif
 void update_marker(const char *name)
 {
 	_destroy_boot_marker(name);
@@ -482,61 +556,48 @@ static void exit_bootkpi(void)
 
 static int mpm_parse_dt(void)
 {
-	struct device_node *np_imem, *np_mpm2;
-
-	np_imem = of_find_compatible_node(NULL, NULL,
-				"qcom,msm-imem-boot_stats");
-	if (!np_imem) {
-		pr_err("can't find qcom,msm-imem node\n");
-		return -ENODEV;
-	}
-	boot_stats = of_iomap(np_imem, 0);
-	if (!boot_stats) {
-		pr_err("boot_stats: Can't map imem\n");
-		goto err1;
-	}
+	struct device_node *np_mpm2, *np_mpm_hr;
 
 	np_mpm2 = of_find_compatible_node(NULL, NULL,
 				"qcom,mpm2-sleep-counter");
 	if (!np_mpm2) {
 		pr_err("mpm_counter: can't find DT node\n");
-		goto err1;
+		return -ENODEV;
 	}
 
 	if (of_property_read_u32(np_mpm2, "clock-frequency", &mpm_counter_freq))
-		goto err2;
+		goto err;
 
 	if (of_get_address(np_mpm2, 0, NULL, NULL)) {
 		mpm_counter_base = of_iomap(np_mpm2, 0);
 		if (!mpm_counter_base) {
 			pr_err("mpm_counter: cant map counter base\n");
-			goto err2;
+			goto err;
 		}
 	} else
-		goto err2;
+		goto err;
+
+	/* qcom,mpm-hr-counter is not mandatory */
+	np_mpm_hr = of_find_compatible_node(NULL, NULL,
+				"qcom,mpm-hr-counter");
+	if (!np_mpm_hr) {
+		pr_info("mpm_hr_counter: can't find DT node\n");
+		return 0;
+	}
+
+	if (of_get_address(np_mpm_hr, 0, NULL, NULL)) {
+		mpm_hr_counter_base = of_iomap(np_mpm_hr, 0);
+		if (!mpm_hr_counter_base) {
+			pr_err("mpm_hr_counter: cant map counter base\n");
+			of_node_put(np_mpm_hr);
+		}
+	} else
+		of_node_put(np_mpm_hr);
 
 	return 0;
-
-err2:
+err:
 	of_node_put(np_mpm2);
-err1:
-	of_node_put(np_imem);
 	return -ENODEV;
-}
-
-static void print_boot_stats(void)
-{
-	pr_info("KPI: Bootloader start count = %u\n",
-		readl_relaxed(&boot_stats->bootloader_start));
-	pr_info("KPI: Bootloader end count = %u\n",
-		readl_relaxed(&boot_stats->bootloader_end));
-	pr_info("KPI: Bootloader load kernel count = %u\n",
-		readl_relaxed(&boot_stats->bootloader_load_boot_end) -
-		readl_relaxed(&boot_stats->bootloader_load_boot_start));
-	pr_info("KPI: Kernel MPM timestamp = %u\n",
-		readl_relaxed(mpm_counter_base));
-	pr_info("KPI: Kernel MPM Clock frequency = %u\n",
-		mpm_counter_freq);
 }
 
 static int __init boot_stats_init(void)
@@ -547,19 +608,21 @@ static int __init boot_stats_init(void)
 	if (ret < 0)
 		return -ENODEV;
 
-	print_boot_stats();
 	if (boot_marker_enabled()) {
 		ret = init_bootkpi();
 		if (ret) {
 			pr_err("boot_stats: BootKPI init failed %d\n");
 			return ret;
 		}
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-		set_bootloader_stats();
+#if defined(CONFIG_MSM_BOOT_TIME_MARKER) && !defined(CONFIG_MSM_GVM_BOOT_TIME_MARKER)
+		ret = print_bootloader_stats();
+		if (ret < 0)
+			return -ENODEV;
 #endif
 	} else {
-		iounmap(boot_stats);
 		iounmap(mpm_counter_base);
+		if (mpm_hr_counter_base)
+			iounmap(mpm_hr_counter_base);
 	}
 
 	return 0;
@@ -570,8 +633,12 @@ static void __exit boot_stats_exit(void)
 {
 	if (boot_marker_enabled()) {
 		exit_bootkpi();
+#if defined(CONFIG_MSM_BOOT_TIME_MARKER) && !defined(CONFIG_MSM_GVM_BOOT_TIME_MARKER)
 		iounmap(boot_stats);
+#endif
 		iounmap(mpm_counter_base);
+		if (mpm_hr_counter_base)
+			iounmap(mpm_hr_counter_base);
 	}
 }
 module_exit(boot_stats_exit)
