@@ -210,6 +210,8 @@ do {\
 #define MAC_DUMP_SIZE 0
 #endif
 
+#define MAC_REG_SIZE 4
+
 static inline u32 PPSCMDX(u32 x, u32 val)
 {
 	return (GENMASK(PPS_MINIDX(x) + 3, PPS_MINIDX(x)) &
@@ -411,8 +413,13 @@ struct qcom_ethqos {
 
 	int gpio_phy_intr_redirect;
 	u32 phy_intr;
+	u32 wol_intr;
+
 	/* Work struct for handling phy interrupt */
 	struct work_struct emac_phy_work;
+
+	/* Work struct for handling phy interrupt */
+	struct work_struct emac_wol_work;
 
 	struct ethqos_emac_por *por;
 	unsigned int num_por;
@@ -491,6 +498,7 @@ struct qcom_ethqos {
 	bool probed;
 	bool ipa_enabled;
 	struct notifier_block panic_nb;
+	struct notifier_block vm_nb;
 
 	struct stmmac_priv *priv;
 
@@ -517,6 +525,7 @@ struct qcom_ethqos {
 	int tdu_chan;
 
 	struct mac_csr_data *mac_reg_list;
+	bool power_state;
 };
 
 struct pps_cfg {

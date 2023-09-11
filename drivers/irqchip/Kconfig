@@ -142,8 +142,7 @@ config DAVINCI_CP_INTC
 
 config QCOM_SHOW_RESUME_IRQ
         tristate "Enable logging of interrupts that could have caused resume"
-        depends on ARM_GIC_V3 && PM
-        default n
+        depends on (ARM_GIC_V3 || ARM_GIC) && PM
         help
           This option logs wake up interrupts that have triggered just before
           the resume loop unrolls. It helps to debug to know any unnecessary

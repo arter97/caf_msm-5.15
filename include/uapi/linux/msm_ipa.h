@@ -277,6 +277,7 @@
 #define IPA_FLT_EXT_MTU     (1ul << 2)
 #define IPA_FLT_EXT_L2TP_UDP_INNER_NEXT_HDR		(1ul << 3)
 #define IPA_FLT_EXT_NEXT_HDR				(1ul << 4)
+#define IPA_FLT_EXT_NAT_T				(1ul << 5)
 
 
 /**
@@ -542,7 +543,7 @@ enum ipa_client_type {
 	IPA_CLIENT_IPSEC_ENCAP_ERR_CONS		= 133,
 
 	IPA_CLIENT_Q6_DL_NLO_ETH_DATA_PROD      = 134,
-	/* RESERVED CONS			            = 135, */
+	IPA_CLIENT_IPSEC_APPS_WAN_CONS		= 135,
 
 	IPA_CLIENT_APPS_WAN_ETH_PROD            = 136,
 	/* RESERVED CONS			            = 137, */
@@ -553,11 +554,14 @@ enum ipa_client_type {
 	IPA_CLIENT_Q6_V2X_BROADCAST_PROD        = 140,
 	/* RESERVED CONS			            = 141, */
 
-	IPA_CLIENT_Q6_V2X_UNICAST_PROD          = 142
+	IPA_CLIENT_Q6_V2X_UNICAST_PROD          = 142,
 	/* RESERVED CONS			            = 143, */
+
+	/* RESERVED PROD			            = 144, */
+	IPA_CLIENT_Q6_CV2X_DECIPHER_CONS		= 145,
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_Q6_V2X_UNICAST_PROD + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_Q6_CV2X_DECIPHER_CONS + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -626,6 +630,12 @@ enum ipa_client_type {
 	 (client) == IPA_CLIENT_APPS_WAN_COAL_CONS || \
 	 (client) == IPA_CLIENT_APPS_WAN_V2X_CONS)
 
+#define IPA_CLIENT_IS_IPSEC_WAN_CONS(client) \
+	((client) == IPA_CLIENT_IPSEC_DECAP_RECOVERABLE_ERR_CONS || \
+	 (client) == IPA_CLIENT_IPSEC_DECAP_NON_RECOVERABLE_ERR_CONS || \
+	 (client) == IPA_CLIENT_IPSEC_ENCAP_ERR_CONS || \
+	 (client) == IPA_CLIENT_IPSEC_APPS_WAN_CONS)
+
 #define IPA_CLIENT_IS_LAN_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
 	 (client) == IPA_CLIENT_APPS_LAN_COAL_CONS)
@@ -664,7 +674,8 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_UL_NLO_ACK_CONS || \
 	(client) == IPA_CLIENT_Q6_QBAP_STATUS_CONS || \
 	(client) == IPA_CLIENT_Q6_CV2X_CONS || \
-	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS)
+	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS || \
+	(client) == IPA_CLIENT_Q6_CV2X_DECIPHER_CONS)
 
 #define IPA_CLIENT_IS_Q6_PROD(client) \
 	((client) == IPA_CLIENT_Q6_LAN_PROD || \
@@ -675,7 +686,10 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_DL_NLO_LL_DATA_PROD || \
 	(client) == IPA_CLIENT_Q6_DL_NLO_DATA_PROD || \
 	(client) == IPA_CLIENT_Q6_CV2X_PROD || \
-	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD)
+	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD || \
+	(client) == IPA_CLIENT_Q6_V2X_BROADCAST_PROD || \
+	(client) == IPA_CLIENT_Q6_V2X_UNICAST_PROD)
+
 
 #define IPA_CLIENT_IS_Q6_NON_ZIP_CONS(client) \
 	((client) == IPA_CLIENT_Q6_LAN_CONS || \
@@ -686,7 +700,8 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_UL_NLO_ACK_CONS || \
 	(client) == IPA_CLIENT_Q6_QBAP_STATUS_CONS || \
 	(client) == IPA_CLIENT_Q6_CV2X_CONS || \
-	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS)
+	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS || \
+	(client) == IPA_CLIENT_Q6_CV2X_DECIPHER_CONS)
 
 #define IPA_CLIENT_IS_Q6_ZIP_CONS(client) \
 	((client) == IPA_CLIENT_Q6_DECOMP_CONS || \
@@ -699,7 +714,10 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_DL_NLO_DATA_PROD || \
 	(client) == IPA_CLIENT_Q6_DL_NLO_LL_DATA_PROD || \
 	(client) == IPA_CLIENT_Q6_CV2X_PROD || \
-	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD)
+	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD || \
+	(client) == IPA_CLIENT_Q6_V2X_BROADCAST_PROD || \
+	(client) == IPA_CLIENT_Q6_V2X_UNICAST_PROD)
+
 
 #define IPA_CLIENT_IS_Q6_ZIP_PROD(client) \
 	((client) == IPA_CLIENT_Q6_DECOMP_PROD || \
@@ -1028,7 +1046,14 @@ enum ipa_vlan_config_evt {
 #define IPA_VLAN_CONFIG_READY_MAX IPA_VLAN_CONFIG_READY_MAX
 };
 
-#define IPA_EVENT_MAX_NUM (IPA_VLAN_CONFIG_READY_MAX)
+enum ipa_ipsec_ul_flt_evt {
+	IPA_IPSEC_UL_FLT_ADD_EVENT = IPA_VLAN_CONFIG_READY_MAX,
+	IPA_IPSEC_UL_FLT_DEL_EVENT,
+	IPA_IPSEC_UL_FLT_EVENT_MAX
+#define IPA_IPSEC_UL_FLT_EVENT_MAX IPA_IPSEC_UL_FLT_EVENT_MAX
+};
+
+#define IPA_EVENT_MAX_NUM (IPA_IPSEC_UL_FLT_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -1440,6 +1465,7 @@ struct ipa_flt_rule {
  * interrupt moderation
  * @ttl_update: bool to indicate whether TTL update is needed or not.
  * @qos_class: QOS classification value.
+ * @esp_after_udp: bool for ESP after UDP (NAT-T) rules.
  */
 struct ipa_flt_rule_v2 {
 	uint8_t retain_hdr;
@@ -1460,6 +1486,7 @@ struct ipa_flt_rule_v2 {
 	uint8_t close_aggr_irq_mod;
 	uint8_t ttl_update;
 	uint8_t qos_class;
+	uint8_t esp_after_udp;
 };
 
 /**
@@ -1507,6 +1534,12 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_EoGRE_HEADER_ADD:       Add IPV[46] GRE header
  * IPA_HDR_PROC_EoGRE_HEADER_REMOVE:    Remove IPV[46] GRE header
  * IPA_HDR_PROC_WWAN_TO_ETHII_EX:		To update PCP value for E2E traffic.
+ * IPA_HDR_PROC_NXT_RND:                Next Round FLT table
+ * IPA_HDR_PROC_XLAT_NXT_RND:           Next Round FLT table with XLAT
+ * IPA_HDR_PROC_IPSEC_ENCAP:            IPsec encap activation
+ * IPA_HDR_PROC_IPSEC_DECAP:            IPsec decap activation
+ * IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND:    IPsec encap activation + next round
+ * IPA_HDR_PROC_IPSEC_DECAP_NXT_RND:    IPsec decap activation + next round
  */
 enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_NONE,
@@ -1523,8 +1556,14 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_EoGRE_HEADER_ADD,
 	IPA_HDR_PROC_EoGRE_HEADER_REMOVE,
 	IPA_HDR_PROC_WWAN_TO_ETHII_EX,
+	IPA_HDR_PROC_NXT_RND,
+	IPA_HDR_PROC_XLAT_NXT_RND,
+	IPA_HDR_PROC_IPSEC_ENCAP,
+	IPA_HDR_PROC_IPSEC_DECAP,
+	IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND,
+	IPA_HDR_PROC_IPSEC_DECAP_NXT_RND,
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_WWAN_TO_ETHII_EX + 1)
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_IPSEC_DECAP_NXT_RND + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule
@@ -1582,6 +1621,7 @@ struct ipa_rt_rule {
  * @ttl_update: bool to indicate whether TTL update is needed or not.
  * @qos_class: QOS classification value.
  * @skip_ingress: bool to skip ingress policing.
+ * @esp_after_udp: bool for ESP after UDP (NAT-T) rules.
  */
 struct ipa_rt_rule_v2 {
 	enum ipa_client_type dst;
@@ -1598,6 +1638,7 @@ struct ipa_rt_rule_v2 {
 	uint8_t ttl_update;
 	uint8_t qos_class;
 	uint8_t skip_ingress;
+	uint8_t esp_after_udp;
 };
 
 /**
@@ -1802,6 +1843,63 @@ struct ipa_wwan_to_eth_II_ex_procparams {
 #define L2TP_USER_SPACE_SPECIFY_DST_PIPE
 
 /**
+ * struct ipa_ipsec_preencap_procparams -
+ * @retain_l2_header: Specifies if L2 header is retained or not
+ * @input_ip_version: Specifies if Input header is IPV4(0) or IPV6(1)
+ * @output_ip_version: Specifies if template header's outer IP is IPV4(0) or IPV6(1)
+ * @reserved: for future use
+ */
+struct ipa_ipsec_preencap_procparams {
+	uint32_t retain_l2_header    :1;
+	uint32_t input_ip_version    :1;
+	uint32_t output_ip_version   :1;
+	uint32_t reserved            :29;
+};
+
+/**
+ * struct ipa_ipsec_predecap_procparams -
+ * @retain_l2_header: Specifies if L2 header is retained or not
+ * @input_ip_version: Specifies if Input header is IPV4(0) or IPV6(1)
+ * @is_dummy: Indicates HPC for special packets
+ * @reserved: for future use
+ */
+struct ipa_ipsec_predecap_procparams {
+	uint32_t retain_l2_header    :1;
+	uint32_t input_ip_version    :1;
+	uint32_t is_dummy            :1;
+	uint32_t reserved            :29;
+};
+
+/**
+ * struct ipa_ipsec_pre_procparams -
+ * @encap: Pre-encap procparams
+ * @decap: Pre-decap procparams
+ */
+union ipa_ipsec_pre_procparams {
+	struct ipa_ipsec_preencap_procparams encap;
+	struct ipa_ipsec_predecap_procparams decap;
+};
+
+
+/**
+ * struct ipa_ipsec_procparams -
+ * @sa_idx: SA index
+ * @action: IPsec Action: 0 - disable, 1 - encap, 2 - decap
+ * @reserved: for future use
+ * @flt_tbl_id: Client ID (enum ipa_client_type)
+ *	or EP independent FLT table ID (IPA_CLIENT_MAX + n)
+ * @pre_params: pre-encap/pre-decap parameters
+ */
+struct ipa_ipsec_params {
+	uint8_t sa_idx;
+	uint8_t action;
+	uint16_t reserved;
+	uint32_t flt_tbl_id;
+	union ipa_ipsec_pre_procparams pre_params;
+};
+
+
+/**
  * struct ipa_hdr_proc_ctx_add - processing context descriptor includes
  * in and out parameters
  * @type: processing context type
@@ -1810,6 +1908,7 @@ struct ipa_wwan_to_eth_II_ex_procparams {
  * @eogre_params: eogre parameters
  * @generic_params: generic proc_ctx params
  * @generic_params_v2: generic proc_ctx params for bridging
+ * @ipsec_params: IPsec params
  * @proc_ctx_hdl: out parameter, handle to proc_ctx, valid when status is 0
  * @status:	out parameter, status of header add operation,
  *		0 for success,
@@ -1824,6 +1923,7 @@ struct ipa_hdr_proc_ctx_add {
 	struct ipa_eogre_hdr_proc_ctx_params eogre_params;
 	struct ipa_eth_II_to_eth_II_ex_procparams generic_params;
 	struct ipa_wwan_to_eth_II_ex_procparams generic_params_v2;
+	struct ipa_ipsec_params ipsec_params;
 };
 
 #define IPA_L2TP_HDR_PROC_SUPPORT
@@ -3617,6 +3717,16 @@ struct vlan_priority_info {
 struct ipa_ioc_vlan_priority {
 	uint8_t num_of_vlans;
 	struct vlan_priority_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
+};
+
+/**
+ * struct ipa_ioc_ipsec_ul_flt_attr - IPsec UL flt spec
+ * @ip: IP family of filtering rule
+ * @attr: filtering rule attrib
+ */
+struct ipa_ioc_ipsec_ul_flt_attr {
+	enum ipa_ip_type ip;
+	struct ipa_rule_attrib attr;
 };
 
 /**

@@ -104,6 +104,8 @@ static struct ep_pcie_clk_info_t
 	{NULL, "pcie_ddrss_sf_tbu_clk", 0, false},
 	{NULL, "pcie_aggre_noc_0_axi_clk", 0, false},
 	{NULL, "gcc_cnoc_pcie_sf_axi_clk", 0, false},
+	{NULL, "pcie_pipediv2_clk", 0, false},
+	{NULL, "pcie_phy_refgen_clk", 0, false},
 	{NULL, "pcie_phy_aux_clk", 0, false},
 };
 
@@ -2150,10 +2152,6 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
 		}
 
-		if (dev->pcie_cesta_clkreq_offset)
-			ep_pcie_write_reg_field(dev->parf,
-						dev->pcie_cesta_clkreq_offset, BIT(0), 0);
-
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
 			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
@@ -2904,7 +2902,7 @@ static irqreturn_t ep_pcie_handle_perst_irq(int irq, void *data)
 			"PCIe V%d: No. %ld PERST assertion\n",
 			dev->rev, dev->perst_ast_counter);
 
-		if (dev->client_ready) {
+		if (dev->event_reg->events & EP_PCIE_EVENT_PM_D3_COLD) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_COLD);
 		} else {
 			dev->no_notify = true;
@@ -2929,11 +2927,16 @@ static irqreturn_t ep_pcie_handle_perst_deassert(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
 
-	if (!dev->enumerated) {
+	if (!dev->enumerated || dev->dma_wake) {
 		EP_PCIE_DBG(dev,
 		"PCIe V%d: Start enumeration due to PERST deassertion\n",
 		dev->rev);
 		ep_pcie_enumeration(dev);
+		if (dev->dma_wake) {
+			EP_PCIE_DBG(dev,
+				"PCIe V%d: Handle perst deassert for dma wake\n", dev->rev);
+			dev->dma_wake = false;
+		}
 	} else {
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_RST_DEAST);
 	}
@@ -3546,7 +3549,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		n = vf_id - 1;
 	}
 
-
 	if (ep_pcie_dev.link_status == EP_PCIE_LINK_DISABLED) {
 		EP_PCIE_ERR(&ep_pcie_dev,
 			"PCIe V%d: PCIe link is currently disabled\n",
@@ -3566,25 +3568,17 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 	EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
 			ep_pcie_dev.rev, cap);
 
-	if (!(cap & BIT(16))) {
-		EP_PCIE_ERR(&ep_pcie_dev,
-			"PCIe V%d: MSI is not enabled yet\n",
-			ep_pcie_dev.rev);
-		return EP_PCIE_ERROR;
-	}
+	if (cap & BIT(16)) {
+		cfg->msi_type = MSI;
 
-	cfg->msi_type = MSI;
+		lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
+		upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
+		data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
 
-	lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
-	upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
-	data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
-	ctrl_reg = readl_relaxed(dbi + PCIE20_MSI_CAP_ID_NEXT_CTRL(n));
+		EP_PCIE_DBG(&ep_pcie_dev,
+				"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
+				ep_pcie_dev.rev, lower, upper, data, vf_id);
 
-	EP_PCIE_DBG(&ep_pcie_dev,
-		"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
-		ep_pcie_dev.rev, lower, upper, data, vf_id);
-
-	if (ctrl_reg & BIT(16)) {
 		if (ep_pcie_dev.use_iatu_msi) {
 			if (ep_pcie_dev.active_config)
 				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
@@ -3655,10 +3649,10 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		return 0;
 	}
 
-	EP_PCIE_ERR(&ep_pcie_dev,
-		"PCIe V%d: Wrong MSI info found when MSI is enabled: lower:0x%x; data:0x%x\n",
-		ep_pcie_dev.rev, lower, data);
-	return EP_PCIE_ERROR;
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: MSI is not enabled yet or not supported\n",
+		ep_pcie_dev.rev);
+	return -EOPNOTSUPP;
 }
 
 int ep_pcie_core_trigger_msix(u32 idx, u32 vf_id)
@@ -3777,10 +3771,9 @@ int ep_pcie_core_trigger_msi(u32 idx, u32 vf_id)
 		return 0;
 	}
 
-	EP_PCIE_ERR(&ep_pcie_dev,
-		"PCIe V%d: MSI is not enabled yet. MSI addr:0x%x; data:0x%x; index from client:%d\n",
-		ep_pcie_dev.rev, addr, data, idx);
-	return EP_PCIE_ERROR;
+	EP_PCIE_DBG(&ep_pcie_dev, "MSI is disabled or not supported\n",
+				ep_pcie_dev.rev);
+	return -EOPNOTSUPP;
 }
 
 static void ep_pcie_core_issue_inband_pme(void)
@@ -3805,21 +3798,29 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 {
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 
+	if (atomic_read(&dev->host_wake_pending))
+		return 0;
+
 	if (!atomic_read(&dev->perst_deast)) {
+		if (event == EP_PCIE_EVENT_INVALID) {
+			EP_PCIE_DBG(dev, "PCIe V%d: Wake from DMA Call Back\n", dev->rev);
+			dev->dma_wake = true;
+		}
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 	} else if (dev->l23_ready) {
-		EP_PCIE_ERR(dev,
+		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);
 		/*D3 hot handling*/
 		ep_pcie_core_issue_inband_pme();
 	} else {
 		/*D0 handling*/
-		EP_PCIE_ERR(dev,
+		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D0\n",
 			dev->rev);
 	}
+
 
 	atomic_set(&dev->host_wake_pending, 1);
 	EP_PCIE_DBG(dev,
@@ -4159,8 +4160,9 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 
 static int ep_pcie_probe(struct platform_device *pdev)
 {
-	int ret;
+	int ret, num_ipc_pages_dev_fac;
 	u32 sriov_mask = 0;
+	char logname[MAX_NAME_LEN];
 
 	ret = is_pcie_boot_config(pdev);
 	if (ret) {
@@ -4169,6 +4171,51 @@ static int ep_pcie_probe(struct platform_device *pdev)
 			ep_pcie_dev.rev);
 		goto res_failure;
 	}
+
+	ret = of_property_read_u32((&pdev->dev)->of_node,
+				"qcom,ep-pcie-num-ipc-pages-dev-fac",
+				&num_ipc_pages_dev_fac);
+	if (ret) {
+		pr_err("qcom,ep-pcie-num-ipc-pages-dev-fac does not exist\n");
+		num_ipc_pages_dev_fac = 1;
+	}
+	if (num_ipc_pages_dev_fac < 1 || num_ipc_pages_dev_fac > 5) {
+		pr_err("Invalid value received for num_ipc_pages_dev_fac\n");
+		num_ipc_pages_dev_fac = 1;
+	}
+
+	snprintf(logname, MAX_NAME_LEN, "ep-pcie-long");
+	ep_pcie_dev.ipc_log_sel =
+		ipc_log_context_create(EP_PCIE_LOG_PAGES/num_ipc_pages_dev_fac, logname, 0);
+	if (ep_pcie_dev.ipc_log_sel == NULL)
+		pr_err("%s: unable to create IPC selected log for %s\n",
+			__func__, logname);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: IPC selected logging is enable for %s\n",
+			ep_pcie_dev.rev, logname);
+
+	snprintf(logname, MAX_NAME_LEN, "ep-pcie-short");
+	ep_pcie_dev.ipc_log_ful =
+		ipc_log_context_create((EP_PCIE_LOG_PAGES * 2)/num_ipc_pages_dev_fac, logname, 0);
+	if (ep_pcie_dev.ipc_log_ful == NULL)
+		pr_err("%s: unable to create IPC detailed log for %s\n",
+			__func__, logname);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: IPC detailed logging is enable for %s\n",
+			ep_pcie_dev.rev, logname);
+
+	snprintf(logname, MAX_NAME_LEN, "ep-pcie-dump");
+	ep_pcie_dev.ipc_log_dump =
+		ipc_log_context_create(EP_PCIE_LOG_PAGES, logname, 0);
+	if (ep_pcie_dev.ipc_log_dump == NULL)
+		pr_err("%s: unable to create IPC dump log for %s\n",
+			__func__, logname);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: IPC dump logging is enable for %s\n",
+			ep_pcie_dev.rev, logname);
 
 	ep_pcie_dev.link_speed = 1;
 	ret = of_property_read_u32((&pdev->dev)->of_node,
@@ -4543,41 +4590,6 @@ static struct platform_driver ep_pcie_driver = {
 static int __init ep_pcie_init(void)
 {
 	int ret;
-	char logname[MAX_NAME_LEN];
-
-
-	snprintf(logname, MAX_NAME_LEN, "ep-pcie-long");
-	ep_pcie_dev.ipc_log_sel =
-		ipc_log_context_create(EP_PCIE_LOG_PAGES, logname, 0);
-	if (ep_pcie_dev.ipc_log_sel == NULL)
-		pr_err("%s: unable to create IPC selected log for %s\n",
-			__func__, logname);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: IPC selected logging is enable for %s\n",
-			ep_pcie_dev.rev, logname);
-
-	snprintf(logname, MAX_NAME_LEN, "ep-pcie-short");
-	ep_pcie_dev.ipc_log_ful =
-		ipc_log_context_create(EP_PCIE_LOG_PAGES * 2, logname, 0);
-	if (ep_pcie_dev.ipc_log_ful == NULL)
-		pr_err("%s: unable to create IPC detailed log for %s\n",
-			__func__, logname);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: IPC detailed logging is enable for %s\n",
-			ep_pcie_dev.rev, logname);
-
-	snprintf(logname, MAX_NAME_LEN, "ep-pcie-dump");
-	ep_pcie_dev.ipc_log_dump =
-		ipc_log_context_create(EP_PCIE_LOG_PAGES, logname, 0);
-	if (ep_pcie_dev.ipc_log_dump == NULL)
-		pr_err("%s: unable to create IPC dump log for %s\n",
-			__func__, logname);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: IPC dump logging is enable for %s\n",
-			ep_pcie_dev.rev, logname);
 
 	mutex_init(&ep_pcie_dev.setup_mtx);
 	mutex_init(&ep_pcie_dev.ext_mtx);

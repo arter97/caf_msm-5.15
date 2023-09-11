@@ -235,6 +235,11 @@ struct l3_l4_ipv6_filter {
 	struct l4_filter_info l4_filter;
 };
 
+enum ptp_l4_dst_port {
+	PTP_UDP_PORT1 = 319,
+	PTP_UDP_PORT2 = 320,
+};
+
 struct stmmac_priv {
 	/* Frequently used values are kept adjacent for cache effect */
 	u32 tx_coal_frames[MTL_MAX_TX_QUEUES];
@@ -375,6 +380,7 @@ struct stmmac_priv {
 	struct bpf_prog *xdp_prog;
 
 	bool phy_irq_enabled;
+	bool wol_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);

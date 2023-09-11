@@ -7,8 +7,8 @@
  * Copyright (c) 2020-2021 Robert Bosch GmbH. All rights reserved.
  * Copyright (c) 2020 Bosch Sensortec GmbH. All rights reserved.
  *
- * This file is free software licensed under the terms of version 2 
- * of the GNU General Public License, available from the file LICENSE-GPL 
+ * This file is free software licensed under the terms of version 2
+ * of the GNU General Public License, available from the file LICENSE-GPL
  * in the main directory of this source tree.
  *
  * BSD LICENSE
@@ -71,8 +71,8 @@
 /*********************************************************************/
 
 #if !defined(UINT8_C) && !defined(INT8_C)
-#define INT8_C(x)   S8_C(x)
-#define UINT8_C(x)  U8_C(x)
+#define INT8_C(x)  S8_C(x)
+#define UINT8_C(x) U8_C(x)
 #endif
 
 #if !defined(UINT16_C) && !defined(INT16_C)
@@ -93,18 +93,18 @@
 /**\name C standard macros */
 #ifndef NULL
 #ifdef __cplusplus
-#define NULL                 0
+#define NULL 0
 #else
-#define NULL                 ((void *) 0)
+#define NULL ((void *)0)
 #endif
 #endif
 
 #ifndef TRUE
-#define TRUE                 UINT8_C(1)
+#define TRUE UINT8_C(1)
 #endif
 
 #ifndef FALSE
-#define FALSE                UINT8_C(0)
+#define FALSE UINT8_C(0)
 #endif
 
 /*************************** SMI230 Accelerometer Macros *****************************/
@@ -113,544 +113,548 @@
 /* Accel registers */
 
 /**\name    Accel Chip Id register */
-#define SMI230_ACCEL_CHIP_ID_REG            UINT8_C(0x00)
+#define SMI230_ACCEL_CHIP_ID_REG UINT8_C(0x00)
 
 /**\name    Accel Error condition register */
-#define SMI230_ACCEL_ERR_REG                UINT8_C(0x02)
+#define SMI230_ACCEL_ERR_REG UINT8_C(0x02)
 
 /**\name    Accel Status flag register */
-#define SMI230_ACCEL_STATUS_REG             UINT8_C(0x03)
+#define SMI230_ACCEL_STATUS_REG UINT8_C(0x03)
 
 /**\name    Accel X LSB data register */
-#define SMI230_ACCEL_X_LSB_REG              UINT8_C(0x12)
+#define SMI230_ACCEL_X_LSB_REG UINT8_C(0x12)
 
 /**\name    Accel X MSB data register */
-#define SMI230_ACCEL_X_MSB_REG              UINT8_C(0x13)
+#define SMI230_ACCEL_X_MSB_REG UINT8_C(0x13)
 
 /**\name    Accel Y LSB data register */
-#define SMI230_ACCEL_Y_LSB_REG              UINT8_C(0x14)
+#define SMI230_ACCEL_Y_LSB_REG UINT8_C(0x14)
 
 /**\name    Accel Y MSB data register */
-#define SMI230_ACCEL_Y_MSB_REG              UINT8_C(0x15)
+#define SMI230_ACCEL_Y_MSB_REG UINT8_C(0x15)
 
 /**\name    Accel Z LSB data register */
-#define SMI230_ACCEL_Z_LSB_REG              UINT8_C(0x16)
+#define SMI230_ACCEL_Z_LSB_REG UINT8_C(0x16)
 
 /**\name    Accel Z MSB data register */
-#define SMI230_ACCEL_Z_MSB_REG              UINT8_C(0x17)
+#define SMI230_ACCEL_Z_MSB_REG UINT8_C(0x17)
 
 /**\name    Sensor time byte 0 register */
-#define SMI230_ACCEL_SENSORTIME_0_REG       UINT8_C(0x18)
+#define SMI230_ACCEL_SENSORTIME_0_REG UINT8_C(0x18)
 
 /**\name    Sensor time byte 1 register */
-#define SMI230_ACCEL_SENSORTIME_1_REG       UINT8_C(0x19)
+#define SMI230_ACCEL_SENSORTIME_1_REG UINT8_C(0x19)
 
 /**\name    Sensor time byte 2 register */
-#define SMI230_ACCEL_SENSORTIME_2_REG       UINT8_C(0x1A)
+#define SMI230_ACCEL_SENSORTIME_2_REG UINT8_C(0x1A)
 
 /**\name    Accel Interrupt status0 register */
-#define SMI230_ACCEL_INT_STAT_0_REG         UINT8_C(0x1C)
+#define SMI230_ACCEL_INT_STAT_0_REG UINT8_C(0x1C)
 
 /**\name    Accel Interrupt status1 register */
-#define SMI230_ACCEL_INT_STAT_1_REG         UINT8_C(0x1D)
+#define SMI230_ACCEL_INT_STAT_1_REG UINT8_C(0x1D)
 
 /**\name    Accel general purpose register 0*/
-#define SMI230_ACCEL_GP_0_REG               UINT8_C(0x1E)
+#define SMI230_ACCEL_GP_0_REG UINT8_C(0x1E)
 
 /**\name    Sensor temperature MSB data register */
-#define SMI230_TEMP_MSB_REG                 UINT8_C(0x22)
+#define SMI230_TEMP_MSB_REG UINT8_C(0x22)
 
 /**\name    Sensor temperature LSB data register */
-#define SMI230_TEMP_LSB_REG                 UINT8_C(0x23)
+#define SMI230_TEMP_LSB_REG UINT8_C(0x23)
 
 /**\name    Accel general purpose register 4*/
-#define SMI230_ACCEL_GP_4_REG               UINT8_C(0x27)
+#define SMI230_ACCEL_GP_4_REG UINT8_C(0x27)
 
 /**\name    Orientation result register*/
-#define SMI230_REG_ORIENT_HIGHG_OUT        UINT8_C(0x29)
+#define SMI230_REG_ORIENT_HIGHG_OUT UINT8_C(0x29)
 
 /**\name    Accel Internal status register */
-#define SMI230_ACCEL_INTERNAL_STAT_REG      UINT8_C(0x2A)
+#define SMI230_ACCEL_INTERNAL_STAT_REG UINT8_C(0x2A)
 
 /**\name    Accel configuration register */
-#define SMI230_ACCEL_CONF_REG               UINT8_C(0x40)
+#define SMI230_ACCEL_CONF_REG UINT8_C(0x40)
 
 /**\name    Accel range setting register */
-#define SMI230_ACCEL_RANGE_REG              UINT8_C(0x41)
+#define SMI230_ACCEL_RANGE_REG UINT8_C(0x41)
 
 /**\name    Accel Interrupt pin 1 configuration register */
-#define SMI230_ACCEL_INT1_IO_CONF_REG       UINT8_C(0x53)
+#define SMI230_ACCEL_INT1_IO_CONF_REG UINT8_C(0x53)
 
 /**\name    Accel Interrupt pin 2 configuration register */
-#define SMI230_ACCEL_INT2_IO_CONF_REG       UINT8_C(0x54)
+#define SMI230_ACCEL_INT2_IO_CONF_REG UINT8_C(0x54)
 
 /**\name    Accel Interrupt latch configuration register */
-#define SMI230_ACCEL_INT_LATCH_CONF_REG     UINT8_C(0x55)
+#define SMI230_ACCEL_INT_LATCH_CONF_REG UINT8_C(0x55)
 
 /**\name    Accel Interrupt pin1 mapping register */
-#define SMI230_ACCEL_INT1_MAP_REG           UINT8_C(0x56)
+#define SMI230_ACCEL_INT1_MAP_REG UINT8_C(0x56)
 
 /**\name    Accel Interrupt pin2 mapping register */
-#define SMI230_ACCEL_INT2_MAP_REG           UINT8_C(0x57)
+#define SMI230_ACCEL_INT2_MAP_REG UINT8_C(0x57)
 
 /**\name    Accel Interrupt map register */
 #define SMI230_ACCEL_INT1_INT2_MAP_DATA_REG UINT8_C(0x58)
 
 /**\name    Accel Init control register */
-#define SMI230_ACCEL_INIT_CTRL_REG          UINT8_C(0x59)
+#define SMI230_ACCEL_INIT_CTRL_REG UINT8_C(0x59)
 
 /**\name    Accel Self test register */
-#define SMI230_ACCEL_SELF_TEST_REG          UINT8_C(0x6D)
+#define SMI230_ACCEL_SELF_TEST_REG UINT8_C(0x6D)
 
 /**\name    Accel Power mode configuration register */
-#define SMI230_ACCEL_PWR_CONF_REG           UINT8_C(0x7C)
+#define SMI230_ACCEL_PWR_CONF_REG UINT8_C(0x7C)
 
 /**\name    Accel Power control (switch on or off ) register */
-#define SMI230_ACCEL_PWR_CTRL_REG           UINT8_C(0x7D)
+#define SMI230_ACCEL_PWR_CTRL_REG UINT8_C(0x7D)
 
 /**\name    Accel Soft reset register */
-#define SMI230_ACCEL_SOFTRESET_REG          UINT8_C(0x7E)
+#define SMI230_ACCEL_SOFTRESET_REG UINT8_C(0x7E)
 
 /**\name    Accel unique chip identifier */
-#define SMI230_ACCEL_CHIP_ID                UINT8_C(0x1F)
+#define SMI230_ACCEL_CHIP_ID UINT8_C(0x1F)
 
 /**\name    Accel I2C slave address */
-#define SMI230_ACCEL_I2C_ADDR_PRIMARY       UINT8_C(0x18)
-#define SMI230_ACCEL_I2C_ADDR_SECONDARY     UINT8_C(0x19)
+#define SMI230_ACCEL_I2C_ADDR_PRIMARY	UINT8_C(0x18)
+#define SMI230_ACCEL_I2C_ADDR_SECONDARY UINT8_C(0x19)
 
 /**\name    Feature Config related Registers */
-#define SMI230_ACCEL_RESERVED_5B_REG        UINT8_C(0x5B)
-#define SMI230_ACCEL_RESERVED_5C_REG        UINT8_C(0x5C)
-#define SMI230_ACCEL_FEATURE_CFG_REG        UINT8_C(0x5E)
+#define SMI230_ACCEL_RESERVED_5B_REG UINT8_C(0x5B)
+#define SMI230_ACCEL_RESERVED_5C_REG UINT8_C(0x5C)
+#define SMI230_ACCEL_FEATURE_CFG_REG UINT8_C(0x5E)
 
 /**\name    Interrupt masks */
-#define SMI230_ACCEL_DATA_READY_INT         UINT8_C(0x80)
+#define SMI230_ACCEL_DATA_READY_INT UINT8_C(0x80)
 
 /**\name    Accel Bandwidth */
-#define SMI230_ACCEL_BW_OSR4                UINT8_C(0x00)
-#define SMI230_ACCEL_BW_OSR2                UINT8_C(0x01)
-#define SMI230_ACCEL_BW_NORMAL              UINT8_C(0x02)
+#define SMI230_ACCEL_BW_OSR4   UINT8_C(0x00)
+#define SMI230_ACCEL_BW_OSR2   UINT8_C(0x01)
+#define SMI230_ACCEL_BW_NORMAL UINT8_C(0x02)
 
 /**\name    smi230 Accel Range */
-#define SMI230_ACCEL_RANGE_2G               UINT8_C(0x00)
-#define SMI230_ACCEL_RANGE_4G               UINT8_C(0x01)
-#define SMI230_ACCEL_RANGE_8G               UINT8_C(0x02)
-#define SMI230_ACCEL_RANGE_16G              UINT8_C(0x03)
+#define SMI230_ACCEL_RANGE_2G  UINT8_C(0x00)
+#define SMI230_ACCEL_RANGE_4G  UINT8_C(0x01)
+#define SMI230_ACCEL_RANGE_8G  UINT8_C(0x02)
+#define SMI230_ACCEL_RANGE_16G UINT8_C(0x03)
 
 /**\name    Accel Output data rate */
-#define SMI230_ACCEL_ODR_12_5_HZ            UINT8_C(0x05)
-#define SMI230_ACCEL_ODR_25_HZ              UINT8_C(0x06)
-#define SMI230_ACCEL_ODR_50_HZ              UINT8_C(0x07)
-#define SMI230_ACCEL_ODR_100_HZ             UINT8_C(0x08)
-#define SMI230_ACCEL_ODR_200_HZ             UINT8_C(0x09)
-#define SMI230_ACCEL_ODR_400_HZ             UINT8_C(0x0A)
-#define SMI230_ACCEL_ODR_800_HZ             UINT8_C(0x0B)
-#define SMI230_ACCEL_ODR_1600_HZ            UINT8_C(0x0C)
+#define SMI230_ACCEL_ODR_12_5_HZ UINT8_C(0x05)
+#define SMI230_ACCEL_ODR_25_HZ	 UINT8_C(0x06)
+#define SMI230_ACCEL_ODR_50_HZ	 UINT8_C(0x07)
+#define SMI230_ACCEL_ODR_100_HZ	 UINT8_C(0x08)
+#define SMI230_ACCEL_ODR_200_HZ	 UINT8_C(0x09)
+#define SMI230_ACCEL_ODR_400_HZ	 UINT8_C(0x0A)
+#define SMI230_ACCEL_ODR_800_HZ	 UINT8_C(0x0B)
+#define SMI230_ACCEL_ODR_1600_HZ UINT8_C(0x0C)
 
 /**\name    Accel Self test */
-#define SMI230_ACCEL_SWITCH_OFF_SELF_TEST   UINT8_C(0x00)
-#define SMI230_ACCEL_POSITIVE_SELF_TEST     UINT8_C(0x0D)
-#define SMI230_ACCEL_NEGATIVE_SELF_TEST     UINT8_C(0x09)
+#define SMI230_ACCEL_SWITCH_OFF_SELF_TEST UINT8_C(0x00)
+#define SMI230_ACCEL_POSITIVE_SELF_TEST	  UINT8_C(0x0D)
+#define SMI230_ACCEL_NEGATIVE_SELF_TEST	  UINT8_C(0x09)
 
 /**\name    Accel Power mode */
-#define SMI230_ACCEL_PM_ACTIVE              UINT8_C(0x00)
-#define SMI230_ACCEL_PM_SUSPEND             UINT8_C(0x03)
+#define SMI230_ACCEL_PM_ACTIVE	UINT8_C(0x00)
+#define SMI230_ACCEL_PM_SUSPEND UINT8_C(0x03)
 
 /**\name    Accel Power control settings */
-#define SMI230_ACCEL_POWER_DISABLE          UINT8_C(0x00)
-#define SMI230_ACCEL_POWER_ENABLE           UINT8_C(0x04)
+#define SMI230_ACCEL_POWER_DISABLE UINT8_C(0x00)
+#define SMI230_ACCEL_POWER_ENABLE  UINT8_C(0x04)
 
 /**\name    Accel internal interrupt pin mapping */
-#define SMI230_ACCEL_INTA_DISABLE           UINT8_C(0x00)
-#define SMI230_ACCEL_INTA_ENABLE            UINT8_C(0x01)
-#define SMI230_ACCEL_INTB_DISABLE           UINT8_C(0x00)
-#define SMI230_ACCEL_INTB_ENABLE            UINT8_C(0x02)
+#define SMI230_ACCEL_INTA_DISABLE UINT8_C(0x00)
+#define SMI230_ACCEL_INTA_ENABLE  UINT8_C(0x01)
+#define SMI230_ACCEL_INTB_DISABLE UINT8_C(0x00)
+#define SMI230_ACCEL_INTB_ENABLE  UINT8_C(0x02)
 
-#define SMI230_ACCEL_DATA_SYNC_INT_DISABLE          UINT8_C(0x00)
-#define SMI230_ACCEL_DATA_SYNC_INT_ENABLE           UINT8_C(0x01)
-#define SMI230_ACCEL_ANY_MOT_INT_DISABLE            UINT8_C(0x00)
-#define SMI230_ACCEL_ANY_MOT_INT_ENABLE             UINT8_C(0x02)
-#define SMI230_ACCEL_HIGH_G_INT_DISABLE             UINT8_C(0x00)
-#define SMI230_ACCEL_HIGH_G_INT_ENABLE              UINT8_C(0x04)
-#define SMI230_ACCEL_LOW_G_INT_DISABLE              UINT8_C(0x00)
-#define SMI230_ACCEL_LOW_G_INT_ENABLE               UINT8_C(0x08)
-#define SMI230_ACCEL_ORIENT_INT_DISABLE             UINT8_C(0x00)
-#define SMI230_ACCEL_ORIENT_INT_ENABLE              UINT8_C(0x10)
-#define SMI230_ACCEL_NO_MOT_INT_DISABLE             UINT8_C(0x00)
-#define SMI230_ACCEL_NO_MOT_INT_ENABLE              UINT8_C(0x20)
-#define SMI230_ACCEL_ERR_INT_DISABLE                UINT8_C(0x00)
-#define SMI230_ACCEL_ERR_INT_ENABLE                 UINT8_C(0x80)
+#define SMI230_ACCEL_DATA_SYNC_INT_DISABLE UINT8_C(0x00)
+#define SMI230_ACCEL_DATA_SYNC_INT_ENABLE  UINT8_C(0x01)
+#define SMI230_ACCEL_ANY_MOT_INT_DISABLE   UINT8_C(0x00)
+#define SMI230_ACCEL_ANY_MOT_INT_ENABLE	   UINT8_C(0x02)
+#define SMI230_ACCEL_HIGH_G_INT_DISABLE	   UINT8_C(0x00)
+#define SMI230_ACCEL_HIGH_G_INT_ENABLE	   UINT8_C(0x04)
+#define SMI230_ACCEL_LOW_G_INT_DISABLE	   UINT8_C(0x00)
+#define SMI230_ACCEL_LOW_G_INT_ENABLE	   UINT8_C(0x08)
+#define SMI230_ACCEL_ORIENT_INT_DISABLE	   UINT8_C(0x00)
+#define SMI230_ACCEL_ORIENT_INT_ENABLE	   UINT8_C(0x10)
+#define SMI230_ACCEL_NO_MOT_INT_DISABLE	   UINT8_C(0x00)
+#define SMI230_ACCEL_NO_MOT_INT_ENABLE	   UINT8_C(0x20)
+#define SMI230_ACCEL_ERR_INT_DISABLE	   UINT8_C(0x00)
+#define SMI230_ACCEL_ERR_INT_ENABLE	   UINT8_C(0x80)
 
 /**\name    Accel Soft reset delay */
-#define SMI230_ACCEL_SOFTRESET_DELAY_MS     UINT8_C(1)
+#define SMI230_ACCEL_SOFTRESET_DELAY_MS UINT8_C(1)
 
 /**\name    Mask definitions for ACCEL_ERR_REG register */
-#define SMI230_FATAL_ERR_MASK               UINT8_C(0x01)
-#define SMI230_ERR_CODE_MASK                UINT8_C(0x1C)
+#define SMI230_FATAL_ERR_MASK UINT8_C(0x01)
+#define SMI230_ERR_CODE_MASK  UINT8_C(0x1C)
 
 /**\name    Position definitions for ACCEL_ERR_REG register */
-#define SMI230_CMD_ERR_POS                  UINT8_C(1)
-#define SMI230_ERR_CODE_POS                 UINT8_C(2)
+#define SMI230_CMD_ERR_POS  UINT8_C(1)
+#define SMI230_ERR_CODE_POS UINT8_C(2)
 
 /**\name    Mask definition for ACCEL_STATUS_REG register */
-#define SMI230_ACCEL_STATUS_MASK            UINT8_C(0x80)
+#define SMI230_ACCEL_STATUS_MASK UINT8_C(0x80)
 
 /**\name    Position definitions for ACCEL_STATUS_REG  */
-#define SMI230_ACCEL_STATUS_POS             UINT8_C(7)
+#define SMI230_ACCEL_STATUS_POS UINT8_C(7)
 
 /**\name    Mask definitions for odr, bandwidth and range */
-#define SMI230_ACCEL_ODR_MASK               UINT8_C(0x0F)
-#define SMI230_ACCEL_BW_MASK                UINT8_C(0x70)
-#define SMI230_ACCEL_RANGE_MASK             UINT8_C(0x03)
+#define SMI230_ACCEL_ODR_MASK	UINT8_C(0x0F)
+#define SMI230_ACCEL_BW_MASK	UINT8_C(0x70)
+#define SMI230_ACCEL_RANGE_MASK UINT8_C(0x03)
 
 /**\name    Position definitions for odr, bandwidth and range */
-#define SMI230_ACCEL_BW_POS                 UINT8_C(4)
+#define SMI230_ACCEL_BW_POS UINT8_C(4)
 
 /**\name    Mask definitions for INT1_IO_CONF register */
-#define SMI230_ACCEL_INT_EDGE_MASK          UINT8_C(0x01)
-#define SMI230_ACCEL_INT_LVL_MASK           UINT8_C(0x02)
-#define SMI230_ACCEL_INT_OD_MASK            UINT8_C(0x04)
-#define SMI230_ACCEL_INT_IO_MASK            UINT8_C(0x08)
-#define SMI230_ACCEL_INT_IN_MASK            UINT8_C(0x10)
+#define SMI230_ACCEL_INT_EDGE_MASK UINT8_C(0x01)
+#define SMI230_ACCEL_INT_LVL_MASK  UINT8_C(0x02)
+#define SMI230_ACCEL_INT_OD_MASK   UINT8_C(0x04)
+#define SMI230_ACCEL_INT_IO_MASK   UINT8_C(0x08)
+#define SMI230_ACCEL_INT_IN_MASK   UINT8_C(0x10)
 
 /**\name    Position definitions for INT1_IO_CONF register */
-#define SMI230_ACCEL_INT_EDGE_POS           UINT8_C(0)
-#define SMI230_ACCEL_INT_LVL_POS            UINT8_C(1)
-#define SMI230_ACCEL_INT_OD_POS             UINT8_C(2)
-#define SMI230_ACCEL_INT_IO_POS             UINT8_C(3)
-#define SMI230_ACCEL_INT_IN_POS             UINT8_C(4)
+#define SMI230_ACCEL_INT_EDGE_POS UINT8_C(0)
+#define SMI230_ACCEL_INT_LVL_POS  UINT8_C(1)
+#define SMI230_ACCEL_INT_OD_POS	  UINT8_C(2)
+#define SMI230_ACCEL_INT_IO_POS	  UINT8_C(3)
+#define SMI230_ACCEL_INT_IN_POS	  UINT8_C(4)
 
 /**\name    Mask definitions for INT1/INT2 mapping register */
-#define SMI230_ACCEL_MAP_INTA_MASK          UINT8_C(0x01)
+#define SMI230_ACCEL_MAP_INTA_MASK UINT8_C(0x01)
 
 /**\name    Mask definitions for INT1/INT2 mapping register */
-#define SMI230_ACCEL_MAP_INTA_POS           UINT8_C(0x00)
+#define SMI230_ACCEL_MAP_INTA_POS UINT8_C(0x00)
 
 /**\name    Mask definitions for INT1_INT2_MAP_DATA register */
-#define SMI230_ACCEL_INT1_DRDY_MASK         UINT8_C(0x04)
-#define SMI230_ACCEL_INT2_DRDY_MASK         UINT8_C(0x40)
+#define SMI230_ACCEL_INT1_DRDY_MASK UINT8_C(0x04)
+#define SMI230_ACCEL_INT2_DRDY_MASK UINT8_C(0x40)
 
 /**\name    Position definitions for INT1_INT2_MAP_DATA register */
-#define SMI230_ACCEL_INT1_DRDY_POS          UINT8_C(2)
-#define SMI230_ACCEL_INT2_DRDY_POS          UINT8_C(6)
+#define SMI230_ACCEL_INT1_DRDY_POS UINT8_C(2)
+#define SMI230_ACCEL_INT2_DRDY_POS UINT8_C(6)
 
 /**\name    Asic Initialization value */
-#define SMI230_ASIC_INITIALIZED             UINT8_C(0x01)
+#define SMI230_ASIC_INITIALIZED UINT8_C(0x01)
 
 /*************************** SMI230 Gyroscope Macros *****************************/
 /** Register map */
 /* Gyro registers */
 
 /**\name    Gyro Chip Id register */
-#define SMI230_GYRO_CHIP_ID_REG                UINT8_C(0x00)
+#define SMI230_GYRO_CHIP_ID_REG UINT8_C(0x00)
 
 /**\name    Gyro X LSB data register */
-#define SMI230_GYRO_X_LSB_REG                  UINT8_C(0x02)
+#define SMI230_GYRO_X_LSB_REG UINT8_C(0x02)
 
 /**\name    Gyro X MSB data register */
-#define SMI230_GYRO_X_MSB_REG                  UINT8_C(0x03)
+#define SMI230_GYRO_X_MSB_REG UINT8_C(0x03)
 
 /**\name    Gyro Y LSB data register */
-#define SMI230_GYRO_Y_LSB_REG                  UINT8_C(0x04)
+#define SMI230_GYRO_Y_LSB_REG UINT8_C(0x04)
 
 /**\name    Gyro Y MSB data register */
-#define SMI230_GYRO_Y_MSB_REG                  UINT8_C(0x05)
+#define SMI230_GYRO_Y_MSB_REG UINT8_C(0x05)
 
 /**\name    Gyro Z LSB data register */
-#define SMI230_GYRO_Z_LSB_REG                  UINT8_C(0x06)
+#define SMI230_GYRO_Z_LSB_REG UINT8_C(0x06)
 
 /**\name    Gyro Z MSB data register */
-#define SMI230_GYRO_Z_MSB_REG                  UINT8_C(0x07)
+#define SMI230_GYRO_Z_MSB_REG UINT8_C(0x07)
 
 /**\name    Gyro Interrupt status register */
-#define SMI230_GYRO_INT_STAT_1_REG             UINT8_C(0x0A)
+#define SMI230_GYRO_INT_STAT_1_REG UINT8_C(0x0A)
 
 /**\name    Gyro Range register */
-#define SMI230_GYRO_RANGE_REG                  UINT8_C(0x0F)
+#define SMI230_GYRO_RANGE_REG UINT8_C(0x0F)
 
 /**\name    Gyro Bandwidth register */
-#define SMI230_GYRO_BANDWIDTH_REG              UINT8_C(0x10)
+#define SMI230_GYRO_BANDWIDTH_REG UINT8_C(0x10)
 
 /**\name    Gyro Power register */
-#define SMI230_GYRO_LPM1_REG                   UINT8_C(0x11)
+#define SMI230_GYRO_LPM1_REG UINT8_C(0x11)
 
 /**\name    Gyro Soft reset register */
-#define SMI230_GYRO_SOFTRESET_REG              UINT8_C(0x14)
+#define SMI230_GYRO_SOFTRESET_REG UINT8_C(0x14)
 
 /**\name    Gyro Interrupt control register */
-#define SMI230_GYRO_INT_CTRL_REG               UINT8_C(0x15)
+#define SMI230_GYRO_INT_CTRL_REG UINT8_C(0x15)
 
 /**\name    Gyro Interrupt Pin configuration register */
-#define SMI230_GYRO_INT3_INT4_IO_CONF_REG      UINT8_C(0x16)
+#define SMI230_GYRO_INT3_INT4_IO_CONF_REG UINT8_C(0x16)
 
 /**\name    Gyro Interrupt Map register */
-#define SMI230_GYRO_INT3_INT4_IO_MAP_REG       UINT8_C(0x18)
+#define SMI230_GYRO_INT3_INT4_IO_MAP_REG UINT8_C(0x18)
 
 /**\name    Gyro warter mark interrupt register */
-#define SMI230_GYRO_WM_INT_REG                 UINT8_C(0x1E)
+#define SMI230_GYRO_WM_INT_REG UINT8_C(0x1E)
 
 /**\name    Gyro FIFO interrupt register */
-#define SMI230_GYRO_FIFO_EXT_INT_S_REG		UINT8_C(0x34)
+#define SMI230_GYRO_FIFO_EXT_INT_S_REG UINT8_C(0x34)
 
 /**\name    Gyro Self test register */
-#define SMI230_GYRO_SELF_TEST_REG              UINT8_C(0x3C)
+#define SMI230_GYRO_SELF_TEST_REG UINT8_C(0x3C)
 
 /**\name    Gyro unique chip identifier */
-#define SMI230_GYRO_CHIP_ID                    UINT8_C(0x0F)
+#define SMI230_GYRO_CHIP_ID UINT8_C(0x0F)
 
 /**\name    Gyro I2C slave address */
-#define SMI230_GYRO_I2C_ADDR_PRIMARY           UINT8_C(0x68)
-#define SMI230_GYRO_I2C_ADDR_SECONDARY         UINT8_C(0x69)
+#define SMI230_GYRO_I2C_ADDR_PRIMARY   UINT8_C(0x68)
+#define SMI230_GYRO_I2C_ADDR_SECONDARY UINT8_C(0x69)
 
 /**\name    Gyro Range */
-#define SMI230_GYRO_RANGE_2000_DPS             UINT8_C(0x00)
-#define SMI230_GYRO_RANGE_1000_DPS             UINT8_C(0x01)
-#define SMI230_GYRO_RANGE_500_DPS              UINT8_C(0x02)
-#define SMI230_GYRO_RANGE_250_DPS              UINT8_C(0x03)
-#define SMI230_GYRO_RANGE_125_DPS              UINT8_C(0x04)
+#define SMI230_GYRO_RANGE_2000_DPS UINT8_C(0x00)
+#define SMI230_GYRO_RANGE_1000_DPS UINT8_C(0x01)
+#define SMI230_GYRO_RANGE_500_DPS  UINT8_C(0x02)
+#define SMI230_GYRO_RANGE_250_DPS  UINT8_C(0x03)
+#define SMI230_GYRO_RANGE_125_DPS  UINT8_C(0x04)
 
 /**\name    Gyro Output data rate and bandwidth */
-#define SMI230_GYRO_BW_523_ODR_2000_HZ         UINT8_C(0x00)
-#define SMI230_GYRO_BW_230_ODR_2000_HZ         UINT8_C(0x01)
-#define SMI230_GYRO_BW_116_ODR_1000_HZ         UINT8_C(0x02)
-#define SMI230_GYRO_BW_47_ODR_400_HZ           UINT8_C(0x03)
-#define SMI230_GYRO_BW_23_ODR_200_HZ           UINT8_C(0x04)
-#define SMI230_GYRO_BW_12_ODR_100_HZ           UINT8_C(0x05)
-#define SMI230_GYRO_BW_64_ODR_200_HZ           UINT8_C(0x06)
-#define SMI230_GYRO_BW_32_ODR_100_HZ           UINT8_C(0x07)
-#define SMI230_GYRO_ODR_RESET_VAL              UINT8_C(0x80)
+#define SMI230_GYRO_BW_523_ODR_2000_HZ UINT8_C(0x00)
+#define SMI230_GYRO_BW_230_ODR_2000_HZ UINT8_C(0x01)
+#define SMI230_GYRO_BW_116_ODR_1000_HZ UINT8_C(0x02)
+#define SMI230_GYRO_BW_47_ODR_400_HZ   UINT8_C(0x03)
+#define SMI230_GYRO_BW_23_ODR_200_HZ   UINT8_C(0x04)
+#define SMI230_GYRO_BW_12_ODR_100_HZ   UINT8_C(0x05)
+#define SMI230_GYRO_BW_64_ODR_200_HZ   UINT8_C(0x06)
+#define SMI230_GYRO_BW_32_ODR_100_HZ   UINT8_C(0x07)
+#define SMI230_GYRO_ODR_RESET_VAL      UINT8_C(0x80)
 
 /**\name    Gyro Power mode */
-#define SMI230_GYRO_PM_NORMAL                  UINT8_C(0x00)
-#define SMI230_GYRO_PM_DEEP_SUSPEND            UINT8_C(0x20)
-#define SMI230_GYRO_PM_SUSPEND                 UINT8_C(0x80)
+#define SMI230_GYRO_PM_NORMAL	    UINT8_C(0x00)
+#define SMI230_GYRO_PM_DEEP_SUSPEND UINT8_C(0x20)
+#define SMI230_GYRO_PM_SUSPEND	    UINT8_C(0x80)
 
 /**\name    Gyro data ready interrupt enable value */
-#define SMI230_GYRO_DRDY_INT_DISABLE_VAL       UINT8_C(0x00)
-#define SMI230_GYRO_DRDY_INT_ENABLE_VAL        UINT8_C(0x80)
+#define SMI230_GYRO_DRDY_INT_DISABLE_VAL UINT8_C(0x00)
+#define SMI230_GYRO_DRDY_INT_ENABLE_VAL	 UINT8_C(0x80)
 
-#define SMI230_GYRO_FIFO_INT_DISABLE_VAL       UINT8_C(0x00)
-#define SMI230_GYRO_FIFO_INT_ENABLE_VAL        UINT8_C(0x40)
+#define SMI230_GYRO_FIFO_INT_DISABLE_VAL UINT8_C(0x00)
+#define SMI230_GYRO_FIFO_INT_ENABLE_VAL	 UINT8_C(0x40)
 /**\name    Gyro data ready map values */
-#define SMI230_GYRO_MAP_DRDY_TO_INT3           UINT8_C(0x01)
-#define SMI230_GYRO_MAP_DRDY_TO_INT4           UINT8_C(0x80)
+#define SMI230_GYRO_MAP_DRDY_TO_INT3	       UINT8_C(0x01)
+#define SMI230_GYRO_MAP_DRDY_TO_INT4	       UINT8_C(0x80)
 #define SMI230_GYRO_MAP_DRDY_TO_BOTH_INT3_INT4 UINT8_C(0x81)
 #define SMI230_GYRO_MAP_FIFO_TO_BOTH_INT3_INT4 UINT8_C(0x24)
 
 /**\name    Gyro Soft reset delay */
-#define SMI230_GYRO_SOFTRESET_DELAY            UINT8_C(30)
+#define SMI230_GYRO_SOFTRESET_DELAY UINT8_C(30)
 
 /**\name    Gyro power mode config delay */
-#define SMI230_GYRO_POWER_MODE_CONFIG_DELAY    UINT8_C(30)
+#define SMI230_GYRO_POWER_MODE_CONFIG_DELAY UINT8_C(30)
 
 /** Mask definitions for range, bandwidth and power */
-#define SMI230_GYRO_RANGE_MASK                 UINT8_C(0x07)
-#define SMI230_GYRO_BW_MASK                    UINT8_C(0x0F)
-#define SMI230_GYRO_POWER_MASK                 UINT8_C(0xA0)
+#define SMI230_GYRO_RANGE_MASK UINT8_C(0x07)
+#define SMI230_GYRO_BW_MASK    UINT8_C(0x0F)
+#define SMI230_GYRO_POWER_MASK UINT8_C(0xA0)
 
 /** Position definitions for range, bandwidth and power */
-#define SMI230_GYRO_POWER_POS                  UINT8_C(5)
+#define SMI230_GYRO_POWER_POS UINT8_C(5)
 
 /**\name    Mask definitions for SMI230_GYRO_INT_CTRL_REG register */
-#define SMI230_GYRO_DATA_EN_MASK               UINT8_C(0x80)
+#define SMI230_GYRO_DATA_EN_MASK UINT8_C(0x80)
 
 /**\name    Position definitions for SMI230_GYRO_INT_CTRL_REG register */
-#define SMI230_GYRO_DATA_EN_POS                UINT8_C(7)
+#define SMI230_GYRO_DATA_EN_POS UINT8_C(7)
 
-#define SMI230_GYRO_FIFO_EN_MASK               UINT8_C(0x40)
-#define SMI230_GYRO_FIFO_EN_POS                UINT8_C(6)
+#define SMI230_GYRO_FIFO_EN_MASK UINT8_C(0x40)
+#define SMI230_GYRO_FIFO_EN_POS	 UINT8_C(6)
 
 /**\name    Mask definitions for SMI230_GYRO_INT3_INT4_IO_CONF_REG register */
-#define SMI230_GYRO_INT3_LVL_MASK              UINT8_C(0x01)
-#define SMI230_GYRO_INT3_OD_MASK               UINT8_C(0x02)
-#define SMI230_GYRO_INT4_LVL_MASK              UINT8_C(0x04)
-#define SMI230_GYRO_INT4_OD_MASK               UINT8_C(0x08)
+#define SMI230_GYRO_INT3_LVL_MASK UINT8_C(0x01)
+#define SMI230_GYRO_INT3_OD_MASK  UINT8_C(0x02)
+#define SMI230_GYRO_INT4_LVL_MASK UINT8_C(0x04)
+#define SMI230_GYRO_INT4_OD_MASK  UINT8_C(0x08)
 
 /**\name    Position definitions for SMI230_GYRO_INT3_INT4_IO_CONF_REG register */
-#define SMI230_GYRO_INT3_OD_POS                UINT8_C(1)
-#define SMI230_GYRO_INT4_LVL_POS               UINT8_C(2)
-#define SMI230_GYRO_INT4_OD_POS                UINT8_C(3)
+#define SMI230_GYRO_INT3_OD_POS	 UINT8_C(1)
+#define SMI230_GYRO_INT4_LVL_POS UINT8_C(2)
+#define SMI230_GYRO_INT4_OD_POS	 UINT8_C(3)
 
 /**\name    Mask definitions for SMI230_GYRO_INT_EN_REG register */
-#define SMI230_GYRO_INT_EN_MASK                UINT8_C(0x80)
+#define SMI230_GYRO_INT_EN_MASK UINT8_C(0x80)
 
 /**\name    Position definitions for SMI230_GYRO_INT_EN_REG register */
-#define SMI230_GYRO_INT_EN_POS                 UINT8_C(7)
+#define SMI230_GYRO_INT_EN_POS UINT8_C(7)
 
 /**\name    Mask definitions for SMI230_GYRO_INT_MAP_REG register */
-#define SMI230_GYRO_INT3_MAP_MASK              UINT8_C(0x01)
-#define SMI230_GYRO_INT4_MAP_MASK              UINT8_C(0x80)
+#define SMI230_GYRO_INT3_MAP_MASK UINT8_C(0x01)
+#define SMI230_GYRO_INT4_MAP_MASK UINT8_C(0x80)
 
-#define SMI230_GYRO_FIFO_INT3_MAP_MASK              UINT8_C(0x04)
-#define SMI230_GYRO_FIFO_INT4_MAP_MASK              UINT8_C(0x20)
+#define SMI230_GYRO_FIFO_INT3_MAP_MASK UINT8_C(0x04)
+#define SMI230_GYRO_FIFO_INT4_MAP_MASK UINT8_C(0x20)
 
 /**\name    Position definitions for SMI230_GYRO_INT_MAP_REG register */
-#define SMI230_GYRO_INT3_MAP_POS               UINT8_C(0)
-#define SMI230_GYRO_INT4_MAP_POS               UINT8_C(7)
-#define SMI230_GYRO_FIFO_INT3_MAP_POS               UINT8_C(2)
-#define SMI230_GYRO_FIFO_INT4_MAP_POS               UINT8_C(5)
+#define SMI230_GYRO_INT3_MAP_POS      UINT8_C(0)
+#define SMI230_GYRO_INT4_MAP_POS      UINT8_C(7)
+#define SMI230_GYRO_FIFO_INT3_MAP_POS UINT8_C(2)
+#define SMI230_GYRO_FIFO_INT4_MAP_POS UINT8_C(5)
 
 /**\name    Mask definitions for GYRO_SELF_TEST register */
-#define SMI230_GYRO_SELF_TEST_EN_MASK          UINT8_C(0x01)
-#define SMI230_GYRO_SELF_TEST_RDY_MASK         UINT8_C(0x02)
-#define SMI230_GYRO_SELF_TEST_RESULT_MASK      UINT8_C(0x04)
-#define SMI230_GYRO_SELF_TEST_FUNCTION_MASK    UINT8_C(0x08)
+#define SMI230_GYRO_SELF_TEST_EN_MASK	    UINT8_C(0x01)
+#define SMI230_GYRO_SELF_TEST_RDY_MASK	    UINT8_C(0x02)
+#define SMI230_GYRO_SELF_TEST_RESULT_MASK   UINT8_C(0x04)
+#define SMI230_GYRO_SELF_TEST_FUNCTION_MASK UINT8_C(0x08)
 
 /**\name    Position definitions for GYRO_SELF_TEST register */
-#define SMI230_GYRO_SELF_TEST_RDY_POS          UINT8_C(1)
-#define SMI230_GYRO_SELF_TEST_RESULT_POS       UINT8_C(2)
-#define SMI230_GYRO_SELF_TEST_FUNCTION_POS     UINT8_C(3)
+#define SMI230_GYRO_SELF_TEST_RDY_POS	   UINT8_C(1)
+#define SMI230_GYRO_SELF_TEST_RESULT_POS   UINT8_C(2)
+#define SMI230_GYRO_SELF_TEST_FUNCTION_POS UINT8_C(3)
 
 /*************************** Common Macros for both Accel and Gyro *****************************/
 /**\name    SPI read/write mask to configure address */
-#define SMI230_SPI_RD_MASK                     UINT8_C(0x80)
-#define SMI230_SPI_WR_MASK                     UINT8_C(0x7F)
+#define SMI230_SPI_RD_MASK UINT8_C(0x80)
+#define SMI230_SPI_WR_MASK UINT8_C(0x7F)
 
 /**\name API success code */
-#define SMI230_OK                              INT8_C(0)
+#define SMI230_OK INT8_C(0)
 
 /**\name API error codes */
-#define SMI230_E_NULL_PTR                      INT8_C(-1)
-#define SMI230_E_COM_FAIL                      INT8_C(-2)
-#define SMI230_E_DEV_NOT_FOUND                 INT8_C(-3)
-#define SMI230_E_OUT_OF_RANGE                  INT8_C(-4)
-#define SMI230_E_INVALID_INPUT                 INT8_C(-5)
-#define SMI230_E_CONFIG_STREAM_ERROR           INT8_C(-6)
-#define SMI230_E_RD_WR_LENGTH_INVALID          INT8_C(-7)
-#define SMI230_E_INVALID_CONFIG                INT8_C(-8)
-#define SMI230_E_FEATURE_NOT_SUPPORTED         INT8_C(-9)
+#define SMI230_E_NULL_PTR	       INT8_C(-1)
+#define SMI230_E_COM_FAIL	       INT8_C(-2)
+#define SMI230_E_DEV_NOT_FOUND	       INT8_C(-3)
+#define SMI230_E_OUT_OF_RANGE	       INT8_C(-4)
+#define SMI230_E_INVALID_INPUT	       INT8_C(-5)
+#define SMI230_E_CONFIG_STREAM_ERROR   INT8_C(-6)
+#define SMI230_E_RD_WR_LENGTH_INVALID  INT8_C(-7)
+#define SMI230_E_INVALID_CONFIG	       INT8_C(-8)
+#define SMI230_E_FEATURE_NOT_SUPPORTED INT8_C(-9)
 
 /**\name API warning codes */
-#define SMI230_W_SELF_TEST_FAIL                INT8_C(1)
+#define SMI230_W_SELF_TEST_FAIL INT8_C(1)
 
 /***\name    Soft reset Value */
-#define SMI230_SOFT_RESET_CMD                  UINT8_C(0xB6)
-#define SMI230_FIFO_RESET_CMD                  UINT8_C(0xB0)
+#define SMI230_SOFT_RESET_CMD UINT8_C(0xB6)
+#define SMI230_FIFO_RESET_CMD UINT8_C(0xB0)
 
 /**\name    Enable/disable macros */
-#define SMI230_DISABLE                         UINT8_C(0)
-#define SMI230_ENABLE                          UINT8_C(1)
+#define SMI230_DISABLE UINT8_C(0)
+#define SMI230_ENABLE  UINT8_C(1)
 
 /*! @name To define warnings for FIFO activity */
-#define SMI230_W_FIFO_EMPTY                    INT8_C(1)
-#define SMI230_W_PARTIAL_READ                  INT8_C(2)
+#define SMI230_W_FIFO_EMPTY   INT8_C(1)
+#define SMI230_W_PARTIAL_READ INT8_C(2)
 
 /**\name    Constant values macros */
-#define SMI230_SENSOR_DATA_SYNC_TIME_MS        UINT8_C(1)
-#define SMI230_DELAY_BETWEEN_WRITES_MS         UINT8_C(1)
-#define SMI230_SELF_TEST_DELAY_MS              UINT8_C(3)
-#define SMI230_POWER_CONFIG_DELAY              UINT8_C(5)
-#define SMI230_SENSOR_SETTLE_TIME_MS           UINT8_C(30)
-#define SMI230_SELF_TEST_DATA_READ_MS          UINT8_C(50)
-#define SMI230_ASIC_INIT_TIME_MS               UINT8_C(150)
+#define SMI230_SENSOR_DATA_SYNC_TIME_MS UINT8_C(1)
+#define SMI230_DELAY_BETWEEN_WRITES_MS	UINT8_C(1)
+#define SMI230_SELF_TEST_DELAY_MS	UINT8_C(3)
+#define SMI230_POWER_CONFIG_DELAY	UINT8_C(5)
+#define SMI230_SENSOR_SETTLE_TIME_MS	UINT8_C(30)
+#define SMI230_SELF_TEST_DATA_READ_MS	UINT8_C(50)
+#define SMI230_ASIC_INIT_TIME_MS	UINT8_C(150)
 
-#define SMI230_CONFIG_STREAM_SIZE              UINT16_C(6144)
+#define SMI230_CONFIG_STREAM_SIZE UINT16_C(6144)
 
 /**\name    Sensor time array parameter definitions */
-#define SMI230_SENSOR_TIME_MSB_BYTE            UINT8_C(2)
-#define SMI230_SENSOR_TIME_XLSB_BYTE           UINT8_C(1)
-#define SMI230_SENSOR_TIME_LSB_BYTE            UINT8_C(0)
+#define SMI230_SENSOR_TIME_MSB_BYTE  UINT8_C(2)
+#define SMI230_SENSOR_TIME_XLSB_BYTE UINT8_C(1)
+#define SMI230_SENSOR_TIME_LSB_BYTE  UINT8_C(0)
 
 /**\name   int pin active state */
-#define SMI230_INT_ACTIVE_LOW                  UINT8_C(0)
-#define SMI230_INT_ACTIVE_HIGH                 UINT8_C(1)
+#define SMI230_INT_ACTIVE_LOW  UINT8_C(0)
+#define SMI230_INT_ACTIVE_HIGH UINT8_C(1)
 
 /**\name   interrupt pin output definition  */
-#define SMI230_INT_MODE_PUSH_PULL              UINT8_C(0)
-#define SMI230_INT_MODE_OPEN_DRAIN             UINT8_C(1)
+#define SMI230_INT_MODE_PUSH_PULL  UINT8_C(0)
+#define SMI230_INT_MODE_OPEN_DRAIN UINT8_C(1)
 
 /**\name    Sensor bit resolution */
-#define SMI230_16_BIT_RESOLUTION               UINT8_C(16)
+#define SMI230_16_BIT_RESOLUTION UINT8_C(16)
 
 /*********************************SMI230 FIFO Macros**********************************/
 /** Register map */
 /*! @name FIFO Header Mask definitions */
-#define SMI230_FIFO_HEADER_ACC_FRM             UINT8_C(0x84)
-#define SMI230_FIFO_HEADER_ALL_FRM             UINT8_C(0x9C)
-#define SMI230_FIFO_HEADER_SENS_TIME_FRM       UINT8_C(0x44)
-#define SMI230_FIFO_HEADER_SKIP_FRM            UINT8_C(0x40)
-#define SMI230_FIFO_HEADER_INPUT_CFG_FRM       UINT8_C(0x48)
-#define SMI230_FIFO_HEAD_OVER_READ_MSB         UINT8_C(0x80)
-#define SMI230_FIFO_SAMPLE_DROP_FRM            UINT8_C(0x50)
+#define SMI230_FIFO_HEADER_ACC_FRM	 UINT8_C(0x84)
+#define SMI230_FIFO_HEADER_ALL_FRM	 UINT8_C(0x9C)
+#define SMI230_FIFO_HEADER_SENS_TIME_FRM UINT8_C(0x44)
+#define SMI230_FIFO_HEADER_SKIP_FRM	 UINT8_C(0x40)
+#define SMI230_FIFO_HEADER_INPUT_CFG_FRM UINT8_C(0x48)
+#define SMI230_FIFO_HEAD_OVER_READ_MSB	 UINT8_C(0x80)
+#define SMI230_FIFO_SAMPLE_DROP_FRM	 UINT8_C(0x50)
 
 /* Accel registers */
-#define SMI230_FIFO_LENGTH_0_ADDR              UINT8_C(0x24)
-#define SMI230_FIFO_LENGTH_1_ADDR              UINT8_C(0x25)
-#define SMI230_FIFO_DATA_ADDR                  UINT8_C(0x26)
-#define SMI230_FIFO_DOWNS_ADDR                 UINT8_C(0x45)
-#define SMI230_FIFO_WTM_0_ADDR                 UINT8_C(0x46)
-#define SMI230_FIFO_WTM_1_ADDR                 UINT8_C(0x47)
-#define SMI230_FIFO_CONFIG_0_ADDR              UINT8_C(0x48)
-#define SMI230_FIFO_CONFIG_1_ADDR              UINT8_C(0x49)
+#define SMI230_FIFO_LENGTH_0_ADDR UINT8_C(0x24)
+#define SMI230_FIFO_LENGTH_1_ADDR UINT8_C(0x25)
+#define SMI230_FIFO_DATA_ADDR	  UINT8_C(0x26)
+#define SMI230_FIFO_DOWNS_ADDR	  UINT8_C(0x45)
+#define SMI230_FIFO_WTM_0_ADDR	  UINT8_C(0x46)
+#define SMI230_FIFO_WTM_1_ADDR	  UINT8_C(0x47)
+#define SMI230_FIFO_CONFIG_0_ADDR UINT8_C(0x48)
+#define SMI230_FIFO_CONFIG_1_ADDR UINT8_C(0x49)
 
-#define SMI230_GYRO_FIFO_STATUS_ADDR              UINT8_C(0x0E)
-#define SMI230_GYRO_FIFO_CONFIG_0_ADDR              UINT8_C(0x3D)
-#define SMI230_GYRO_FIFO_CONFIG_1_ADDR              UINT8_C(0x3E)
-#define SMI230_GYRO_FIFO_DATA_ADDR                  UINT8_C(0x3F)
+#define SMI230_GYRO_FIFO_STATUS_ADDR   UINT8_C(0x0E)
+#define SMI230_GYRO_FIFO_CONFIG_0_ADDR UINT8_C(0x3D)
+#define SMI230_GYRO_FIFO_CONFIG_1_ADDR UINT8_C(0x3E)
+#define SMI230_GYRO_FIFO_DATA_ADDR     UINT8_C(0x3F)
 /*! @name FIFO sensor data lengths */
-#define SMI230_FIFO_ACCEL_LENGTH               UINT8_C(6)
-#define SMI230_FIFO_WTM_LENGTH                 UINT8_C(2)
-#define SMI230_FIFO_LENGTH_MSB_BYTE            UINT8_C(1)
-#define SMI230_FIFO_DATA_LENGTH                UINT8_C(2)
-#define SMI230_FIFO_CONFIG_LENGTH              UINT8_C(2)
-#define SMI230_SENSOR_TIME_LENGTH              UINT8_C(3)
-#define SMI230_FIFO_SKIP_FRM_LENGTH            UINT8_C(1)
-#define SMI230_FIFO_INPUT_CFG_LENGTH           UINT8_C(1)
+#define SMI230_FIFO_ACCEL_LENGTH     UINT8_C(6)
+#define SMI230_FIFO_WTM_LENGTH	     UINT8_C(2)
+#define SMI230_FIFO_LENGTH_MSB_BYTE  UINT8_C(1)
+#define SMI230_FIFO_DATA_LENGTH	     UINT8_C(2)
+#define SMI230_FIFO_CONFIG_LENGTH    UINT8_C(2)
+#define SMI230_SENSOR_TIME_LENGTH    UINT8_C(3)
+#define SMI230_FIFO_SKIP_FRM_LENGTH  UINT8_C(1)
+#define SMI230_FIFO_INPUT_CFG_LENGTH UINT8_C(1)
 
 /*! @name FIFO byte counter mask definition */
-#define SMI230_FIFO_BYTE_COUNTER_MSB_MASK      UINT8_C(0x3F)
+#define SMI230_FIFO_BYTE_COUNTER_MSB_MASK UINT8_C(0x3F)
 
 /*! @name FIFO frame masks */
-#define SMI230_FIFO_LSB_CONFIG_CHECK           UINT8_C(0x00)
-#define SMI230_FIFO_MSB_CONFIG_CHECK           UINT8_C(0x80)
-#define SMI230_FIFO_INTR_MASK                  UINT8_C(0x5C)
+#define SMI230_FIFO_LSB_CONFIG_CHECK UINT8_C(0x00)
+#define SMI230_FIFO_MSB_CONFIG_CHECK UINT8_C(0x80)
+#define SMI230_FIFO_INTR_MASK	     UINT8_C(0x5C)
 
 /*name FIFO config modes */
-#define SMI230_ACC_STREAM_MODE                 UINT8_C(0x00)
-#define SMI230_ACC_FIFO_MODE                   UINT8_C(0x01)
+#define SMI230_ACC_STREAM_MODE UINT8_C(0x00)
+#define SMI230_ACC_FIFO_MODE   UINT8_C(0x01)
 
-#define SMI230_FIFO_GYRO_FRAME_LENGTH          UINT8_C(6)
-#define SMI230_GYRO_STREAM_MODE                UINT8_C(0x80)
-#define SMI230_GYRO_FIFO_MODE                  UINT8_C(0x40)
+#define SMI230_FIFO_GYRO_FRAME_LENGTH UINT8_C(6)
+#define SMI230_GYRO_STREAM_MODE	      UINT8_C(0x80)
+#define SMI230_GYRO_FIFO_MODE	      UINT8_C(0x40)
 /*name Mask definitions for FIFO configuration modes */
-#define SMI230_ACC_FIFO_MODE_CONFIG_MASK       UINT8_C(0x01)
+#define SMI230_ACC_FIFO_MODE_CONFIG_MASK UINT8_C(0x01)
 
 /*! @name Mask definitions for FIFO_CONFIG_1 register */
-#define SMI230_ACCEL_EN_MASK                   UINT8_C(0x40)
-#define SMI230_ACCEL_INT1_EN_MASK              UINT8_C(0x08)
-#define SMI230_ACCEL_INT2_EN_MASK              UINT8_C(0x04)
+#define SMI230_ACCEL_EN_MASK	  UINT8_C(0x40)
+#define SMI230_ACCEL_INT1_EN_MASK UINT8_C(0x08)
+#define SMI230_ACCEL_INT2_EN_MASK UINT8_C(0x04)
 
 /*name Position definitions for FIFO_CONFIG_1 register */
-#define SMI230_ACCEL_EN_POS                    UINT8_C(6)
-#define SMI230_ACCEL_INT1_EN_POS               UINT8_C(3)
-#define SMI230_ACCEL_INT2_EN_POS               UINT8_C(2)
+#define SMI230_ACCEL_EN_POS	 UINT8_C(6)
+#define SMI230_ACCEL_INT1_EN_POS UINT8_C(3)
+#define SMI230_ACCEL_INT2_EN_POS UINT8_C(2)
 
 /*! @name Position definitions for FIFO_DOWNS register */
-#define SMI230_ACC_FIFO_DOWNS_MASK             UINT8_C(0xF0)
+#define SMI230_ACC_FIFO_DOWNS_MASK UINT8_C(0xF0)
 
 /*! @name FIFO down sampling bit positions */
-#define SMI230_ACC_FIFO_DOWNS_POS              UINT8_C(0x04)
+#define SMI230_ACC_FIFO_DOWNS_POS UINT8_C(0x04)
 
 /*! @name FIFO down sampling user macros */
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_0          UINT8_C(0)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_1          UINT8_C(1)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_2          UINT8_C(2)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_3          UINT8_C(3)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_4          UINT8_C(4)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_5          UINT8_C(5)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_6          UINT8_C(6)
-#define SMI230_ACC_FIFO_DOWN_SAMPLE_7          UINT8_C(7)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_0 UINT8_C(0)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_1 UINT8_C(1)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_2 UINT8_C(2)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_3 UINT8_C(3)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_4 UINT8_C(4)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_5 UINT8_C(5)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_6 UINT8_C(6)
+#define SMI230_ACC_FIFO_DOWN_SAMPLE_7 UINT8_C(7)
 
 /*! @name Mask definitions for INT1_INT2_MAP_DATA register */
-#define SMI230_ACCEL_INT2_FWM_MASK             UINT8_C(0x20)
-#define SMI230_ACCEL_INT2_FFULL_MASK           UINT8_C(0x10)
-#define SMI230_ACCEL_INT1_FWM_MASK             UINT8_C(0x02)
-#define SMI230_ACCEL_INT1_FFULL_MASK           UINT8_C(0x01)
+#define SMI230_ACCEL_INT2_FWM_MASK   UINT8_C(0x20)
+#define SMI230_ACCEL_INT2_FFULL_MASK UINT8_C(0x10)
+#define SMI230_ACCEL_INT1_FWM_MASK   UINT8_C(0x02)
+#define SMI230_ACCEL_INT1_FFULL_MASK UINT8_C(0x01)
 
 /*! @name Positions definitions for INT1_INT2_MAP_DATA register */
-#define SMI230_ACCEL_INT1_FWM_POS              UINT8_C(1)
-#define SMI230_ACCEL_INT2_FFULL_POS            UINT8_C(4)
-#define SMI230_ACCEL_INT2_FWM_POS              UINT8_C(5)
+#define SMI230_ACCEL_INT1_FWM_POS   UINT8_C(1)
+#define SMI230_ACCEL_INT2_FFULL_POS UINT8_C(4)
+#define SMI230_ACCEL_INT2_FWM_POS   UINT8_C(5)
+
+/*! @name Interrupt flag masks for ACC_INT_STAT_1 */
+#define SMI230_ACCEL_FIFO_FULL UINT8_C(0x01)
+#define SMI230_ACCEL_FIFO_WTM  UINT8_C(0x02)
 
 /**\name    Absolute value */
 #ifndef SMI230_ABS
@@ -663,137 +667,136 @@
 #define SMI230_SET_LOW_NIBBLE UINT8_C(0x0F)
 
 /**\name     Feature start Addresses  */
-#define SMI230_ACCEL_ANYMOTION_ADR                  UINT8_C(0x00)
-#define SMI230_ACCEL_DATA_SYNC_ADR                  UINT8_C(0x02)
-#define SMI230_HIGH_G_START_ADR                     UINT8_C(0x03)
-#define SMI230_LOW_G_START_ADR                      UINT8_C(0x06)
-#define SMI230_ORIENT_START_ADR                     UINT8_C(0x09)
-#define SMI230_NO_MOTION_START_ADR                  UINT8_C(0x0B)
+#define SMI230_ACCEL_ANYMOTION_ADR UINT8_C(0x00)
+#define SMI230_ACCEL_DATA_SYNC_ADR UINT8_C(0x02)
+#define SMI230_HIGH_G_START_ADR	   UINT8_C(0x03)
+#define SMI230_LOW_G_START_ADR	   UINT8_C(0x06)
+#define SMI230_ORIENT_START_ADR	   UINT8_C(0x09)
+#define SMI230_NO_MOTION_START_ADR UINT8_C(0x0B)
 
 /**\name    Accel Any-motion Macros  */
-#define SMI230_ACCEL_ANYMOTION_LEN                  UINT8_C(0x02)
-#define SMI230_ACCEL_ANYMOTION_THRESHOLD_MASK       UINT16_C(0x07FF)
-#define SMI230_ACCEL_ANYMOTION_THRESHOLD_SHIFT      UINT8_C(0x00)
-#define SMI230_ACCEL_ANYMOTION_NOMOTION_SEL_MASK    UINT16_C(0x0800)
-#define SMI230_ACCEL_ANYMOTION_NOMOTION_SEL_SHIFT   UINT8_C(0x0B)
-#define SMI230_ACCEL_ANYMOTION_DURATION_MASK        UINT16_C(0x1FFF)
-#define SMI230_ACCEL_ANYMOTION_DURATION_SHIFT       UINT8_C(0x00)
-#define SMI230_ACCEL_ANYMOTION_X_EN_MASK            UINT16_C(0x2000)
-#define SMI230_ACCEL_ANYMOTION_X_EN_SHIFT           UINT8_C(0x0D)
-#define SMI230_ACCEL_ANYMOTION_Y_EN_MASK            UINT16_C(0x4000)
-#define SMI230_ACCEL_ANYMOTION_Y_EN_SHIFT           UINT8_C(0x0E)
-#define SMI230_ACCEL_ANYMOTION_Z_EN_MASK            UINT16_C(0x8000)
-#define SMI230_ACCEL_ANYMOTION_Z_EN_SHIFT           UINT8_C(0x0F)
+#define SMI230_ACCEL_ANYMOTION_LEN		  UINT8_C(0x02)
+#define SMI230_ACCEL_ANYMOTION_THRESHOLD_MASK	  UINT16_C(0x07FF)
+#define SMI230_ACCEL_ANYMOTION_THRESHOLD_SHIFT	  UINT8_C(0x00)
+#define SMI230_ACCEL_ANYMOTION_NOMOTION_SEL_MASK  UINT16_C(0x0800)
+#define SMI230_ACCEL_ANYMOTION_NOMOTION_SEL_SHIFT UINT8_C(0x0B)
+#define SMI230_ACCEL_ANYMOTION_DURATION_MASK	  UINT16_C(0x1FFF)
+#define SMI230_ACCEL_ANYMOTION_DURATION_SHIFT	  UINT8_C(0x00)
+#define SMI230_ACCEL_ANYMOTION_X_EN_MASK	  UINT16_C(0x2000)
+#define SMI230_ACCEL_ANYMOTION_X_EN_SHIFT	  UINT8_C(0x0D)
+#define SMI230_ACCEL_ANYMOTION_Y_EN_MASK	  UINT16_C(0x4000)
+#define SMI230_ACCEL_ANYMOTION_Y_EN_SHIFT	  UINT8_C(0x0E)
+#define SMI230_ACCEL_ANYMOTION_Z_EN_MASK	  UINT16_C(0x8000)
+#define SMI230_ACCEL_ANYMOTION_Z_EN_SHIFT	  UINT8_C(0x0F)
 
 /**\name     Mask definitions for high-g feature configuration */
-#define SMI230_HIGH_G_THRES_MASK                    UINT16_C(0x7FFF)
-#define SMI230_HIGH_G_HYST_MASK                     UINT16_C(0x0FFF)
-#define SMI230_HIGH_G_X_SEL_MASK                    UINT16_C(0x1000)
-#define SMI230_HIGH_G_Y_SEL_MASK                    UINT16_C(0x2000)
-#define SMI230_HIGH_G_Z_SEL_MASK                    UINT16_C(0x4000)
-#define SMI230_HIGH_G_ENABLE_MASK                   UINT16_C(0x8000)
-#define SMI230_HIGH_G_DUR_MASK                      UINT16_C(0x0FFF)
-#define SMI230_HIGH_G_OUT_CONF_MASK                 UINT16_C(0xF000)
+#define SMI230_HIGH_G_THRES_MASK    UINT16_C(0x7FFF)
+#define SMI230_HIGH_G_HYST_MASK	    UINT16_C(0x0FFF)
+#define SMI230_HIGH_G_X_SEL_MASK    UINT16_C(0x1000)
+#define SMI230_HIGH_G_Y_SEL_MASK    UINT16_C(0x2000)
+#define SMI230_HIGH_G_Z_SEL_MASK    UINT16_C(0x4000)
+#define SMI230_HIGH_G_ENABLE_MASK   UINT16_C(0x8000)
+#define SMI230_HIGH_G_DUR_MASK	    UINT16_C(0x0FFF)
+#define SMI230_HIGH_G_OUT_CONF_MASK UINT16_C(0xF000)
 
 /**\name    Bit position definitions for high-g feature configuration */
-#define SMI230_HIGH_G_THRES_POS                     UINT8_C(0x00)
-#define SMI230_HIGH_G_HYST_POS                      UINT8_C(0x00)
-#define SMI230_HIGH_G_OUT_CONF_POS                  UINT8_C(0x0C)
-#define SMI230_HIGH_G_X_SEL_POS                     UINT8_C(0x0C)
-#define SMI230_HIGH_G_Y_SEL_POS                     UINT8_C(0x0D)
-#define SMI230_HIGH_G_Z_SEL_POS                     UINT8_C(0x0E)
-#define SMI230_HIGH_G_ENABLE_POS                    UINT8_C(0x0F)
-#define SMI230_HIGH_G_DUR_POS                       UINT8_C(0x00)
-#define SMI230_HIGH_G_AXIS_X_POS                    UINT8_C(0x03)
-#define SMI230_HIGH_G_AXIS_Y_POS                    UINT8_C(0x04)
-#define SMI230_HIGH_G_AXIS_Z_POS                    UINT8_C(0x05)
-#define SMI230_HIGH_G_AXIS_DIRECTION_POS            UINT8_C(0x06)
+#define SMI230_HIGH_G_THRES_POS		 UINT8_C(0x00)
+#define SMI230_HIGH_G_HYST_POS		 UINT8_C(0x00)
+#define SMI230_HIGH_G_OUT_CONF_POS	 UINT8_C(0x0C)
+#define SMI230_HIGH_G_X_SEL_POS		 UINT8_C(0x0C)
+#define SMI230_HIGH_G_Y_SEL_POS		 UINT8_C(0x0D)
+#define SMI230_HIGH_G_Z_SEL_POS		 UINT8_C(0x0E)
+#define SMI230_HIGH_G_ENABLE_POS	 UINT8_C(0x0F)
+#define SMI230_HIGH_G_DUR_POS		 UINT8_C(0x00)
+#define SMI230_HIGH_G_AXIS_X_POS	 UINT8_C(0x03)
+#define SMI230_HIGH_G_AXIS_Y_POS	 UINT8_C(0x04)
+#define SMI230_HIGH_G_AXIS_Z_POS	 UINT8_C(0x05)
+#define SMI230_HIGH_G_AXIS_DIRECTION_POS UINT8_C(0x06)
 
-#define SMI230_HIGH_G_AXIS_X_MASK                   UINT8_C(0x08)
-#define SMI230_HIGH_G_AXIS_Y_MASK                   UINT8_C(0x10)
-#define SMI230_HIGH_G_AXIS_Z_MASK                   UINT8_C(0x20)
-#define SMI230_HIGH_G_AXIS_DIRECTION_MASK           UINT8_C(0x80)
+#define SMI230_HIGH_G_AXIS_X_MASK	  UINT8_C(0x08)
+#define SMI230_HIGH_G_AXIS_Y_MASK	  UINT8_C(0x10)
+#define SMI230_HIGH_G_AXIS_Z_MASK	  UINT8_C(0x20)
+#define SMI230_HIGH_G_AXIS_DIRECTION_MASK UINT8_C(0x80)
 
 /**\name     Mask definitions for low-g feature configuration */
-#define SMI230_LOW_G_THRES_MASK                     UINT16_C(0x7FFF)
-#define SMI230_LOW_G_HYST_MASK                      UINT16_C(0x0FFF)
-#define SMI230_LOW_G_DUR_MASK                       UINT16_C(0x0FFF)
-#define SMI230_LOW_G_ENABLE_MASK                    UINT16_C(0x1000)
+#define SMI230_LOW_G_THRES_MASK	 UINT16_C(0x7FFF)
+#define SMI230_LOW_G_HYST_MASK	 UINT16_C(0x0FFF)
+#define SMI230_LOW_G_DUR_MASK	 UINT16_C(0x0FFF)
+#define SMI230_LOW_G_ENABLE_MASK UINT16_C(0x1000)
 
 /**\name    Bit position definitions for low-g feature configuration */
-#define SMI230_LOW_G_THRES_POS                      UINT16_C(0x00)
-#define SMI230_LOW_G_HYST_POS                       UINT16_C(0x00)
-#define SMI230_LOW_G_DUR_POS                        UINT16_C(0x00)
-#define SMI230_LOW_G_ENABLE_POS                     UINT16_C(0x0C)
+#define SMI230_LOW_G_THRES_POS	UINT16_C(0x00)
+#define SMI230_LOW_G_HYST_POS	UINT16_C(0x00)
+#define SMI230_LOW_G_DUR_POS	UINT16_C(0x00)
+#define SMI230_LOW_G_ENABLE_POS UINT16_C(0x0C)
 
 /**\name    Mask definitions for orientation feature configuration */
-#define SMI230_ORIENT_ENABLE_MASK                   UINT16_C(0x0001)
-#define SMI230_ORIENT_UP_DOWN_MASK                  UINT16_C(0x0002)
-#define SMI230_ORIENT_SYMM_MODE_MASK                UINT16_C(0x000C)
-#define SMI230_ORIENT_BLOCK_MODE_MASK               UINT16_C(0x0030)
-#define SMI230_ORIENT_THETA_MASK                    UINT16_C(0x0FC0)
-#define SMI230_ORIENT_HYST_MASK                     UINT16_C(0x07FF)
-#define SMI230_ORIENT_PORTRAIT_LANDSCAPE_MASK       UINT8_C(0x03)
-#define SMI230_ORIENT_FACEUP_DOWN_MASK              UINT8_C(0x04)
+#define SMI230_ORIENT_ENABLE_MASK	      UINT16_C(0x0001)
+#define SMI230_ORIENT_UP_DOWN_MASK	      UINT16_C(0x0002)
+#define SMI230_ORIENT_SYMM_MODE_MASK	      UINT16_C(0x000C)
+#define SMI230_ORIENT_BLOCK_MODE_MASK	      UINT16_C(0x0030)
+#define SMI230_ORIENT_THETA_MASK	      UINT16_C(0x0FC0)
+#define SMI230_ORIENT_HYST_MASK		      UINT16_C(0x07FF)
+#define SMI230_ORIENT_PORTRAIT_LANDSCAPE_MASK UINT8_C(0x03)
+#define SMI230_ORIENT_FACEUP_DOWN_MASK	      UINT8_C(0x04)
 
 /**\name    Bit position definitions for orientation feature configuration */
-#define SMI230_ORIENT_ENABLE_POS                    UINT8_C(0x00)
-#define SMI230_ORIENT_UP_DOWN_POS                   UINT8_C(0x01)
-#define SMI230_ORIENT_SYMM_MODE_POS                 UINT8_C(0x02)
-#define SMI230_ORIENT_BLOCK_MODE_POS                UINT8_C(0x04)
-#define SMI230_ORIENT_THETA_POS                     UINT8_C(0x06)
-#define SMI230_ORIENT_HYST_POS                      UINT8_C(0x00)
-#define SMI230_ORIENT_PORTRAIT_LANDSCAPE_POS        UINT8_C(0x00)
-#define SMI230_ORIENT_FACEUP_DOWN_POS               UINT8_C(0x02)
+#define SMI230_ORIENT_ENABLE_POS	     UINT8_C(0x00)
+#define SMI230_ORIENT_UP_DOWN_POS	     UINT8_C(0x01)
+#define SMI230_ORIENT_SYMM_MODE_POS	     UINT8_C(0x02)
+#define SMI230_ORIENT_BLOCK_MODE_POS	     UINT8_C(0x04)
+#define SMI230_ORIENT_THETA_POS		     UINT8_C(0x06)
+#define SMI230_ORIENT_HYST_POS		     UINT8_C(0x00)
+#define SMI230_ORIENT_PORTRAIT_LANDSCAPE_POS UINT8_C(0x00)
+#define SMI230_ORIENT_FACEUP_DOWN_POS	     UINT8_C(0x02)
 
 /**\name    Macros for orientation feature output */
-#define SMI230_ORIENT_PORTRAIT_UPRIGHT              UINT8_C(0x00)
-#define SMI230_ORIENT_LANDSCAPE_LEFT                UINT8_C(0x01)
-#define SMI230_ORIENT_PORTRAIT_UPSIDE_DOWN          UINT8_C(0x02)
-#define SMI230_ORIENT_LANDSCAPE_RIGHT               UINT8_C(0x03)
-#define SMI230_ORIENT_FACE_UP                       UINT8_C(0x00)
-#define SMI230_ORIENT_FACE_DOWN                     UINT8_C(0x01)
+#define SMI230_ORIENT_PORTRAIT_UPRIGHT	   UINT8_C(0x00)
+#define SMI230_ORIENT_LANDSCAPE_LEFT	   UINT8_C(0x01)
+#define SMI230_ORIENT_PORTRAIT_UPSIDE_DOWN UINT8_C(0x02)
+#define SMI230_ORIENT_LANDSCAPE_RIGHT	   UINT8_C(0x03)
+#define SMI230_ORIENT_FACE_UP		   UINT8_C(0x00)
+#define SMI230_ORIENT_FACE_DOWN		   UINT8_C(0x01)
 
 /**\name    Mask definitions for no-motion feature configuration */
-#define SMI230_NO_MOTION_THRESHOLD_MASK             UINT16_C(0x07FF)
-#define SMI230_NO_MOTION_SEL_MASK                   UINT16_C(0x0800)
-#define SMI230_NO_MOTION_DURATION_MASK              UINT16_C(0x1FFF)
-#define SMI230_NO_MOTION_X_EN_MASK                  UINT16_C(0x2000)
-#define SMI230_NO_MOTION_Y_EN_MASK                  UINT16_C(0x4000)
-#define SMI230_NO_MOTION_Z_EN_MASK                  UINT16_C(0x8000)
+#define SMI230_NO_MOTION_THRESHOLD_MASK UINT16_C(0x07FF)
+#define SMI230_NO_MOTION_SEL_MASK	UINT16_C(0x0800)
+#define SMI230_NO_MOTION_DURATION_MASK	UINT16_C(0x1FFF)
+#define SMI230_NO_MOTION_X_EN_MASK	UINT16_C(0x2000)
+#define SMI230_NO_MOTION_Y_EN_MASK	UINT16_C(0x4000)
+#define SMI230_NO_MOTION_Z_EN_MASK	UINT16_C(0x8000)
 
 /**\name    Bit position definitions for no-motion feature configuration */
-#define SMI230_NO_MOTION_THRESHOLD_POS              UINT8_C(0)
-#define SMI230_NO_MOTION_SEL_POS                    UINT8_C(11)
-#define SMI230_NO_MOTION_DURATION_POS               UINT8_C(0)
-#define SMI230_NO_MOTION_X_EN_POS                   UINT8_C(13)
-#define SMI230_NO_MOTION_Y_EN_POS                   UINT8_C(14)
-#define SMI230_NO_MOTION_Z_EN_POS                   UINT8_C(15)
+#define SMI230_NO_MOTION_THRESHOLD_POS UINT8_C(0)
+#define SMI230_NO_MOTION_SEL_POS       UINT8_C(11)
+#define SMI230_NO_MOTION_DURATION_POS  UINT8_C(0)
+#define SMI230_NO_MOTION_X_EN_POS      UINT8_C(13)
+#define SMI230_NO_MOTION_Y_EN_POS      UINT8_C(14)
+#define SMI230_NO_MOTION_Z_EN_POS      UINT8_C(15)
 
 /**\name Macro to SET and GET BITS of a register */
-#define SMI230_SET_BITS(reg_var, bitname, val) \
-    ((reg_var & ~(bitname##_MASK)) | \
-     ((val << bitname##_POS) & bitname##_MASK))
+#define SMI230_SET_BITS(reg_var, bitname, val)                                 \
+	((reg_var & ~(bitname##_MASK)) |                                       \
+	 ((val << bitname##_POS) & bitname##_MASK))
 
-#define SMI230_GET_BITS(reg_var, bitname)       ((reg_var & (bitname##_MASK)) >> \
-                                                 (bitname##_POS))
+#define SMI230_GET_BITS(reg_var, bitname)                                      \
+	((reg_var & (bitname##_MASK)) >> (bitname##_POS))
 
-#define SMI230_SET_BITS_POS_0(reg_var, bitname, val) \
-    ((reg_var & ~(bitname##_MASK)) | \
-     (val & bitname##_MASK))
+#define SMI230_SET_BITS_POS_0(reg_var, bitname, val)                           \
+	((reg_var & ~(bitname##_MASK)) | (val & bitname##_MASK))
 
 #define SMI230_GET_BITS_POS_0(reg_var, bitname) (reg_var & (bitname##_MASK))
 
-#define SMI230_SET_BIT_VAL_0(reg_var, bitname)  (reg_var & ~(bitname##_MASK))
+#define SMI230_SET_BIT_VAL_0(reg_var, bitname) (reg_var & ~(bitname##_MASK))
 
 /**\name     Macro definition for difference between 2 values */
-#define SMI230_GET_DIFF(x, y)                   ((x) - (y))
+#define SMI230_GET_DIFF(x, y) ((x) - (y))
 
 /**\name     Macro definition to get LSB of 16 bit variable */
-#define SMI230_GET_LSB(var)                     (uint8_t)(var & SMI230_SET_LOW_BYTE)
+#define SMI230_GET_LSB(var) (uint8_t)(var & SMI230_SET_LOW_BYTE)
 
 /**\name     Macro definition to get MSB of 16 bit variable */
-#define SMI230_GET_MSB(var)                     (uint8_t)((var & SMI230_SET_HIGH_BYTE) >> 8)
+#define SMI230_GET_MSB(var) (uint8_t)((var & SMI230_SET_HIGH_BYTE) >> 8)
 
 /*************************************************************************/
 
@@ -819,7 +822,8 @@ enum smi230_intf {
  *  @note : dev_addr is used for I2C read/write operations only.
  *          For SPI read/write operations this is dummy variable.
  */
-typedef int8_t (*smi230_com_fptr_t)(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uint16_t len);
+typedef int8_t (*smi230_com_fptr_t)(uint8_t dev_addr, uint8_t reg_addr,
+				    uint8_t *data, uint16_t len);
 
 /**\name    delay function pointer */
 typedef void (*smi230_delay_fptr_t)(uint32_t period);
@@ -914,13 +918,12 @@ struct smi230_anymotion_cfg
 #define SMI230_ACCEL_DATA_SYNC_MODE_MASK   0x0007
 #define SMI230_ACCEL_DATA_SYNC_MODE_SHIFT  0
 
-#define SMI230_ACCEL_DATA_SYNC_MODE_OFF    0x00
+#define SMI230_ACCEL_DATA_SYNC_MODE_OFF	   0x00
 #define SMI230_ACCEL_DATA_SYNC_MODE_400HZ  0x01
 #define SMI230_ACCEL_DATA_SYNC_MODE_1000HZ 0x02
 #define SMI230_ACCEL_DATA_SYNC_MODE_2000HZ 0x03
 #define SMI230_ACCEL_DATA_SYNC_MODE_100HZ  0x04
 #define SMI230_ACCEL_DATA_SYNC_MODE_200HZ  0x05
-
 
 /*!
  *  @brief Data Sync config structure
@@ -1012,7 +1015,6 @@ struct smi230_orient_out
 {
     /*! Orientation portrait landscape */
     uint8_t portrait_landscape;
-
     /*! Orientation face-up down  */
     uint8_t faceup_down;
 };
@@ -1101,29 +1103,27 @@ enum smi230_gyro_int_types {
 /*!
  *  @brief Interrupt pin configuration structure
  */
-struct smi230_int_pin_cfg
-{
+struct smi230_int_pin_cfg {
+	/*! interrupt pin level configuration
+	 * Assignable macros :
+	 * - SMI230_INT_ACTIVE_LOW
+	 * - SMI230_INT_ACTIVE_HIGH
+	 */
+	uint8_t lvl : 1;
 
-    /*! interrupt pin level configuration
-     * Assignable macros :
-     * - SMI230_INT_ACTIVE_LOW
-     * - SMI230_INT_ACTIVE_HIGH
-     */
-    uint8_t lvl : 1;
+	/*! interrupt pin mode configuration
+	 * Assignable macros :
+	 * - SMI230_INT_MODE_PUSH_PULL
+	 * - SMI230_INT_MODE_OPEN_DRAIN
+	 */
+	uint8_t output_mode : 1;
 
-    /*! interrupt pin mode configuration
-     * Assignable macros :
-     * - SMI230_INT_MODE_PUSH_PULL
-     * - SMI230_INT_MODE_OPEN_DRAIN
-     */
-    uint8_t output_mode : 1;
-
-    /*! Enable interrupt pin
-     * Assignable Macros :
-     * - SMI230_ENABLE
-     * - SMI230_DISABLE
-     */
-    uint8_t enable_int_pin : 1;
+	/*! Enable interrupt pin
+	 * Assignable Macros :
+	 * - SMI230_ENABLE
+	 * - SMI230_DISABLE
+	 */
+	uint8_t enable_int_pin : 1;
 };
 
 /*!
@@ -1251,8 +1251,7 @@ struct smi230_fifo_frame
  *  @brief
  *  This structure holds all relevant information about SMI230
  */
-struct smi230_dev
-{
+struct smi230_dev {
 
     /*! Accel chip Id */
     uint8_t accel_chip_id;

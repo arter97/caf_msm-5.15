@@ -794,7 +794,7 @@ static int msm_eusb2_phy_set_suspend(struct usb_phy *uphy, int suspend)
 		}
 
 		/* With EUD spoof disconnect, keep clk and ldos on */
-		if (phy->phy.flags & EUD_SPOOF_DISCONNECT)
+		if ((phy->phy.flags & EUD_SPOOF_DISCONNECT) || is_eud_debug_mode_active(phy))
 			goto suspend_exit;
 
 		msm_eusb2_phy_clocks(phy, false);
@@ -847,6 +847,13 @@ static int msm_eusb2_phy_notify_disconnect(struct usb_phy *uphy,
 				       enum usb_device_speed speed)
 {
 	struct msm_eusb2_phy *phy = container_of(uphy, struct msm_eusb2_phy, phy);
+
+	if (is_eud_debug_mode_active(phy)) {
+		msm_eusb2_phy_update_eud_detect(phy, false);
+		/* Ensure that EUD disable occurs before re-enabling */
+		mb();
+		msm_eusb2_phy_update_eud_detect(phy, true);
+	}
 
 	phy->cable_connected = false;
 	return 0;

@@ -31,7 +31,7 @@
 #include "rpmsg_internal.h"
 #include "qcom_glink_native.h"
 
-#define GLINK_LOG_PAGE_CNT 2
+#define GLINK_LOG_PAGE_CNT 32
 #define GLINK_INFO(ctxt, x, ...)					  \
 	ipc_log_string(ctxt, "[%s]: "x, __func__, ##__VA_ARGS__)
 
@@ -678,12 +678,14 @@ static int qcom_glink_send_rx_done(struct qcom_glink *glink,
 	if (!intent->size)
 		intent->data = NULL;
 
+	ret = intent->offset;
+
 	if (!reuse) {
 		kfree(intent->data);
 		kfree(intent);
 	}
 
-	CH_INFO(channel, "reuse:%d liid:%d", reuse, iid);
+	CH_INFO(channel, "reuse:%d liid:%d data_size:%d", reuse, iid, ret);
 	return 0;
 }
 
@@ -1052,7 +1054,7 @@ static int qcom_glink_rx_defer(struct qcom_glink *glink, size_t extra)
 	list_add_tail(&dcmd->node, &glink->rx_queue);
 	spin_unlock_irqrestore(&glink->rx_lock, flags);
 
-	schedule_work(&glink->rx_work);
+	queue_work(system_highpri_wq, &glink->rx_work);
 	qcom_glink_rx_advance(glink, sizeof(dcmd->msg) + extra);
 
 	return 0;
@@ -1342,6 +1344,7 @@ static void qcom_glink_handle_intent(struct qcom_glink *glink,
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
 	if (!channel) {
 		dev_err(glink->dev, "intents for non-existing channel\n");
+		qcom_glink_rx_advance(glink, ALIGN(msglen, 8));
 		return;
 	}
 
@@ -1426,7 +1429,7 @@ static int qcom_glink_send_signals(struct qcom_glink *glink,
 	msg.param1 = cpu_to_le16(channel->lcid);
 	msg.param2 = cpu_to_le32(sigs);
 
-	GLINK_INFO(glink->ilc, "sigs:%d\n", sigs);
+	GLINK_INFO(glink->ilc, "sigs:0x%x\n", sigs);
 	return qcom_glink_tx(glink, &msg, sizeof(msg), NULL, 0, true);
 }
 
@@ -1460,7 +1463,7 @@ static int qcom_glink_handle_signals(struct qcom_glink *glink,
 
 	channel->rsigs = signals;
 
-	CH_INFO(channel, "old:%d new:%d\n", old, channel->rsigs);
+	CH_INFO(channel, "old:0x%x new:0x%x\n", old, channel->rsigs);
 	if (channel->ept.sig_cb) {
 		channel->ept.sig_cb(channel->ept.rpdev, channel->ept.priv,
 				    old, channel->rsigs);
@@ -2041,6 +2044,7 @@ static int qcom_glink_set_sigs(struct rpmsg_endpoint *ept, u32 set, u32 clear)
 
 	channel->lsigs = sigs;
 
+	CH_INFO(channel, "old:0x%x new:0x%x\n", sigs, channel->lsigs);
 	return qcom_glink_send_signals(glink, channel, sigs);
 }
 

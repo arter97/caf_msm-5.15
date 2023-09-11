@@ -3730,8 +3730,16 @@ static void sdhci_msm_bus_voting(struct sdhci_host *host, bool enable)
 
 static void sdhci_msm_reset(struct sdhci_host *host, u8 mask)
 {
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
+
 	if ((host->mmc->caps2 & MMC_CAP2_CQE) && (mask & SDHCI_RESET_ALL))
 		cqhci_deactivate(host->mmc);
+
+	if (msm_host->rst_n_disable && host->mmc && host->mmc->card &&
+		host->mmc->card->ext_csd.rst_n_function != EXT_CSD_RST_N_ENABLED)
+		host->mmc->card->ext_csd.rst_n_function = true;
+
 	sdhci_reset(host, mask);
 }
 
@@ -4439,7 +4447,15 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 	struct device_node *group_node;
 	struct sdhci_msm_qos_req *qr;
 	struct qos_cpu_group *qcg;
-	int i, err, mask = 0;
+
+	cpumask_t silver_mask;
+	cpumask_t gold_mask;
+	cpumask_t gold_prime_mask;
+	int cid_cpu[MAX_NUM_CLUSTERS] = {-1, -1, -1};
+	int cid = -1;
+	int prev_cid = -1;
+	int cpu;
+	int i, err;
 
 	qr = kzalloc(sizeof(*qr), GFP_KERNEL);
 	if (!qr)
@@ -4464,22 +4480,45 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 	}
 
 	/*
+	 * Due to Logical contiguous CPU numbering, one to one mapping
+	 * between physical and logical cpu is no more applicable.
+	 * Hence we don't need to pass the qos mask from the device tree
+	 * and instead need to populate the mask dynamically
+	 * using available kernel API.
+	 */
+
+	for_each_cpu(cpu, cpu_possible_mask) {
+		cid = topology_physical_package_id(cpu);
+		if (cid != prev_cid) {
+			cid_cpu[cid] = cpu;
+			prev_cid = cid;
+		}
+	}
+
+	if (cid_cpu[SILVER_CORE] != -1)
+		silver_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[SILVER_CORE])->bits[0];
+
+	if (cid_cpu[GOLD_CORE] != -1)
+		gold_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[GOLD_CORE])->bits[0];
+
+	if (cid_cpu[GOLD_PRIME_CORE] != -1)
+		gold_prime_mask.bits[0] =
+			topology_core_cpumask(cid_cpu[GOLD_PRIME_CORE])->bits[0];
+
+	/*
 	 * Assign qos cpu group/cluster to host qos request and
 	 * read child entries of qos node
 	 */
 	qr->qcg = qcg;
+
 	for_each_available_child_of_node(np, group_node) {
-		err = of_property_read_u32(group_node, "mask", &mask);
-		if (err) {
-			dev_dbg(&pdev->dev, "Error reading group mask: %d\n",
-					err);
-			continue;
-		}
-		qcg->mask.bits[0] = mask & cpu_possible_mask->bits[0];
-		if (!cpumask_subset(&qcg->mask, cpu_possible_mask)) {
-			dev_err(&pdev->dev, "Invalid group mask\n");
-			goto out_vote_err;
-		}
+		if (of_property_read_bool(group_node, "perf"))
+			qcg->mask.bits[0] = gold_mask.bits[0] |
+						gold_prime_mask.bits[0];
+		else
+			qcg->mask.bits[0] = silver_mask.bits[0];
 
 		err = of_property_count_u32_elems(group_node, "vote");
 		if (err <= 0) {
@@ -5013,11 +5052,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		goto pltfm_free;
 
 	if (pdev->dev.of_node) {
-		ret = of_alias_get_id(pdev->dev.of_node, "sdhc");
-		if (ret <= 0)
+		ret = of_alias_get_id(pdev->dev.of_node, "mmc");
+		if (ret < 0)
 			dev_err(&pdev->dev, "get slot index failed %d\n", ret);
-		else if (ret <= 2)
-			sdhci_slot[ret-1] = msm_host;
+		else if (ret <= 1)
+			sdhci_slot[ret] = msm_host;
 	}
 
 	/*
@@ -5304,6 +5343,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		ret = sdhci_add_host(host);
 	if (ret)
 		goto pm_runtime_disable;
+
+	if (of_property_read_bool(node, "mmc-rst-n-disable"))
+		msm_host->rst_n_disable = true;
+	else
+		msm_host->rst_n_disable = false;
 
 	/* For SDHC v5.0.0 onwards, ICE 3.0 specific registers are added
 	 * in CQ register space, due to which few CQ registers are
