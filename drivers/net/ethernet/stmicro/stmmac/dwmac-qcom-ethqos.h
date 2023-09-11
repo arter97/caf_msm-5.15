@@ -411,13 +411,8 @@ struct qcom_ethqos {
 
 	int gpio_phy_intr_redirect;
 	u32 phy_intr;
-	u32 wol_intr;
-
 	/* Work struct for handling phy interrupt */
 	struct work_struct emac_phy_work;
-
-	/* Work struct for handling phy interrupt */
-	struct work_struct emac_wol_work;
 
 	struct ethqos_emac_por *por;
 	unsigned int num_por;

@@ -1482,17 +1482,6 @@ static int stmmac_init_phy(struct net_device *dev)
 		}
 		priv->phydev->mac_managed_pm = true;
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
-#ifdef CONFIG_DWMAC_QCOM_VER3
-		if (priv->phydev->drv &&
-		    priv->phydev->drv->config_intr &&
-		    !priv->phydev->drv->config_intr(priv->phydev)) {
-			pr_err(" qcom-ethqos: %s config_phy_intr successful after connect\n",
-			       __func__);
-			priv->plat->request_phy_wol(priv->plat);
-		}
-		pr_info("stmmac phy polling mode\n");
-		priv->phydev->irq = PHY_POLL;
-#else
 		if (priv->plat->phy_intr_en_extn_stm) {
 			priv->phydev->irq = PHY_MAC_INTERRUPT;
 			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
@@ -1508,7 +1497,6 @@ static int stmmac_init_phy(struct net_device *dev)
 			pr_info("stmmac phy polling mode\n");
 			priv->phydev->irq = PHY_POLL;
 		}
-#endif
 		phy_attached_info(priv->phydev);
 	}
 	pr_info(" qcom-ethqos: %s early eth setting stmmac init\n",
@@ -4237,9 +4225,6 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
-	if (!priv->wol_irq_enabled)
-		priv->plat->wol_irq_enable(priv);
-
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
@@ -4312,9 +4297,6 @@ static int stmmac_release(struct net_device *dev)
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
-
-	if (priv->wol_irq_enabled)
-		priv->plat->wol_irq_disable(priv);
 
 	if (priv->avb_vlan_id > 1)
 		if (dev->netdev_ops->ndo_vlan_rx_kill_vid)
