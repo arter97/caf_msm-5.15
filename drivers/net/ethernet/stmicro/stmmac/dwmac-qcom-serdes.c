@@ -452,7 +452,6 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(50);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
@@ -550,9 +549,8 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(220);
+	usleep_range(3000, 5000);
 
 	do {
 		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
@@ -638,7 +636,6 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
@@ -734,9 +731,8 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x8c, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(220);
+	usleep_range(3000, 5000);
 
 	do {
 		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
@@ -819,7 +815,6 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
@@ -920,11 +915,8 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
+	usleep_range(3000, 5000);
 
 	do {
 		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
@@ -1000,7 +992,6 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
@@ -1106,12 +1097,8 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
-
+	usleep_range(3000, 5000);
 
 	do {
 		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
@@ -1186,7 +1173,6 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
@@ -1292,12 +1278,8 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	msleep(220);
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	msleep(50);
-
+	usleep_range(3000, 5000);
 
 	do {
 		val = readl_relaxed(ethqos->sgmii_base + QSERDES_COM_CMN_STATUS);
