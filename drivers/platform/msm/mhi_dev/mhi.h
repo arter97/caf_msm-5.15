@@ -747,7 +747,7 @@ extern void *mhi_ipc_default_err_log;
 
 #define mhi_log(vf_id, _msg_lvl, _msg, ...) do { \
 	if (_msg_lvl >= mhi_msg_lvl) { \
-		pr_err("[0x%x %s] "_msg, bhi_imgtxdb, \
+		pr_err_ratelimited("[0x%x %s] "_msg, bhi_imgtxdb, \
 				__func__, ##__VA_ARGS__); \
 	} \
 	if (vf_id < MHI_MAX_NUM_INSTANCES && mhi_ipc_vf_log[vf_id] &&    \
