@@ -54,6 +54,10 @@
 #include "xhci.h"
 #include "debug-ipc.h"
 
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+#include <soc/qcom/boot_stats.h>
+#endif
+
 #define NUM_LOG_PAGES   12
 #define DWC3_MINIDUMP	0x10000
 
@@ -4525,6 +4529,14 @@ static irqreturn_t msm_dwc3_pwr_irq(int irq, void *data)
 	struct dwc3_msm *mdwc = data;
 
 	dev_dbg(mdwc->dev, "%s received\n", __func__);
+
+	if (mdwc->drd_state == DRD_STATE_PERIPHERAL_SUSPEND) {
+		dev_dbg(mdwc->dev, "USB Resume start\n");
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - USB device resume started");
+#endif
+	}
+
 	/*
 	 * When in Low Power Mode, can't read PWR_EVNT_IRQ_STAT_REG to acertain
 	 * which interrupts have been triggered, as the clocks are disabled.
@@ -7286,6 +7298,14 @@ static int dwc3_msm_pm_resume(struct device *dev)
 	dbg_event(0xFF, "PM Res", 0);
 
 	atomic_set(&mdwc->pm_suspended, 0);
+
+	if (atomic_read(&mdwc->in_lpm) &&
+			mdwc->drd_state == DRD_STATE_PERIPHERAL_SUSPEND) {
+		dev_dbg(mdwc->dev, "USB Resume start\n");
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - USB device resume started");
+#endif
+	}
 
 	/*
 	 * The expectation is to let DWC3 core complete determine if resume is needed.
