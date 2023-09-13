@@ -514,7 +514,7 @@ static int __init qcom_icc_bcm_voter_driver_init(void)
 {
 	return platform_driver_register(&qcom_icc_bcm_voter_driver);
 }
-module_init(qcom_icc_bcm_voter_driver_init);
+arch_initcall(qcom_icc_bcm_voter_driver_init);
 
 MODULE_AUTHOR("David Dai <daidavid1@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm BCM Voter interconnect driver");
