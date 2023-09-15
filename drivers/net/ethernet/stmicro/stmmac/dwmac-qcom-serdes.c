@@ -1434,6 +1434,7 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		ret = qcom_ethqos_serdes_update_sgmii(ethqos, speed);
 		break;
 	case PHY_INTERFACE_MODE_USXGMII:

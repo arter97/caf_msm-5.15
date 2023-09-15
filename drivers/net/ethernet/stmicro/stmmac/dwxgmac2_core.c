@@ -17,7 +17,7 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 {
 	void __iomem *ioaddr = hw->pcsr;
 	struct stmmac_priv *priv = netdev_priv(dev);
-	u32 tx, rx, intr_en;
+	u32 tx, rx, intr_en, value;
 
 	tx = readl(ioaddr + XGMAC_TX_CONFIG);
 	rx = readl(ioaddr + XGMAC_RX_CONFIG);
@@ -34,7 +34,10 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 			tx |= hw->link.xgmii.speed10000;
 			break;
 		case SPEED_2500:
-			tx |= hw->link.speed2500;
+			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
+				tx |= hw->link.xgmii.speed2500;
+			else
+				tx |= hw->link.speed2500;
 			break;
 		case SPEED_1000:
 		default:
@@ -45,6 +48,12 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 
 	if (hw->crc_strip_en)
 		rx |= XGMAC_CONFIG_CST;
+
+	if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX) {
+		value = readl(ioaddr + XGMAC_MAC_EXTENDED_CONFIG);
+		value |= XGMAC_MAXEXT_TPRE;
+		writel(value, ioaddr + XGMAC_MAC_EXTENDED_CONFIG);
+	}
 
 	writel(tx, ioaddr + XGMAC_TX_CONFIG);
 	writel(rx, ioaddr + XGMAC_RX_CONFIG);
