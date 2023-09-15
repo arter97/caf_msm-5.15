@@ -371,6 +371,10 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 		phydev = priv->phydev;
 		node = priv->plat->phylink_node;
 
+		if (priv->phydev && !priv->plat->fixed_phy_mode &&
+		    priv->plat->early_eth)
+			stmmac_set_speed100(priv);
+
 		if (node)
 			ret = phylink_of_phy_connect(priv->phylink, node, 0);
 
