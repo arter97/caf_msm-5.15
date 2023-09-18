@@ -6928,18 +6928,23 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_mem;
 
 	if (!plat_dat->mac2mac_en && !plat_dat->fixed_phy_mode) {
-		if (of_property_read_bool(pdev->dev.of_node,
-					  "emac-phy-off-suspend")) {
-			ret = of_property_read_u32(pdev->dev.of_node,
-						   "emac-phy-off-suspend",
-						   &ethqos->current_phy_mode);
-			if (ret) {
-				ETHQOSDBG(":resource emac-phy-off-suspend! ");
-				ETHQOSDBG("not in dtsi\n");
-				ethqos->current_phy_mode = 0;
+		if (!ethqos->early_eth_enabled) {
+			if (of_property_read_bool(pdev->dev.of_node,
+						  "emac-phy-off-suspend")) {
+				ret = of_property_read_u32(pdev->dev.of_node,
+							   "emac-phy-off-suspend",
+							   &ethqos->current_phy_mode);
+				if (ret) {
+					ETHQOSDBG(":resource emac-phy-off-suspend! ");
+					ETHQOSDBG("not in dtsi\n");
+					ethqos->current_phy_mode = 0;
+				}
 			}
+		} else {
+			ethqos->current_phy_mode = DISABLE_PHY_ON_OFF;
 		}
 	}
+
 	ETHQOSINFO("emac-phy-off-suspend = %d\n",
 		   ethqos->current_phy_mode);
 
