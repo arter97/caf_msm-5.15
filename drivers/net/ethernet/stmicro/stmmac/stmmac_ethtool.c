@@ -571,14 +571,13 @@ stmmac_get_pauseparam(struct net_device *netdev,
 		if (!adv_lp.pause)
 			return;
 	} else {
-		if (!priv->plat->mac2mac_en) {
+		if (!priv->plat->mac2mac_en)
 			phylink_ethtool_get_pauseparam(priv->phylink, pause);
-		} else {
-			if (priv->flow_ctrl & FLOW_RX)
-				pause->rx_pause = 1;
-			if (priv->flow_ctrl & FLOW_TX)
-				pause->tx_pause = 1;
-		}
+
+		if (priv->flow_ctrl & FLOW_RX)
+			pause->rx_pause = 1;
+		if (priv->flow_ctrl & FLOW_TX)
+			pause->tx_pause = 1;
 	}
 }
 
