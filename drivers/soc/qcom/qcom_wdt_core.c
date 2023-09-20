@@ -34,6 +34,9 @@
 #include <asm/hardirq.h>
 #include <linux/suspend.h>
 #include <linux/notifier.h>
+#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+#include <linux/reset_reason.h>
+#endif
 
 #define MASK_SIZE        32
 #define COMPARE_RET      -1
@@ -392,6 +395,9 @@ static int qcom_wdt_panic_handler(struct notifier_block *this,
 				struct msm_watchdog_data, panic_blk);
 
 	wdog_dd->in_panic = true;
+#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+	store_reset_reason("panic", NULL);
+#endif
 	if (WDOG_BITE_EARLY_PANIC) {
 		pr_info("Triggering early bite\n");
 		qcom_wdt_trigger_bite();
@@ -831,6 +837,9 @@ static irqreturn_t qcom_wdt_bark_handler(int irq, void *dev_id)
 	if (wdog_dd->freeze_in_progress)
 		dev_info(wdog_dd->dev, "Suspend in progress\n");
 
+#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+	store_reset_reason("watchdog bark", NULL);
+#endif
 	md_dump_process();
 	qcom_wdt_trigger_bite();
 
