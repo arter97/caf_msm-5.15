@@ -7228,10 +7228,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 						   &ethqos->emac_rec_class,
 						   "emac_rec");
 
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet probe end");
-#endif
-
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	priv->plat->pm_lite = true;
 	plat_dat->enable_wol = ethqos_enable_wol;
@@ -7262,6 +7258,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos_change_if_create_sysfs(ethqos);
 	ethqos_thermal_netlink_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+		update_marker("M - Ethernet probe end");
+#endif
 
 	return ret;
 
@@ -7441,11 +7441,6 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSINFO("disable phy at suspend\n");
 		ethqos_phy_power_off(ethqos);
 	}
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet Suspend End");
-#endif
-
-	priv->boot_kpi = false;
 
 	if (ethqos->gdsc_off_on_suspend) {
 		if (ethqos->gdsc_emac) {
@@ -7456,6 +7451,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
+	priv->boot_kpi = false;
+
 	ETHQOSDBG(" ret = %d\n", ret);
 	return ret;
 }
