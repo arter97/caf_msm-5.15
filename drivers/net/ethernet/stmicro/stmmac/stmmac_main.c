@@ -1034,7 +1034,7 @@ static void stmmac_mac_flow_ctrl(struct stmmac_priv *priv, u32 duplex)
 			priv->pause, tx_cnt);
 }
 
-static void stmmac_set_speed100(struct stmmac_priv *priv)
+void stmmac_set_speed100(struct stmmac_priv *priv)
 {
 	u16 bmcr_val, ctrl1000_val, adv_val, autoneg_10G_ctrl, pma_ctrl;
 	struct phy_device *phydev = priv->phydev;
@@ -1198,7 +1198,8 @@ static void stmmac_validate(struct phylink_config *config,
 	/* Early ethernet settings to bring up link in 100M,
 	 * Auto neg Off with full duplex link.
 	 */
-	if (priv->phydev && priv->plat->early_eth && !priv->early_eth_config_set) {
+	if (priv->phydev && !priv->plat->fixed_phy_mode &&
+	    priv->plat->early_eth && !priv->early_eth_config_set) {
 		priv->phydev->autoneg = AUTONEG_DISABLE;
 		priv->phydev->speed = SPEED_100;
 		priv->phydev->duplex = DUPLEX_FULL;
