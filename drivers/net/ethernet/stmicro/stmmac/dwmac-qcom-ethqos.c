@@ -6134,6 +6134,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	if (of_device_is_available(fixed_phy_node)) {
 		of_property_read_u32(fixed_phy_node, "speed", &mac2mac_speed);
 		plat_dat->fixed_phy_mode = true;
+		plat_dat->phy_addr = -1;
 		ETHQOSINFO("mac2mac mode: Fixed-link enabled from dt, Speed = %d\n",
 			   mac2mac_speed);
 		goto out;
@@ -6192,6 +6193,37 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 out:
 	of_node_put(fixed_phy_node);
 	return ret;
+}
+
+static int ethqos_update_phyid(struct device_node *np)
+{
+	struct property *phyid_prop;
+	static unsigned long address;
+
+	phyid_prop = kzalloc(sizeof(*phyid_prop), GFP_KERNEL);
+
+	if (!phyid_prop) {
+		ETHQOSERR("kzalloc failed\n");
+		return -ENOMEM;
+	}
+
+	address = cpu_to_be32(phyaddr_pt_param);
+
+	phyid_prop->name = kstrdup("snps,phy-addr", GFP_KERNEL);
+	phyid_prop->value = &address;
+	phyid_prop->length = sizeof(u32);
+
+	if (!(of_update_property(np, phyid_prop) == 0)) {
+		kfree(phyid_prop);
+		ETHQOSERR("Phy address failed to update\n");
+		goto out;
+	}
+
+	ETHQOSINFO("Phy address changed to %ld from the partition",
+		   phyaddr_pt_param);
+
+out:
+	return 0;
 }
 
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
@@ -6728,6 +6760,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos_get_qoe_dt(ethqos, np);
 
+	/* Use phy address passed from the partition only when the address is a valid one */
+	if (phyaddr_pt_param >= 0 && phyaddr_pt_param < PHY_MAX_ADDR) {
+		if (ethqos_update_phyid(np))
+			goto err_mem;
+	}
+
 	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
 	if (IS_ERR(plat_dat)) {
 		dev_err(&pdev->dev, "dt configuration failed\n");
@@ -6738,6 +6776,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->interface = mparams.eth_intf;
 		plat_dat->phy_interface = mparams.eth_intf;
 		plat_dat->is_valid_eth_intf = mparams.is_valid_eth_intf;
+
+		/* Go through default phy detection logic when the
+		 * address from the partition is not a valid one
+		 */
+		if (phyaddr_pt_param < 0 || phyaddr_pt_param >= PHY_MAX_ADDR)
+			plat_dat->phy_addr = -1;
 	}
 
 	if (pdev->name) {
@@ -6959,13 +7003,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ret = qcom_ethmsgq_init(&pdev->dev);
 	if (ret < 0)
 		goto err_mem;
-
-	/* Use phy_addr passed from the partition only when the address
-	 * is a valid one and when "snps,phy-addr" is not present in the dtsi
-	 */
-	if (ethqos->early_eth_enabled && phyaddr_pt_param != -1 &&
-	    plat_dat->phy_addr == -1)
-		plat_dat->phy_addr = phyaddr_pt_param;
 
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
