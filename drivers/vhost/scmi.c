@@ -41,6 +41,10 @@ struct vhost_scmi {
 	void *resp_msg_payld;
 	struct scmi_virtio_client_h *client_handle;
 	atomic_t release_fe_channels;
+	int n_ring_init;
+	int n_vring_call_init;
+	int n_vring_kick_init;
+	int scmi_start_done;
 };
 
 static int vhost_scmi_handle_request(struct vhost_virtqueue *vq,
@@ -96,13 +100,11 @@ static void handle_scmi_tx(struct vhost_scmi *vh_scmi)
 	struct vhost_virtqueue *vq = &vh_scmi->vqs[VHOST_SCMI_VQ_TX];
 	unsigned int out, in;
 	int head;
-	void *private;
 	size_t req_sz, resp_sz = 0, orig_resp_sz;
 	int ret = 0;
 
 	mutex_lock(&vq->mutex);
-	private = vhost_vq_get_backend(vq);
-	if (!private) {
+	if (!vhost_vq_get_backend(vq)) {
 		mutex_unlock(&vq->mutex);
 		return;
 	}
@@ -183,7 +185,7 @@ static void handle_scmi_tx(struct vhost_scmi *vh_scmi)
 			vq_err(vq,
 			  "Unexpected response size: %#zx orig: %#zx\n",
 			  resp_sz, orig_resp_sz);
-			resp_sz = orig_resp_sz;
+			goto error_scmi_tx;
 		}
 
 		ret = vhost_scmi_send_resp(vh_scmi, &vq->iov[in], resp_sz);
@@ -218,17 +220,16 @@ static void handle_scmi_tx_kick(struct vhost_work *work)
 
 static int vhost_scmi_open(struct inode *inode, struct file *f)
 {
-	/*
-	 * This struct is large and allocation could fail, fall back to vmalloc
-	 * if there is no other way.
-	 */
 	struct vhost_scmi *vh_scmi;
 	struct vhost_dev *dev;
 	struct vhost_virtqueue **vqs;
 	int ret = -ENOMEM;
 
+	/*
+	 * This struct is large and allocation could fail, fall back to vmalloc
+	 * if there is no other way.
+	 */
 	vh_scmi = kvzalloc(sizeof(*vh_scmi), GFP_KERNEL | __GFP_RETRY_MAYFAIL);
-
 	if (!vh_scmi)
 		return ret;
 
@@ -329,15 +330,19 @@ err:
 	return ret;
 }
 
-static int vhost_scmi_stop(struct vhost_scmi *vh_scmi)
+static int vhost_scmi_stop(struct vhost_scmi *vh_scmi, bool check_owner)
 {
 	int ret = 0, i;
 	struct vhost_virtqueue *vq;
 
 	mutex_lock(&vh_scmi->dev.mutex);
-	ret = vhost_dev_check_owner(&vh_scmi->dev);
-	if (ret)
-		goto err;
+
+	if (check_owner) {
+		ret = vhost_dev_check_owner(&vh_scmi->dev);
+		if (ret)
+			goto err;
+	}
+
 	for (i = 0; i < ARRAY_SIZE(vh_scmi->vqs); i++) {
 		vq = &vh_scmi->vqs[i];
 		mutex_lock(&vq->mutex);
@@ -351,7 +356,7 @@ err:
 
 static void vhost_scmi_flush_vq(struct vhost_scmi *vh_scmi, int index)
 {
-	vhost_poll_flush(&vh_scmi->vqs[index].poll);
+	vhost_work_dev_flush(&vh_scmi->dev);
 }
 
 static void vhost_scmi_flush(struct vhost_scmi *vh_scmi)
@@ -368,7 +373,7 @@ static int vhost_scmi_release(struct inode *inode, struct file *f)
 	int ret = 0;
 
 	atomic_set(&vh_scmi->release_fe_channels, 1);
-	vhost_scmi_stop(vh_scmi);
+	vhost_scmi_stop(vh_scmi, false);
 	vhost_scmi_flush(vh_scmi);
 	vhost_dev_stop(&vh_scmi->dev);
 	vhost_dev_cleanup(&vh_scmi->dev);
@@ -395,6 +400,9 @@ static int vhost_scmi_set_features(struct vhost_scmi *vh_scmi, u64 features)
 	struct vhost_virtqueue *vq;
 	int i;
 
+	if (features & ~VHOST_SCMI_FEATURES)
+		return -EOPNOTSUPP;
+
 	mutex_lock(&vh_scmi->dev.mutex);
 	if ((features & (1 << VHOST_F_LOG_ALL)) &&
 	    !vhost_log_access_ok(&vh_scmi->dev)) {
@@ -420,10 +428,11 @@ static long vhost_scmi_ioctl(struct file *f, unsigned int ioctl,
 	u64 __user *featurep = argp;
 	u64 features;
 	int r;
-	static int n_ring_init, n_vring_call_init, n_vring_kick_init;
-	static int scmi_start_done;
 
 	switch (ioctl) {
+	/* TODO introduce VHOST_SCMI_SET_RUNNING ioctl to get rid of messy code
+	 * in the default case?
+	 */
 	case VHOST_GET_FEATURES:
 		features = VHOST_SCMI_FEATURES;
 		if (copy_to_user(featurep, &features, sizeof(features)))
@@ -432,8 +441,6 @@ static long vhost_scmi_ioctl(struct file *f, unsigned int ioctl,
 	case VHOST_SET_FEATURES:
 		if (copy_from_user(&features, featurep, sizeof(features)))
 			return -EFAULT;
-		if (features & ~VHOST_SCMI_FEATURES)
-			return -EOPNOTSUPP;
 		return vhost_scmi_set_features(vh_scmi, features);
 	default:
 		mutex_lock(&vh_scmi->dev.mutex);
@@ -442,19 +449,19 @@ static long vhost_scmi_ioctl(struct file *f, unsigned int ioctl,
 			r = vhost_vring_ioctl(&vh_scmi->dev, ioctl, argp);
 		vhost_scmi_flush(vh_scmi);
 		mutex_unlock(&vh_scmi->dev.mutex);
-		if (r || scmi_start_done)
+		if (r || vh_scmi->scmi_start_done)
 			return r;
 		if (ioctl == VHOST_SET_VRING_BASE)
-			n_ring_init++;
+			vh_scmi->n_ring_init++;
 		else if (ioctl == VHOST_SET_VRING_KICK)
-			n_vring_kick_init++;
+			vh_scmi->n_vring_kick_init++;
 		else if (ioctl == VHOST_SET_VRING_CALL)
-			n_vring_call_init++;
-		if (n_ring_init == VHOST_SCMI_VQ_NUM &&
-		    n_vring_kick_init == VHOST_SCMI_VQ_NUM &&
-		    n_vring_call_init == VHOST_SCMI_VQ_NUM) {
+			vh_scmi->n_vring_call_init++;
+		if (vh_scmi->n_ring_init == VHOST_SCMI_VQ_NUM &&
+		    vh_scmi->n_vring_kick_init == VHOST_SCMI_VQ_NUM &&
+		    vh_scmi->n_vring_call_init == VHOST_SCMI_VQ_NUM) {
 			vhost_scmi_start(vh_scmi);
-			scmi_start_done = 1;
+			vh_scmi->scmi_start_done = 1;
 		}
 		return r;
 	}
