@@ -33,6 +33,7 @@ do {\
   pr_err(DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args);\
 } while (0)
 
+phy_interface_t g_interface;
 static const int xpcs_usxgmii_features[] = {
 	ETHTOOL_LINK_MODE_Pause_BIT,
 	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
@@ -1024,6 +1025,7 @@ static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t inte
 {
 	int ret;
 
+	g_interface = interface;
 	if (interface == PHY_INTERFACE_MODE_SGMII) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
 		if (ret < 0)
@@ -1138,9 +1140,40 @@ EXPORT_SYMBOL_GPL(qcom_xpcs_create);
 /* Power off the DWC_xpcs controller */
 void qcom_xpcs_destroy(struct dw_xpcs_qcom *xpcs)
 {
-	int ret;
+	int i, ret;
+	u32 xpcs_id;
+	const struct xpcs_compat *compat;
 
-	/* Enable xpcs_pdown_o signal assertion on xpcs power down, then
+	xpcs_id = xpcs_get_id(xpcs);
+	if (xpcs_id == 0xffffffff) {
+		XPCSERR("Invalid XPCS Device ID\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(xpcs_id_list); i++) {
+		const struct xpcs_id *entry = &xpcs_id_list[i];
+
+		if ((xpcs_id & entry->mask) != entry->id)
+			continue;
+
+		xpcs->id = entry;
+		compat = xpcs_find_compat(entry, g_interface);
+		if (!compat) {
+			XPCSERR("Incompatible MII interface: %d\n", g_interface);
+			ret = -ENODEV;
+			goto out;
+		}
+
+		ret = xpcs_soft_reset(xpcs, compat);
+		if (ret) {
+			XPCSERR("Soft reset of XPCS block failed\n");
+			ret = -ENODEV;
+		}
+		goto done;
+	}
+
+	/* Enable xpc_spdown_o signal assertion on xpcs power down, then
 	 * intiate the power down sequence
 	 */
 	ret = qcom_xpcs_read(xpcs, DW_SR_MII_VSMMD_CTRL);

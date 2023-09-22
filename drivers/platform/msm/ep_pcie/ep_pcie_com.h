@@ -415,6 +415,9 @@ struct ep_pcie_dev_t {
 	u16                          device_id;
 	u32                          subsystem_id;
 	u32                          link_speed;
+	/* Stores current link speed and link width */
+	u32                          current_link_speed;
+	u32                          current_link_width;
 	bool                         active_config;
 	bool                         aggregated_irq;
 	bool                         mhi_a7_irq;
@@ -493,6 +496,7 @@ struct ep_pcie_dev_t {
 
 	struct ep_pcie_register_event *event_reg;
 	struct work_struct           handle_bme_work;
+	struct work_struct           handle_clkreq;
 	struct work_struct           handle_d3cold_work;
 
 	struct clk		     *pipe_clk_mux;
@@ -550,5 +554,20 @@ extern void ep_pcie_reg_dump(struct ep_pcie_dev_t *dev, u32 sel, bool linkdown);
 extern void ep_pcie_clk_dump(struct ep_pcie_dev_t *dev);
 extern void ep_pcie_debugfs_init(struct ep_pcie_dev_t *ep_dev);
 extern void ep_pcie_debugfs_exit(void);
+
+#if IS_ENABLED(CONFIG_L1SS_RESOURCES_HANDLING)
+int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev);
+int ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev);
+#else
+static inline int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
+{
+	return 0;
+}
+
+static inline int ep_pcie_l1ss_resources_deinit(struct ep_pcie_dev_t *dev)
+{
+	return 0;
+}
+#endif /* CONFIG_L1SS_RESOURCES_HANDLING */
 
 #endif

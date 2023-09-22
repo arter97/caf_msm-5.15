@@ -354,6 +354,30 @@ static inline struct f_cdev *cser_to_port(struct cserial *cser)
 	return container_of(cser, struct f_cdev, port_usb);
 }
 
+static unsigned int convert_uart_sigs_to_acm(struct cserial *cser, unsigned int uart_sig)
+{
+	u16 state;
+
+	state = cser->serial_state;
+
+	/* Make sure that ACM bits from previous conversion are cleared */
+	state &= ~(ACM_CTRL_RI | ACM_CTRL_DCD | ACM_CTRL_DSR | ACM_CTRL_BRK);
+
+	/* should this needs to be in calling functions ??? */
+	uart_sig &= (TIOCM_RI | TIOCM_CD | TIOCM_DSR | TIOCM_CTS);
+
+	if (uart_sig & TIOCM_RI)
+		state |= ACM_CTRL_RI;
+	if (uart_sig & TIOCM_CD)
+		state |= ACM_CTRL_DCD;
+	if (uart_sig & TIOCM_DSR)
+		state |= ACM_CTRL_DSR;
+	if (uart_sig & TIOCM_CTS)
+		state |= ACM_CTRL_BRK;
+
+	return state;
+}
+
 static unsigned int convert_acm_sigs_to_uart(unsigned int acm_sig)
 {
 	unsigned int uart_sig = 0;
@@ -434,7 +458,7 @@ usb_cser_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 
 		value = 0;
 		port->port_usb.port_handshake_bits = w_value;
-		pr_debug("USB_CDC_REQ_SET_CONTROL_LINE_STATE: DTR:%d RST:%d\n",
+		pr_debug("USB_CDC_REQ_SET_CONTROL_LINE_STATE: DTR:%d RTS:%d\n",
 			w_value & ACM_CTRL_DTR ? 1 : 0,
 			w_value & ACM_CTRL_RTS ? 1 : 0);
 		if (port->port_usb.notify_modem)
@@ -1517,6 +1541,12 @@ static int f_cdev_tiocmget(struct f_cdev *port)
 
 	if (cser->serial_state & TIOCM_RI)
 		result |= TIOCM_RI;
+
+	if (cser->serial_state & TIOCM_DSR)
+		result |= TIOCM_DSR;
+
+	if (cser->serial_state & TIOCM_CTS)
+		result |= TIOCM_CTS;
 	return result;
 }
 
@@ -1557,6 +1587,24 @@ static int f_cdev_tiocmset(struct f_cdev *port,
 		}
 	}
 
+	if (set & TIOCM_DSR)
+		cser->serial_state |= TIOCM_DSR;
+
+	if (clear & TIOCM_DSR)
+		cser->serial_state &= ~TIOCM_DSR;
+
+	if (set & TIOCM_CTS) {
+		if (cser->send_break) {
+			cser->serial_state |= TIOCM_CTS;
+			status = cser->send_break(cser, 0);
+		}
+	}
+	if (clear & TIOCM_CTS) {
+		if (cser->send_break) {
+			cser->serial_state &= ~TIOCM_CTS;
+			status = cser->send_break(cser, 1);
+		}
+	}
 	return status;
 }
 
@@ -1607,7 +1655,9 @@ static void usb_cser_notify_modem(void *fport, int ctrl_bits)
 {
 	int temp;
 	struct f_cdev *port = fport;
+	struct cserial *cser;
 
+	cser = &port->port_usb;
 	if (!port) {
 		pr_err("port is null\n");
 		return;
@@ -1622,6 +1672,17 @@ static void usb_cser_notify_modem(void *fport, int ctrl_bits)
 
 	port->cbits_to_modem = temp;
 	port->cbits_updated = true;
+
+	 /* if DTR is high, update latest modem info to laptop */
+	if (port->cbits_to_modem & TIOCM_DTR) {
+		unsigned int result;
+		unsigned int cbits_to_laptop;
+
+		result = f_cdev_tiocmget(port);
+		cbits_to_laptop = convert_uart_sigs_to_acm(cser, result);
+		if (cser->send_modem_ctrl_bits)
+			cser->send_modem_ctrl_bits(cser, cbits_to_laptop);
+	}
 
 	wake_up(&port->read_wq);
 }

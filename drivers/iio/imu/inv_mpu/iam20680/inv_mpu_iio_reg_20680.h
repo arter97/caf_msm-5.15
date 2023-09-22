@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2017-2020 InvenSense, Inc.
  *
@@ -235,6 +236,7 @@ enum inv_devices {
 	ICM42688,
 	ICM40609D,
 	ICM43600,
+	ICM45600,
 	INV_NUM_PARTS,
 };
 #endif

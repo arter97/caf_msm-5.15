@@ -73,8 +73,8 @@
 #define MHI_DEV_CH_CLOSE_TIMEOUT_MAX	5100
 #define MHI_DEV_CH_CLOSE_TIMEOUT_COUNT	200
 
-#define IGNORE_CH_SIZE			2
-int ignore_ch_channel[IGNORE_CH_SIZE] = {2, 3};
+#define IGNORE_CH_SIZE			4
+int ignore_ch_channel[IGNORE_CH_SIZE] = {2, 3, 24, 25};
 
 uint32_t bhi_imgtxdb;
 enum mhi_msg_level mhi_msg_lvl = MHI_MSG_ERROR;
@@ -231,6 +231,76 @@ static void mhi_dev_ring_cache_completion_cb(void *req)
 static void mhi_dev_edma_sync_cb(void *done)
 {
 	complete((struct completion *)done);
+}
+
+/**
+ * mhi_dev_process_wake_db() - Handle device wake doorbell.
+ * @mhi:       MHI dev structure
+ */
+static int mhi_dev_process_wake_db(struct mhi_dev *mhi)
+{
+	int res = 0;
+	uint32_t db_val = 0;
+
+	res = mhi_dev_mmio_read(mhi, CHDB_LOWER_n(MHI_DEV_WAKE_DB_CHAN),
+					&db_val);
+	if (res) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+			"Failed to read CHDB register for ch_id:%d\n",
+			MHI_DEV_WAKE_DB_CHAN);
+		return res;
+	}
+
+	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "DB value: 0x%lx\n",
+				(size_t) db_val);
+
+	if ((db_val != 0x1) && (db_val != 0x0)) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+			"Invalid value (%d) as WAKE DB received on ch_id:%d\n",
+			db_val, MHI_DEV_WAKE_DB_CHAN);
+		return -EINVAL;
+	}
+
+	/* Check if current wake DB value is already configured */
+	if (db_val == mhi->wake_db_status) {
+		mhi_log(mhi->vf_id, MHI_MSG_DBG,
+			"Wake db already %s\n", db_val ? "asserted" : "de-asserted");
+		return res;
+	}
+
+	/* Assign wake doorbell value to wake_db_status */
+	mhi->wake_db_status = !!db_val;
+
+	res = mhi_dev_configure_inactivity_timer(mhi, !mhi->wake_db_status);
+	if (res)
+		return res;
+
+	return 0;
+}
+
+/**
+ * mhi_dev_configure_inactivity_timer() - Configure inactive timer.
+ * @mhi:       MHI dev structure
+ * @enable:    Flag to enable or disable timer
+ */
+int mhi_dev_configure_inactivity_timer(struct mhi_dev *mhi, bool enable)
+{
+	int res = 0;
+	struct ep_pcie_inactivity inact_param;
+
+	inact_param.enable = enable;
+	inact_param.timer_us = PCIE_EP_TIMER_US;
+	res = ep_pcie_configure_inactivity_timer(mhi->mhi_hw_ctx->phandle,
+				&inact_param);
+	if (res) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+			"Failed to configure inact timer with enable = %d\n", enable);
+		return res;
+	}
+
+	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+		"%s inactivity timer\n", enable ? "Enabled" : "Disabled");
+	return 0;
 }
 
 /**
@@ -1553,7 +1623,10 @@ static void mhi_dev_get_erdb_db_cfg(struct mhi_dev *mhi,
 {
 	if (mhi->cfg.event_rings == NUM_CHANNELS) {
 		erdb_cfg->base = mhi->mhi_chan_hw_base;
-		erdb_cfg->end = HW_CHANNEL_END;
+		if (mhi->enable_m2)
+			erdb_cfg->end = HW_CHANNEL_END-1;
+		else
+			erdb_cfg->end = HW_CHANNEL_END;
 	} else {
 		erdb_cfg->base = mhi->cfg.event_rings -
 					(mhi->cfg.hw_event_rings);
@@ -1571,7 +1644,10 @@ int mhi_pcie_config_db_routing(struct mhi_dev *mhi)
 
 	/* Configure Doorbell routing */
 	chdb_cfg.base = mhi->mhi_chan_hw_base;
-	chdb_cfg.end = HW_CHANNEL_END;
+	if (mhi->enable_m2)
+		chdb_cfg.end = HW_CHANNEL_END-1;
+	else
+		chdb_cfg.end = HW_CHANNEL_END;
 	chdb_cfg.tgt_addr = (uint32_t) mhi->mhi_dma_uc_mbox_crdb;
 	if (mhi->mhi_has_smmu) {
 		chdb_cfg.tgt_addr = (uint32_t) dma_map_resource(&mhi->mhi_hw_ctx->pdev->dev,
@@ -2686,19 +2762,30 @@ static bool mhi_dev_check_channel_interrupt(struct mhi_dev *mhi)
 		ch_num = i * MHI_MASK_CH_EV_LEN;
 		/* Process channel status whose mask is enabled */
 		chintr_value = (mhi->chdb[i].status & mhi->chdb[i].mask);
-		if (chintr_value) {
+
+		/* Device Wake doorbell handling */
+		if ((i == (MHI_MASK_ROWS_CH_EV_DB-1)) && (chintr_value & (1 << 31))
+				&& (mhi->enable_m2)) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Wake doorbell received\n");
+			rc = mhi_dev_process_wake_db(mhi);
+			if (rc) {
+				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+					"Error processing device wake doorbell with rc %d\n", rc);
+				return pending_work;
+			}
+		} else if (chintr_value) {
 			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"processing id: %d, ch interrupt 0x%x\n",
 							i, chintr_value);
 			pending_work |= mhi_dev_queue_channel_db(mhi,
 							chintr_value, ch_num);
-			rc = mhi_dev_mmio_write(mhi, MHI_CHDB_INT_CLEAR_A7_n(i),
-							chintr_value);
-			if (rc) {
-				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		}
+
+		rc = mhi_dev_mmio_write(mhi, MHI_CHDB_INT_CLEAR_A7_n(i), chintr_value);
+		if (rc) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"Error writing interrupt clear for A7\n");
-				return pending_work;
-			}
+			return pending_work;
 		}
 	}
 	return pending_work;
@@ -4241,6 +4328,9 @@ static void mhi_dev_enable(struct work_struct *work)
 	mhi_log(mhi->vf_id, MHI_MSG_INFO, "state:%d\n", state);
 
 	if (state == MHI_DEV_M0_STATE) {
+		/* Setting the default wake_db status to deassert */
+		mhi->wake_db_status = false;
+
 		rc = mhi_dev_cache_host_cfg(mhi);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -4574,6 +4664,17 @@ static int mhi_get_device_tree_data(struct mhi_dev_ctx *mhictx, int vf_id)
 
 	mhi->no_m0_timeout = of_property_read_bool((&pdev->dev)->of_node,
 		"qcom,no-m0-timeout");
+
+	rc = of_property_read_u32((&pdev->dev)->of_node, "qcom,mhi-num-ipc-pages-dev-fac",
+					&mhi->mhi_num_ipc_pages_dev_fac);
+	if (rc) {
+		dev_err(&pdev->dev, "qcom,mhi-num-ipc-pages-dev-fac does not exist\n");
+		mhi->mhi_num_ipc_pages_dev_fac = 1;
+	}
+	if (mhi->mhi_num_ipc_pages_dev_fac < 1 || mhi->mhi_num_ipc_pages_dev_fac > 5) {
+		dev_err(&pdev->dev, "Invalid value received for mhi->mhi_num_ipc_pages_dev_fac\n");
+		mhi->mhi_num_ipc_pages_dev_fac = 1;
+	}
 
 	return 0;
 err:
@@ -5144,7 +5245,7 @@ static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx)
 {
 	struct platform_device *pdev = mhictx->pdev;
 	struct mhi_dev *mhi_vf;
-	u32 i, rc;
+	u32 i, rc, dev_fac;
 	char mhi_vf_ipc_name[11] = "mhi-vf-nn";
 
 	for (i = 1; i <= mhictx->ep_cap.num_vfs; i++) {
@@ -5159,18 +5260,19 @@ static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx)
 				return;
 			}
 			snprintf(mhi_vf_ipc_name, sizeof(mhi_vf_ipc_name), "mhi-vf-%d", i);
-			mhi_ipc_vf_log[i] = ipc_log_context_create(MHI_IPC_LOG_PAGES,
-									mhi_vf_ipc_name, 0);
-			if (mhi_ipc_vf_log[i] == NULL) {
-				dev_err(&pdev->dev,
-					"Failed to create IPC logging context for mhi vf = %d\n",
-						i);
-			}
 			mhictx->mhi_dev[i] = mhi_vf;
 			rc = mhi_get_device_tree_data(mhictx, i);
 			if (rc == 0)
 				mhi_dev_basic_init(mhictx, i);
 			mhi_vf->mhi_hw_ctx = mhictx;
+			dev_fac = mhi_vf->mhi_num_ipc_pages_dev_fac;
+			mhi_ipc_vf_log[i] = ipc_log_context_create(MHI_IPC_LOG_PAGES/dev_fac,
+								mhi_vf_ipc_name, 0);
+			if (mhi_ipc_vf_log[i] == NULL) {
+				dev_err(&pdev->dev,
+					"Failed to create IPC logging context for mhi vf = %d\n",
+						i);
+			}
 			INIT_LIST_HEAD(&mhi_vf->client_cb_list);
 			mutex_init(&mhi_vf->mhi_lock);
 		}
@@ -5230,34 +5332,13 @@ int mhi_edma_init(struct device *dev)
 static int mhi_dev_probe(struct platform_device *pdev)
 {
 	struct mhi_dev *mhi_pf = NULL;
-	int rc = 0;
+	int rc = 0, devfac = 0;
 
 	if (pdev->dev.of_node) {
 		rc = mhi_get_device_info(pdev);
 		if (rc) {
 			dev_err(&pdev->dev, "Error reading MHI Dev DT\n");
 			return rc;
-		}
-		mhi_ipc_vf_log[MHI_DEV_PHY_FUN] = ipc_log_context_create(MHI_IPC_LOG_PAGES,
-								"mhi-pf-0", 0);
-		if (mhi_ipc_vf_log[MHI_DEV_PHY_FUN] == NULL) {
-			dev_err(&pdev->dev,
-				"Failed to create IPC logging context for mhi pf = 0\n");
-		}
-
-		mhi_ipc_err_log = ipc_log_context_create(MHI_IPC_ERR_LOG_PAGES,
-								"mhi_err", 0);
-		if (mhi_ipc_err_log == NULL) {
-			dev_err(&pdev->dev,
-				"Failed to create IPC ERR logging context\n");
-		}
-
-		mhi_ipc_default_err_log = ipc_log_context_create(MHI_IPC_ERR_LOG_PAGES,
-								"mhi_default_err", 0);
-
-		if (mhi_ipc_default_err_log == NULL) {
-			dev_err(&pdev->dev,
-				"Failed to create IPC DEFAULT ERR logging context\n");
 		}
 
 		mhi_pf = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
@@ -5268,6 +5349,28 @@ static int mhi_dev_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 
+		devfac = mhi_pf->mhi_num_ipc_pages_dev_fac;
+		mhi_ipc_vf_log[MHI_DEV_PHY_FUN] = ipc_log_context_create(MHI_IPC_LOG_PAGES/devfac,
+								"mhi-pf-0", 0);
+		if (mhi_ipc_vf_log[MHI_DEV_PHY_FUN] == NULL) {
+			dev_err(&pdev->dev,
+				"Failed to create IPC logging context for mhi pf = 0\n");
+		}
+
+		mhi_ipc_err_log = ipc_log_context_create(MHI_IPC_ERR_LOG_PAGES/devfac,
+								"mhi_err", 0);
+		if (mhi_ipc_err_log == NULL) {
+			dev_err(&pdev->dev,
+				"Failed to create IPC ERR logging context\n");
+		}
+
+		mhi_ipc_default_err_log = ipc_log_context_create(MHI_IPC_ERR_LOG_PAGES/devfac,
+								"mhi_default_err", 0);
+
+		if (mhi_ipc_default_err_log == NULL) {
+			dev_err(&pdev->dev,
+				"Failed to create IPC DEFAULT ERR logging context\n");
+		}
 		/*
 		 * The below list and mutex should be initialized
 		 * before calling mhi_uci_init to avoid crash in
