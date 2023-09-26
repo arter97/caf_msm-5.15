@@ -284,7 +284,7 @@ int stmmac_enable_ipc_low;
 char tmp_buff[MAX_PROC_SIZE];
 static struct ip_params pparams;
 static struct mac_params mparams = {0};
-long phyaddr_pt_param;
+long phyaddr_pt_param = -1;
 
 #define RX_CLK_SYSFS_DEV_ATTR_PERMS 0644
 
@@ -554,9 +554,6 @@ fail:
 
 static int set_ethernet_phyaddr(char *phy_addr)
 {
-	/* Default link speed to 1000Mbps if not specified */
-	phyaddr_pt_param = -1;
-
 	if (!phy_addr)
 		return 1;
 
