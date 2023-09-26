@@ -46,7 +46,6 @@ static struct icc_path *scm_perf_client;
 static int scm_pas_bw_count;
 static DEFINE_MUTEX(scm_pas_bw_mutex);
 bool timeout_disabled;
-static bool mpss_have_extended_mem;
 
 struct adsp_data {
 	int crash_reason_smem;
@@ -461,9 +460,6 @@ static int qcom_rproc_alloc_dtb_firmware(struct qcom_adsp *adsp,
 
 static int setup_mpss_extended_mem(struct qcom_adsp *adsp)
 {
-	int hlosvm[1] = {VMID_HLOS};
-	int mssvm[1] = {VMID_MSS_MSA};
-	int vmperm[1] = {PERM_READ | PERM_WRITE};
 	struct of_phandle_iterator it;
 	struct resource res;
 	int ret;
@@ -494,18 +490,9 @@ static int setup_mpss_extended_mem(struct qcom_adsp *adsp)
 
 		adsp->hyp_assign_phy[i] = res.start;
 		adsp->hyp_assign_mem_size[i] = resource_size(&res);
-		ret = hyp_assign_phys(adsp->hyp_assign_phy[i],
-					adsp->hyp_assign_mem_size[i],
-					hlosvm, 1, mssvm, vmperm, 1);
-		if (ret) {
-			dev_err(adsp->dev,
-				"hyp assign for mpss_extended_dsm_mem_reg[%d]\n", i);
-			return ret;
-		}
 		i++;
 	}
 
-	adsp->ssr_hyp_assign_mem = false;
 	adsp->hyp_assign_mem_cnt = i;
 
 	return 0;
@@ -655,9 +642,6 @@ static int adsp_start(struct rproc *rproc)
 			goto disable_irqs;
 		}
 	}
-
-	if (mpss_have_extended_mem)
-		adsp->ssr_hyp_assign_mem = true;
 
 	ret = do_bus_scaling(adsp, true);
 	if (ret < 0)
@@ -1373,7 +1357,7 @@ static int adsp_probe(struct platform_device *pdev)
 			dev_err(adsp->dev, "failed to parse mpss extended dsm mem\n");
 			goto free_rproc;
 		}
-		mpss_have_extended_mem = true;
+		adsp->ssr_hyp_assign_mem = true;
 	}
 
 	platform_set_drvdata(pdev, adsp);
