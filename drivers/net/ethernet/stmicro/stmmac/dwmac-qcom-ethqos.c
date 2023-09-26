@@ -6728,6 +6728,46 @@ static int ethqos_thermal_netlink_create_sysfs(struct qcom_ethqos *ethqos)
 	return 0;
 }
 
+static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
+				    struct plat_stmmacenet_data *plat_dat,
+				    struct stmmac_priv *priv)
+{
+	struct device_node *np = ethqos->pdev->dev.of_node;
+	const char *name;
+	int i = 0;
+
+	int num_names = of_property_count_strings(np, "pinctrl-names");
+
+	if (num_names < 0) {
+		dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names: %d\n",
+			num_names);
+		return;
+	}
+
+	for (i = 0; i < num_names; i++) {
+		int ret = of_property_read_string_index(np,
+							"pinctrl-names",
+							i, &name);
+		if (ret < 0) {
+			dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names by index: %d\n",
+				ret);
+			return;
+		}
+
+		if (strnstr(name, "emac0_ptp_aux_ts_i", strlen(name))) {
+			char *pos = strrchr(name, '_');
+
+			if (pos + 1) {
+				int index = *(pos + 1) - 48;
+
+				plat_dat->ext_snapshot_num |= (1 << (index + 4));
+			}
+		}
+	}
+
+	dev_info(&ethqos->pdev->dev, "ext_snapshot_num = %d\n", plat_dat->ext_snapshot_num);
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -7052,6 +7092,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	priv = netdev_priv(ndev);
 	ethqos->priv = priv;
 	ethqos->power_state = true;
+
+	qcom_ethqos_init_aux_ts(ethqos, plat_dat, priv);
+
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
