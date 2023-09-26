@@ -440,10 +440,14 @@ static void ep_pcie_eom_init(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x2);
 	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_AUXDATA_TB +
 		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x80);
+
+	ndelay(100);
 	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
 		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
 	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
 		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
+
+	ndelay(100);
 	ep_pcie_write_reg(dev->phy, PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
 		QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
 }
@@ -507,14 +511,17 @@ static void ep_pcie_eom_eye_seq(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 				PCIE20_PHY_QSERDES_RX0_AUX_CONTROL +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), tmp);
 
+			ndelay(100);
 			ep_pcie_write_reg(dev->phy,
 				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL_4 +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x33);
 
+			ndelay(100);
 			ep_pcie_write_reg(dev->phy,
 				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x4c);
 
+			ndelay(100);
 			ep_pcie_write_reg(dev->phy,
 				PCIE20_PHY_QSERDES_RX0_RX_MARG_CTRL3 +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), 0x48);
@@ -523,10 +530,12 @@ static void ep_pcie_eom_eye_seq(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 				PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), 0xfc);
 
+			ndelay(100);
 			ep_pcie_write_reg(dev->phy,
 				PCIE20_PHY_QSERDES_RX0_RCLK_AUXDATA_SEL +
 				QSERDES_OFFSET_LANE_SIZE(lanenum), 0xf4);
 
+			msleep(200);
 			temp_err_low = readl_relaxed(dev->phy +
 				PCIE20_PHY_QSERDES_RX0_IA_ERROR_COUNTER_LOW +
 				QSERDES_OFFSET_LANE_SIZE(lanenum));

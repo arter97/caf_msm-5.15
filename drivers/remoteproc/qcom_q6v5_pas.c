@@ -522,7 +522,7 @@ static int mpss_extended_mem_hyp_assign_control(struct qcom_adsp *adsp, bool sta
 		 */
 		if (ret) {
 			dev_err(adsp->dev,
-				"hyp assign for mpss_dsm_mem_reg[%d]\n", i);
+				"hyp assign for mpss_extended_dsm_mem_reg[%d]\n", i);
 			return ret;
 		}
 	}
@@ -638,7 +638,7 @@ static int adsp_start(struct rproc *rproc)
 	if (is_mss_ssr_hyp_assign_en(adsp)) {
 		ret = mpss_extended_mem_hyp_assign_control(adsp, true);
 		if (ret) {
-			dev_err(adsp->dev, "failed to hyp assign mpss dsm mem\n");
+			dev_err(adsp->dev, "failed to hyp assign mpss extended dsm mem\n");
 			goto disable_irqs;
 		}
 	}
@@ -817,7 +817,7 @@ static int adsp_stop(struct rproc *rproc)
 	if (is_mss_ssr_hyp_assign_en(adsp)) {
 		ret = mpss_extended_mem_hyp_assign_control(adsp, false);
 		if (ret)
-			dev_err(adsp->dev, "failed to reclaim mpss dsm mem\n");
+			dev_err(adsp->dev, "failed to reclaim mpss extended dsm mem\n");
 	}
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_stop", "exit");
@@ -1354,7 +1354,7 @@ static int adsp_probe(struct platform_device *pdev)
 	if (desc->needs_extended_mem_setup) {
 		ret = setup_mpss_extended_mem(adsp);
 		if (ret) {
-			dev_err(adsp->dev, "failed to parse mpss dsm mem\n");
+			dev_err(adsp->dev, "failed to parse mpss extended dsm mem\n");
 			goto free_rproc;
 		}
 		adsp->ssr_hyp_assign_mem = true;
@@ -1868,6 +1868,25 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.dma_phys_below_32b = true,
 };
 
+static const struct adsp_data sa525m_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.dtb_firmware_name = "modem_dtb.mdt",
+	.pas_id = 4,
+	.dtb_pas_id = 0x26,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.needs_extended_mem_setup = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x22,
+	.dma_phys_below_32b = true,
+};
+
 static const struct adsp_data sdxbaagha_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
@@ -2296,6 +2315,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,scuba_auto-modem-pas", .data = &scuba_auto_mpss_resource},
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ .compatible = "qcom,sdxpinn-modem-pas", .data = &sdxpinn_mpss_resource},
+	{ .compatible = "qcom,sa525m-modem-pas", .data = &sa525m_mpss_resource},
 	{ .compatible = "qcom,sdxbaagha-modem-pas", .data = &sdxbaagha_mpss_resource},
 	{ .compatible = "qcom,monaco-adsp-pas", .data = &monaco_adsp_resource},
 	{ .compatible = "qcom,monaco-modem-pas", .data = &monaco_modem_resource},

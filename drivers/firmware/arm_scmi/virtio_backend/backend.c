@@ -283,7 +283,8 @@ virtio_proto_open_fail:
 		virtio_be_protocol = idr_find(&scmi_virtio_be_info.registered_protocols, id);
 		proto_client_h = idr_find(&client_priv->backend_protocol_map, id);
 		close_ret = virtio_be_protocol->prot_ops->close(proto_client_h);
-		pr_err("->close() failed for id: %d ret: %d\n", id, close_ret);
+		if (close_ret)
+			pr_err("->close() failed for id: %d ret: %d\n", id, close_ret);
 		scmi_virtio_put_client_h(proto_client_h);
 	}
 
@@ -318,7 +319,8 @@ int scmi_virtio_be_close(const struct scmi_virtio_client_h *client_h)
 		if (!proto_client_h)
 			continue;
 		close_ret = virtio_be_protocol->prot_ops->close(proto_client_h);
-		pr_err("->close() failed for id: %d ret: %d\n", id, close_ret);
+		if (close_ret)
+			pr_err("->close() failed for id: %d ret: %d\n", id, close_ret);
 		/* Return first failure return code */
 		ret = ret ? : close_ret;
 		scmi_virtio_put_client_h(proto_client_h);

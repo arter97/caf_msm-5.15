@@ -22,12 +22,14 @@
 #include <linux/pinctrl/consumer.h>
 #include <soc/qcom/boot_stats.h>
 #include <linux/suspend.h>
+#include <linux/delay.h>
 
 #define SPI_NUM_CHIPSELECT	(4)
 #define SPI_XFER_TIMEOUT_MS	(250)
 #define SPI_AUTO_SUSPEND_DELAY	(250)
 #define SPI_XFER_TIMEOUT_OFFSET	(250)
 #define SPI_SLAVE_SYNC_XFER_TIMEOUT_OFFSET	(50)
+#define MAX_ITER	1000
 
 /* SPI SE specific registers */
 #define SE_SPI_CPHA		(0x224)
@@ -2172,6 +2174,85 @@ static void spi_get_dt_property(struct platform_device *pdev,
 	geni_mas->slave_cross_connected =
 	of_property_read_bool(pdev->dev.of_node, "slv-cross-connected");
 }
+
+/*
+ * geni_check_stop_engine() - Check GENI status and stop the
+ * primary sequencer if it is active. This function operates
+ * in polling mode.
+ *
+ * @mas: pointer to spi_geni_master struct.
+ *
+ * Return: None.
+ */
+static void geni_check_stop_engine(struct spi_geni_master *mas)
+{
+	u32 geni_status = 0;
+	u32 count = MAX_ITER;
+	u32 m_irq = 0;
+
+	geni_se_common_clks_on(mas->spi_rsc.clk, mas->m_ahb_clk,
+			       mas->s_ahb_clk);
+	geni_status = geni_read_reg(mas->base, SE_GENI_STATUS);
+	if (geni_read_reg(mas->base, GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE) {
+		geni_se_common_clks_off(mas->spi_rsc.clk, mas->m_ahb_clk,
+					mas->s_ahb_clk);
+		return;
+	}
+
+	SPI_LOG_DBG(mas->ipc, false, mas->dev,
+		    "%s: Geni_status:0x%x\n", __func__, geni_status);
+	if (geni_status & M_GENI_CMD_ACTIVE) {
+		geni_se_cancel_m_cmd(&mas->spi_rsc);
+		while (count) {
+			m_irq = geni_read_reg(mas->base, SE_GENI_M_IRQ_STATUS);
+			if (m_irq & M_CMD_CANCEL_EN) {
+				geni_write_reg(m_irq, mas->base, SE_GENI_M_IRQ_CLEAR);
+				SPI_LOG_DBG(mas->ipc, false, mas->dev,
+					    "%s: Cancel cmd success\n", __func__);
+				goto exit_geni_check_stop_engine;
+			}
+			count--;
+			usleep_range(10, 12);
+		}
+		geni_se_abort_m_cmd(&mas->spi_rsc);
+		count = MAX_ITER;
+		while (count) {
+			m_irq = geni_read_reg(mas->base, SE_GENI_M_IRQ_STATUS);
+			if (m_irq & M_CMD_ABORT_EN) {
+				geni_write_reg(m_irq, mas->base, SE_GENI_M_IRQ_CLEAR);
+				SPI_LOG_DBG(mas->ipc, false, mas->dev,
+					    "%s: Abort cmd success\n", __func__);
+				goto geni_tx_fsm_reset;
+			}
+			count--;
+			usleep_range(10, 12);
+		}
+		geni_status = geni_read_reg(mas->base, SE_GENI_STATUS);
+		dev_err(mas->dev, "%s: Cancel/abort failed:0x%x\n", __func__, geni_status);
+geni_tx_fsm_reset:
+		writel_relaxed(1, mas->base + SE_DMA_TX_FSM_RST);
+		count = MAX_ITER;
+		while (count) {
+			u32 dma_tx_status = geni_read_reg(mas->base, SE_DMA_TX_IRQ_STAT);
+
+			if (dma_tx_status & TX_RESET_DONE) {
+				geni_write_reg(dma_tx_status, mas->base, SE_DMA_TX_IRQ_CLR);
+				SPI_LOG_DBG(mas->ipc, false, mas->dev,
+					    "%s: Tx FSM Reset done\n", __func__);
+				goto exit_geni_check_stop_engine;
+			}
+			count--;
+			usleep_range(10, 12);
+		}
+		dev_err(mas->dev, "%s: DMA TX reset failed\n", __func__);
+	}
+exit_geni_check_stop_engine:
+	SPI_LOG_DBG(mas->ipc, false, mas->dev, "%s: End status:0x%x\n",
+		    __func__, geni_read_reg(mas->base, SE_GENI_STATUS));
+	geni_se_common_clks_off(mas->spi_rsc.clk, mas->m_ahb_clk,
+				mas->s_ahb_clk);
+}
+
 static int spi_geni_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -2387,12 +2468,15 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (!geni_mas->ipc && IS_ENABLED(CONFIG_IPC_LOGGING))
 		dev_err(&pdev->dev, "Error creating IPC logs\n");
 
-	if (!geni_mas->is_le_vm)
+	if (!geni_mas->is_le_vm) {
 		SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
 		"%s: GENI_TO_CORE:%d CPU_TO_GENI:%d GENI_TO_DDR:%d\n", __func__,
 		spi_rsc->icc_paths[GENI_TO_CORE].avg_bw,
 		spi_rsc->icc_paths[CPU_TO_GENI].avg_bw,
 		spi_rsc->icc_paths[GENI_TO_DDR].avg_bw);
+
+		geni_check_stop_engine(geni_mas);
+	}
 
 	if (!geni_mas->is_le_vm) {
 		ret = geni_icc_disable(spi_rsc);

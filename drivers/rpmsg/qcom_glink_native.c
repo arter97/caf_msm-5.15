@@ -1429,7 +1429,7 @@ static int qcom_glink_send_signals(struct qcom_glink *glink,
 	msg.param1 = cpu_to_le16(channel->lcid);
 	msg.param2 = cpu_to_le32(sigs);
 
-	GLINK_INFO(glink->ilc, "sigs:%d\n", sigs);
+	GLINK_INFO(glink->ilc, "sigs:0x%x\n", sigs);
 	return qcom_glink_tx(glink, &msg, sizeof(msg), NULL, 0, true);
 }
 
@@ -1463,7 +1463,7 @@ static int qcom_glink_handle_signals(struct qcom_glink *glink,
 
 	channel->rsigs = signals;
 
-	CH_INFO(channel, "old:%d new:%d\n", old, channel->rsigs);
+	CH_INFO(channel, "old:0x%x new:0x%x\n", old, channel->rsigs);
 	if (channel->ept.sig_cb) {
 		channel->ept.sig_cb(channel->ept.rpdev, channel->ept.priv,
 				    old, channel->rsigs);
@@ -2044,6 +2044,7 @@ static int qcom_glink_set_sigs(struct rpmsg_endpoint *ept, u32 set, u32 clear)
 
 	channel->lsigs = sigs;
 
+	CH_INFO(channel, "old:0x%x new:0x%x\n", sigs, channel->lsigs);
 	return qcom_glink_send_signals(glink, channel, sigs);
 }
 

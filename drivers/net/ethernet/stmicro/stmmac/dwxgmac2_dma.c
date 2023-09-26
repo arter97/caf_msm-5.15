@@ -367,10 +367,15 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 			x->rxq_stats[chan].rx_normal_irq_n++;
 			ret |= handle_rx;
 		}
-		if (likely(intr_status & (XGMAC_TI | XGMAC_TBU))) {
+		if (likely(intr_status & XGMAC_TI)) {
 			x->tx_normal_irq_n++;
 			x->txq_stats[chan].tx_normal_irq_n++;
 			ret |= handle_tx;
+		}
+		if (likely(intr_status & XGMAC_TBU)) {
+			x->tx_buf_unav_irq++;
+			x->txq_stats[chan].tx_buf_unav_irq++;
+			ret |= (handle_tx | TDU_ERR);
 		}
 	}
 
@@ -442,6 +447,11 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 		((hw_cap & XGMAC_HWFEAT_TXQCNT) >> 6) + 1;
 	dma_cap->number_rx_queues =
 		((hw_cap & XGMAC_HWFEAT_RXQCNT) >> 0) + 1;
+
+	/* IEEE 1588-2002 */
+	dma_cap->time_stamp = 0;
+	/* Number of Auxiliary Snapshot Inputs */
+	dma_cap->aux_snapshot_n = (hw_cap & GMAC_HW_FEAT_AUXSNAPNUM) >> 28;
 
 	/* MAC HW feature 3 */
 	hw_cap = readl(ioaddr + XGMAC_HW_FEATURE3);
