@@ -3327,10 +3327,15 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		}
 	}
 
-	if (priv->plat->rgmii_rst) {
-		reset_control_assert(priv->plat->rgmii_rst);
-		mdelay(100);
-		reset_control_deassert(priv->plat->rgmii_rst);
+	if (priv->plat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		if (priv->plat->rgmii_rst) {
+			reset_control_assert(priv->plat->rgmii_rst);
+			mdelay(5);
+			reset_control_deassert(priv->plat->rgmii_rst);
+		}
 	}
 
 	/* DMA Configuration */
