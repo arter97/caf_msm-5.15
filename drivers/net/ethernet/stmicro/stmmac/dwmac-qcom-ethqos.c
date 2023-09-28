@@ -52,6 +52,7 @@
 #define PHY_USXGMII_LOOPBACK_100	0x0801
 #define PHY_USXGMII_LOOPBACK_10	0x0800
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
+#define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -6358,6 +6359,87 @@ static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
 
+signed int ethqos_phylib_mmd_read(struct phy_device *phydev, unsigned int mmd,
+				  unsigned int reg, unsigned char msb,
+				  unsigned char lsb, unsigned int *pdata)
+{
+	unsigned int rdata = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	rdata =  phy_read_mmd(phydev, mmd, reg);
+	*pdata = ((rdata & (mask)) >> (lsb));
+	return 0;
+}
+
+signed int ethqos_phylib_mmd_write(struct phy_device *phydev, unsigned int mmd,
+				   unsigned int reg, unsigned char msb,
+				   unsigned char lsb, unsigned int data)
+{
+	signed int  ret = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ret = phy_modify_mmd(phydev, mmd, reg, mask, (data << lsb));
+
+	return ret;
+}
+
+void ethqos_phylib_udelay(unsigned int usec)
+{
+	if (usec >= 1000) {
+		mdelay(usec / 1000);
+		usec = usec % 1000;
+	}
+	udelay(usec);
+}
+
+int ethqos_phylib_826xb_sds_read(struct phy_device *phydev, unsigned int page,
+				 unsigned int reg, unsigned char msb,
+				 unsigned char lsb, unsigned int *pdata)
+{
+	unsigned int rdata = 0;
+	unsigned int op = (page & 0x3f) | ((reg & 0x1f) << 6) | (0x8000);
+	unsigned int i = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ethqos_phylib_mmd_write(phydev, 30, 323, 15, 0, op);
+
+	for (i = 0; i < 10; i++) {
+		ethqos_phylib_mmd_read(phydev, 30, 323, 15, 15, &rdata);
+		if (rdata == 0)
+			break;
+		ethqos_phylib_udelay(10);
+	}
+	if (i == 10)
+		return -1;
+
+	ethqos_phylib_mmd_read(phydev, 30, 322, 15, 0, &rdata);
+	*pdata = ((rdata & (mask)) >> (lsb));
+
+	return 0;
+}
+
+int ethqos_phylib_826xb_sds_write(struct phy_device *phydev, unsigned int page,
+				  unsigned int reg, unsigned char msb,
+				  unsigned char lsb, unsigned int data)
+{
+	unsigned int wdata = 0, rdata = 0;
+	unsigned int op = (page & 0x3f) | ((reg & 0x1f) << 6) | (0x8800);
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ethqos_phylib_826xb_sds_read(phydev, page, reg, 15, 0, &rdata);
+
+	wdata = ((rdata & ~(mask)) | ((data << (lsb)) & (mask)));
+
+	ethqos_phylib_mmd_write(phydev, 30, 321, 15, 0, wdata);
+	ethqos_phylib_mmd_write(phydev, 30, 323, 15, 0, op);
+
+	return 0;
+}
+
 static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 {
 	int ret;
@@ -6442,6 +6524,31 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 		rtnl_lock();
 		phylink_connect_phy(priv->phylink, priv->phydev);
 		rtnl_unlock();
+
+		if (phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
+			if (phydev->interface == PHY_INTERFACE_MODE_USXGMII) {
+				ETHQOSDBG("set_max_speed 10G\n");
+				phy_set_max_speed(phydev, SPEED_10000);
+			}
+
+			if (phydev->interface == PHY_INTERFACE_MODE_SGMII) {
+				/* disabling serdes for usxgmii */
+				ethqos_phylib_826xb_sds_write(phydev, 7, 17, 0, 0, 0);
+
+				ETHQOSDBG("set_max_speed 1G\n");
+				phy_set_max_speed(phydev, SPEED_1000);
+
+				/* enabling  serdes  and putting into fore mode for sgmii */
+				ethqos_phylib_826xb_sds_write(phydev, 0, 2, 9, 9, 1);
+				ethqos_phylib_826xb_sds_write(phydev, 0, 2, 8, 8, 0);
+
+				/* Register Access APIs */
+				ethqos_phylib_mmd_write(phydev, 30, 0x105, 0, 0, 0x1);
+				ethqos_phylib_mmd_write(phydev, 30, 0xc3, 4, 0, 0x2);
+				ethqos_phylib_mmd_write(phydev, 30, 0xc2, 9, 5, 0x0);
+				ethqos_phylib_mmd_write(phydev, 30, 0x2a2, 7, 7, 0x0);
+			}
+		}
 
 		if (priv->plat->phy_intr_en_extn_stm && phydev) {
 			ETHQOSDBG("PHY interrupt Mode enabled\n");
