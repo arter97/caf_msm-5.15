@@ -289,6 +289,9 @@ struct qcom_ethqos {
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
 	int curr_serdes_speed;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *rgmii_txc_suspend_state;
+	struct pinctrl_state *rgmii_txc_resume_state;
 };
 
 struct pps_cfg {

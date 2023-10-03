@@ -229,9 +229,8 @@ static int stmmac_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	int data = 0;
 	u32 v;
 
-	data = pm_runtime_get_sync(priv->device);
+	data = pm_runtime_resume_and_get(priv->device);
 	if (data < 0) {
-		pm_runtime_put_noidle(priv->device);
 		return data;
 	}
 
@@ -297,9 +296,8 @@ static int stmmac_mdio_write(struct mii_bus *bus, int phyaddr, int phyreg,
 	u32 value = MII_BUSY;
 	u32 v;
 
-	ret = pm_runtime_get_sync(priv->device);
+	ret = pm_runtime_resume_and_get(priv->device);
 	if (ret < 0) {
-		pm_runtime_put_noidle(priv->device);
 		return ret;
 	}
 
