@@ -342,5 +342,6 @@ struct plat_stmmacenet_data {
 	struct completion mdio_op;
 	bool mac_suspended;
 	bool separate_wol_pin;
+	bool mka_mcbcq_filtering;
 };
 #endif

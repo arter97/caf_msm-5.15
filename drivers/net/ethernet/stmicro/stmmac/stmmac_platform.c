@@ -176,6 +176,11 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 	else
 		plat->rx_sched_algorithm = MTL_RX_ALGORITHM_SP;
 
+	if (of_property_read_bool(rx_node, "snps,mka_mcbcq_filtering"))
+		plat->mka_mcbcq_filtering = true;
+	else
+		plat->mka_mcbcq_filtering = false;
+
 	/* Processing individual RX queue config */
 	for_each_child_of_node(rx_node, q_node) {
 		if (queue >= plat->rx_queues_to_use)
