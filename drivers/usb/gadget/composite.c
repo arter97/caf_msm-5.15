@@ -2485,6 +2485,9 @@ void composite_resume(struct usb_gadget *gadget)
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "resume\n");
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+	update_marker("M - USB Device is resumed");
+#endif
 	if (cdev->driver->resume)
 		cdev->driver->resume(cdev);
 	if (cdev->config) {
