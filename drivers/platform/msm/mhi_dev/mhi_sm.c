@@ -542,7 +542,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	case MHI_DEV_READY_STATE:
 		res = ep_pcie_get_msi_config(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
 			&cfg, mhi_sm_ctx->mhi_dev->vf_id);
-		if (res) {
+		if (res && res != -EOPNOTSUPP) {
 			MHI_SM_ERR(mhi->vf_id, "Error retrieving pcie msi logic\n");
 			goto exit;
 		}
