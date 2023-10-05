@@ -449,7 +449,7 @@ struct timespec64 stmmac_calc_tas_basetime(ktime_t old_base_time,
 					   u64 cycle_time);
 void stmmac_mac2mac_adjust_link(int speed, struct stmmac_priv *priv);
 void qcom_serdes_loopback_v3_1(struct plat_stmmacenet_data *plat, bool on);
-
+void stmmac_set_speed100(struct stmmac_priv *priv);
 #if IS_ENABLED(CONFIG_STMMAC_SELFTESTS)
 void stmmac_selftest_run(struct net_device *dev,
 			 struct ethtool_test *etest, u64 *buf);
