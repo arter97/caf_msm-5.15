@@ -302,7 +302,7 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 
 	dev = sec_vm_dev->dev;
 
-	cleanup_vm_dump_ctx(sec_vm_dev->vmid);
+	cleanup_gvm_dump_ctx(sec_vm_dev->vmid);
 
 	ret = gh_sec_vm_loader_load_fw(sec_vm_dev, vm);
 	if (ret) {
