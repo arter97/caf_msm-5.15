@@ -12,6 +12,8 @@
 #include <linux/gunyah.h>
 #include <linux/wait.h>
 
+#include "gvm_dump_debugfs.h"
+
 #define GH_EVENT_CREATE_VM 0
 #define GH_EVENT_DESTROY_VM 1
 #define GH_MAX_VCPUS 8
