@@ -463,6 +463,7 @@ int gh_provide_mem(struct gh_vm *vm, phys_addr_t phys,
 	int srcVM[1] = {VMID_HLOS};
 	int destVM[1] = {vmid};
 	int ret = 0;
+
 	acl_desc = kzalloc(offsetof(struct gh_acl_desc, acl_entries[1]),
 			GFP_KERNEL);
 	if (!acl_desc)
@@ -786,9 +787,9 @@ static void __exit gh_exit(void)
 {
 	misc_deregister(&gh_dev);
 	gh_proxy_sched_exit();
+	cleanup_gvm_dump_list();
 	gh_secure_vm_loader_exit();
 	gh_virtio_backend_exit();
-	cleanup_gvm_list();
 }
 module_exit(gh_exit);
 
