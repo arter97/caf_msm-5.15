@@ -317,6 +317,7 @@ struct f_gsi {
 	u16 gsi_rw_timer_interval;
 	bool host_supports_flow_control;
 	bool ipa_ready_timeout;
+	struct work_struct wakeup_work;
 };
 
 static inline struct f_gsi *func_to_gsi(struct usb_function *f)
