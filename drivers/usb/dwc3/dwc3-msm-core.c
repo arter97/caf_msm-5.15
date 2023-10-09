@@ -47,6 +47,7 @@
 #include <linux/usb/role.h>
 #include <linux/usb/redriver.h>
 #include <linux/soc/qcom/wcd939x-i2c.h>
+#include <linux/nvmem-consumer.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -5991,6 +5992,264 @@ static int dwc3_msm_parse_params(struct dwc3_msm *mdwc, struct device_node *node
 	return 0;
 }
 
+#define MAX_FAST_BOOT_VALUES 16
+
+/**
+ * Determine if device HW is of PCIe endpoint flavor based on boot_config info.
+ * BOOT_CONFIG is a FUSE based register. This register allows to read the proper PBL
+ * related values. Use nvmem interface to read boot_config register and use bitmask
+ * which is provided through devicetree for masking fast_boot and pcie_host_bypass.
+ *
+ * @return bool true if device HW is of PCIe endpoint falvor,
+ *         false otherwise
+ */
+static bool dwc3_msm_check_boot_config(struct device *dev)
+{
+	struct nvmem_cell *cell = NULL;
+	struct device_node *node = dev->of_node;
+	u32 fast_boot, host_bypass, fast_boot_mask = 0, host_bypass_mask = 0;
+	u8 *buf;
+	int ret = 0, num_fast_boot_values = 0, i;
+	u32 fast_boot_values[16];
+
+	if (!of_find_property(node, "nvmem-cells", NULL)) {
+		pr_err("nvmem-cells property is not defined in %s node\n", node->name);
+		of_node_put(node);
+		return false;
+	}
+	ret = of_property_read_u32(node, "qcom,fast-boot-mask", &fast_boot_mask);
+	if (ret) {
+		pr_err("qcom,fast-boot-mask property is not defined in %s node\n", node->name);
+		return false;
+	}
+	ret = of_property_read_u32(node, "qcom,host-bypass-mask", &host_bypass_mask);
+	if (ret) {
+		pr_err("qcom,host-bypass-mask property is not defined in %s node\n", node->name);
+		return false;
+	}
+
+	if (!host_bypass_mask || !fast_boot_mask) {
+		dev_err(dev, "host_bypass_mask and fast_boot_mask should be non-zero\n");
+		return false;
+	}
+
+	num_fast_boot_values = of_property_count_elems_of_size(node, "qcom,fast-boot-values",
+		sizeof(u32));
+	if (num_fast_boot_values < 0 || num_fast_boot_values > MAX_FAST_BOOT_VALUES) {
+		dev_err(dev, "qcom,fast-boot-values number of values invalid\n");
+		return false;
+	}
+
+	pr_debug("dwc3-msm: num_fast_boot_values = %d\n", num_fast_boot_values);
+	ret = of_property_read_u32_array(node, "qcom,fast-boot-values", fast_boot_values,
+		num_fast_boot_values);
+	if (ret) {
+		dev_err(dev, "qcom,fast-boot-values array unexpected failure\n");
+		return false;
+	}
+
+	cell = nvmem_cell_get(dev, "boot_conf");
+	if (IS_ERR(cell)) {
+		dev_err(dev, "nvmem_cell_get failed on boot_conf\n");
+		return false;
+	}
+	buf = nvmem_cell_read(cell, NULL);
+	if (IS_ERR(buf)) {
+		dev_err(dev, "nvmem_cell_read failed on boot_conf\n");
+		nvmem_cell_put(cell);
+		return false;
+	}
+
+	fast_boot = (((*buf) & fast_boot_mask) >> ((ffs(fast_boot_mask)) - 1));
+	host_bypass = (((*buf) & host_bypass_mask) >> ((ffs(host_bypass_mask)) - 1));
+	pr_debug("dwc3-msm: boot_conf = %x, fast_boot = %x, host_bypass = %x\n", *buf, fast_boot,
+		 host_bypass);
+
+	kfree(buf);
+	nvmem_cell_put(cell);
+	if (host_bypass)
+		return false;
+
+	for (i = 0; i < num_fast_boot_values; i++) {
+		if (fast_boot == fast_boot_values[i])
+			return true;
+	}
+
+	return false;
+}
+
+static void dt_node_property_destroy(struct property *prop)
+{
+	if (!prop)
+		return;
+
+	kfree(prop->name);
+	kfree(prop->value);
+	prop->name = NULL;
+	prop->value = NULL;
+
+}
+
+static struct property *dt_node_property_create(const char *name, u8 *value)
+{
+	struct property *prop = kzalloc(sizeof(*prop), GFP_KERNEL);
+
+	if (!prop)
+		return NULL;
+
+	prop->name = kstrdup(name, GFP_KERNEL);
+	if (!prop->name) {
+		dt_node_property_destroy(prop);
+		return NULL;
+	}
+	if (!value)
+		return prop;
+	prop->value = kstrdup(value, GFP_KERNEL);
+	if (!prop->value) {
+		dt_node_property_destroy(prop);
+		return NULL;
+	}
+	prop->length = strnlen(prop->value, 32) + 1;
+
+	return prop;
+}
+
+/**
+ * Set device tree properties of dwc3 node to SMMU bypass mode.
+ *
+ * @return int 0 on success, a negative error value in case of
+ *         an error.
+ */
+static int dwc3_set_bypass_mode(struct device_node *node)
+{
+	struct property *prop = NULL;
+
+	prop = of_find_property(node, "dma-coherent", NULL);
+	if (prop) {
+		if (of_remove_property(node, prop)) {
+			pr_err("of_remove_property failed. name=%s\n", prop->name);
+			return -EINVAL;
+		}
+	}
+	prop = of_find_property(node, "qcom,iommu-dma", NULL);
+	if (prop) {
+		pr_info("dwc3-msm: %s found in device tree under %s\n", prop->name, node->name);
+		if (of_remove_property(node, prop)) {
+			pr_err("dwc3-msm: of_remove_property failed. name=%s\n", prop->name);
+			return -EINVAL;
+		}
+
+		prop = dt_node_property_create("qcom,iommu-dma", "bypass");
+		if (!prop) {
+			pr_err("dwc3-msm: qcom,iommu-dma dt_node_property_create failed\n");
+			return -EINVAL;
+		}
+		if (of_add_property(node, prop)) {
+			pr_err("dwc3-msm: of_add_property failed. name=%s\n", prop->name);
+			dt_node_property_destroy(prop);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static int dwc3_msm_set_smmu_cfg(struct device *dev)
+{
+	struct device_node *node = NULL;
+	int ret = 0;
+
+	if (!dwc3_msm_check_boot_config(dev))
+		return 0;
+
+	node = of_find_compatible_node(dev->of_node, NULL, "snps,dwc3");
+	if (node) {
+		ret = dwc3_set_bypass_mode(node);
+		of_node_put(node);
+		if (ret)
+			pr_err("dwc3_set_bypass_mode failed\n");
+	} else {
+		dev_err(dev, "snps,dwc3 node not found\n");
+		ret = -ENODEV;
+	}
+	return ret;
+}
+
+static int dwc3_msm_check_extcon_prop(struct platform_device *pdev)
+{
+	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
+	struct device_node *node = mdwc->dev->of_node;
+	int ret = 0;
+
+	if (of_property_read_bool(node, "extcon")) {
+		ret = dwc3_msm_extcon_register(mdwc);
+		if (ret)
+			return ret;
+
+		/*
+		 * dpdm regulator will be turned on to perform apsd
+		 * (automatic power source detection). dpdm regulator is
+		 * used to float (or high-z) dp/dm lines. Do not reset
+		 * controller/phy if regulator is turned on.
+		 * if dpdm is not present controller can be reset
+		 * as this controller may not be used for charger detection.
+		 */
+		mdwc->dpdm_reg = devm_regulator_get_optional(&pdev->dev,
+				"dpdm");
+		if (IS_ERR(mdwc->dpdm_reg)) {
+			dev_dbg(mdwc->dev, "assume cable is not connected\n");
+			mdwc->dpdm_reg = NULL;
+		}
+
+		if (!mdwc->vbus_active && mdwc->dpdm_reg &&
+				regulator_is_enabled(mdwc->dpdm_reg)) {
+			mdwc->dpdm_nb.notifier_call = dwc_dpdm_cb;
+			regulator_register_notifier(mdwc->dpdm_reg,
+					&mdwc->dpdm_nb);
+		} else {
+			if (!mdwc->role_switch)
+				queue_work(mdwc->sm_usb_wq, &mdwc->sm_work);
+		}
+	}
+
+	if (!mdwc->role_switch && !mdwc->extcon) {
+		switch (mdwc->dr_mode) {
+		case USB_DR_MODE_OTG:
+			if (of_property_read_bool(node,
+						"qcom,default-mode-host")) {
+				dev_dbg(mdwc->dev, "%s: start host mode\n",
+								__func__);
+				mdwc->id_state = DWC3_ID_GROUND;
+			} else if (of_property_read_bool(node,
+						"qcom,default-mode-none")) {
+				dev_dbg(mdwc->dev, "%s: stay in none mode\n",
+								__func__);
+			} else {
+				dev_dbg(mdwc->dev, "%s: start peripheral mode\n",
+								__func__);
+				mdwc->vbus_active = true;
+			}
+			break;
+		case USB_DR_MODE_HOST:
+			mdwc->id_state = DWC3_ID_GROUND;
+			break;
+		case USB_DR_MODE_PERIPHERAL:
+			fallthrough;
+		default:
+			mdwc->vbus_active = true;
+			break;
+		}
+
+		dwc3_ext_event_notify(mdwc);
+		return ret;
+	}
+
+	if (of_property_read_bool(node, "qcom,msm-probe-core-init"))
+		dwc3_ext_event_notify(mdwc);
+
+	return ret;
+}
+
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -6006,6 +6265,12 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mdwc);
 	mdwc->dev = &pdev->dev;
+
+	ret = dwc3_msm_set_smmu_cfg(dev);
+	if (ret) {
+		dev_err(dev, "dynamic smmu configuration failed\n");
+		return ret;
+	}
 
 	INIT_LIST_HEAD(&mdwc->req_complete_list);
 	INIT_WORK(&mdwc->resume_work, dwc3_resume_work);
@@ -6245,71 +6510,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		gpio_direction_output(mdwc->vbus_boost_gpio, 0);
 	}
 
-	if (of_property_read_bool(node, "extcon")) {
-		ret = dwc3_msm_extcon_register(mdwc);
-		if (ret)
-			goto put_dwc3;
-
-		/*
-		 * dpdm regulator will be turned on to perform apsd
-		 * (automatic power source detection). dpdm regulator is
-		 * used to float (or high-z) dp/dm lines. Do not reset
-		 * controller/phy if regulator is turned on.
-		 * if dpdm is not present controller can be reset
-		 * as this controller may not be used for charger detection.
-		 */
-		mdwc->dpdm_reg = devm_regulator_get_optional(&pdev->dev,
-				"dpdm");
-		if (IS_ERR(mdwc->dpdm_reg)) {
-			dev_dbg(mdwc->dev, "assume cable is not connected\n");
-			mdwc->dpdm_reg = NULL;
-		}
-
-		if (!mdwc->vbus_active && mdwc->dpdm_reg &&
-				regulator_is_enabled(mdwc->dpdm_reg)) {
-			mdwc->dpdm_nb.notifier_call = dwc_dpdm_cb;
-			regulator_register_notifier(mdwc->dpdm_reg,
-					&mdwc->dpdm_nb);
-		} else {
-			if (!mdwc->role_switch)
-				queue_work(mdwc->sm_usb_wq, &mdwc->sm_work);
-		}
-	}
-
-	if (!mdwc->role_switch && !mdwc->extcon) {
-		switch (mdwc->dr_mode) {
-		case USB_DR_MODE_OTG:
-			if (of_property_read_bool(node,
-						"qcom,default-mode-host")) {
-				dev_dbg(mdwc->dev, "%s: start host mode\n",
-								__func__);
-				mdwc->id_state = DWC3_ID_GROUND;
-			} else if (of_property_read_bool(node,
-						"qcom,default-mode-none")) {
-				dev_dbg(mdwc->dev, "%s: stay in none mode\n",
-								__func__);
-			} else {
-				dev_dbg(mdwc->dev, "%s: start peripheral mode\n",
-								__func__);
-				mdwc->vbus_active = true;
-			}
-			break;
-		case USB_DR_MODE_HOST:
-			mdwc->id_state = DWC3_ID_GROUND;
-			break;
-		case USB_DR_MODE_PERIPHERAL:
-			fallthrough;
-		default:
-			mdwc->vbus_active = true;
-			break;
-		}
-
-		dwc3_ext_event_notify(mdwc);
-		return 0;
-	}
-
-	if (of_property_read_bool(node, "qcom,msm-probe-core-init"))
-		dwc3_ext_event_notify(mdwc);
+	if (dwc3_msm_check_extcon_prop(pdev))
+		goto put_dwc3;
 
 	mdwc->force_disconnect = false;
 	return 0;
