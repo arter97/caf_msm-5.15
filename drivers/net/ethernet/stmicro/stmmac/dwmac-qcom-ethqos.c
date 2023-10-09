@@ -6213,6 +6213,10 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	}
 
 out:
+	if (plat_dat->fixed_phy_mode)
+		plat_dat->fixed_phy_mode_needs_mdio = of_property_read_bool(pdev->dev.of_node,
+									    "fixed-link-needs-mdio-bus");
+
 	of_node_put(fixed_phy_node);
 	return ret;
 }
