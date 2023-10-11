@@ -7065,12 +7065,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
-	qcom_ethqos_register_vm_notifier(ethqos);
-
-	ret = qcom_ethmsgq_init(&pdev->dev);
-	if (ret < 0)
-		goto err_mem;
-
 	if (of_property_read_bool(pdev->dev.of_node, "gdsc-off-on-suspend"))
 		ethqos->gdsc_off_on_suspend = true;
 	ETHQOSDBG("gdsc-off-on-suspend = %d\n", ethqos->gdsc_off_on_suspend);
@@ -7248,6 +7242,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->wol_irq_enable = ethqos_wol_irq_enable;
 		plat_dat->wol_irq_disable = ethqos_wol_irq_disable;
 	}
+
+	ret = qcom_ethmsgq_init(&pdev->dev);
+	if (ret < 0)
+		goto err_clk;
+
+	qcom_ethqos_register_vm_notifier(ethqos);
 
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
