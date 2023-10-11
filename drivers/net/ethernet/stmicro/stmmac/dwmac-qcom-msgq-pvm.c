@@ -162,7 +162,8 @@ static int recv_thread(void *data)
 			 * post both link down and HW down events. This will
 			 * ensure the SVM does needed handling at each transistion
 			 */
-			if (msgq_priv->last_state == EMAC_LINK_UP)
+			if (msgq_priv->last_state == EMAC_LINK_UP ||
+			    msgq_priv->last_state == EMAC_LINK_DOWN)
 				qcom_notify_msgq(NOTIFICATION, EMAC_HW_UP);
 			else if (msgq_priv->last_state == EMAC_HW_DOWN)
 				qcom_notify_msgq(NOTIFICATION, EMAC_LINK_DOWN);
