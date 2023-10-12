@@ -5838,10 +5838,14 @@ static int dwc3_msm_smmu_fault_handler(struct iommu_domain *domain, struct devic
 	const struct debugfs_reg32 *dwc3_regs = dwc->regset->regs;
 	int size = dwc->regset->nregs, i;
 
-	ipc_log_string(mdwc->dwc_dma_ipc_log_ctxt, "[Reg_Name: Offset\t Value]");
-	for (i = 0; i < size; i++)
-		dump_dwc3_regs(dwc3_regs[i].name, dwc3_regs[i].offset,
-			dwc3_msm_read_reg(mdwc->base, dwc3_regs[i].offset));
+	/* Skip regdump if dwc is not in resume. */
+	if (!pm_runtime_suspended(dwc->dev)) {
+		ipc_log_string(mdwc->dwc_dma_ipc_log_ctxt,
+				"[Reg_Name: Offset\t Value]");
+		for (i = 0; i < size; i++)
+			dump_dwc3_regs(dwc3_regs[i].name, dwc3_regs[i].offset,
+					dwc3_msm_read_reg(mdwc->base, dwc3_regs[i].offset));
+	}
 #endif
        /*
 	* Let the iommu core know we're not really handling this fault;
@@ -6714,6 +6718,9 @@ static void dwc3_msm_update_interfaces(struct usb_device *udev)
 {
 	int i;
 
+	if (!udev->actconfig)
+		return;
+
 	for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
 		struct usb_interface *intf = udev->actconfig->interface[i];
 		struct usb_interface_descriptor *desc = NULL;
@@ -7176,7 +7183,7 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		 * disable), and retry suspend again.
 		 */
 		ret = pm_runtime_put_sync(&mdwc->dwc3->dev);
-		if (ret < 0) {
+		if (!pm_runtime_suspended(&mdwc->dwc3->dev)) {
 			while (--timeout && dwc->connected)
 				msleep(20);
 			dbg_event(0xFF, "StopGdgt connected", dwc->connected);
