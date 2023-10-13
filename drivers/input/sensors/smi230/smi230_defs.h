@@ -610,8 +610,8 @@
 #define SMI230_ACC_FIFO_MODE   UINT8_C(0x01)
 
 #define SMI230_FIFO_GYRO_FRAME_LENGTH UINT8_C(6)
-#define SMI230_GYRO_STREAM_MODE	      UINT8_C(0x80)
-#define SMI230_GYRO_FIFO_MODE	      UINT8_C(0x40)
+#define SMI230_GYRO_STREAM_MODE	      UINT8_C(0x8C)
+#define SMI230_GYRO_FIFO_MODE	      UINT8_C(0x4C)
 /*name Mask definitions for FIFO configuration modes */
 #define SMI230_ACC_FIFO_MODE_CONFIG_MASK UINT8_C(0x01)
 
@@ -804,11 +804,11 @@
  * @brief Interface selection enums
  */
 enum smi230_intf {
-    /*! I2C interface */
-    SMI230_I2C_INTF,
+	/*! I2C interface */
+	SMI230_I2C_INTF,
 
-    /*! SPI interface */
-    SMI230_SPI_INTF
+	/*! SPI interface */
+	SMI230_SPI_INTF
 };
 
 /*************************** Data structures *****************************/
@@ -833,90 +833,88 @@ typedef void (*smi230_delay_fptr_t)(uint32_t period);
 /*!
  *  @brief Sensor XYZ data structure
  */
-struct smi230_sensor_data
-{
-    /*! X-axis sensor data */
-    int16_t x;
+struct smi230_sensor_data {
+	/*! X-axis sensor data */
+	int16_t x;
 
-    /*! Y-axis sensor data */
-    int16_t y;
+	/*! Y-axis sensor data */
+	int16_t y;
 
-    /*! Z-axis sensor data */
-    int16_t z;
+	/*! Z-axis sensor data */
+	int16_t z;
 };
 
 /*!
  *  @brief Sensor XYZ data structure in float representation
  */
-struct smi230_sensor_data_f
-{
-    /*! X-axis sensor data */
-    float x;
+struct smi230_sensor_data_f {
+	/*! X-axis sensor data */
+	float x;
 
-    /*! Y-axis sensor data */
-    float y;
+	/*! Y-axis sensor data */
+	float y;
 
-    /*! Z-axis sensor data */
-    float z;
+	/*! Z-axis sensor data */
+	float z;
 };
 
 /*!
  *  @brief Sensor configuration structure
  */
-struct smi230_cfg
-{
-    /*! power mode */
-    uint8_t power;
+struct smi230_cfg {
+	/*! power mode */
+	uint8_t power;
 
-    /*! range */
-    uint8_t range;
+	/*! range */
+	uint8_t range;
 
-    /*! bandwidth */
-    uint8_t bw;
+	/*! bandwidth */
+	uint8_t bw;
 
-    /*! output data rate */
-    uint8_t odr;
+	/*! output data rate */
+	uint8_t odr;
+
+	/*! fifo watermark level */
+	uint8_t fifo_wm;
 };
 
 /*!
  *  @brief Error Status structure
  */
-struct smi230_err_reg
-{
-    /*! Indicates fatal error */
-    uint8_t fatal_err;
+struct smi230_err_reg {
+	/*! Indicates fatal error */
+	uint8_t fatal_err;
 
-    /*! Indicates error code */
-    uint8_t err_code;
+	/*! Indicates error code */
+	uint8_t err_code;
 };
 
 /*!
  *  @brief Anymotion config structure
  */
-struct smi230_anymotion_cfg
-{
-    /* 11 bit threshold of anymotion detection (threshold = X mg * 2,048 (5.11 format)) */
-    uint16_t threshold;
+struct smi230_anymotion_cfg {
+	/* 11 bit threshold of anymotion detection (threshold = X mg * 2,048 (5.11 format)) */
+	uint16_t threshold;
 
-    /* 1 bit enable anymotion */
-    uint16_t enable;
+	/* 1 bit enable anymotion */
+	uint16_t enable;
 
-    /* 13 bit set the duration for any- and nomotion (time = duration * 20ms (@50Hz)) */
-    uint16_t duration;
+	/* 13 bit set the duration for any- and nomotion (time = duration * 20ms (@50Hz)) */
+	uint16_t duration;
 
-    /* enable anymotion detection for x axis */
-    uint16_t x_en;
+	/* enable anymotion detection for x axis */
+	uint16_t x_en;
 
-    /* enable anymotion detection for y axis */
-    uint16_t y_en;
+	/* enable anymotion detection for y axis */
+	uint16_t y_en;
 
-    /* enable anymotion detection for z axis */
-    uint16_t z_en;
+	/* enable anymotion detection for z axis */
+	uint16_t z_en;
 };
 
-#define SMI230_ACCEL_DATA_SYNC_LEN         1
-#define SMI230_ACCEL_DATA_SYNC_MODE_MASK   0x0007
-#define SMI230_ACCEL_DATA_SYNC_MODE_SHIFT  0
+#define SMI230_ACCEL_DATA_SYNC_LEN	  1
+#define SMI230_ACCEL_DATA_SYNC_MODE_MASK  0x0007
+#define SMI230_ACCEL_DATA_SYNC_MODE_SHIFT 0
 
 #define SMI230_ACCEL_DATA_SYNC_MODE_OFF	   0x00
 #define SMI230_ACCEL_DATA_SYNC_MODE_400HZ  0x01
@@ -928,176 +926,168 @@ struct smi230_anymotion_cfg
 /*!
  *  @brief Data Sync config structure
  */
-struct smi230_data_sync_cfg
-{
-    /*! Mode (0 = off, 1 = 400Hz, 2 = 1kHz, 3 = 2kHz) */
-    uint8_t mode;
+struct smi230_data_sync_cfg {
+	/*! Mode (0 = off, 1 = 400Hz, 2 = 1kHz, 3 = 2kHz) */
+	uint8_t mode;
 };
 
-struct smi230_high_g_cfg
-{
-    /*!  Acceleration threshold */
-    uint16_t threshold;
+struct smi230_high_g_cfg {
+	/*!  Acceleration threshold */
+	uint16_t threshold;
 
-    /*!  Hysteresis */
-    uint16_t hysteresis;
+	/*!  Hysteresis */
+	uint16_t hysteresis;
 
-    /*! To select per x-axis */
-    uint16_t select_x;
+	/*! To select per x-axis */
+	uint16_t select_x;
 
-    /*! To select per y-axis */
-    uint16_t select_y;
+	/*! To select per y-axis */
+	uint16_t select_y;
 
-    /*! To select per z-axis */
-    uint16_t select_z;
+	/*! To select per z-axis */
+	uint16_t select_z;
 
-    /*! high-g enable */
-    uint16_t enable;
+	/*! high-g enable */
+	uint16_t enable;
 
-    /*!  Duration interval */
-    uint16_t duration;
+	/*!  Duration interval */
+	uint16_t duration;
 };
 
 /*! @name Structure to define low-g configuration */
-struct smi230_low_g_cfg
-{
-    /*! Acceleration threshold */
-    uint16_t threshold;
+struct smi230_low_g_cfg {
+	/*! Acceleration threshold */
+	uint16_t threshold;
 
-    /*! Hysteresis */
-    uint16_t hysteresis;
+	/*! Hysteresis */
+	uint16_t hysteresis;
 
-    /*! Duration interval */
-    uint16_t duration;
+	/*! Duration interval */
+	uint16_t duration;
 
-    /*! low-g enable */
-    uint16_t enable;
-
+	/*! low-g enable */
+	uint16_t enable;
 };
 
-struct smi230_high_g_out
-{
-    /*! High G detected on x-axis */
-    uint8_t x;
+struct smi230_high_g_out {
+	/*! High G detected on x-axis */
+	uint8_t x;
 
-    /*! High G detected on y-axis */
-    uint8_t y;
+	/*! High G detected on y-axis */
+	uint8_t y;
 
-    /*! High G detected on z-axis */
-    uint8_t z;
+	/*! High G detected on z-axis */
+	uint8_t z;
 
-    /*! Axis direction on which High G detected */
-    uint8_t direction;
+	/*! Axis direction on which High G detected */
+	uint8_t direction;
 };
 
-struct smi230_orient_cfg
-{
-    /*!  Upside/down detection */
-    uint16_t ud_en;
+struct smi230_orient_cfg {
+	/*!  Upside/down detection */
+	uint16_t ud_en;
 
-    /*!  Symmetrical, high or low Symmetrical */
-    uint16_t mode;
+	/*!  Symmetrical, high or low Symmetrical */
+	uint16_t mode;
 
-    /*!  Blocking mode */
-    uint16_t blocking;
+	/*!  Blocking mode */
+	uint16_t blocking;
 
-    /*!  Threshold angle */
-    uint16_t theta;
+	/*!  Threshold angle */
+	uint16_t theta;
 
-    /*!  Acceleration hysteresis for orientation detection */
-    uint16_t hysteresis;
+	/*!  Acceleration hysteresis for orientation detection */
+	uint16_t hysteresis;
 
-    /*! Orientation feature enable */
-    uint16_t enable;
+	/*! Orientation feature enable */
+	uint16_t enable;
 };
 
-struct smi230_orient_out
-{
-    /*! Orientation portrait landscape */
-    uint8_t portrait_landscape;
-    /*! Orientation face-up down  */
-    uint8_t faceup_down;
+struct smi230_orient_out {
+	/*! Orientation portrait landscape */
+	uint8_t portrait_landscape;
+
+	/*! Orientation face-up down  */
+	uint8_t faceup_down;
 };
 
-struct smi230_no_motion_cfg
-{
-    /*! Duration in 50Hz samples(20msec) */
-    uint16_t duration;
+struct smi230_no_motion_cfg {
+	/*! Duration in 50Hz samples(20msec) */
+	uint16_t duration;
 
-    /*! Acceleration slope threshold */
-    uint16_t threshold;
+	/*! Acceleration slope threshold */
+	uint16_t threshold;
 
-    /*! To select per x-axis */
-    uint16_t select_x;
+	/*! To select per x-axis */
+	uint16_t select_x;
 
-    /*! To select per y-axis */
-    uint16_t select_y;
+	/*! To select per y-axis */
+	uint16_t select_y;
 
-    /*! To select per z-axis */
-    uint16_t select_z;
+	/*! To select per z-axis */
+	uint16_t select_z;
 
-    /*! Enable no-motion feature */
-    uint16_t enable;
-
+	/*! Enable no-motion feature */
+	uint16_t enable;
 };
 
 /*!
  *  @brief Enum to select accelerometer Interrupt pins
  */
 enum smi230_accel_int_channel {
-    /* interrupt Channel 1 for accel sensor */
-    SMI230_INT_CHANNEL_1,
+	/* interrupt Channel 1 for accel sensor */
+	SMI230_INT_CHANNEL_1,
 
-    /* interrupt Channel 2 for accel sensor */
-    SMI230_INT_CHANNEL_2
+	/* interrupt Channel 2 for accel sensor */
+	SMI230_INT_CHANNEL_2
 };
 
 /*!
  *  @brief Enum to select gyroscope Interrupt pins
  */
 enum smi230_gyro_int_channel {
-    /* interrupt Channel 3 for gyro sensor */
-    SMI230_INT_CHANNEL_3,
+	/* interrupt Channel 3 for gyro sensor */
+	SMI230_INT_CHANNEL_3,
 
-    /* interrupt Channel 4 for gyro sensor */
-    SMI230_INT_CHANNEL_4
+	/* interrupt Channel 4 for gyro sensor */
+	SMI230_INT_CHANNEL_4
 };
 
 /*!
  *  @brief Enum to select accelerometer interrupts
  */
 enum smi230_accel_int_types {
-    SMI230_ACCEL_DATA_RDY_INT,
-    /* Accel data ready interrupt */
-    SMI230_ACCEL_SYNC_DATA_RDY_INT,
-    /* Accel synchronized data ready interrupt */
-    SMI230_ACCEL_SYNC_INPUT,
-    /* Accel FIFO watermark interrupt */
-    SMI230_ACCEL_FIFO_WM_INT,
-    /* Accel FIFO full interrupt */
-    SMI230_ACCEL_FIFO_FULL_INT,
-    //SMI230_ACCEL_INT_FIFO_FULL,
-    /* Accel anymotion interrupt*/
-    SMI230_ACCEL_ANYMOTION_INT,
-    /* Accel high-g interrupt */
-    SMI230_ACCEL_HIGH_G_INT,
-    /* Accel low-g interrupt */
-    SMI230_ACCEL_LOW_G_INT,
-    /* Accel orient interrupt */
-    SMI230_ACCEL_ORIENT_INT,
-    /* Accel no-motion interrupt */
-    SMI230_ACCEL_NO_MOTION_INT,
-    /* Accel Error interrupt */
-    SMI230_ACCEL_ERROR_INT
+	SMI230_ACCEL_DATA_RDY_INT,
+	/* Accel data ready interrupt */
+	SMI230_ACCEL_SYNC_DATA_RDY_INT,
+	/* Accel synchronized data ready interrupt */
+	SMI230_ACCEL_SYNC_INPUT,
+	/* Accel FIFO watermark interrupt */
+	SMI230_ACCEL_FIFO_WM_INT,
+	/* Accel FIFO full interrupt */
+	SMI230_ACCEL_FIFO_FULL_INT,
+	//SMI230_ACCEL_INT_FIFO_FULL,
+	/* Accel anymotion interrupt*/
+	SMI230_ACCEL_ANYMOTION_INT,
+	/* Accel high-g interrupt */
+	SMI230_ACCEL_HIGH_G_INT,
+	/* Accel low-g interrupt */
+	SMI230_ACCEL_LOW_G_INT,
+	/* Accel orient interrupt */
+	SMI230_ACCEL_ORIENT_INT,
+	/* Accel no-motion interrupt */
+	SMI230_ACCEL_NO_MOTION_INT,
+	/* Accel Error interrupt */
+	SMI230_ACCEL_ERROR_INT
 };
 
 /*!
  *  @brief Enum to select gyroscope interrupts
  */
 enum smi230_gyro_int_types {
-    /* Gyro data ready interrupt */
-    SMI230_GYRO_DATA_RDY_INT,
-    SMI230_GYRO_FIFO_INT
+	/* Gyro data ready interrupt */
+	SMI230_GYRO_DATA_RDY_INT,
+	SMI230_GYRO_FIFO_INT
 };
 
 /*!
@@ -1129,122 +1119,116 @@ struct smi230_int_pin_cfg {
 /*!
  *  @brief Interrupt channel structure for accel
  */
-struct smi230_accel_int_channel_cfg
-{
-    /*! Accel Interrupt channel */
-    enum smi230_accel_int_channel int_channel;
+struct smi230_accel_int_channel_cfg {
+	/*! Accel Interrupt channel */
+	enum smi230_accel_int_channel int_channel;
 
-    /*! Select Accel Interrupt type */
-    enum smi230_accel_int_types int_type;
+	/*! Select Accel Interrupt type */
+	enum smi230_accel_int_types int_type;
 
-    /*! Structure to configure accel interrupt pins */
-    struct smi230_int_pin_cfg int_pin_cfg;
+	/*! Structure to configure accel interrupt pins */
+	struct smi230_int_pin_cfg int_pin_cfg;
 };
 
 /*!
  *  @brief Interrupt channel structure for gyro
  */
-struct smi230_gyro_int_channel_cfg
-{
-    /*! Gyro Interrupt channel */
-    enum smi230_gyro_int_channel int_channel;
+struct smi230_gyro_int_channel_cfg {
+	/*! Gyro Interrupt channel */
+	enum smi230_gyro_int_channel int_channel;
 
-    /*! Select Gyro Interrupt type */
-    enum smi230_gyro_int_types int_type;
+	/*! Select Gyro Interrupt type */
+	enum smi230_gyro_int_types int_type;
 
-    /*! Structure to configure gyro interrupt pins */
-    struct smi230_int_pin_cfg int_pin_cfg;
+	/*! Structure to configure gyro interrupt pins */
+	struct smi230_int_pin_cfg int_pin_cfg;
 };
 
 /*!
  *  @brief Interrupt Configuration structure
  */
-struct smi230_int_cfg
-{
-    /*! Configuration of first accel interrupt channel */
-    struct smi230_accel_int_channel_cfg accel_int_config_1;
+struct smi230_int_cfg {
+	/*! Configuration of first accel interrupt channel */
+	struct smi230_accel_int_channel_cfg accel_int_config_1;
 
-    /*! Configuration of second accel interrupt channel */
-    struct smi230_accel_int_channel_cfg accel_int_config_2;
+	/*! Configuration of second accel interrupt channel */
+	struct smi230_accel_int_channel_cfg accel_int_config_2;
 
-    /*! Configuration of first gyro interrupt channel */
-    struct smi230_gyro_int_channel_cfg gyro_int_config_1;
+	/*! Configuration of first gyro interrupt channel */
+	struct smi230_gyro_int_channel_cfg gyro_int_config_1;
 
-    /*! Configuration of second gyro interrupt channel */
-    struct smi230_gyro_int_channel_cfg gyro_int_config_2;
+	/*! Configuration of second gyro interrupt channel */
+	struct smi230_gyro_int_channel_cfg gyro_int_config_2;
 };
 
 /*!
  *  @brief accel fifo configurations
  */
-struct accel_fifo_config
-{
-    /*! Configure the fifo mode (0 = Stream mode, 1 = FIFO mode) */
-    uint8_t mode;
+struct accel_fifo_config {
+	/*! Configure the fifo mode (0 = Stream mode, 1 = FIFO mode) */
+	uint8_t mode;
 
-    /*! To enable the accel */
-    uint8_t accel_en;
+	/*! To enable the accel */
+	uint8_t accel_en;
 
-    /*! To enable the interrupt_1 */
-    uint8_t int1_en;
+	/*! To enable the interrupt_1 */
+	uint8_t int1_en;
 
-    /*! To enable the interrupt_2 */
-    uint8_t int2_en;
+	/*! To enable the interrupt_2 */
+	uint8_t int2_en;
 };
 
 /*!
  *  @brief gyro fifo configurations
  */
-struct gyro_fifo_config
-{
-    /*! Configure the fifo mode (0 = Stream mode, 1 = FIFO mode) */
-    uint8_t mode;
+struct gyro_fifo_config {
+	/*! Configure the fifo mode (0 = Stream mode, 1 = FIFO mode) */
+	uint8_t mode;
 
-    /*! To enable the gyro wm interupt */
-    uint8_t wm_en;
+	/*! To enable the gyro wm interrupt */
+	uint8_t wm_en;
 
-    /*! To enable the interrupt_3 sync */
-    uint8_t int3_en;
+	/*! To enable the interrupt_3 sync */
+	uint8_t int3_en;
 
-    /*! To enable the interrupt_4 sync */
-    uint8_t int4_en;
+	/*! To enable the interrupt_4 sync */
+	uint8_t int4_en;
 };
 
 /*! @name Structure to define FIFO frame configuration */
-struct smi230_fifo_frame
-{
-    /*! Pointer to FIFO data */
-    uint8_t *data;
+struct smi230_fifo_frame {
+	/*! Pointer to FIFO data */
+	uint8_t *data;
 
-    /*! Number of user defined bytes of FIFO to be read */
-    uint16_t length;
+	/*! Number of user defined bytes of FIFO to be read */
+	uint16_t length;
 
-    /*! Enables type of data to be streamed - accelerometer */
-    uint16_t data_enable;
+	/*! Enables type of data to be streamed - accelerometer */
+	uint16_t data_enable;
 
-    /*! To index accelerometer bytes */
-    uint16_t acc_byte_start_idx;
+	/*! To index accelerometer bytes */
+	uint16_t acc_byte_start_idx;
 
-    /*! FIFO sensor time */
-    uint32_t sensor_time;
+	/*! FIFO sensor time */
+	uint32_t sensor_time;
 
-    /*! Skipped frame count */
-    uint8_t skipped_frame_count;
+	/*! Skipped frame count */
+	uint8_t skipped_frame_count;
 
-    /*! Type of data interrupt to be mapped */
-    uint8_t data_int_map;
+	/*! Type of data interrupt to be mapped */
+	uint8_t data_int_map;
 
-    /*! Water-mark level for water-mark interrupt */
-    uint16_t wm_lvl;
+	/*! Water-mark level for water-mark interrupt */
+	uint16_t wm_lvl;
 
-    /*! Accelerometer frame length */
-    uint8_t acc_frm_len;
+	/*! Accelerometer frame length */
+	uint8_t acc_frm_len;
 
-    /*! Accelerometer frame length */
-    uint8_t all_frm_len;
+	/*! Accelerometer frame length */
+	uint8_t all_frm_len;
 
-    /*! FIFO accelerometer configurations */
-    struct accel_fifo_config fifo_conf;
+	/*! FIFO accelerometer configurations */
+	struct accel_fifo_config fifo_conf;
 };
 
 /*!
@@ -1252,47 +1236,47 @@ struct smi230_fifo_frame
  *  This structure holds all relevant information about SMI230
  */
 struct smi230_dev {
+	/*! Accel chip Id */
+	uint8_t accel_chip_id;
 
-    /*! Accel chip Id */
-    uint8_t accel_chip_id;
+	/*! Gyro chip Id */
+	uint8_t gyro_chip_id;
 
-    /*! Gyro chip Id */
-    uint8_t gyro_chip_id;
+	/*! Accel device Id */
+	uint8_t accel_id;
 
-    /*! Accel device Id */
-    uint8_t accel_id;
+	/*! Gyro device Id */
+	uint8_t gyro_id;
 
-    /*! Gyro device Id */
-    uint8_t gyro_id;
+	/*! 0 - I2C , 1 - SPI Interface */
+	enum smi230_intf intf;
 
-    /*! 0 - I2C , 1 - SPI Interface */
-    enum smi230_intf intf;
+	/*! Decide SPI or I2C read mechanism */
+	uint8_t dummy_byte;
 
-    /*! Decide SPI or I2C read mechanism */
-    uint8_t dummy_byte;
+	/*! Structure to configure accel sensor  */
+	struct smi230_cfg accel_cfg;
 
-    /*! Structure to configure accel sensor  */
-    struct smi230_cfg accel_cfg;
+	/*! Structure to configure gyro sensor  */
+	struct smi230_cfg gyro_cfg;
 
-    /*! Structure to configure gyro sensor  */
-    struct smi230_cfg gyro_cfg;
+	/*! Config stream data buffer address will be assigned */
+	const uint8_t *config_file_ptr;
 
-    /*! Config stream data buffer address will be assigned */
-    const uint8_t *config_file_ptr;
+	/*! Max read/write length (maximum supported length is 32).*/
+	/* To be set by the user */
+	uint8_t read_write_len;
 
-    /*! Max read/write length (maximum supported length is 32).
-     * To be set by the user */
-    uint8_t read_write_len;
+	/*! Read function pointer */
+	smi230_com_fptr_t read;
 
-    /*! Read function pointer */
-    smi230_com_fptr_t read;
+	/*! Write function pointer */
+	smi230_com_fptr_t write;
 
-    /*! Write function pointer */
-    smi230_com_fptr_t write;
+	/*! Delay function pointer */
+	smi230_delay_fptr_t delay_ms;
 
-    /*! Delay function pointer */
-    smi230_delay_fptr_t delay_ms;
-
+	/*! irq */
 	int irq;
 };
 

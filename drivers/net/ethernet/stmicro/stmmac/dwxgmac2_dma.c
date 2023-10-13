@@ -367,10 +367,15 @@ static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,
 			x->rxq_stats[chan].rx_normal_irq_n++;
 			ret |= handle_rx;
 		}
-		if (likely(intr_status & (XGMAC_TI | XGMAC_TBU))) {
+		if (likely(intr_status & XGMAC_TI)) {
 			x->tx_normal_irq_n++;
 			x->txq_stats[chan].tx_normal_irq_n++;
 			ret |= handle_tx;
+		}
+		if (likely(intr_status & XGMAC_TBU)) {
+			x->tx_buf_unav_irq++;
+			x->txq_stats[chan].tx_buf_unav_irq++;
+			ret |= (handle_tx | TDU_ERR);
 		}
 	}
 

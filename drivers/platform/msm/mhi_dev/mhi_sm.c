@@ -29,7 +29,6 @@
 #define MHI_SM_FUNC_ENTRY(vf_id) MHI_SM_DBG(vf_id, "ENTRY\n")
 #define MHI_SM_FUNC_EXIT(vf_id) MHI_SM_DBG(vf_id, "EXIT\n")
 
-#define PCIE_EP_TIMER_US		500000000
 #define MHI_DMA_DISABLE_DELAY_MS	10
 #define MHI_DMA_DISABLE_COUNTER		20
 #define MHI_PF_VALUE			0
@@ -206,6 +205,7 @@ struct mhi_sm_ep_pcie_event {
 /**
  * struct mhi_sm_stats - MHI state machine statistics, viewable using debugfs
  * @m0_event_cnt: total number of MHI_DEV_EVENT_M0_STATE events
+ * @m2_event_cnt: total number of MHI_DEV_EVENT_M2_STATE events
  * @m3_event_cnt: total number of MHI_DEV_EVENT_M3_STATE events
  * @hw_acc_wakeup_event_cnt: total number of MHI_DEV_EVENT_HW_ACC_WAKEUP events
  * @mhi_core_wakeup_event_cnt: total number of MHI_DEV_EVENT_CORE_WAKEUP events
@@ -243,7 +243,7 @@ struct mhi_sm_stats {
  * @stats: stats on the handled and pending events
  * @one_d3: One cycle of D3 cold was initiated. L1ss sleep is supported with
  *	PHY settings from AMSS. These PHY settings are programmed during one
- *	cycle of D3_cold followed by D0.
+ *	cycle of D3_cold followed by D0 (only for older targets).
  */
 struct mhi_sm_dev {
 	enum mhi_dev_state mhi_state;
@@ -488,6 +488,30 @@ static bool check_dev_ready_for_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_
 }
 
 /**
+ * mhi_sm_enable_wake_db() - Enable wake doorbell.
+ *
+ * Enable wake doorbell on channel 127 if M2 is enabled.
+ *
+ * Return:	0: success
+ *		negative: failure
+ */
+static int mhi_sm_enable_wake_db(struct mhi_sm_dev *mhi_sm_ctx)
+{
+	int res = 0;
+
+	/* Check if M2 is enabled */
+	if (mhi_sm_ctx->mhi_dev->enable_m2) {
+		res = mhi_dev_mmio_enable_chdb_a7(mhi_sm_ctx->mhi_dev, MHI_DEV_WAKE_DB_CHAN);
+		if (res) {
+			MHI_SM_ERR(mhi_sm_ctx->mhi_dev->vf_id, "Enable wake_db ch_id:%d failed\n",
+					MHI_DEV_WAKE_DB_CHAN);
+		}
+	}
+
+	return res;
+}
+
+/**
  * mhi_sm_prepare_resume() - switch to M0 state.
  *
  * Switch MHI-device state to M0, if possible according to MHI state machine.
@@ -500,10 +524,10 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 {
 	enum mhi_dev_state old_state;
 	struct ep_pcie_msi_config cfg;
-	struct ep_pcie_inactivity inact_param;
 	int res = -EINVAL;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
 	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	unsigned long flags;
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -538,6 +562,13 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 					goto exit;
 				}
 			}
+
+			/* Enable channel DB for DEVICE_WAKE support */
+			res = mhi_sm_enable_wake_db(mhi_sm_ctx);
+			if (res) {
+				MHI_SM_ERR(mhi->vf_id, "Error enabling wake db\n");
+				goto exit;
+			}
 		}
 		break;
 	case MHI_DEV_M1_STATE:
@@ -553,8 +584,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	mhi_sm_mmio_set_mhistatus(mhi_sm_ctx, MHI_DEV_M0_STATE);
 
 	/* Enable MHI DMA */
-	if ((old_state == MHI_DEV_M3_STATE) ||
-		(old_state == MHI_DEV_M2_STATE)) {
+	if (old_state == MHI_DEV_M3_STATE) {
 		if (mhi_sm_ctx->mhi_dev->use_mhi_dma) {
 			res = mhi_dma_fun_ops->mhi_dma_memcpy_enable(mhi_dma_fun_params);
 			if (res) {
@@ -573,6 +603,16 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 			/* edma resets  when device goes to D3 cold*/
 			mhi_edma_init(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
 		}
+	} else if (old_state == MHI_DEV_M2_STATE) {
+		atomic_set(&mhi_sm_ctx->mhi_dev->is_suspended, 0);
+
+		if (mhi_dma_fun_ops->mhi_dma_resume) {
+			res = mhi_dma_fun_ops->mhi_dma_resume(mhi_dma_fun_params);
+			if (res) {
+				MHI_SM_ERR(mhi->vf_id, "Failed resuming mhi_dma:%d", res);
+				goto exit;
+			}
+		}
 	}
 
 	if (mhi_dma_fun_ops->mhi_dma_update_mstate &&
@@ -583,6 +623,18 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 			MHI_SM_ERR(mhi->vf_id, "Failed updating MHI state to M0, %d", res);
 			goto exit;
 		}
+	}
+
+	/* Ensure enabling MHI IRQ only after MHI DMA resume to avoid stalls */
+	if (old_state == MHI_DEV_M2_STATE) {
+		spin_lock_irqsave(&mhi_sm_ctx->mhi_dev->lock, flags);
+		if ((mhi_sm_ctx->mhi_dev->mhi_int) &&
+				(!mhi_sm_ctx->mhi_dev->mhi_int_en)) {
+			enable_irq(mhi_sm_ctx->mhi_dev->mhi_irq);
+			mhi_sm_ctx->mhi_dev->mhi_int_en = true;
+			MHI_SM_DBG(mhi->vf_id, "Enable MHI IRQ during L1SUB_TIMEOUT EXIT");
+		}
+		spin_unlock_irqrestore(&mhi_sm_ctx->mhi_dev->lock, flags);
 	}
 
 	if ((old_state == MHI_DEV_M3_STATE) ||
@@ -622,17 +674,18 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 		}
 	}
 
-	if (mhi_sm_ctx->one_d3 && mhi_sm_ctx->mhi_dev->enable_m2) {
+	/*
+	 * Configure and enable the inactivity timer for autonomous M2 only
+	 * if autonomous M2 is enabled and the device wake doorbell is
+	 * deasserted, i.e wake_db_status is false (default or the host
+	 * did not assert the wake db).
+	 */
+	if ((mhi_sm_ctx->mhi_dev->enable_m2) &&
+		(!(mhi_sm_ctx->mhi_dev->wake_db_status))) {
 		MHI_SM_DBG(mhi->vf_id, "configure inact timer\n");
-		inact_param.enable = true;
-		inact_param.timer_us = PCIE_EP_TIMER_US;
-		res = ep_pcie_configure_inactivity_timer(
-					mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
-					&inact_param);
-		if (res) {
-			MHI_SM_ERR(mhi->vf_id, "failed to configure inact timer\n");
+		res = mhi_dev_configure_inactivity_timer(mhi_sm_ctx->mhi_dev, true);
+		if (res)
 			goto exit;
-		}
 	}
 	res  = 0;
 
@@ -655,7 +708,6 @@ exit:
 static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_state new_state)
 {
 	enum mhi_dev_state old_state;
-	struct ep_pcie_inactivity inact_param;
 	int res = 0, rc, wait_timeout = 0;
 	bool ready_for_suspend;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
@@ -672,17 +724,12 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 		goto exit;
 	}
 
-	if (mhi_sm_ctx->one_d3 && mhi_sm_ctx->mhi_dev->enable_m2) {
+	/* Disable the inactivity timer if M2 autonomus is enabled */
+	if (mhi_sm_ctx->mhi_dev->enable_m2) {
 		MHI_SM_DBG(mhi->vf_id, "Disable inactivity timer.\n");
-		inact_param.enable = false;
-		inact_param.timer_us = PCIE_EP_TIMER_US;
-		res = ep_pcie_configure_inactivity_timer(
-					mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
-					&inact_param);
-		if (res) {
-			MHI_SM_ERR(mhi->vf_id, "failed to configure inact timer\n");
+		res = mhi_dev_configure_inactivity_timer(mhi_sm_ctx->mhi_dev, false);
+		if (res)
 			goto exit;
-		}
 	}
 
 	/*
@@ -695,11 +742,15 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 	if ((old_state == MHI_DEV_M0_STATE) &&
 			((new_state == MHI_DEV_M2_STATE) ||
 			 (new_state == MHI_DEV_M3_STATE))) {
-		/* Suspending MHI operation */
-		res = mhi_dev_suspend(mhi_sm_ctx->mhi_dev);
-		if (res) {
-			MHI_SM_ERR(mhi->vf_id, "Failed to suspend mhi_core:%d\n", res);
-			goto exit;
+		if (new_state == MHI_DEV_M3_STATE) {
+			/* Suspending MHI operation */
+			res = mhi_dev_suspend(mhi_sm_ctx->mhi_dev);
+			if (res) {
+				MHI_SM_ERR(mhi->vf_id, "Failed to suspend mhi_core:%d\n", res);
+				goto exit;
+			}
+		} else {
+			atomic_set(&mhi_sm_ctx->mhi_dev->is_suspended, 1);
 		}
 
 		/* Notify MHI DMA of state change */
@@ -740,8 +791,7 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 	}
 
 	if ((old_state == MHI_DEV_M0_STATE) &&
-			((new_state == MHI_DEV_M2_STATE) ||
-			 (new_state == MHI_DEV_M3_STATE))) {
+			(new_state == MHI_DEV_M3_STATE)) {
 		MHI_SM_DBG(mhi->vf_id, "Disable MHI-DMA with mhi_dma_memcpy_disable()\n");
 		while (wait_timeout < MHI_DMA_DISABLE_COUNTER) {
 			if (mhi_sm_ctx->mhi_dev->use_mhi_dma) {
@@ -786,10 +836,7 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 			goto exit;
 		}
 
-		/*
-		 * Gate CLKREQ# and enable CLKREQ# override.
-		 * Disable forward logic for MHI DMA with M2 state.
-		 */
+		/* Gate CLKREQ# and enable CLKREQ# override */
 		MHI_SM_DBG(mhi->vf_id, "Prepare M2 state: %d\n", new_state);
 		res = ep_pcie_core_l1ss_sleep_config_enable();
 		if (res) {
@@ -801,8 +848,10 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 		}
 
 		MHI_SM_DBG(mhi->vf_id, "Disable endpoint, entering M2 state\n");
-		/* Turn off clock */
+		/* Turn off the resources */
 		ep_pcie_disable_endpoint(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle);
+		MHI_SM_DBG(mhi->vf_id, "Release wake for M2 event\n");
+		pm_relax(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
 	}
 
 	res = 0;
@@ -829,10 +878,15 @@ static int mhi_sm_wakeup_host(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_event 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
 	if (mhi_sm_ctx->mhi_state == MHI_DEV_M2_STATE) {
-		MHI_SM_DBG(mhi->vf_id, "Switching from M2 to M0\n");
-		res = mhi_dev_notify_sm_event(mhi_sm_ctx->mhi_dev, MHI_DEV_EVENT_M0_STATE);
+		/*
+		 * Disable L1_SUB config to trigger M0 and
+		 * resume back from M2.
+		 */
+		MHI_SM_DBG(mhi->vf_id, "Trigger M0 through L1_SUB_TOUT\n");
+		res = ep_pcie_core_l1ss_sleep_config_disable();
 		if (res)
-			MHI_SM_ERR(mhi->vf_id, "Failed switching to M0 state\n");
+			MHI_SM_ERR(mhi->vf_id,
+				"Failed to trigger M0 through L1_SUB_TOUT\n");
 	} else if (mhi_sm_ctx->mhi_state == MHI_DEV_M3_STATE) {
 		/*
 		 * Check and send D3_HOT to enable waking up the host
@@ -1183,14 +1237,6 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 			goto unlock_and_exit;
 		}
 
-		spin_lock_irqsave(&mhi_sm_ctx->mhi_dev->lock, flags);
-		if ((mhi_sm_ctx->mhi_dev->mhi_int) &&
-				(!mhi_sm_ctx->mhi_dev->mhi_int_en)) {
-			enable_irq(mhi_sm_ctx->mhi_dev->mhi_irq);
-			mhi_sm_ctx->mhi_dev->mhi_int_en = true;
-			MHI_SM_DBG(mhi->vf_id, "Enable MHI IRQ during L1SUB_TIMEOUT EXIT");
-		}
-		spin_unlock_irqrestore(&mhi_sm_ctx->mhi_dev->lock, flags);
 		break;
 	default:
 		MHI_SM_ERR(mhi->vf_id, "Invalid EP_PCIE event, received 0x%x\n",
@@ -1439,6 +1485,21 @@ int mhi_dev_notify_sm_event(struct mhi_dev *mhi, enum mhi_dev_event event)
 	switch (event) {
 	case MHI_DEV_EVENT_M0_STATE:
 		mhi_sm_ctx->stats.m0_event_cnt++;
+		/*
+		 * Resuming to M0 state directly if device currently in M2
+		 * instead of queueing it as work, to prevent deadlock of
+		 * flushing same workqueue when executing on the same and
+		 * also advantages in faster transition from M2 to M0.
+		 */
+		if ((mhi_sm_ctx->mhi_state) == MHI_DEV_M2_STATE) {
+			atomic_inc(&mhi_sm_ctx->pending_device_events);
+			MHI_SM_DBG(mhi->vf_id, "Currently in M2, resuming to M0\n");
+			res = mhi_sm_prepare_resume(mhi_sm_ctx);
+			if (res)
+				MHI_SM_ERR(mhi->vf_id, "Failed switching to M0 state\n");
+			atomic_dec(&mhi_sm_ctx->pending_device_events);
+			goto exit;
+		}
 		break;
 	case MHI_DEV_EVENT_M3_STATE:
 		mhi_sm_ctx->stats.m3_event_cnt++;
@@ -1674,6 +1735,9 @@ static ssize_t mhi_sm_debugfs_read(struct file *file, char __user *ubuf,
 		nbytes += scnprintf(dbg_buff + nbytes,
 			MHI_SM_MAX_MSG_LEN - nbytes,
 			"M0 events: %d\n", mhi_sm_ctx->stats.m0_event_cnt);
+		nbytes += scnprintf(dbg_buff + nbytes,
+			MHI_SM_MAX_MSG_LEN - nbytes,
+			"M2 events: %d\n", mhi_sm_ctx->stats.m2_event_cnt);
 		nbytes += scnprintf(dbg_buff + nbytes,
 			MHI_SM_MAX_MSG_LEN - nbytes,
 			"M3 events: %d\n", mhi_sm_ctx->stats.m3_event_cnt);

@@ -71,6 +71,7 @@ struct stmmac_txq_stats {
 	unsigned long txch_desc_list_laddr;
 	unsigned long txch_desc_ring_len;
 	unsigned long txch_desc_tail;
+	unsigned long tx_buf_unav_irq;
 
 };
 
@@ -128,6 +129,7 @@ struct stmmac_extra_stats {
 	unsigned long rx_watchdog_irq;
 	unsigned long tx_early_irq;
 	unsigned long fatal_bus_error_irq;
+	unsigned long tx_buf_unav_irq;
 	/* Tx/Rx IRQ Events */
 	unsigned long rx_early_irq;
 	unsigned long threshold;

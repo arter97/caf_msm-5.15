@@ -21,6 +21,16 @@ config MHI_BUS_DEBUG
 	  reading and/or modifying some values within the MHI controller
 	  for debug and test purposes.
 
+config MHI_BUS_LOG_PAGES
+	int "Maximum number of MHI log pages"
+	depends on MHI_BUS
+	range 1 100
+	default "100"
+	help
+	  The maximum number of Log pages for the MHI IPC_LOGS. The default
+	  is 100, and should be enough. Targets with lower memory requirement
+	  may want to reduce this to save memory.
+
 config MHI_BUS_PCI_GENERIC
 	tristate "MHI PCI controller driver"
 	depends on MHI_BUS

@@ -46,6 +46,7 @@ static struct icc_path *scm_perf_client;
 static int scm_pas_bw_count;
 static DEFINE_MUTEX(scm_pas_bw_mutex);
 bool timeout_disabled;
+static bool mpss_have_extended_mem;
 
 struct adsp_data {
 	int crash_reason_smem;
@@ -123,6 +124,11 @@ struct qcom_adsp {
 	struct qcom_rproc_ssr ssr_subdev;
 	struct qcom_sysmon *sysmon;
 	const struct firmware *dtb_firmware;
+
+	bool ssr_hyp_assign_mem;
+	phys_addr_t *hyp_assign_phy;
+	size_t *hyp_assign_mem_size;
+	int hyp_assign_mem_cnt;
 };
 
 static ssize_t txn_id_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -134,37 +140,76 @@ static ssize_t txn_id_show(struct device *dev, struct device_attribute *attr, ch
 }
 static DEVICE_ATTR_RO(txn_id);
 
+static inline bool is_mss_ssr_hyp_assign_en(struct qcom_adsp *adsp)
+{
+	return (adsp->ssr_hyp_assign_mem && !strcmp(adsp->dtb_fw_name, "modem_dtb.mdt"));
+}
+
+static int adsp_custom_segment_dump(struct qcom_adsp *adsp,
+				    struct rproc_dump_segment *segment,
+				    void *dest, size_t offset, size_t size)
+{
+	int len = strlen("md_dbg_buf");
+	void __iomem *base;
+	int total_offset;
+	bool valid = false;
+	int i;
+
+	if (segment->priv && strnlen(segment->priv, len + 1) == len &&
+		    !strcmp(segment->priv, "md_dbg_buf"))
+		goto custom_segment_dump;
+
+	if (!is_mss_ssr_hyp_assign_en(adsp))
+		return -EINVAL;
+
+	/*
+	 * Also, do second level of check for custom segments in
+	 * adsp_custom_segment_dump(), which checks if the segment
+	 * lies outside the subsystem region range.
+	 */
+	for (i = 0; i < adsp->hyp_assign_mem_cnt; i++) {
+		total_offset = segment->da + segment->offset +
+			       offset - adsp->hyp_assign_phy[i];
+		if (!(total_offset < 0 ||
+		    total_offset + size > adsp->hyp_assign_mem_size[i])) {
+			valid = true;
+			break;
+		}
+	}
+
+	if (!valid)
+		return -EINVAL;
+
+custom_segment_dump:
+	base = ioremap((unsigned long)le64_to_cpu(segment->da), size);
+	if (!base) {
+		dev_err(adsp->dev, "failed to map custom_segment region\n");
+		return -EINVAL;
+	}
+
+	memcpy_fromio(dest, base, size);
+	iounmap(base);
+	return 0;
+}
+
 void adsp_segment_dump(struct rproc *rproc, struct rproc_dump_segment *segment,
 		     void *dest, size_t offset, size_t size)
 {
 	struct qcom_adsp *adsp = rproc->priv;
 	int total_offset;
-	void __iomem *base;
-	int len = strlen("md_dbg_buf");
-
-	if (strnlen(segment->priv, len + 1) == len &&
-		    !strcmp(segment->priv, "md_dbg_buf")) {
-		base = ioremap((unsigned long)le64_to_cpu(segment->da), size);
-		if (!base) {
-			pr_err("failed to map md_dbg_buf region\n");
-			return;
-		}
-
-		memcpy_fromio(dest, base, size);
-		iounmap(base);
-		return;
-	}
 
 	total_offset = segment->da + segment->offset + offset - adsp->mem_phys;
-	if (total_offset < 0 || total_offset + size > adsp->mem_size) {
-		dev_err(adsp->dev,
-			"invalid copy request for segment %pad with offset %zu and size %zu)\n",
-			&segment->da, offset, size);
-		memset(dest, 0xff, size);
+	if (!(total_offset < 0 || total_offset + size > adsp->mem_size)) {
+		memcpy_fromio(dest, adsp->mem_region + total_offset, size);
+		return;
+	} else if (!adsp_custom_segment_dump(adsp, segment, dest, offset, size)) {
 		return;
 	}
 
-	memcpy_fromio(dest, adsp->mem_region + total_offset, size);
+	dev_err(adsp->dev,
+		"invalid copy request for segment %pad with offset %zu and size %zu)\n",
+		&segment->da, offset, size);
+	memset(dest, 0xff, size);
 }
 
 static void adsp_minidump(struct rproc *rproc)
@@ -414,6 +459,90 @@ static int qcom_rproc_alloc_dtb_firmware(struct qcom_adsp *adsp,
 	return 0;
 }
 
+static int setup_mpss_extended_mem(struct qcom_adsp *adsp)
+{
+	int hlosvm[1] = {VMID_HLOS};
+	int mssvm[1] = {VMID_MSS_MSA};
+	int vmperm[1] = {PERM_READ | PERM_WRITE};
+	struct of_phandle_iterator it;
+	struct resource res;
+	int ret;
+	int i = 0;
+
+	ret = of_property_count_elems_of_size(adsp->dev->of_node, "extended-memory-regions",
+						sizeof(phandle));
+	if (ret < 0) {
+		dev_err(adsp->dev, "extended memory regions is not defined properly\n");
+		return ret;
+	}
+
+	adsp->hyp_assign_phy = devm_kzalloc(adsp->dev, sizeof(phys_addr_t) * ret, GFP_KERNEL);
+	if (!adsp->hyp_assign_phy)
+		return -ENOMEM;
+
+	adsp->hyp_assign_mem_size = devm_kzalloc(adsp->dev, sizeof(size_t) * ret, GFP_KERNEL);
+	if (!adsp->hyp_assign_mem_size)
+		return -ENOMEM;
+
+	of_for_each_phandle(&it, ret, adsp->dev->of_node, "extended-memory-regions", NULL, 0) {
+		ret = of_address_to_resource(it.node, 0, &res);
+		if (ret) {
+			dev_err(adsp->dev, "address to resource failed for extended-memory-regions[%d]\n",
+						it.cur_count);
+			return ret;
+		}
+
+		adsp->hyp_assign_phy[i] = res.start;
+		adsp->hyp_assign_mem_size[i] = resource_size(&res);
+		ret = hyp_assign_phys(adsp->hyp_assign_phy[i],
+					adsp->hyp_assign_mem_size[i],
+					hlosvm, 1, mssvm, vmperm, 1);
+		if (ret) {
+			dev_err(adsp->dev,
+				"hyp assign for mpss_extended_dsm_mem_reg[%d]\n", i);
+			return ret;
+		}
+		i++;
+	}
+
+	adsp->ssr_hyp_assign_mem = false;
+	adsp->hyp_assign_mem_cnt = i;
+
+	return 0;
+}
+
+static int mpss_extended_mem_hyp_assign_control(struct qcom_adsp *adsp, bool start)
+{
+	int hlosvm[1] = {VMID_HLOS};
+	int mssvm[1] = {VMID_MSS_MSA};
+	int vmperm[1] = {PERM_READ | PERM_WRITE};
+	int ret;
+	int i;
+
+	for (i = 0; i < adsp->hyp_assign_mem_cnt; i++) {
+		if (start)
+			ret = hyp_assign_phys(adsp->hyp_assign_phy[i],
+						adsp->hyp_assign_mem_size[i],
+						hlosvm, 1, mssvm, vmperm, 1);
+		else
+			ret = hyp_assign_phys(adsp->hyp_assign_phy[i],
+						adsp->hyp_assign_mem_size[i],
+						mssvm, 1, hlosvm, vmperm, 1);
+
+		/* There is no point of reclaiming the successful
+		 * hyp assigned memory as already something bad
+		 * happened.
+		 */
+		if (ret) {
+			dev_err(adsp->dev,
+				"hyp assign for mpss_extended_dsm_mem_reg[%d]\n", i);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *dtb_fw_name)
 {
 	struct qcom_adsp *adsp;
@@ -460,6 +589,55 @@ out:
 }
 EXPORT_SYMBOL(qcom_rproc_set_dtb_firmware);
 
+static void add_mpss_extended_mem_ssr_dump(struct qcom_adsp *adsp)
+{
+	struct rproc *rproc = adsp->rproc;
+	struct device_node *np;
+	struct resource imem;
+	void __iomem *base;
+	int ret = 0, i;
+	const char *prop = "qcom,msm-imem-mss-dsm";
+	dma_addr_t da;
+	size_t size;
+
+	np = of_find_compatible_node(NULL, NULL, prop);
+	if (!np) {
+		pr_err("%s entry missing!\n", prop);
+		return;
+	}
+
+	ret = of_address_to_resource(np, 0, &imem);
+	of_node_put(np);
+	if (ret < 0) {
+		pr_err("address to resource conversion failed for %s\n", prop);
+		return;
+	}
+
+	base = ioremap(imem.start, resource_size(&imem));
+	if (!base) {
+		pr_err("failed to map MSS DSM region\n");
+		return;
+	}
+
+	/*
+	 * There can be multiple DSM partitions based on the Modem flavor.
+	 * Each DSM partition start address and size are written to IMEM by Modem and each
+	 * partition consumes 4 bytes (2 bytes for address and 2 bytes for size) of IMEM.
+	 *
+	 * Modem physical address range has to be in the low 4G (32 bits only) and low 2
+	 * bytes will be zeros, so, left shift by 16 to get proper address & size.
+	 */
+	for (i = 0; i < resource_size(&imem); i = i + 4) {
+		da = __raw_readw(base + i) << 16;
+		size = __raw_readw(base + (i + 2)) << 16;
+		if (da && size)
+			rproc_coredump_add_custom_segment(rproc,
+				da, size, adsp_segment_dump, NULL);
+	}
+
+	iounmap(base);
+}
+
 static int adsp_start(struct rproc *rproc)
 {
 	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
@@ -469,6 +647,17 @@ static int adsp_start(struct rproc *rproc)
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_start", "enter");
 
 	qcom_q6v5_prepare(&adsp->q6v5);
+
+	if (is_mss_ssr_hyp_assign_en(adsp)) {
+		ret = mpss_extended_mem_hyp_assign_control(adsp, true);
+		if (ret) {
+			dev_err(adsp->dev, "failed to hyp assign mpss extended dsm mem\n");
+			goto disable_irqs;
+		}
+	}
+
+	if (mpss_have_extended_mem)
+		adsp->ssr_hyp_assign_mem = true;
 
 	ret = do_bus_scaling(adsp, true);
 	if (ret < 0)
@@ -554,6 +743,9 @@ static int adsp_start(struct rproc *rproc)
 			dev_err(adsp->dev, "start timed out\n");
 	}
 
+	if (is_mss_ssr_hyp_assign_en(adsp))
+		add_mpss_extended_mem_ssr_dump(adsp);
+
 free_metadata:
 	qcom_mdt_free_metadata(adsp->dev, adsp->pas_id, adsp->mdata,
 					adsp->dma_phys_below_32b, ret);
@@ -637,6 +829,12 @@ static int adsp_stop(struct rproc *rproc)
 	handover = qcom_q6v5_unprepare(&adsp->q6v5);
 	if (handover)
 		qcom_pas_handover(&adsp->q6v5);
+
+	if (is_mss_ssr_hyp_assign_en(adsp)) {
+		ret = mpss_extended_mem_hyp_assign_control(adsp, false);
+		if (ret)
+			dev_err(adsp->dev, "failed to reclaim mpss extended dsm mem\n");
+	}
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_stop", "exit");
 
@@ -1110,38 +1308,6 @@ out:
 	return ret;
 }
 
-static int setup_mpss_extended_mem(struct platform_device *pdev)
-{
-	struct of_phandle_iterator it;
-	struct resource res;
-	int hlosvm[1] = {VMID_HLOS};
-	int mssvm[1] = {VMID_MSS_MSA};
-	int vmperm[1] = {PERM_READ | PERM_WRITE};
-	phys_addr_t mem_phys;
-	u64 mem_size;
-	int ret;
-
-	of_for_each_phandle(&it, ret, pdev->dev.of_node, "extended-memory-regions", NULL, 0) {
-		ret = of_address_to_resource(it.node, 0, &res);
-		if (ret) {
-			dev_err(&pdev->dev, "address to resource failed for extended-memory-regions[%d]\n",
-								it.cur_count);
-			return ret;
-		}
-
-		mem_phys = res.start;
-		mem_size = resource_size(&res);
-		ret = hyp_assign_phys(mem_phys, mem_size, hlosvm, 1, mssvm, vmperm, 1);
-		if (ret) {
-			dev_err(&pdev->dev, "hyp assign for extended-memory-regions[%d] failed\n",
-				it.cur_count);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 static int adsp_probe(struct platform_device *pdev)
 {
 	const struct adsp_data *desc;
@@ -1164,14 +1330,6 @@ static int adsp_probe(struct platform_device *pdev)
 				      &fw_name);
 	if (ret < 0 && ret != -EINVAL)
 		return ret;
-
-	if (desc->needs_extended_mem_setup && !strcmp(fw_name, "modem.mdt")) {
-		ret = setup_mpss_extended_mem(pdev);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to setup mpss extended mem\n");
-			return -EINVAL;
-		}
-	}
 
 	if (desc->minidump_id)
 		ops = &adsp_minidump_ops;
@@ -1208,6 +1366,16 @@ static int adsp_probe(struct platform_device *pdev)
 		adsp->mdata = devm_kzalloc(adsp->dev, sizeof(struct qcom_mdt_metadata), GFP_KERNEL);
 		adsp->retry_shutdown = true;
 	}
+
+	if (desc->needs_extended_mem_setup) {
+		ret = setup_mpss_extended_mem(adsp);
+		if (ret) {
+			dev_err(adsp->dev, "failed to parse mpss extended dsm mem\n");
+			goto free_rproc;
+		}
+		mpss_have_extended_mem = true;
+	}
+
 	platform_set_drvdata(pdev, adsp);
 
 	ret = device_init_wakeup(adsp->dev, true);
@@ -1716,6 +1884,25 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.dma_phys_below_32b = true,
 };
 
+static const struct adsp_data sa525m_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.dtb_firmware_name = "modem_dtb.mdt",
+	.pas_id = 4,
+	.dtb_pas_id = 0x26,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.needs_extended_mem_setup = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x22,
+	.dma_phys_below_32b = true,
+};
+
 static const struct adsp_data sdxbaagha_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
@@ -2144,6 +2331,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,scuba_auto-modem-pas", .data = &scuba_auto_mpss_resource},
 	{ .compatible = "qcom,scuba_auto-lpass-pas", .data = &scuba_auto_lpass_resource},
 	{ .compatible = "qcom,sdxpinn-modem-pas", .data = &sdxpinn_mpss_resource},
+	{ .compatible = "qcom,sa525m-modem-pas", .data = &sa525m_mpss_resource},
 	{ .compatible = "qcom,sdxbaagha-modem-pas", .data = &sdxbaagha_mpss_resource},
 	{ .compatible = "qcom,monaco-adsp-pas", .data = &monaco_adsp_resource},
 	{ .compatible = "qcom,monaco-modem-pas", .data = &monaco_modem_resource},

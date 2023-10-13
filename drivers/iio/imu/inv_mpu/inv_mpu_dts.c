@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2012-2017 InvenSense, Inc.
  *
@@ -225,8 +226,7 @@ static int inv_parse_secondary(struct device *dev,
 	}
 	pdata->secondary_i2c_addr = temp_val;
 	rc = inv_parse_secondary_orientation_matrix(dev,
-						    pdata->
-						    secondary_orientation);
+						    pdata->secondary_orientation);
 
 	return rc;
 }
@@ -257,6 +257,8 @@ static int inv_parse_aux(struct device *dev, struct mpu_platform_data *pdata)
 	}
 	if (!strcmp(name, "bmp280"))
 		pdata->aux_slave_id = PRESSURE_ID_BMP280;
+	else if (!strcmp(name, "icp201xx"))
+		pdata->aux_slave_id = PRESSURE_ID_ICP201XX;
 	else
 		return -EINVAL;
 
@@ -271,7 +273,7 @@ static int inv_parse_aux(struct device *dev, struct mpu_platform_data *pdata)
 }
 
 static int inv_parse_readonly_secondary(struct device *dev,
-				 	struct mpu_platform_data *pdata)
+					struct mpu_platform_data *pdata)
 {
 	int rc;
 	struct device_node *np = dev->of_node;
@@ -279,7 +281,7 @@ static int inv_parse_readonly_secondary(struct device *dev,
 	const char *name;
 
 	if (of_property_read_string(np, "inven,read_only_slave_type", &name)) {
-		dev_err(dev, "Missing read only slave type type.\n");
+		dev_err(dev, "Missing read only slave type.\n");
 		return -EINVAL;
 	}
 	if (!strcmp(name, "als")) {
@@ -302,7 +304,7 @@ static int inv_parse_readonly_secondary(struct device *dev,
 
 	rc = of_property_read_u32(np, "inven,read_only_slave_reg", &temp_val);
 	if (rc) {
-		dev_err(dev, "Unable to read read only slave reg register\n");
+		dev_err(dev, "Unable to read only slave reg register\n");
 		return rc;
 	}
 	pdata->read_only_i2c_addr = temp_val;

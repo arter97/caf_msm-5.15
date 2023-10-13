@@ -63,17 +63,17 @@
 #define BSLOG_VAR_DEF
 #include "smi230_log.h"
 
-void smi230_set_debug_log_level(uint8_t level)
+void set_debug_log_level(uint8_t level)
 {
-	smi230_debug_log_level = level;
+	debug_log_level = level;
 }
+EXPORT_SYMBOL(set_debug_log_level);
 
-uint8_t smi230_get_debug_log_level(void)
+uint8_t get_debug_log_level(void)
 {
-	return smi230_debug_log_level;
+	return debug_log_level;
 }
-EXPORT_SYMBOL(smi230_set_debug_log_level);
-EXPORT_SYMBOL(smi230_get_debug_log_level);
+EXPORT_SYMBOL(get_debug_log_level);
 
 #endif /*BOSCH_DRIVER_LOG_FUNC*/
 /*@}*/

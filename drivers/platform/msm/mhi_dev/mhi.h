@@ -268,7 +268,7 @@ struct mhi_config {
 #define NUM_CHANNELS			128
 #define HW_CHANNEL_BASE			100
 #define NUM_HW_CHANNELS			15
-#define HW_CHANNEL_END			110
+#define HW_CHANNEL_END			127
 #define MHI_ENV_VALUE			2
 #define MHI_MASK_ROWS_CH_EV_DB		4
 #define TRB_MAX_DATA_SIZE		8192
@@ -276,6 +276,8 @@ struct mhi_config {
 #define MHI_CTRL_STATE			100
 #define MHI_MAX_NUM_INSTANCES		17 /* 1PF and 16 VFs */
 #define MHI_DEFAULT_ERROR_LOG_ID	255
+#define MHI_DEV_WAKE_DB_CHAN		127
+#define PCIE_EP_TIMER_US		10000000
 
 /* maximum transfer completion events buffer */
 #define NUM_TR_EVENTS_DEFAULT			128
@@ -636,6 +638,9 @@ struct mhi_dev {
 	/* Enable M2 autonomous mode from MHI */
 	bool				enable_m2;
 
+	/* Status of device wake doorbell */
+	bool				wake_db_status;
+
 	/* Dont timeout waiting for M0 */
 	bool				no_m0_timeout;
 
@@ -742,7 +747,7 @@ extern void *mhi_ipc_default_err_log;
 
 #define mhi_log(vf_id, _msg_lvl, _msg, ...) do { \
 	if (_msg_lvl >= mhi_msg_lvl) { \
-		pr_err("[0x%x %s] "_msg, bhi_imgtxdb, \
+		pr_err_ratelimited("[0x%x %s] "_msg, bhi_imgtxdb, \
 				__func__, ##__VA_ARGS__); \
 	} \
 	if (vf_id < MHI_MAX_NUM_INSTANCES && mhi_ipc_vf_log[vf_id] &&    \
@@ -1225,6 +1230,13 @@ void mhi_uci_chan_state_notify_all(struct mhi_dev *mhi,
  */
 void mhi_uci_chan_state_notify(struct mhi_dev *mhi,
 		enum mhi_client_channel ch_id, enum mhi_ctrl_info ch_state);
+
+/**
+ * mhi_dev_configure_inactivity_timer() - Configure inactive timer.
+ * @mhi:        MHI dev structure
+ * @enable:     Flag to enable or disable timer
+ */
+int mhi_dev_configure_inactivity_timer(struct mhi_dev *mhi, bool enable);
 
 void mhi_dev_pm_relax(struct mhi_dev *mhi_ctx);
 void mhi_dev_resume_init_with_link_up(struct ep_pcie_notify *notify);

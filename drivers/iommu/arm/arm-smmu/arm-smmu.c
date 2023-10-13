@@ -453,11 +453,14 @@ static int __arm_smmu_alloc_cb(unsigned long *map, int start, int end,
 {
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
-	struct arm_smmu_device *smmu = cfg->smmu;
+	struct arm_smmu_device *smmu;
 	int idx;
 	int i;
 	int cb = -EINVAL;
 
+	if (!fwspec || !cfg)
+		return cb;
+	smmu = cfg->smmu;
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
 		if (smmu->s2crs[idx].pinned)
 			cb = smmu->s2crs[idx].cbndx;
@@ -1112,6 +1115,9 @@ static bool arm_smmu_master_attached(struct arm_smmu_device *smmu,
 	int i, idx;
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
+
+	if (!fwspec || !cfg)
+		return false;
 
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
 		if (smmu->s2crs[idx].count)
@@ -1956,6 +1962,9 @@ static int arm_smmu_master_alloc_smes(struct device *dev)
 	bool config_smrs = !dev_defer_smr_configuration(dev);
 	int i, idx, ret;
 
+	if (!fwspec || !cfg)
+		return -EINVAL;
+
 	mutex_lock(&smmu->stream_map_mutex);
 	/* Figure out a viable stream map entry allocation */
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
@@ -2767,6 +2776,9 @@ static struct iommu_group *arm_smmu_device_group(struct device *dev)
 	struct arm_smmu_device *smmu = cfg->smmu;
 	struct iommu_group *group = NULL;
 	int i, idx;
+
+	if (!cfg || !fwspec)
+		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&smmu->stream_map_mutex);
 	group = of_get_device_group(dev);

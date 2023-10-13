@@ -3435,7 +3435,14 @@ static netdev_tx_t macsec_start_xmit(struct sk_buff *skb,
 	return ret;
 }
 
-#define MACSEC_FEATURES \
+#define HW_MACSEC_FEATURES \
+	(NETIF_F_SG | NETIF_F_HIGHDMA | NETIF_F_FRAGLIST | \
+	 NETIF_F_GSO | NETIF_F_TSO | \
+	 NETIF_F_TSO6 | NETIF_F_GRO | NETIF_F_RXCSUM | \
+	 NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | \
+	 NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX)
+
+#define SW_MACSEC_FEATURES \
 	(NETIF_F_SG | NETIF_F_HIGHDMA | NETIF_F_FRAGLIST)
 
 static int macsec_dev_init(struct net_device *dev)
@@ -3454,8 +3461,11 @@ static int macsec_dev_init(struct net_device *dev)
 		return err;
 	}
 
-	dev->features = real_dev->features & MACSEC_FEATURES;
+	dev->features = real_dev->features & HW_MACSEC_FEATURES;
 	dev->features |= NETIF_F_LLTX | NETIF_F_GSO_SOFTWARE;
+
+	dev->hw_features = real_dev->hw_features & HW_MACSEC_FEATURES;
+	dev->vlan_features = real_dev->vlan_features & HW_MACSEC_FEATURES;
 
 	dev->needed_headroom = real_dev->needed_headroom +
 			       MACSEC_NEEDED_HEADROOM;
@@ -3484,8 +3494,13 @@ static netdev_features_t macsec_fix_features(struct net_device *dev,
 	struct macsec_dev *macsec = macsec_priv(dev);
 	struct net_device *real_dev = macsec->real_dev;
 
-	features &= (real_dev->features & MACSEC_FEATURES) |
-		    NETIF_F_GSO_SOFTWARE | NETIF_F_SOFT_FEATURES;
+	if (macsec_is_offloaded(macsec)) {
+		features &= (real_dev->features & HW_MACSEC_FEATURES) |
+			    NETIF_F_GSO_SOFTWARE | NETIF_F_SOFT_FEATURES;
+	} else {
+		features &= (real_dev->features & SW_MACSEC_FEATURES) |
+			     NETIF_F_GSO_SOFTWARE | NETIF_F_SOFT_FEATURES;
+	}
 	features |= NETIF_F_LLTX;
 
 	return features;

@@ -92,6 +92,7 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 	STMMAC_STAT(rx_watchdog_irq),
 	STMMAC_STAT(tx_early_irq),
 	STMMAC_STAT(fatal_bus_error_irq),
+	STMMAC_STAT(tx_buf_unav_irq),
 	/* Tx/Rx IRQ Events */
 	STMMAC_STAT(rx_early_irq),
 	STMMAC_STAT(threshold),
@@ -282,6 +283,7 @@ static const char stmmac_qstats_tx_string[][ETH_GSTRING_LEN] = {
 	"txch_desc_list_laddr",
 	"txch_desc_ring_len",
 	"txch_desc_tail",
+	"tx_buf_unav_irq",
 #define STMMAC_TXQ_STATS ARRAY_SIZE(stmmac_qstats_tx_string)
 };
 
@@ -569,14 +571,13 @@ stmmac_get_pauseparam(struct net_device *netdev,
 		if (!adv_lp.pause)
 			return;
 	} else {
-		if (!priv->plat->mac2mac_en) {
+		if (!priv->plat->mac2mac_en)
 			phylink_ethtool_get_pauseparam(priv->phylink, pause);
-		} else {
-			if (priv->flow_ctrl & FLOW_RX)
-				pause->rx_pause = 1;
-			if (priv->flow_ctrl & FLOW_TX)
-				pause->tx_pause = 1;
-		}
+
+		if (priv->flow_ctrl & FLOW_RX)
+			pause->rx_pause = 1;
+		if (priv->flow_ctrl & FLOW_TX)
+			pause->tx_pause = 1;
 	}
 }
 

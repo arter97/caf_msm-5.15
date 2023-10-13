@@ -126,69 +126,65 @@ int8_t
 smi230_configure_data_synchronization(struct smi230_data_sync_cfg sync_cfg,
 				      struct smi230_dev *dev)
 {
-    int8_t rslt;
-    uint16_t data[SMI230_ACCEL_DATA_SYNC_LEN];
+	int8_t rslt;
+	uint16_t data[SMI230_ACCEL_DATA_SYNC_LEN];
 
-    /* Check for null pointer in the device structure */
-    rslt = null_ptr_check(dev);
+	/* Check for null pointer in the device structure */
+	rslt = null_ptr_check(dev);
 
-    /* Proceed if null check is fine */
-    if (rslt == SMI230_OK)
-    {
-        /* Change sensor meas config */
-        switch (sync_cfg.mode)
-        {
-            case SMI230_ACCEL_DATA_SYNC_MODE_2000HZ:
-                dev->accel_cfg.odr = SMI230_ACCEL_ODR_1600_HZ;
-                dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
-                dev->gyro_cfg.odr = SMI230_GYRO_BW_230_ODR_2000_HZ;
-                dev->gyro_cfg.bw = SMI230_GYRO_BW_230_ODR_2000_HZ;
-                break;
-            case SMI230_ACCEL_DATA_SYNC_MODE_1000HZ:
-                dev->accel_cfg.odr = SMI230_ACCEL_ODR_800_HZ;
-                dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
-                dev->gyro_cfg.odr = SMI230_GYRO_BW_116_ODR_1000_HZ;
-                dev->gyro_cfg.bw = SMI230_GYRO_BW_116_ODR_1000_HZ;
-                break;
-            case SMI230_ACCEL_DATA_SYNC_MODE_400HZ:
-                dev->accel_cfg.odr = SMI230_ACCEL_ODR_400_HZ;
-                dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
-                dev->gyro_cfg.odr = SMI230_GYRO_BW_47_ODR_400_HZ;
-                dev->gyro_cfg.bw = SMI230_GYRO_BW_47_ODR_400_HZ;
-                break;
-            case SMI230_ACCEL_DATA_SYNC_MODE_100HZ:
-                dev->accel_cfg.odr = SMI230_ACCEL_ODR_400_HZ;
-                dev->accel_cfg.bw = SMI230_ACCEL_BW_OSR4;
-                dev->gyro_cfg.odr = SMI230_GYRO_BW_32_ODR_100_HZ;
-                dev->gyro_cfg.bw = SMI230_GYRO_BW_32_ODR_100_HZ;
-                break;
-            case SMI230_ACCEL_DATA_SYNC_MODE_200HZ:
-                dev->accel_cfg.odr = SMI230_ACCEL_ODR_800_HZ;
-                dev->accel_cfg.bw = SMI230_ACCEL_BW_OSR4;
-                dev->gyro_cfg.odr = SMI230_GYRO_BW_64_ODR_200_HZ;
-                dev->gyro_cfg.bw = SMI230_GYRO_BW_64_ODR_200_HZ;
-                break;
-            default:
-                break;
-        }
-        rslt = smi230_acc_set_meas_conf(dev);
-        if (rslt != SMI230_OK)
-        {
-            return rslt;
-        }
+	/* Proceed if null check is fine */
+	if (rslt == SMI230_OK) {
+		/* Change sensor meas config */
+		switch (sync_cfg.mode) {
+		case SMI230_ACCEL_DATA_SYNC_MODE_2000HZ:
+			dev->accel_cfg.odr = SMI230_ACCEL_ODR_1600_HZ;
+			dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
+			dev->gyro_cfg.odr = SMI230_GYRO_BW_230_ODR_2000_HZ;
+			dev->gyro_cfg.bw = SMI230_GYRO_BW_230_ODR_2000_HZ;
+			break;
+		case SMI230_ACCEL_DATA_SYNC_MODE_1000HZ:
+			dev->accel_cfg.odr = SMI230_ACCEL_ODR_800_HZ;
+			dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
+			dev->gyro_cfg.odr = SMI230_GYRO_BW_116_ODR_1000_HZ;
+			dev->gyro_cfg.bw = SMI230_GYRO_BW_116_ODR_1000_HZ;
+			break;
+		case SMI230_ACCEL_DATA_SYNC_MODE_400HZ:
+			dev->accel_cfg.odr = SMI230_ACCEL_ODR_400_HZ;
+			dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
+			dev->gyro_cfg.odr = SMI230_GYRO_BW_47_ODR_400_HZ;
+			dev->gyro_cfg.bw = SMI230_GYRO_BW_47_ODR_400_HZ;
+			break;
+		case SMI230_ACCEL_DATA_SYNC_MODE_100HZ:
+			dev->accel_cfg.odr = SMI230_ACCEL_ODR_400_HZ;
+			dev->accel_cfg.bw = SMI230_ACCEL_BW_OSR4;
+			dev->gyro_cfg.odr = SMI230_GYRO_BW_32_ODR_100_HZ;
+			dev->gyro_cfg.bw = SMI230_GYRO_BW_32_ODR_100_HZ;
+			break;
+		case SMI230_ACCEL_DATA_SYNC_MODE_200HZ:
+			dev->accel_cfg.odr = SMI230_ACCEL_ODR_800_HZ;
+			dev->accel_cfg.bw = SMI230_ACCEL_BW_OSR4;
+			dev->gyro_cfg.odr = SMI230_GYRO_BW_64_ODR_200_HZ;
+			dev->gyro_cfg.bw = SMI230_GYRO_BW_64_ODR_200_HZ;
+			break;
+		default:
+			break;
+		}
+		rslt = smi230_acc_set_meas_conf(dev);
+		if (rslt != SMI230_OK)
+			return rslt;
 
-        rslt = smi230_gyro_set_meas_conf(dev);
-        if (rslt != SMI230_OK)
-        {
-            return rslt;
-        }
+		rslt = smi230_gyro_set_meas_conf(dev);
+		if (rslt != SMI230_OK)
+			return rslt;
+		
+		/* Enable data synchronization */
+		data[0] = (sync_cfg.mode & SMI230_ACCEL_DATA_SYNC_MODE_MASK);
+		rslt = smi230_acc_write_feature_config(
+			SMI230_ACCEL_DATA_SYNC_ADR, &data[0],
+			SMI230_ACCEL_DATA_SYNC_LEN, dev);
+	}
 
-        /* Enable data synchronization */
-        data[0] = (sync_cfg.mode & SMI230_ACCEL_DATA_SYNC_MODE_MASK);
-        rslt = smi230_acc_write_feature_config(SMI230_ACCEL_DATA_SYNC_ADR, &data[0], SMI230_ACCEL_DATA_SYNC_LEN, dev);
-    }
-
-    return rslt;
+	return rslt;
 }
 
 /*!

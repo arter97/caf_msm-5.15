@@ -181,9 +181,11 @@ irqfd_shutdown(struct work_struct *work)
 	if (irq->ctx) {
 		eventfd_ctx_remove_wait_queue(irq->ctx, &irq->wait, &isr);
 		eventfd_ctx_put(irq->ctx);
-		fdput(irq->fd);
+		if (vb_dev->irq.fd.file) {
+			fdput(irq->fd);
+			irq->fd.file = NULL;
+		}
 		irq->ctx = NULL;
-		irq->fd.file = NULL;
 	}
 	spin_unlock_irqrestore(&vb_dev->lock, iflags);
 }
@@ -1271,7 +1273,7 @@ int gh_virtio_mmio_exit(gh_vmid_t vmid, const char *vm_name)
 	struct virt_machine *vm;
 	struct virtio_backend_device *vb_dev;
 	unsigned long flags;
-	int ret = -EINVAL;
+	int ret = -EINVAL, i;
 	u32 refcount;
 
 	vm = find_vm_by_name(vm_name);
@@ -1295,6 +1297,17 @@ int gh_virtio_mmio_exit(gh_vmid_t vmid, const char *vm_name)
 		if (refcount)
 			wait_event(vb_dev->notify_queue, !vb_dev->refcount);
 
+		fdput(vb_dev->irq.fd);
+		if (vb_dev->irq.fd.file)
+			vb_dev->irq.fd.file = NULL;
+		for (i = 0; i < MAX_IO_CONTEXTS; ++i) {
+			if (vb_dev->ioctx[i].ctx)
+				eventfd_ctx_put(vb_dev->ioctx[i].ctx);
+			vb_dev->ioctx[i].fd = 0;
+		}
+		free_pages((unsigned long)vb_dev->config_data, 0);
+		vb_dev->config_data = NULL;
+		vb_dev->ack_driver_ok = 0;
 		free_irq(vb_dev->linux_irq, vb_dev);
 		iounmap(vb_dev->config_shared_buf);
 		vb_dev->config_shared_buf = NULL;

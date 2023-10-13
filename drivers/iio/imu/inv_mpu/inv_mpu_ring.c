@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2012-2021 InvenSense, Inc.
  *
@@ -28,10 +29,79 @@
 #include <linux/version.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/buffer.h>
+#include <linux/iio/kfifo_buf.h>
 #include <linux/iio/trigger.h>
 #include <linux/iio/triggered_buffer.h>
 
 #include "inv_mpu_iio.h"
+#ifdef CONFIG_ENABLE_IAM_ACC_GYRO_BUFFERING
+static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
+						s32 x, s32 y, s32 z)
+{
+	if (false == st->acc_buffer_inv_samples)
+		return;
+
+	mutex_lock(&st->acc_sensor_buff);
+	st->timestamp = t;
+	if (ktime_to_timespec64(st->timestamp).tv_sec
+			<  st->max_buffer_time) {
+		if (st->acc_bufsample_cnt < INV_ACC_MAXSAMPLE) {
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[0] = x;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[1] = y;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[2] = z;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->tsec =
+				ktime_to_timespec64(st->timestamp).tv_sec;
+			st->inv_acc_samplist[st->acc_bufsample_cnt]->tnsec =
+				ktime_to_timespec64(st->timestamp).tv_nsec;
+			st->acc_bufsample_cnt++;
+		}
+	} else {
+		dev_info(st->dev, "End of ACC buffering %d\n",
+					st->acc_bufsample_cnt);
+		st->acc_buffer_inv_samples = false;
+	}
+	mutex_unlock(&st->acc_sensor_buff);
+}
+
+static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
+						s32 x, s32 y, s32 z)
+{
+	if (false == st->gyro_buffer_inv_samples)
+		return;
+	mutex_lock(&st->gyro_sensor_buff);
+	st->timestamp = t;
+	if (ktime_to_timespec64(st->timestamp).tv_sec
+			<  st->max_buffer_time) {
+		if (st->gyro_bufsample_cnt < INV_GYRO_MAXSAMPLE) {
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[0] = x;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[1] = y;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
+				->xyz[2] = z;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tsec =
+				ktime_to_timespec64(st->timestamp).tv_sec;
+			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tnsec =
+				ktime_to_timespec64(st->timestamp).tv_nsec;
+			st->gyro_bufsample_cnt++;
+		}
+	} else {
+		dev_info(st->dev, "End of GYRO buffering %d\n",
+					st->gyro_bufsample_cnt);
+		st->gyro_buffer_inv_samples = false;
+	}
+	mutex_unlock(&st->gyro_sensor_buff);
+}
+#else
+static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
+						s32 x, s32 y, s32 z)
+{
+}
+static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
+						s32 x, s32 y, s32 z)
+{
+}
+#endif
 
 static void inv_push_timestamp(struct iio_dev *indio_dev, u64 t)
 {
@@ -129,7 +199,7 @@ static int inv_do_interpolation_gyro(struct iio_dev *indio_dev, int *prev,
 	curr_t -= st->ts_algo.gyro_ts_shift;
 	curr_t += MPU_4X_TS_GYRO_SHIFT;
 #endif
-	if ((t > prev_t) && (t < curr_t)) {
+	if ((t > prev_t)&&(t < curr_t)) {
 		for (i = 0; i < 3; i++)
 			out[i] = (int)div_s64((s64)(curr[i] - prev[i]) *
 				(s64)(t - prev_t), curr_t - prev_t) + prev[i];
@@ -269,6 +339,7 @@ int inv_push_16bytes_buffer(struct iio_dev *indio_dev, u16 sensor,
 					st->sensor_l[j].div,
 					t, q[0], q[1], q[2]);
 				inv_push_16bytes_final(indio_dev, j, q, t, accur);
+				store_acc_boot_sample(st, t, q[0], q[1], q[2]);
 			}
 		}
 	}
@@ -279,7 +350,8 @@ void inv_convert_and_push_16bytes(struct iio_dev *indio_dev, u16 hdr,
 							u8 *d, u64 t, s8 *m)
 {
 	int i, j;
-	s32 in[3], out[3];
+	s32 in[3];
+	s32 out[3] = {0, 0, 0};
 
 	for (i = 0; i < 3; i++)
 		in[i] = be32_to_int(d + i * 4);
@@ -296,7 +368,8 @@ void inv_convert_and_push_8bytes(struct iio_dev *indio_dev, u16 hdr,
 				 u8 *d, u64 t, s8 *m)
 {
 	int i, j;
-	s16 in[3], out[3];
+	s16 in[3];
+	s16 out[3] = {0, 0, 0};
 
 	for (i = 0; i < 3; i++)
 		in[i] = be16_to_cpup((__be16 *) (d + i * 2));
@@ -309,79 +382,10 @@ void inv_convert_and_push_8bytes(struct iio_dev *indio_dev, u16 hdr,
 
 	inv_push_8bytes_buffer(indio_dev, hdr, t, out);
 }
-#ifdef CONFIG_ENABLE_IAM_ACC_GYRO_BUFFERING
-static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
-						s16 x, s16 y, s16 z)
-{
-	if (false == st->acc_buffer_inv_samples)
-		return;
-
-	mutex_lock(&st->acc_sensor_buff);
-	st->timestamp = t;
-	if (ktime_to_timespec64(st->timestamp).tv_sec
-			<  st->max_buffer_time) {
-		if (st->acc_bufsample_cnt < INV_ACC_MAXSAMPLE) {
-			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[0] = x;
-			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[1] = y;
-			st->inv_acc_samplist[st->acc_bufsample_cnt]->xyz[2] = z;
-			st->inv_acc_samplist[st->acc_bufsample_cnt]->tsec =
-				ktime_to_timespec64(st->timestamp).tv_sec;
-			st->inv_acc_samplist[st->acc_bufsample_cnt]->tnsec =
-				ktime_to_timespec64(st->timestamp).tv_nsec;
-			st->acc_bufsample_cnt++;
-		}
-	} else {
-		dev_info(st->dev, "End of ACC buffering %d\n",
-					st->acc_bufsample_cnt);
-		st->acc_buffer_inv_samples = false;
-	}
-	mutex_unlock(&st->acc_sensor_buff);
-}
-
-static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
-						s16 x, s16 y, s16 z)
-{
-	if (false == st->gyro_buffer_inv_samples)
-		return;
-	mutex_lock(&st->gyro_sensor_buff);
-	st->timestamp = t;
-	if (ktime_to_timespec64(st->timestamp).tv_sec
-			<  st->max_buffer_time) {
-		if (st->gyro_bufsample_cnt < INV_GYRO_MAXSAMPLE) {
-			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
-				->xyz[0] = x;
-			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
-				->xyz[1] = y;
-			st->inv_gyro_samplist[st->gyro_bufsample_cnt]
-				->xyz[2] = z;
-			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tsec =
-				ktime_to_timespec64(st->timestamp).tv_sec;
-			st->inv_gyro_samplist[st->gyro_bufsample_cnt]->tnsec =
-				ktime_to_timespec64(st->timestamp).tv_nsec;
-			st->gyro_bufsample_cnt++;
-		}
-	} else {
-		dev_info(st->dev, "End of GYRO buffering %d\n",
-					st->gyro_bufsample_cnt);
-		st->gyro_buffer_inv_samples = false;
-	}
-	mutex_unlock(&st->gyro_sensor_buff);
-}
-#else
-static void store_acc_boot_sample(struct inv_mpu_state *st, u64 t,
-						s16 x, s16 y, s16 z)
-{
-}
-static void store_gyro_boot_sample(struct inv_mpu_state *st, u64 t,
-						s16 x, s16 y, s16 z)
-{
-}
-#endif
 
 static int inv_push_special_8bytes_buffer(struct iio_dev *indio_dev,
 					  u16 hdr, u64 t, s16 *d)
 {
-	struct inv_mpu_state *st = iio_priv(indio_dev);
 	u8 buf[IIO_BUFFER_BYTES];
 	int j;
 
@@ -389,7 +393,6 @@ static int inv_push_special_8bytes_buffer(struct iio_dev *indio_dev,
 	memcpy(&buf[2], &d[0], sizeof(d[0]));
 	for (j = 0; j < 2; j++)
 		memcpy(&buf[4 + j * 2], &d[j + 1], sizeof(d[j]));
-	store_gyro_boot_sample(st, t, d[0], d[1], d[2]);
 	iio_push_to_buffers(indio_dev, buf);
 	inv_push_timestamp(indio_dev, t);
 
@@ -428,7 +431,7 @@ int inv_push_gyro_data(struct iio_dev *indio_dev, s32 *raw, s32 *calib, u64 t)
 		inv_s32_gyro_push(indio_dev, gyro_data[i], raw, t);
 	for (i = 0; i < 2; i++)
 		inv_s32_gyro_push(indio_dev, calib_data[i], calib, t);
-
+	store_gyro_boot_sample(st, t, raw[0], raw[1], raw[2]);
 	return 0;
 }
 int inv_push_8bytes_buffer(struct iio_dev *indio_dev, u16 sensor, u64 t, s16 *d)
@@ -467,7 +470,6 @@ int inv_push_8bytes_buffer(struct iio_dev *indio_dev, u16 sensor, u64 t, s16 *d)
 				for (j = 0; j < 2; j++)
 					memcpy(&buf[4 + j * 2], &d[j + 1],
 					       sizeof(d[j]));
-				store_acc_boot_sample(st, t, d[0], d[1], d[2]);
 
 				iio_push_to_buffers(indio_dev, buf);
 				inv_push_timestamp(indio_dev, t);
@@ -605,7 +607,6 @@ static enum hrtimer_restart inv_batch_timer_handler(struct hrtimer *timer)
 {
 	struct inv_mpu_state *st =
 		container_of(timer, struct inv_mpu_state, hr_batch_timer);
-
 	if (st->chip_config.gyro_enable || st->chip_config.accel_enable) {
 		hrtimer_forward_now(&st->hr_batch_timer,
 			ns_to_ktime(st->batch_timeout));
@@ -631,6 +632,9 @@ int inv_mpu_configure_ring(struct iio_dev *indio_dev)
 {
 	int ret;
 	struct inv_mpu_state *st = iio_priv(indio_dev);
+#if KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE
+	struct iio_buffer *buffer;
+#endif
 
 #ifdef TIMER_BASED_BATCHING
 	/* configure hrtimer */
@@ -645,12 +649,24 @@ int inv_mpu_configure_ring(struct iio_dev *indio_dev)
 		return ret;
 	}
 
+#if KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE
+	/* allocate 2nd buffer for concurrent access */
+	buffer = iio_kfifo_allocate();
+	if (!buffer) {
+		ret = -ENOMEM;
+		goto error_free_buffer;
+	}
+	ret = iio_device_attach_buffer(indio_dev, buffer);
+	if (ret < 0)
+		goto error_free_buffer2;
+#endif
+
 	st->trig = iio_trigger_alloc(
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
+#if KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE
 				     st->dev,
 #endif
 				    "%s-dev%d", indio_dev->name,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 14, 0)
+#if KERNEL_VERSION(5, 14, 0) > LINUX_VERSION_CODE
 				     indio_dev->id);
 #else
 				     iio_device_id(indio_dev));
@@ -658,7 +674,7 @@ int inv_mpu_configure_ring(struct iio_dev *indio_dev)
 	if (st->trig == NULL) {
 		ret = -ENOMEM;
 		dev_err(st->dev, "iio trigger alloc error\n");
-		goto error_free_buffer;
+		goto error_free_buffer2;
 	}
 	st->trig->dev.parent = st->dev;
 	st->trig->ops = &inv_mpu_trigger_ops;
@@ -685,6 +701,10 @@ error_free_irq:
 	free_irq(st->irq, st->trig);
 error_free_trigger:
 	iio_trigger_free(st->trig);
+error_free_buffer2:
+#if KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE
+	iio_kfifo_free(buffer);
+#endif
 error_free_buffer:
 	iio_triggered_buffer_cleanup(indio_dev);
 	return ret;

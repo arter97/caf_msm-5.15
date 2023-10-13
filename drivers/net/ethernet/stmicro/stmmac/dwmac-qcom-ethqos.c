@@ -51,7 +51,7 @@
 #define PHY_USXGMII_LOOPBACK_1000	0x0802
 #define PHY_USXGMII_LOOPBACK_100	0x0801
 #define PHY_USXGMII_LOOPBACK_10	0x0800
-
+#define TN_SYSFS_DEV_ATTR_PERMS 0644
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -284,7 +284,7 @@ int stmmac_enable_ipc_low;
 char tmp_buff[MAX_PROC_SIZE];
 static struct ip_params pparams;
 static struct mac_params mparams = {0};
-long phyaddr_pt_param;
+long phyaddr_pt_param = -1;
 
 #define RX_CLK_SYSFS_DEV_ATTR_PERMS 0644
 
@@ -554,9 +554,6 @@ fail:
 
 static int set_ethernet_phyaddr(char *phy_addr)
 {
-	/* Default link speed to 1000Mbps if not specified */
-	phyaddr_pt_param = -1;
-
 	if (!phy_addr)
 		return 1;
 
@@ -3719,13 +3716,38 @@ static void ethqos_mac_loopback(struct qcom_ethqos *ethqos, int mode)
 	}
 }
 
+static int phy_rgmii_digital_loopback_mmd_config(struct phy_device *phydev, int config, int *backup)
+{
+	ETHQOSINFO("Configure additional register for KZX9131\n");
+	if (config == 1) {
+		backup[0] = phy_read_mmd(phydev, 0x1C, 0x15);
+		backup[1] = phy_read_mmd(phydev, 0x1C, 0x16);
+		backup[2] = phy_read_mmd(phydev, 0x1C, 0x18);
+		backup[3] = phy_read_mmd(phydev, 0x1C, 0x1B);
+
+		phy_write_mmd(phydev, 0x1C, 0x15, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x16, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x18, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x1B, 0xEEEE);
+	} else if (config == 0) {
+		phy_write_mmd(phydev, 0x1C, 0x15, backup[0]);
+		phy_write_mmd(phydev, 0x1C, 0x16, backup[1]);
+		phy_write_mmd(phydev, 0x1C, 0x18, backup[2]);
+		phy_write_mmd(phydev, 0x1C, 0x1B, backup[3]);
+	}
+	return 0;
+}
+
 static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
-
 	unsigned int phydata = 0;
+	if ((priv->phydev->phy_id &
+	     priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)
+		phy_rgmii_digital_loopback_mmd_config(dev->phydev, config,
+						      ethqos->backup_mmd_loopback);
 	if (config == 1) {
 		/*Backup BMCR before Enabling Phy Loopback */
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
@@ -6134,6 +6156,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	if (of_device_is_available(fixed_phy_node)) {
 		of_property_read_u32(fixed_phy_node, "speed", &mac2mac_speed);
 		plat_dat->fixed_phy_mode = true;
+		plat_dat->phy_addr = -1;
 		ETHQOSINFO("mac2mac mode: Fixed-link enabled from dt, Speed = %d\n",
 			   mac2mac_speed);
 		goto out;
@@ -6194,6 +6217,37 @@ out:
 	return ret;
 }
 
+static int ethqos_update_phyid(struct device_node *np)
+{
+	struct property *phyid_prop;
+	static unsigned long address;
+
+	phyid_prop = kzalloc(sizeof(*phyid_prop), GFP_KERNEL);
+
+	if (!phyid_prop) {
+		ETHQOSERR("kzalloc failed\n");
+		return -ENOMEM;
+	}
+
+	address = cpu_to_be32(phyaddr_pt_param);
+
+	phyid_prop->name = kstrdup("snps,phy-addr", GFP_KERNEL);
+	phyid_prop->value = &address;
+	phyid_prop->length = sizeof(u32);
+
+	if (!(of_update_property(np, phyid_prop) == 0)) {
+		kfree(phyid_prop);
+		ETHQOSERR("Phy address failed to update\n");
+		goto out;
+	}
+
+	ETHQOSINFO("Phy address changed to %ld from the partition",
+		   phyaddr_pt_param);
+
+out:
+	return 0;
+}
+
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
@@ -6252,6 +6306,18 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 	return ret;
 }
 
+static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
+{
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!priv || !priv->dev->phydev || !priv->hw->qxpcs)
+		return;
+
+	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
+			  speed, priv->dev->phydev->duplex);
+}
+
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
 static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 				   unsigned long event, void *ptr)
@@ -6291,6 +6357,413 @@ static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
 	return 0;
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
+static int qcom_ethqos_bring_up_phy_if(struct device *dev)
+{
+	int ret;
+	struct net_device *ndev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	struct device_node *serdes_node = NULL;
+	struct phy_device *phydev = NULL;
+	u32 mode = 0;
+
+	if (!ndev) {
+		ETHQOSERR("Netdevice is NULL\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(ndev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!priv->plat->mac2mac_en)
+		stmmac_phy_setup(priv);
+
+	if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_enable_sgmii_usxgmii_clks(ethqos, priv->plat->interface);
+		if (ret)
+			return -1;
+		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII) {
+			serdes_node = of_get_child_by_name(ethqos->pdev->dev.of_node,
+							   "serdes-config");
+			if (serdes_node) {
+				ret = of_property_read_u32(serdes_node, "usxgmii-mode",
+							   &mode);
+				switch (mode) {
+				case 10000:
+					ethqos->usxgmii_mode = USXGMII_MODE_10G;
+					break;
+				case 5000:
+					ethqos->usxgmii_mode = USXGMII_MODE_5G;
+					break;
+				case 2500:
+					ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
+					break;
+				default:
+					ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
+					ethqos->usxgmii_mode = USXGMII_MODE_NA;
+					return -1;
+				}
+			} else {
+				ETHQOSERR("Unable to find Serdes node from device tree\n");
+				ethqos->usxgmii_mode = USXGMII_MODE_NA;
+				return -1;
+			}
+			of_node_put(serdes_node);
+			ETHQOSINFO("%s :usxgmii_mode = %d", __func__, ethqos->usxgmii_mode);
+		}
+		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
+		if (ret)
+			return -1;
+	}
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret)
+			return -EINVAL;
+	}
+	ret = ethqos_xpcs_init(ndev);
+	if (ret < 0)
+		return -1;
+
+	if (priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII && !priv->plat->mac2mac_en)
+		priv->phydev->drv->get_features(priv->phydev);
+
+	if (!priv->plat->mac2mac_en) {
+		phydev = priv->phydev;
+		rtnl_lock();
+		phylink_connect_phy(priv->phylink, priv->phydev);
+		rtnl_unlock();
+
+		if (priv->plat->phy_intr_en_extn_stm && phydev) {
+			ETHQOSDBG("PHY interrupt Mode enabled\n");
+			phydev->irq = PHY_MAC_INTERRUPT;
+			phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+			if (phydev->drv->config_intr &&
+			    !phydev->drv->config_intr(phydev))
+				ETHQOSDBG("config_phy_intr successful after phy on\n");
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
+			phydev->irq = PHY_POLL;
+			ETHQOSDBG("PHY Polling Mode enabled\n");
+		} else {
+			ETHQOSERR("phydev is null , intr value=%d\n",
+				  priv->plat->phy_intr_en_extn_stm);
+		}
+
+		if (!priv->phy_irq_enabled && !priv->plat->mac2mac_en)
+			priv->plat->phy_irq_enable(priv);
+	}
+
+	ret = stmmac_resume(&ethqos->pdev->dev);
+	return ret;
+}
+
+static int qcom_ethqos_bring_down_phy_if(struct device *dev)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos;
+	struct resource *resource = NULL;
+	unsigned long xpcs_size = 0;
+	void __iomem *xpcs_addr;
+	int ret;
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	resource = platform_get_resource_byname(ethqos->pdev,
+						IORESOURCE_MEM, "xpcs");
+	if (!resource) {
+		ETHQOSERR("Resource xpcs not found\n");
+		return -1;
+	}
+	xpcs_size = resource_size(resource);
+
+	ret = stmmac_suspend(&ethqos->pdev->dev);
+	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+	}
+
+	if (priv->hw->qxpcs) {
+		if (priv->hw->qxpcs->intr_en)
+			free_irq(priv->hw->qxpcs->pcs_intr, priv);
+		xpcs_addr = priv->hw->qxpcs->addr;
+		qcom_xpcs_destroy(priv->hw->qxpcs);
+		devm_iounmap(&ethqos->pdev->dev, xpcs_addr);
+		xpcs_addr = NULL;
+		devm_release_mem_region(&ethqos->pdev->dev, resource->start,
+					xpcs_size);
+	}
+
+	if (priv->phy_irq_enabled && !priv->plat->mac2mac_en) {
+		priv->plat->phy_irq_disable(priv);
+
+		rtnl_lock();
+		phylink_disconnect_phy(priv->phylink);
+		rtnl_unlock();
+		if (!priv->plat->mac2mac_en && priv->phylink)
+			phylink_destroy(priv->phylink);
+	}
+
+	return ret;
+}
+
+static ssize_t change_if_sysfs_read(struct device *dev,
+				    struct device_attribute *attr,
+				    char *user_buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+
+	if (!netdev)
+		return -EINVAL;
+
+	priv = netdev_priv(netdev);
+	if (!priv)
+		return -EINVAL;
+
+	if (priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII)
+		return scnprintf(user_buf, BUFF_SZ,
+				"Current-Interface :: PHY_INTERFACE_MODE_USXGMII");
+	else if (priv->plat->interface ==  PHY_INTERFACE_MODE_SGMII)
+		return scnprintf(user_buf, BUFF_SZ,
+				"Current-Interface :: PHY_INTERFACE_MODE_SGMII");
+
+	return scnprintf(user_buf, BUFF_SZ,
+			"Current-Interface :: unknown");
+}
+
+static ssize_t change_if_sysfs_write(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *user_buf,
+				     size_t count)
+{
+	s8 option = 0;
+	struct net_device *ndev = to_net_dev(dev);
+	struct stmmac_priv *priv;
+
+	if (!ndev) {
+		ETHQOSERR("changing I/F not possible\n");
+		return -EINVAL;
+	}
+	priv = netdev_priv(ndev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+	if (kstrtos8(user_buf, 0, &option))
+		return -EFAULT;
+
+	if (option == 1) {
+		priv->plat->interface = PHY_INTERFACE_MODE_SGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_SGMII;
+		priv->phydev->interface = PHY_INTERFACE_MODE_SGMII;
+	} else if (option == 2) {
+		priv->plat->interface = PHY_INTERFACE_MODE_USXGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_USXGMII;
+		priv->phydev->interface = PHY_INTERFACE_MODE_USXGMII;
+	}
+	return count;
+}
+
+static DEVICE_ATTR(change_if, TN_SYSFS_DEV_ATTR_PERMS,
+		   change_if_sysfs_read,
+		   change_if_sysfs_write);
+
+static int ethqos_change_if_cleanup_sysfs(struct qcom_ethqos *ethqos)
+{
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	sysfs_remove_file(&netdev->dev.kobj,
+			  &dev_attr_change_if.attr);
+	return 0;
+}
+
+/**
+ * ethqos_change_if_create_sysfs() - Called to create sysfs node
+ * for creating change_if entry.
+ */
+static int ethqos_change_if_create_sysfs(struct qcom_ethqos *ethqos)
+{
+	int ret;
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	ret = sysfs_create_file(&netdev->dev.kobj,
+				&dev_attr_change_if.attr);
+	if (ret) {
+		ETHQOSERR("unable to create change_if sysfs node\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static ssize_t thermal_netlink_sysfs_read(struct device *dev,
+					  struct device_attribute *attr,
+					  char *user_buf)
+{
+	return scnprintf(user_buf, BUFF_SZ,
+			"option 1 for bringdown, 2 for bringup");
+}
+
+static ssize_t thermal_netlink_sysfs_write(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *user_buf,
+					   size_t count)
+{
+	s8 option = 0;
+
+	if (kstrtos8(user_buf, 0, &option))
+		return -EFAULT;
+
+	if (option == 1)
+		qcom_ethqos_bring_down_phy_if(dev);
+	else if (option == 0)
+		qcom_ethqos_bring_up_phy_if(dev);
+
+	return count;
+}
+
+static DEVICE_ATTR(thermal_netlink, TN_SYSFS_DEV_ATTR_PERMS,
+		   thermal_netlink_sysfs_read,
+		   thermal_netlink_sysfs_write);
+
+static int ethqos_thermal_netlink_cleanup_sysfs(struct qcom_ethqos *ethqos)
+{
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	sysfs_remove_file(&netdev->dev.kobj,
+			  &dev_attr_thermal_netlink.attr);
+	return 0;
+}
+
+/**
+ * ethqos_thermal_netlink_create_sysfs() - Called to create sysfs node
+ * for creating thermal_netlink entry.
+ */
+static int ethqos_thermal_netlink_create_sysfs(struct qcom_ethqos *ethqos)
+{
+	int ret;
+	struct net_device *netdev;
+
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	netdev = platform_get_drvdata(ethqos->pdev);
+
+	if (!netdev) {
+		ETHQOSERR("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	ret = sysfs_create_file(&netdev->dev.kobj,
+				&dev_attr_thermal_netlink.attr);
+	if (ret) {
+		ETHQOSERR("unable to create thermal_netlink sysfs node\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
+				    struct plat_stmmacenet_data *plat_dat,
+				    struct stmmac_priv *priv)
+{
+	struct device_node *np = ethqos->pdev->dev.of_node;
+	const char *name;
+	int i = 0;
+
+	int num_names = of_property_count_strings(np, "pinctrl-names");
+
+	if (num_names < 0) {
+		dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names: %d\n",
+			num_names);
+		return;
+	}
+
+	for (i = 0; i < num_names; i++) {
+		int ret = of_property_read_string_index(np,
+							"pinctrl-names",
+							i, &name);
+		if (ret < 0) {
+			dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names by index: %d\n",
+				ret);
+			return;
+		}
+
+		if (strnstr(name, "emac0_ptp_aux_ts_i", strlen(name))) {
+			char *pos = strrchr(name, '_');
+
+			if (pos + 1) {
+				int index = *(pos + 1) - 48;
+
+				plat_dat->ext_snapshot_num |= (1 << (index + 4));
+			}
+		}
+	}
+
+	dev_info(&ethqos->pdev->dev, "ext_snapshot_num = %d\n", plat_dat->ext_snapshot_num);
+}
 
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
@@ -6349,6 +6822,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos_get_qoe_dt(ethqos, np);
 
+	/* Use phy address passed from the partition only when the address is a valid one */
+	if (phyaddr_pt_param >= 0 && phyaddr_pt_param < PHY_MAX_ADDR) {
+		if (ethqos_update_phyid(np))
+			goto err_mem;
+	}
+
 	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
 	if (IS_ERR(plat_dat)) {
 		dev_err(&pdev->dev, "dt configuration failed\n");
@@ -6359,6 +6838,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->interface = mparams.eth_intf;
 		plat_dat->phy_interface = mparams.eth_intf;
 		plat_dat->is_valid_eth_intf = mparams.is_valid_eth_intf;
+
+		/* Go through default phy detection logic when the
+		 * address from the partition is not a valid one
+		 */
+		if (phyaddr_pt_param < 0 || phyaddr_pt_param >= PHY_MAX_ADDR)
+			plat_dat->phy_addr = -1;
 	}
 
 	if (pdev->name) {
@@ -6481,6 +6966,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII) {
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
 		plat_dat->serdes_powersaving = ethqos_serdes_power_saving;
+		plat_dat->xpcs_linkup = ethqos_xpcs_link_up;
 	}
 
 	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");
@@ -6504,18 +6990,23 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_mem;
 
 	if (!plat_dat->mac2mac_en && !plat_dat->fixed_phy_mode) {
-		if (of_property_read_bool(pdev->dev.of_node,
-					  "emac-phy-off-suspend")) {
-			ret = of_property_read_u32(pdev->dev.of_node,
-						   "emac-phy-off-suspend",
-						   &ethqos->current_phy_mode);
-			if (ret) {
-				ETHQOSDBG(":resource emac-phy-off-suspend! ");
-				ETHQOSDBG("not in dtsi\n");
-				ethqos->current_phy_mode = 0;
+		if (!ethqos->early_eth_enabled) {
+			if (of_property_read_bool(pdev->dev.of_node,
+						  "emac-phy-off-suspend")) {
+				ret = of_property_read_u32(pdev->dev.of_node,
+							   "emac-phy-off-suspend",
+							   &ethqos->current_phy_mode);
+				if (ret) {
+					ETHQOSDBG(":resource emac-phy-off-suspend! ");
+					ETHQOSDBG("not in dtsi\n");
+					ethqos->current_phy_mode = 0;
+				}
 			}
+		} else {
+			ethqos->current_phy_mode = DISABLE_PHY_ON_OFF;
 		}
 	}
+
 	ETHQOSINFO("emac-phy-off-suspend = %d\n",
 		   ethqos->current_phy_mode);
 
@@ -6580,12 +7071,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_mem;
 
-	/* Use phy_addr passed from the partition only when the address
-	 * is a valid one and when "snps,phy-addr" is not present in the dtsi
-	 */
-	if (ethqos->early_eth_enabled && phyaddr_pt_param != -1 &&
-	    plat_dat->phy_addr == -1)
-		plat_dat->phy_addr = phyaddr_pt_param;
+	if (of_property_read_bool(pdev->dev.of_node, "gdsc-off-on-suspend"))
+		ethqos->gdsc_off_on_suspend = true;
+	ETHQOSDBG("gdsc-off-on-suspend = %d\n", ethqos->gdsc_off_on_suspend);
 
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
@@ -6610,6 +7098,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	priv = netdev_priv(ndev);
 	ethqos->priv = priv;
 	ethqos->power_state = true;
+
+	qcom_ethqos_init_aux_ts(ethqos, plat_dat, priv);
+
 	/*Configure EMAC for 10 Mbps mode*/
 	ethqos->probed = true;
 	plat_dat->fix_mac_speed(plat_dat->bsp_priv, 10);
@@ -6701,11 +7192,17 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		priv->dma_cap.asp = 0;
 
 	if (ethqos->early_eth_enabled) {
-		/* Initialize work*/
-		INIT_WORK(&ethqos->early_eth,
-			  qcom_ethqos_bringup_iface);
-		/* Queue the work*/
-		queue_work(system_wq, &ethqos->early_eth);
+		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID ||
+		    plat_dat->fixed_phy_mode) {
+			/* Initialize work*/
+			INIT_WORK(&ethqos->early_eth,
+				  qcom_ethqos_bringup_iface);
+			/* Queue the work*/
+			queue_work(system_wq, &ethqos->early_eth);
+		}
 		/*Set early eth parameters*/
 		ethqos_set_early_eth_param(priv, ethqos);
 	}
@@ -6727,10 +7224,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 						   &ethqos->emac_rec_cdev,
 						   &ethqos->emac_rec_class,
 						   "emac_rec");
-
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet probe end");
-#endif
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	priv->plat->pm_lite = true;
@@ -6759,7 +7252,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos_create_sysfs(ethqos);
+	ethqos_change_if_create_sysfs(ethqos);
+	ethqos_thermal_netlink_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
+
+#ifdef CONFIG_MSM_BOOT_TIME_MARKER
+		update_marker("M - Ethernet probe end");
+#endif
 
 	return ret;
 
@@ -6804,7 +7303,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	ethqos_remove_sysfs(ethqos);
 	qcom_ethqos_unregister_vm_notifier(ethqos);
-
+	ethqos_change_if_cleanup_sysfs(ethqos);
+	ethqos_thermal_netlink_cleanup_sysfs(ethqos);
 	ret = stmmac_pltfr_remove(pdev);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
@@ -6938,14 +7438,18 @@ static int qcom_ethqos_suspend(struct device *dev)
 		ETHQOSINFO("disable phy at suspend\n");
 		ethqos_phy_power_off(ethqos);
 	}
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet Suspend End");
-#endif
 
-	priv->boot_kpi = false;
+	if (ethqos->gdsc_off_on_suspend) {
+		if (ethqos->gdsc_emac) {
+			regulator_disable(ethqos->gdsc_emac);
+			ETHQOSDBG("Disabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+		}
+	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
+	priv->boot_kpi = false;
+
 	ETHQOSDBG(" ret = %d\n", ret);
 	return ret;
 }
@@ -6970,6 +7474,17 @@ static int qcom_ethqos_resume(struct device *dev)
 	if (!ethqos)
 		return -ENODEV;
 
+	if (ethqos->gdsc_off_on_suspend) {
+		if (ethqos->gdsc_emac) {
+			ret = regulator_enable(ethqos->gdsc_emac);
+			if (ret) {
+				ETHQOSERR("Can not enable <%s>\n", EMAC_GDSC_EMAC_NAME);
+				return ret;
+			}
+		}
+		ETHQOSDBG("Enabled <%s>\n", EMAC_GDSC_EMAC_NAME);
+	}
+
 	ndev = dev_get_drvdata(dev);
 	priv = netdev_priv(ndev);
 
@@ -6984,6 +7499,9 @@ static int qcom_ethqos_resume(struct device *dev)
 	}
 
 	qcom_ethqos_phy_resume_clks(ethqos);
+
+	if (ethqos->gdsc_off_on_suspend)
+		ethqos_set_func_clk_en(ethqos);
 
 	enable_irq(priv->dev->irq);
 
@@ -7313,7 +7831,7 @@ static void __exit qcom_ethqos_exit_module(void)
  * to do something with the code that the module provides.
  */
 
-module_init(qcom_ethqos_init_module)
+fs_initcall(qcom_ethqos_init_module)
 
 /*!
  * \brief Macro to register the driver un-registration function.

@@ -1,29 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# Makefile for Bosch sensor driver.
+# Makefile for Bosch SMI230 driver
 #
+KDIR ?= /lib/modules/$(shell uname -r)/build
+BUILD_DIR ?= $(PWD)/build
+BUILD_DIR_MAKEFILE := $(BUILD_DIR)/Makefile
 
-ifneq ($(CONFIG_SMI230_BOSCH_DRIVER_LOG_FUNC),n)
-	EXTRA_CFLAGS += -DBOSCH_DRIVER_LOG_FUNC
-endif
+all: $(BUILD_DIR_MAKEFILE)
+	$(MAKE) -C $(KDIR) M=$(BUILD_DIR) src=$(PWD) modules
 
+$(BUILD_DIR):
+	mkdir -p "$@"
 
-obj-$(CONFIG_INPUT_SMI230)    += smi230.o
-smi230-objs := smi230_log.o smi230_acc.o smi230_gyro.o
+$(BUILD_DIR_MAKEFILE): $(BUILD_DIR)
+	touch "$@"
 
-ifeq ($(CONFIG_SMI230_DATA_SYNC),y)
-	smi230-objs += smi230_data_sync.o
-endif
+modules_install:
+	$(MAKE) -C $(KDIR) M=$(BUILD_DIR) src=$(PWD) modules_install
 
-ifeq ($(CONFIG_SMI230_ACC_DRIVER),y)
-	smi230-objs += smi230_acc_driver.o
-endif
-
-ifeq ($(CONFIG_SMI230_GYRO_DRIVER),y)
-	smi230-objs += smi230_gyro_driver.o
-endif
-
-ifeq ($(CONFIG_SMI230_I2C),y)
-	smi230-objs += smi230_i2c_driver.o
-else
-	smi230-objs += smi230_spi_driver.o
-endif
+clean:
+	$(MAKE) -C $(KDIR) M=$(BUILD_DIR) src=$(PWD) clean

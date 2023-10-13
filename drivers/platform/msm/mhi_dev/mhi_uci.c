@@ -911,7 +911,7 @@ static int mhi_uci_read_async(struct uci_client *uci_handle, int *bytes_avail)
 
 	*bytes_avail = mhi_dev_read_channel(ureq);
 	if (*bytes_avail < 0) {
-		uci_log(UCI_DBG_ERROR, "Failed to read channel ret %dlu\n",
+		uci_log_ratelimit(UCI_DBG_ERROR, "Failed to read channel ret %dlu\n",
 			*bytes_avail);
 		if (uci_handle->in_chan == MHI_CLIENT_ADB_OUT) {
 			uci_log(UCI_DBG_ERROR,

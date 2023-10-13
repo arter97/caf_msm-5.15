@@ -168,6 +168,7 @@
 
 #define MSM_NAND_CTRL(info)		    MSM_NAND_REG(info, 0x30F00)
 #define BAM_MODE_EN	0
+#define BOOST_MODE_EN	0xB
 #define MSM_NAND_VERSION(info)         MSM_NAND_REG(info, 0x34F08)
 #define MSM_NAND_READ_LOCATION_0(info)      MSM_NAND_REG(info, 0x30F20)
 #define MSM_NAND_READ_LOCATION_1(info)      MSM_NAND_REG(info, 0x30F24)
@@ -275,8 +276,9 @@ struct msm_nand_chip {
 	uint32_t qpic_version; /* To store the qpic controller major version */
 	uint16_t qpic_min_version; /* To store the qpic controller minor version */
 	uint32_t caps; /* General host capabilities */
-#define MSM_NAND_CAP_PAGE_SCOPE_READ   BIT(0)
-#define MSM_NAND_CAP_MULTI_PAGE_READ   BIT(1)
+#define MSM_NAND_CAP_PAGE_SCOPE_READ	BIT(0)
+#define MSM_NAND_CAP_MULTI_PAGE_READ	BIT(1)
+#define MSM_NAND_CAP_BOOST_MODE		BIT(2)
 };
 
 /* Structure that defines an SPS end point for a NANDc BAM pipe. */
@@ -313,6 +315,7 @@ struct flash_identification {
 	uint32_t oobsize;
 	uint32_t ecc_correctability;
 	uint32_t ecc_capability; /* Set based on the ECC capability selected. */
+	uint16_t timing_mode_support; /* Timing mode */
 	/* Flag to distinguish b/w ONFI and NON-ONFI properties */
 	bool is_onfi_compliant;
 };
@@ -459,5 +462,8 @@ static int msm_nand_enable_dma(struct msm_nand_info *info);
 static int msm_nand_init_status_pipe(struct msm_nand_info *info);
 static int msm_nand_get_device(struct device *dev);
 static int msm_nand_put_device(struct device *dev);
+static int msm_nand_flash_rd_rw_reg(struct msm_nand_info *info,
+		uint32_t addr, uint32_t *val, uint32_t command);
+static int msm_nand_boost_mode_enable(struct msm_nand_info *info);
 
 #endif /* __QPIC_NAND_H */

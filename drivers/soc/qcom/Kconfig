@@ -221,6 +221,15 @@ config QCOM_OCMEM
 	  requirements. This is typically used by the GPU, camera/video, and
 	  audio components on some Snapdragon SoCs.
 
+config QCOM_PCIE_PDC
+	tristate "Qualcomm Technologies, Inc. (QTI) PCIe PDC driver"
+	depends on QCOM_CRM && (ARCH_QCOM || COMPILE_TEST)
+	help
+	  Support for enabling PCIe PDC interrupts in Qualcomm Technologies, Inc.
+	  (QTI) SoCs. PCIe PDC driver provides interfaces to configure PDC interrupt
+	  type and enable or disable them so that during system sleep can exit without
+	  involving CPU subsystem.
+
 config QCOM_PDR_HELPERS
 	tristate "Qualcomm Technologies, Inc. Protection Domain Restart(PDR) driver"
 	select QCOM_QMI_HELPERS
@@ -734,9 +743,9 @@ config QCOM_IRQ_STAT
 	depends on QCOM_WDT_CORE
 	help
 	  This give irq stats for top hitter at
-	  watchdog pet, watchdog bark and kernel panics.
+	  watchdog bark and kernel panics.
 	  This provides additional debug information
-	  for irq counts on cpu and ipi counts.
+	  for irq counts.
 
 config QCOM_LOGBUF_VENDOR_HOOKS
 	tristate "QTI Logbuf Vendor Hooks Support"

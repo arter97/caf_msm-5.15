@@ -125,9 +125,6 @@ static void gh_vm_cleanup(struct gh_vm *vm)
 		ret = gh_rm_unpopulate_hyp_res(vmid, vm->fw_name);
 		if (ret)
 			pr_warn("Failed to unpopulate hyp resources: %d\n", ret);
-		ret = gh_virtio_mmio_exit(vmid, vm->fw_name);
-		if (ret)
-			pr_warn("Failed to free virtio resources : %d\n", ret);
 	case GH_RM_VM_STATUS_INIT:
 	case GH_RM_VM_STATUS_AUTH:
 		ret = gh_rm_vm_reset(vmid);
@@ -135,6 +132,10 @@ static void gh_vm_cleanup(struct gh_vm *vm)
 			gh_wait_for_vm_status(vm, GH_RM_VM_STATUS_RESET);
 		} else
 			pr_warn("Reset is unsuccessful for VM:%d\n", vmid);
+
+		ret = gh_virtio_mmio_exit(vmid, vm->fw_name);
+		if (ret)
+			pr_warn("Failed to free virtio resources : %d\n", ret);
 
 		if (vm->is_secure_vm) {
 			ret = gh_secure_vm_loader_reclaim_fw(vm);
@@ -183,7 +184,11 @@ static int gh_stop_vm(struct gh_vm *vm)
 	gh_vmid_t vmid = vm->vmid;
 	int ret = -EINVAL;
 
-	ret = gh_exit_vm(vm, GH_VM_STOP_RESTART, 0);
+	if (vm->proxy_vm)
+		ret = gh_exit_vm(vm, GH_VM_STOP_RESTART,
+				GH_RM_VM_STOP_FLAG_FORCE_STOP);
+	else
+		ret = gh_exit_vm(vm, GH_VM_STOP_RESTART, 0);
 
 	if (ret && ret != -ENODEV)
 		goto err_vm_force_stop;
@@ -317,6 +322,7 @@ start_vcpu_run:
 	 * proxy scheduling APIs
 	 */
 	if (gh_vm_supports_proxy_sched(vm->vmid)) {
+		vm->proxy_vm = true;
 		ret = gh_vcpu_run(vm->vmid, vcpu->vcpu_id,
 						0, 0, 0, &vcpu_run);
 		if (ret < 0) {

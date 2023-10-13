@@ -1,15 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
-* Copyright (C) 2012-2020 InvenSense, Inc.
-*
-* This software is licensed under the terms of the GNU General Public
-* License version 2, as published by the Free Software Foundation, and
-* may be copied, distributed, and modified under those terms.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*/
+ * Copyright (C) 2012-2020 InvenSense, Inc.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 #define pr_fmt(fmt) "inv_mpu: " fmt
 
 #include <linux/module.h>
@@ -29,6 +30,9 @@
 #include <linux/of_device.h>
 #include <linux/errno.h>
 #include <linux/version.h>
+#include <linux/iio/buffer.h>
+#include <linux/iio/buffer_impl.h>
+#include <linux/iio/iio.h>
 
 #include "inv_mpu_iio.h"
 #include "inv_mpu_dts.h"
@@ -166,6 +170,7 @@ static int _memory_write(struct inv_mpu_state *st, u8 mpu_addr, u16 mem_addr,
 #if CONFIG_DYNAMIC_DEBUG_I2C
 	{
 		char *write = 0;
+
 		pr_debug("%s WM%02X%02X%02X%s%s - %d\n", st->hw->name,
 			mpu_addr, bank[1], addr[1],
 			wr_pr_debug_begin(data, len, write),
@@ -265,6 +270,7 @@ static int inv_i2c_mem_read(struct inv_mpu_state *st, u8 mpu_addr, u16 mem_addr,
 #if CONFIG_DYNAMIC_DEBUG_I2C
 	{
 		char *read = 0;
+
 		pr_debug("%s RM%02X%02X%02X%02X - %s%s\n", st->hw->name,
 			mpu_addr, bank[1], addr[1], len,
 			wr_pr_debug_begin(data, len, read),
@@ -280,11 +286,16 @@ static int inv_i2c_mem_read(struct inv_mpu_state *st, u8 mpu_addr, u16 mem_addr,
 static void inv_enable_acc_gyro(struct iio_dev *indio_dev)
 {
 	struct inv_mpu_state *st;
-
 	int accel_hz = 100;
 	int gyro_hz = 100;
 
 	st = iio_priv(indio_dev);
+	iio_buffer_get(indio_dev->buffer);
+	indio_dev->buffer->length = 10;
+	indio_dev->buffer->watermark = 10;
+	set_bit(0, indio_dev->buffer->scan_mask);
+	iio_update_buffers(indio_dev, indio_dev->buffer, NULL);
+
 	/**Enable the ACCEL**/
 	st->sensor_l[SENSOR_L_ACCEL].on = 0;
 	st->trigger_state = RATE_TRIGGER;
@@ -295,6 +306,11 @@ static void inv_enable_acc_gyro(struct iio_dev *indio_dev)
 	st->chip_config.accel_fs = ACCEL_FSR_2G;
 	inv_set_accel_sf(st);
 	st->trigger_state = MISC_TRIGGER;
+	set_inv_enable(indio_dev);
+
+	st->batch.timeout = 100;
+	inv_check_sensor_on(st);
+	st->trigger_state = EVENT_TRIGGER;
 	set_inv_enable(indio_dev);
 
 	st->sensor_l[SENSOR_L_ACCEL].rate = accel_hz;
@@ -506,12 +522,12 @@ static int inv_mpu_probe(struct i2c_client *client,
 	int result;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		result = -ENOSYS;
+		result = -EIO;
 		pr_err("I2c function error\n");
 		goto out_no_free;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+#if KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
 	indio_dev = iio_device_alloc(sizeof(*st));
 #else
 	indio_dev = iio_device_alloc(&client->dev, sizeof(*st));
@@ -614,6 +630,7 @@ static int inv_mpu_probe(struct i2c_client *client,
 	pr_info("Timer based batching\n");
 #endif
 	result = inv_acc_gyro_early_buff_init(indio_dev);
+
 	if (result != 1)
 		return -EIO;
 
@@ -714,6 +731,7 @@ static const struct i2c_device_id inv_mpu_id[] = {
 	{"icm40609d", ICM40609D},
 	{"icm43600", ICM43600},
 	{"iim42600", ICM42600},
+	{"icm45600", ICM45600},
 #endif
 	{}
 };
@@ -759,7 +777,10 @@ static const struct of_device_id inv_mpu_of_match[] = {
 	}, {
 		.compatible = "invensense,iim42600",
 		.data = (void *)ICM42600,
-        },
+	}, {
+		.compatible = "invensense,icm45600",
+		.data = (void *)ICM45600,
+	},
 #endif
 	{ }
 };

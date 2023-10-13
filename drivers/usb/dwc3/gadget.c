@@ -2361,15 +2361,21 @@ static int dwc3_gadget_wakeup(struct usb_gadget *g)
 		return -EINVAL;
 	}
 
-	spin_lock_irqsave(&dwc->lock, flags);
 	if (!dwc->gadget->wakeup_armed) {
 		dev_err(dwc->dev, "not armed for remote wakeup\n");
-		spin_unlock_irqrestore(&dwc->lock, flags);
 		return -EINVAL;
 	}
-	ret = __dwc3_gadget_wakeup(dwc, true);
 
+	ret = pm_runtime_resume_and_get(dwc->dev);
+	if (ret < 0) {
+		pm_runtime_set_suspended(dwc->dev);
+		return ret;
+	}
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	ret = __dwc3_gadget_wakeup(dwc, true);
 	spin_unlock_irqrestore(&dwc->lock, flags);
+	pm_runtime_put_noidle(dwc->dev);
 
 	return ret;
 }
@@ -2388,6 +2394,12 @@ static int dwc3_gadget_func_wakeup(struct usb_gadget *g, int intf_id)
 		return -EINVAL;
 	}
 
+	ret = pm_runtime_resume_and_get(dwc->dev);
+	if (ret < 0) {
+		pm_runtime_set_suspended(dwc->dev);
+		return ret;
+	}
+
 	spin_lock_irqsave(&dwc->lock, flags);
 	/*
 	 * If the link is in U3, signal for remote wakeup and wait for the
@@ -2398,6 +2410,7 @@ static int dwc3_gadget_func_wakeup(struct usb_gadget *g, int intf_id)
 		ret = __dwc3_gadget_wakeup(dwc, false);
 		if (ret) {
 			spin_unlock_irqrestore(&dwc->lock, flags);
+			pm_runtime_put_noidle(dwc->dev);
 			return -EINVAL;
 		}
 		dwc3_resume_gadget(dwc);
@@ -2411,6 +2424,7 @@ static int dwc3_gadget_func_wakeup(struct usb_gadget *g, int intf_id)
 		dev_err(dwc->dev, "function remote wakeup failed, ret:%d\n", ret);
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
+	pm_runtime_put_noidle(dwc->dev);
 
 	return ret;
 }
@@ -2658,21 +2672,23 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	/*
 	 * Avoid issuing a runtime resume if the device is already in the
 	 * suspended state during gadget disconnect.  DWC3 gadget was already
-	 * halted/stopped during runtime suspend.
+	 * halted/stopped during runtime suspend except for bus suspend case
+	 * where we would have skipped the controller halt.
 	 */
 	if (!is_on) {
 		pm_runtime_barrier(dwc->dev);
-		if (pm_runtime_suspended(dwc->dev))
+		if (pm_runtime_suspended(dwc->dev) && !dwc->connected)
 			return 0;
 	}
 
 	/*
 	 * Check the return value for successful resume, or error.  For a
 	 * successful resume, the DWC3 runtime PM resume routine will handle
-	 * the run stop sequence, so avoid duplicate operations here.
+	 * the run stop sequence except for bus resume case, so avoid
+	 * duplicate operations here.
 	 */
 	ret = pm_runtime_get_sync(dwc->dev);
-	if (!ret || ret < 0) {
+	if ((!ret && !dwc->connected) || ret < 0) {
 		pm_runtime_put(dwc->dev);
 		return 0;
 	}
@@ -4283,6 +4299,8 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 	}
 
 	dwc->link_state = next;
+	pm_runtime_mark_last_busy(dwc->dev);
+	pm_request_autosuspend(dwc->dev);
 }
 
 static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc,
@@ -4435,9 +4453,14 @@ static irqreturn_t dwc3_check_event_buf(struct dwc3_event_buffer *evt)
 	u32 count;
 
 	if (pm_runtime_suspended(dwc->dev)) {
+		dwc->pending_events = true;
+		/*
+		 * Issue runtime resume. The get() function will be balanced
+		 * after processing the pending events in dwc3_process_pending
+		 * events().
+		 */
 		pm_runtime_get(dwc->dev);
 		disable_irq_nosync(dwc->irq_gadget);
-		dwc->pending_events = true;
 		return IRQ_HANDLED;
 	}
 
@@ -4706,6 +4729,8 @@ void dwc3_gadget_process_pending_events(struct dwc3 *dwc)
 {
 	if (dwc->pending_events) {
 		dwc3_interrupt(dwc->irq_gadget, dwc->ev_buf);
+		dwc3_thread_interrupt(dwc->irq_gadget, dwc->ev_buf);
+		pm_runtime_put(dwc->dev);
 		dwc->pending_events = false;
 		enable_irq(dwc->irq_gadget);
 	}

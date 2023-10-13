@@ -376,9 +376,6 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned int mii_address = priv->hw->mii.addr;
 
-	if (priv->plat->early_eth)
-		return 0;
-
 #ifdef CONFIG_OF
 	if (priv->device->of_node) {
 		struct gpio_desc *reset_gpio;
@@ -551,8 +548,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 	new_bus->phy_mask = mdio_bus_data->phy_mask;
 	new_bus->parent = priv->device;
 
-	if (priv->plat->early_eth && priv->plat->phy_addr >= 0 &&
-	    priv->plat->phy_addr < PHY_MAX_ADDR)
+	if (priv->plat->phy_addr >= 0 && priv->plat->phy_addr < PHY_MAX_ADDR)
 		new_bus->phy_mask = ~(1 << priv->plat->phy_addr);
 
 	err = of_mdiobus_register(new_bus, mdio_node);

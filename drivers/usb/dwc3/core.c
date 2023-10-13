@@ -1452,6 +1452,9 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	dwc->dis_split_quirk = device_property_read_bool(dev,
 				"snps,dis-split-quirk");
 
+	dwc->runtime_suspend_on_usb_suspend = device_property_read_bool(dev,
+				"snps,runtime-suspend-on-usb-suspend");
+
 	dwc->lpm_nyet_threshold = lpm_nyet_threshold;
 	dwc->tx_de_emphasis = tx_de_emphasis;
 
@@ -1868,6 +1871,9 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
+		/* runtime resume on bus resume scenario */
+		if (PMSG_IS_AUTO(msg) && dwc->connected)
+			break;
 		ret = dwc3_core_init_for_resume(dwc);
 		if (ret)
 			return ret;
@@ -1927,10 +1933,17 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 
 static int dwc3_runtime_checks(struct dwc3 *dwc)
 {
+	struct dwc3_vendor *vdwc = container_of(dwc, struct dwc3_vendor, dwc);
+
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_DEVICE:
-		if (dwc->connected)
+		if (dwc->connected) {
+			/* bus suspend scenario */
+			if (dwc->runtime_suspend_on_usb_suspend &&
+			    vdwc->suspended)
+				break;
 			return -EBUSY;
+		}
 		break;
 	case DWC3_GCTL_PRTCAP_HOST:
 	default:
@@ -1946,13 +1959,27 @@ static int dwc3_runtime_suspend(struct device *dev)
 	struct dwc3     *dwc = dev_get_drvdata(dev);
 	int		ret;
 
-	if (dwc3_runtime_checks(dwc))
+	ret = dwc3_runtime_checks(dwc);
+	if (ret)
 		return -EBUSY;
+
+	switch (dwc->current_dr_role) {
+	case DWC3_GCTL_PRTCAP_DEVICE:
+		/* bus suspend case */
+		if (!ret && dwc->connected)
+			goto autosuspend;
+		break;
+	case DWC3_GCTL_PRTCAP_HOST:
+	default:
+		/* do nothing */
+		break;
+	}
 
 	ret = dwc3_suspend_common(dwc, PMSG_AUTO_SUSPEND);
 	if (ret)
 		return ret;
 
+autosuspend:
 	device_init_wakeup(dev, true);
 
 	return 0;

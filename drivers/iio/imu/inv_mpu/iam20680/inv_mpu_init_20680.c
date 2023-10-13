@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2017-2020 InvenSense, Inc.
  *
@@ -170,7 +171,7 @@ static int inv_init_config(struct inv_mpu_state *st)
 	st->ped.step_thresh = MPU_INIT_PED_STEP_THRESH;
 	st->chip_config.low_power_gyro_on = 1;
 	st->eis.count_precision = NSEC_PER_MSEC;
-	st->firmware = 0;
+	st->firmware = NULL;
 	st->fifo_count_mode = BYTE_MODE;
 #ifdef TIMER_BASED_BATCHING
 	st->batch_timeout = 0;
@@ -202,6 +203,32 @@ static int inv_init_config(struct inv_mpu_state *st)
 		st->sensor[i].previous_ts = 0;
 
 	return res;
+}
+
+static int inv_save_offset_regs(struct inv_mpu_state *st)
+{
+	__be16 offset;
+	int accel_offset_regs[3] = {REG_XA_OFFS_H, REG_YA_OFFS_H, REG_ZA_OFFS_H};
+	int gyro_offset_regs[3] = {REG_XG_OFFS_USR_H, REG_YG_OFFS_USR_H, REG_ZG_OFFS_USR_H};
+	int result;
+	int i;
+
+	/* save offset regs initial value */
+	for (i = 0; i < 3; ++i) {
+		/* accel offsets */
+		result = inv_plat_read(st, accel_offset_regs[i], 2, (u8 *)&offset);
+		if (result)
+			return result;
+		st->org_accel_offset_reg[i] = be16_to_cpu(offset);
+
+		/* gyro offsets */
+		result = inv_plat_read(st, gyro_offset_regs[i], 2, (u8 *)&offset);
+		if (result)
+			return result;
+		st->org_gyro_offset_reg[i] = be16_to_cpu(offset);
+	}
+
+	return 0;
 }
 
 int inv_mpu_initialize(struct inv_mpu_state *st)
@@ -239,6 +266,11 @@ int inv_mpu_initialize(struct inv_mpu_state *st)
 	result = inv_plat_single_write(st, REG_USER_CTRL, st->i2c_dis);
 	if (result)
 		return result;
+
+	result = inv_save_offset_regs(st);
+	if (result)
+		return result;
+
 	result = inv_init_config(st);
 	if (result)
 		return result;
