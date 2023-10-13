@@ -278,7 +278,7 @@
 	} while (0)
 
 #define EP_PCIE_EOM(lane, dev, fmt, arg...) do {			\
-	ipc_log_string((dev)->ipc_log_eom, \
+	ipc_log_string((dev)->ipc_log_eom[lane], \
 		"" fmt, arg); \
 	if (ep_pcie_get_debug_mask())   \
 		pr_alert("%s: " fmt, __func__, arg); \
@@ -454,7 +454,8 @@ struct ep_pcie_dev_t {
 	void                         *ipc_log_sel;
 	void                         *ipc_log_ful;
 	void                         *ipc_log_dump;
-	void                         *ipc_log_eom;
+	void                         *ipc_log_eom[16];
+	void                         *ipc_log_eom_delay;
 	struct mutex                 setup_mtx;
 	struct mutex                 ext_mtx;
 	spinlock_t                   ext_lock;
