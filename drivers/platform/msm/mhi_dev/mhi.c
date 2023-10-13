@@ -1181,20 +1181,21 @@ int mhi_transfer_host_to_device_mhi_dma(void *dev, uint64_t host_pa, uint32_t le
 
 	ch = mreq->client->channel;
 	if (mreq->mode == DMA_SYNC) {
+		mreq->dma = map_single(mhi, dev, len, DMA_FROM_DEVICE);
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Sync: device 0x%llx <-- host 0x%llx, size %d\n",
-			(uint64_t) mhi->mhi_hw_ctx->read_dma_handle, host_addr_pa, (int) len);
-		rc = mhi_dma_fun_ops->mhi_dma_sync_memcpy((u64) mhi->mhi_hw_ctx->read_dma_handle,
-				host_addr_pa,
+				(uint64_t) mreq->dma, host_addr_pa, (int) len);
+		rc = mhi_dma_fun_ops->mhi_dma_sync_memcpy(mreq->dma, host_addr_pa,
 				len,
 				mhi->mhi_dma_fun_params);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"error while reading ch_id:%d using sync, rc\n",
 				ch->ch_id, rc);
+			unmap_single(mhi, mreq->dma, len, DMA_FROM_DEVICE);
 			return rc;
 		}
-		memcpy(dev, mhi->read_handle, len);
+		unmap_single(mhi, mreq->dma, len, DMA_FROM_DEVICE);
 	} else if (mreq->mode == DMA_ASYNC) {
 		ch = mreq->client->channel;
 		ring = ch->ring;
@@ -1269,15 +1270,21 @@ int mhi_transfer_device_to_host_mhi_dma(uint64_t host_addr, void *dev, uint32_t 
 	}
 
 	if (req->mode == DMA_SYNC) {
-		memcpy(mhi->write_handle, dev, len);
+		req->dma = map_single(mhi, dev, len, DMA_TO_DEVICE);
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Sync: device 0x%llx ---> host 0x%llx, size %d\n",
-				(uint64_t) mhi->mhi_hw_ctx->write_dma_handle,
+				(uint64_t) req->dma,
 				host_addr_pa, (int) len);
-		return mhi_dma_fun_ops->mhi_dma_sync_memcpy(host_addr_pa,
-				(u64) mhi->mhi_hw_ctx->write_dma_handle,
+		rc =  mhi_dma_fun_ops->mhi_dma_sync_memcpy(host_addr_pa,
+				(u64) req->dma,
 				(int) len,
 				mhi->mhi_dma_fun_params);
+		if (rc) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "Error sending data to host\n");
+			unmap_single(mhi, req->dma, len, DMA_TO_DEVICE);
+			return rc;
+		}
+		unmap_single(mhi, req->dma, len, DMA_TO_DEVICE);
 	} else if (req->mode == DMA_ASYNC) {
 		ch = req->client->channel;
 
@@ -1501,19 +1508,24 @@ int mhi_transfer_host_to_device_edma(void *dev, uint64_t host_pa, uint32_t len,
 		host_addr_pa = host_pa;
 	}
 
-	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "device 0x%llx <-- host 0x%llx, size %d\n",
-		mhi->mhi_hw_ctx->read_dma_handle, host_addr_pa, (int) len);
-
 	if (mreq->mode == DMA_SYNC) {
 		reinit_completion(&transfer_host_to_device);
 
+		mreq->dma = map_single(mhi, dev, len, DMA_FROM_DEVICE);
+		if (dma_mapping_error(&mhi->mhi_hw_ctx->pdev->dev, mreq->dma)) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "dma map single failed\n");
+			return -ENOMEM;
+		}
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Sync: device 0x%llx <-- host 0x%llx, size %d\n",
+				mreq->dma, host_addr_pa, (int) len);
 		descriptor = dmaengine_prep_dma_memcpy(
-				mhi->mhi_hw_ctx->rx_dma_chan,
-				mhi->mhi_hw_ctx->read_dma_handle,
+				mhi->mhi_hw_ctx->rx_dma_chan, mreq->dma,
 				host_addr_pa, (int)len,
 				DMA_PREP_INTERRUPT);
 		if (!descriptor) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "descriptor is null\n");
+			unmap_single(mhi, (size_t)dev, len, DMA_FROM_DEVICE);
 			return -EFAULT;
 		}
 		descriptor->callback_param = &transfer_host_to_device;
@@ -1523,10 +1535,10 @@ int mhi_transfer_host_to_device_edma(void *dev, uint64_t host_pa, uint32_t len,
 			(&transfer_host_to_device, msecs_to_jiffies(1000))) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"transfer host to device timed out\n");
+			unmap_single(mhi, (size_t)dev, len, DMA_FROM_DEVICE);
 			return -ETIMEDOUT;
 		}
-
-		memcpy(dev, mhi->read_handle, len);
+		unmap_single(mhi, (size_t)dev, len, DMA_FROM_DEVICE);
 	} else if (mreq->mode == DMA_ASYNC) {
 		ch = mreq->client->channel;
 		ring = ch->ring;
@@ -1553,6 +1565,9 @@ int mhi_transfer_host_to_device_edma(void *dev, uint64_t host_pa, uint32_t len,
 			return rc;
 		}
 
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Async: device 0x%llx <-- host 0x%llx, size %d\n",
+				mreq->dma, host_addr_pa, (int) len);
 		descriptor = dmaengine_prep_dma_memcpy(
 				mhi->mhi_hw_ctx->rx_dma_chan, mreq->dma,
 				host_addr_pa, (int)len,
@@ -1569,6 +1584,7 @@ int mhi_transfer_host_to_device_edma(void *dev, uint64_t host_pa, uint32_t len,
 			mhi_dev_transfer_completion_cb;
 		dma_async_issue_pending(mhi->mhi_hw_ctx->rx_dma_chan);
 	}
+
 	return 0;
 }
 
@@ -1602,18 +1618,26 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 	} else {
 		host_addr_pa = host_addr;
 	}
-	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "device 0x%llx ---> host 0x%llx, size %d\n",
-				mhi->mhi_hw_ctx->write_dma_handle,
-				host_addr_pa, (int) len);
 
 	if (req->mode == DMA_SYNC) {
 		reinit_completion(&transfer_device_to_host);
 
+		req->dma = map_single(mhi, dev, len, DMA_TO_DEVICE);
+		if (dma_mapping_error(&mhi->mhi_hw_ctx->pdev->dev, req->dma)) {
+			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "dma map single failed\n");
+			return -ENOMEM;
+		}
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Sync: device 0x%llx ---> host 0x%llx, size %d\n",
+				req->dma,
+				host_addr_pa, (int) len);
+
 		descriptor = dmaengine_prep_dma_memcpy(mhi->mhi_hw_ctx->tx_dma_chan,
-			host_addr_pa, mhi->mhi_hw_ctx->write_dma_handle,
+			host_addr_pa, req->dma,
 			(int)len, DMA_PREP_INTERRUPT);
 		if (!descriptor) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "descriptor is null\n");
+			unmap_single(mhi, (size_t)req->buf, req->len, DMA_TO_DEVICE);
 			return -EFAULT;
 		}
 		descriptor->callback_param = &transfer_device_to_host;
@@ -1624,8 +1648,10 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 			(&transfer_device_to_host, msecs_to_jiffies(1000))) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"transfer device to host timed out\n");
+			unmap_single(mhi, (size_t)req->buf, req->len, DMA_TO_DEVICE);
 			return -ETIMEDOUT;
 		}
+		unmap_single(mhi, (size_t)req->buf, req->len, DMA_TO_DEVICE);
 	} else if (req->mode == DMA_ASYNC) {
 		ch = req->client->channel;
 		req->dma = map_single(mhi, req->buf, req->len, DMA_TO_DEVICE);
@@ -1647,6 +1673,10 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 				"Failed to queue completion: %d\n", rc);
 			return rc;
 		}
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Async: device 0x%llx ---> host 0x%llx, size %d\n",
+				req->dma,
+				host_addr_pa, (int) len);
 
 		descriptor = dmaengine_prep_dma_memcpy(mhi->mhi_hw_ctx->tx_dma_chan,
 			host_addr_pa, req->dma, (int) len,
@@ -1673,6 +1703,7 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 			}
 		}
 	}
+
 	return 0;
 }
 
@@ -5159,26 +5190,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 	if (!mhi_ctx->dma_cache) {
 		mutex_unlock(&mhi_ctx->mhi_lock);
 		return -ENOMEM;
-	}
-
-	if (mhi_ctx->is_mhi_pf) {
-		mhi_ctx->read_handle = alloc_coherent(mhi_ctx,
-				(TRB_MAX_DATA_SIZE * 4),
-				&mhi_ctx->mhi_hw_ctx->read_dma_handle,
-				GFP_KERNEL);
-		if (!mhi_ctx->read_handle) {
-			mutex_unlock(&mhi_ctx->mhi_lock);
-			return -ENOMEM;
-		}
-
-		mhi_ctx->write_handle = alloc_coherent(mhi_ctx,
-				(TRB_MAX_DATA_SIZE * 24),
-				&mhi_ctx->mhi_hw_ctx->write_dma_handle,
-				GFP_KERNEL);
-		if (!mhi_ctx->write_handle) {
-			mutex_unlock(&mhi_ctx->mhi_lock);
-			return -ENOMEM;
-		}
 	}
 
 	rc = mhi_dev_mmio_write(mhi_ctx, MHIVER, mhi_ctx->mhi_version);

@@ -603,8 +603,6 @@ struct mhi_dev {
 	u32				mhi_chan_hw_base;
 	u32				mhi_num_ipc_pages_dev_fac;
 	void				*dma_cache;
-	void				*read_handle;
-	void				*write_handle;
 	/* Physical scratch buffer for writing control data to the host */
 	dma_addr_t			cache_dma_handle;
 	bool				mhi_dma_ready;
@@ -684,17 +682,6 @@ struct mhi_dev_ctx {
 	struct ep_pcie_hw		*phandle;
 	bool				msi_disable;
 	struct mhi_dev			*mhi_dev[MHI_MAX_NUM_INSTANCES];
-
-	/*
-	 * Physical scratch buffer address used when picking host data
-	 * from the host used in mhi_read()
-	 */
-	dma_addr_t			read_dma_handle;
-	/*
-	 * Physical scratch buffer address used when writing to the host
-	 * region from device used in mhi_write()
-	 */
-	dma_addr_t			write_dma_handle;
 
 	/* Tx, Rx DMA channels */
 	struct dma_chan			*tx_dma_chan;
