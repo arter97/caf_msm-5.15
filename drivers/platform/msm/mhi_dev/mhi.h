@@ -560,7 +560,7 @@ struct mhi_dev {
 	dma_addr_t			cmd_ctx_cache_dma_handle;
 	struct mhi_dev_ring		*ring;
 	int				mhi_irq;
-	struct mhi_dev_channel		**ch;
+	struct mhi_dev_channel		*ch;
 	struct mhi_cmd_cmpl_ctx			*cmd_ctx;
 
 	int				ctrl_int;

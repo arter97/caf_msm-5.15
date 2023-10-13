@@ -114,7 +114,6 @@ static DECLARE_COMPLETION(read_from_host);
 static DECLARE_COMPLETION(write_to_host);
 static DECLARE_COMPLETION(transfer_host_to_device);
 static DECLARE_COMPLETION(transfer_device_to_host);
-static int mhi_dev_channel_init(struct mhi_dev *mhi, uint32_t ch_id);
 
 bool check_ignore_ch_list(int ch_id)
 {
@@ -2299,14 +2298,14 @@ static int mhi_dev_process_stop_cmd(struct mhi_dev_ring *ring, uint32_t ch_id,
 		return 0;
 	} else if (mhi->ch_ctx_cache[ch_id].ch_type ==
 			MHI_DEV_CH_TYPE_INBOUND_CHANNEL &&
-			(mhi->ch[ch_id]->pend_wr_count > 0)) {
+			(mhi->ch[ch_id].pend_wr_count > 0)) {
 		mhi_log(mhi->vf_id, MHI_MSG_INFO, "Pending inbound transaction\n");
 		return 0;
 	}
 
 	/* set the channel to stop */
 	mhi->ch_ctx_cache[ch_id].ch_state = MHI_DEV_CH_STATE_STOP;
-	mhi->ch[ch_id]->state = MHI_DEV_CH_STOPPED;
+	mhi->ch[ch_id].state = MHI_DEV_CH_STOPPED;
 
 	if (MHI_USE_DMA(mhi)) {
 		data_transfer.host_pa = mhi->ch_ctx_shadow.host_pa +
@@ -2347,7 +2346,7 @@ static void mhi_dev_process_reset_cmd(struct mhi_dev *mhi, int ch_id)
 		return;
 	}
 
-	ch = mhi->ch[ch_id];
+	ch = &mhi->ch[ch_id];
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "Processing reset cmd for ch_id:%d\n", ch_id);
 	/*
 	 * Ensure that the completions that are present in the flush list are
@@ -2365,7 +2364,7 @@ static void mhi_dev_process_reset_cmd(struct mhi_dev *mhi, int ch_id)
 	/* hard stop and set the channel to stop */
 	mhi->ch_ctx_cache[ch_id].ch_state =
 				MHI_DEV_CH_STATE_DISABLED;
-	mhi->ch[ch_id]->state = MHI_DEV_CH_STOPPED;
+	mhi->ch[ch_id].state = MHI_DEV_CH_STOPPED;
 
 	if (MHI_USE_DMA(mhi))
 		host_addr.host_pa =
@@ -2413,9 +2412,6 @@ static int mhi_dev_process_cmd_ring(struct mhi_dev *mhi,
 	case MHI_DEV_RING_EL_START:
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "received start cmd for ch_id:%d\n",
 								ch_id);
-		if (mhi_dev_channel_init(mhi, ch_id))
-			return -ENOMEM;
-
 		if (ch_id >= (mhi->mhi_chan_hw_base)) {
 			rc = mhi_hwc_chcmd(mhi, ch_id, el->generic.type);
 			if (rc) {
@@ -2469,10 +2465,10 @@ static int mhi_dev_process_cmd_ring(struct mhi_dev *mhi,
 
 		/* set the channel to running */
 		mhi->ch_ctx_cache[ch_id].ch_state = MHI_DEV_CH_STATE_RUNNING;
-		mhi->ch[ch_id]->state = MHI_DEV_CH_STARTED;
-		mhi->ch[ch_id]->ch_id = ch_id;
-		mhi->ch[ch_id]->ring = &mhi->ring[mhi->ch_ring_start + ch_id];
-		mhi->ch[ch_id]->ch_type = mhi->ch_ctx_cache[ch_id].ch_type;
+		mhi->ch[ch_id].state = MHI_DEV_CH_STARTED;
+		mhi->ch[ch_id].ch_id = ch_id;
+		mhi->ch[ch_id].ring = &mhi->ring[mhi->ch_ring_start + ch_id];
+		mhi->ch[ch_id].ch_type = mhi->ch_ctx_cache[ch_id].ch_type;
 
 		if (MHI_USE_DMA(mhi)) {
 			uint32_t evnt_ring_idx = mhi->ev_ring_start +
@@ -2520,7 +2516,7 @@ send_start_completion_event:
 
 send_undef_completion_event:
 		mhi->ch_ctx_cache[ch_id].ch_state = MHI_DEV_CH_STATE_DISABLED;
-		mhi->ch[ch_id]->state = MHI_DEV_CH_UNINT;
+		mhi->ch[ch_id].state = MHI_DEV_CH_UNINT;
 
 		rc = mhi_dev_send_cmd_comp_event(mhi,
 				MHI_CMD_COMPL_CODE_UNDEFINED);
@@ -2574,12 +2570,12 @@ send_undef_completion_event:
 				return -EINVAL;
 			}
 
-			ch = mhi->ch[ch_id];
+			ch = &mhi->ch[ch_id];
 
 			mutex_lock(&ch->ch_lock);
 			mutex_lock(&ch->ring->event_lock);
 
-			mhi->ch[ch_id]->state = MHI_DEV_CH_PENDING_STOP;
+			mhi->ch[ch_id].state = MHI_DEV_CH_PENDING_STOP;
 			rc = mhi_dev_process_stop_cmd(
 				&mhi->ring[mhi->ch_ring_start + ch_id],
 				ch_id, mhi);
@@ -2650,7 +2646,7 @@ send_undef_completion_event:
 					ch_id);
 				return -EINVAL;
 			}
-			ch = mhi->ch[ch_id];
+			ch = &mhi->ch[ch_id];
 			mutex_lock(&ch->ch_lock);
 			mutex_lock(&ch->ring->event_lock);
 			if (ch->db_pending) {
@@ -2695,7 +2691,7 @@ static int mhi_dev_process_tre_ring(struct mhi_dev *mhi,
 		return -EINVAL;
 	}
 
-	ch = mhi->ch[ring->id - mhi->ch_ring_start];
+	ch = &mhi->ch[ring->id - mhi->ch_ring_start];
 	reason.vf_id = mhi->vf_id;
 	reason.ch_id = ch->ch_id;
 	reason.reason = MHI_DEV_TRE_AVAILABLE;
@@ -2738,7 +2734,7 @@ static void mhi_dev_process_ring_pending(struct work_struct *work)
 			goto exit;
 		}
 
-		ch = mhi->ch[ring->id - mhi->ch_ring_start];
+		ch = &mhi->ch[ring->id - mhi->ch_ring_start];
 
 		rc = mhi_dev_process_ring(ring);
 		if (rc) {
@@ -2824,7 +2820,7 @@ static bool mhi_dev_queue_channel_db(struct mhi_dev *mhi,
 			}
 			mhi_ring_set_state(ring, RING_STATE_PENDING);
 			list_add(&ring->list, &mhi->process_ring_list);
-			ch = mhi->ch[ch_num];
+			ch = &mhi->ch[ch_num];
 			mutex_lock(&ch->ch_lock);
 			ch->db_pending = true;
 			work_pending = true;
@@ -2931,9 +2927,9 @@ static int mhi_dev_abort(struct mhi_dev *mhi)
 		ring = &mhi->ring[ch_id + mhi->ch_ring_start];
 		if (!ring || ring->state == RING_STATE_UINT)
 			continue;
-		ch = mhi->ch[ch_id];
+		ch = &mhi->ch[ch_id];
 		mutex_lock(&ch->ch_lock);
-		mhi->ch[ch_id]->state = MHI_DEV_CH_STOPPED;
+		mhi->ch[ch_id].state = MHI_DEV_CH_STOPPED;
 		mutex_unlock(&ch->ch_lock);
 	}
 
@@ -3714,7 +3710,7 @@ static int __mhi_dev_open_channel(struct mhi_dev *mhi_ctx,
 	}
 
 	pdev = mhi_ctx->mhi_hw_ctx->pdev;
-	ch = mhi_ctx->ch[chan_id];
+	ch = &mhi_ctx->ch[chan_id];
 
 	mutex_lock(&ch->ch_lock);
 
@@ -4534,7 +4530,7 @@ static int __mhi_register_state_cb(void (*mhi_state_cb)
 	 * Channel struct may not be allocated yet if this function is called
 	 * early during boot - add an explicit check for non-null "ch".
 	 */
-	if (mhi->ch && mhi->ch[channel] && (mhi->ch[channel]->state == MHI_DEV_CH_STARTED))
+	if (mhi->ch && (mhi->ch[channel].state == MHI_DEV_CH_STARTED))
 		return -EEXIST;
 
 	return 0;
@@ -4884,7 +4880,7 @@ static int mhi_deinit(struct mhi_dev *mhi)
 
 static int mhi_init(struct mhi_dev *mhi, bool init_state)
 {
-	int rc = 0;
+	int rc = 0, i = 0;
 	struct platform_device *pdev = mhi->mhi_hw_ctx->pdev;
 
 	if (mhi->use_edma) {
@@ -4929,9 +4925,17 @@ static int mhi_init(struct mhi_dev *mhi, bool init_state)
 	 */
 	if (!mhi->ch) {
 		mhi->ch = devm_kzalloc(&pdev->dev,
-			(sizeof(struct mhi_dev_channel *) * (mhi->cfg.channels)), GFP_KERNEL);
+			(sizeof(struct mhi_dev_channel) *
+			(mhi->cfg.channels)), GFP_KERNEL);
 		if (!mhi->ch)
 			return -ENOMEM;
+
+		for (i = 0; i < mhi->cfg.channels; i++) {
+			mhi->ch[i].ch_id = i;
+			mutex_init(&mhi->ch[i].ch_lock);
+			INIT_LIST_HEAD(&mhi->ch[i].event_req_buffers);
+			INIT_LIST_HEAD(&mhi->ch[i].flush_event_req_buffers);
+			}
 	}
 
 	spin_lock_init(&mhi->lock);
@@ -4942,24 +4946,6 @@ static int mhi_init(struct mhi_dev *mhi, bool init_state)
 
 	if (!mhi->mmio_backup)
 		return -ENOMEM;
-
-	return 0;
-}
-
-static int mhi_dev_channel_init(struct mhi_dev *mhi, uint32_t ch_id)
-{
-	struct platform_device *pdev = mhi->mhi_hw_ctx->pdev;
-
-	if (!mhi->ch[ch_id]) {
-		mhi->ch[ch_id]  = devm_kzalloc(&pdev->dev, sizeof(struct mhi_dev_channel),
-						GFP_KERNEL);
-	}
-	if (!mhi->ch[ch_id])
-		return -ENOMEM;
-	mhi->ch[ch_id]->ch_id = ch_id;
-	mutex_init(&mhi->ch[ch_id]->ch_lock);
-	INIT_LIST_HEAD(&mhi->ch[ch_id]->event_req_buffers);
-	INIT_LIST_HEAD(&mhi->ch[ch_id]->flush_event_req_buffers);
 
 	return 0;
 }
