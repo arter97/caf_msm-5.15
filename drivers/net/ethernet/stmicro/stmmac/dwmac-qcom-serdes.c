@@ -13,7 +13,7 @@
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
-	int retry = 5000;
+	int retry = 500;
 	unsigned int val;
 
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
