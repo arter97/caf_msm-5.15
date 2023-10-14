@@ -643,6 +643,7 @@ struct mhi_dev {
 	bool				no_m0_timeout;
 
 	bool				stop_polling_m0;
+	bool				msi_disable;
 
 	/* Registered client callback list */
 	struct list_head		client_cb_list;
@@ -680,7 +681,7 @@ struct mhi_dev_ctx {
 	struct ep_pcie_register_event	event_reg;
 	u32				ifc_id;
 	struct ep_pcie_hw		*phandle;
-	bool				msi_disable;
+
 	struct mhi_dev			*mhi_dev[MHI_MAX_NUM_INSTANCES];
 
 	/* Tx, Rx DMA channels */

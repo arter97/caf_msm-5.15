@@ -225,7 +225,7 @@ static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
 				struct ep_pcie_msi_config *cfg, u32 vf_id)
 {
 	int rc;
-	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, MHI_DEV_PHY_FUN);
+	struct mhi_dev *mhi = mhi_get_dev_ctx(mhi_hw_ctx, vf_id);
 
 	/*
 	 * Fetching MSI config to read the MSI capability and setting the
@@ -240,9 +240,9 @@ static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
 	rc = ep_pcie_get_msi_config(phandle, cfg, vf_id);
 	if (rc == -EOPNOTSUPP) {
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "MSI is disabled\n");
-		mhi->mhi_hw_ctx->msi_disable = true;
+		mhi->msi_disable = true;
 	} else if (!rc) {
-		mhi->mhi_hw_ctx->msi_disable = false;
+		mhi->msi_disable = false;
 	} else {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 				"Error retrieving pcie msi logic\n");
@@ -250,7 +250,7 @@ static int mhi_dev_get_msi_config(struct ep_pcie_hw *phandle,
 	}
 
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "msi_disable = %d\n",
-					mhi->mhi_hw_ctx->msi_disable);
+					mhi->msi_disable);
 	return 0;
 }
 
@@ -530,7 +530,7 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 	}
 
 	/* If MSI is disabled, bailing out */
-	if (mhi->mhi_hw_ctx->msi_disable)
+	if (mhi->msi_disable)
 		return 0;
 
 	ctx = (union mhi_dev_ring_ctx *)&mhi->ev_ctx_cache[ereq->event_ring];
@@ -605,7 +605,7 @@ static void mhi_dev_event_rd_offset_completion_cb(void *req)
 	 * Hence, invoking these callbacks as part of this API to ensure we do
 	 * not run out on ereq buffer space in this scenario.
 	 */
-	if (mhi->mhi_hw_ctx->msi_disable) {
+	if (mhi->msi_disable) {
 		if (ereq->is_cmd_cpl)
 			mhi_dev_cmd_event_msi_cb(ereq);
 		else
@@ -694,7 +694,7 @@ static int mhi_trigger_msi_edma(struct mhi_dev_ring *ring, u32 idx, struct event
 		}
 
 		/* If MSI is disabled, bailing out */
-		if (mhi->mhi_hw_ctx->msi_disable)
+		if (mhi->msi_disable)
 			return 0;
 
 		mhi->msi_data = cfg.data;
@@ -1841,7 +1841,7 @@ static int mhi_hwc_init(struct mhi_dev *mhi_ctx)
 	mhi_init_dma_params.first_er_idx = mhi_ctx->cfg.event_rings -
 						(mhi_ctx->cfg.hw_event_rings);
 	mhi_init_dma_params.first_ch_idx = mhi_ctx->mhi_chan_hw_base;
-	mhi_init_dma_params.disable_msi = mhi_ctx->mhi_hw_ctx->msi_disable;
+	mhi_init_dma_params.disable_msi = mhi_ctx->msi_disable;
 
 	if (mhi_ctx->config_iatu)
 		mhi_init_dma_params.mmio_addr =
@@ -4323,7 +4323,7 @@ static int mhi_dev_recover(struct mhi_dev *mhi)
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "mhi_state = 0x%X, reset = %d\n",
 				state, mhi_reset);
 
-		if (mhi->mhi_hw_ctx->msi_disable)
+		if (mhi->msi_disable)
 			goto poll_for_reset;
 
 		rc = mhi_dev_mmio_read(mhi, BHI_INTVEC, &bhi_intvec);
