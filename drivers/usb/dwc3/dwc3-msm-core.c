@@ -3198,6 +3198,7 @@ static void mdwc3_update_u1u2_value(struct dwc3 *dwc)
 		dwc->dis_u2_entry_quirk ? "disabled" : "enabled");
 }
 
+#define DWC3_DEFAULT_AUTOSUSPEND_DELAY	5000 /* ms */
 void dwc3_msm_notify_event(struct dwc3 *dwc,
 		enum dwc3_notify_event event, unsigned int value)
 {
@@ -3255,6 +3256,12 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 		mdwc3_update_u1u2_value(dwc);
 		set_bit(CONN_DONE, &mdwc->inputs);
 		queue_work(mdwc->sm_usb_wq, &mdwc->sm_work);
+		/*
+		 * Since connection is done reduce the autosuspend
+		 * delay to a smaller value.
+		 */
+		if (dwc->runtime_suspend_on_usb_suspend)
+			pm_runtime_set_autosuspend_delay(dwc->dev, 1000);
 		break;
 	case DWC3_GSI_EVT_BUF_ALLOC:
 		dev_dbg(mdwc->dev, "DWC3_GSI_EVT_BUF_ALLOC\n");
@@ -7151,8 +7158,23 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		}
 		mdwc->force_disconnect = false;
 
+		/*
+		 * If bus suspend feature is enabled, do not hold cable connect
+		 * vote as runtime suspend should be allowed even with cable
+		 * connected. Also increase the autosuspend delay to default
+		 * settings so that the USB enumeration is not interrupted
+		 * by dwc3 RT suspend.
+		 */
+		if (dwc->runtime_suspend_on_usb_suspend) {
+			pm_runtime_set_autosuspend_delay(dwc->dev,
+						DWC3_DEFAULT_AUTOSUSPEND_DELAY);
+			pm_runtime_mark_last_busy(dwc->dev);
+			pm_runtime_put_noidle(dwc->dev);
+		}
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off gadget\n", __func__);
+		if (dwc->runtime_suspend_on_usb_suspend)
+			pm_runtime_get_sync(dwc->dev);
 		msm_dwc3_perf_vote_enable(mdwc, false);
 		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 
@@ -7280,6 +7302,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 			break;
 		}
 
+		dwc = platform_get_drvdata(mdwc->dwc3);
 		mdwc->drd_state = DRD_STATE_IDLE;
 		dwc3_msm_iommu_get_domain(mdwc, dwc3_msm_domain);
 
@@ -7340,6 +7363,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 			dwc3_otg_start_peripheral(mdwc, 1);
 			mdwc->drd_state = DRD_STATE_PERIPHERAL;
 			work = true;
+			/*
+			 * If bus suspend feature is enabled do not hold cable
+			 * connect vote as runtime suspend should be facilitated
+			 * even with cable connected.
+			 */
+			if (dwc->runtime_suspend_on_usb_suspend)
+				pm_runtime_put_noidle(mdwc->dev);
 		}
 		break;
 
@@ -7352,9 +7382,12 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 			/*
 			 * Decrement pm usage count upon cable disconnect
 			 * which was incremented upon cable connect in
-			 * DRD_STATE_IDLE state
+			 * DRD_STATE_IDLE state except when bus suspend
+			 * feature is enabled during which we dont hold
+			 * the cable connect vote
 			 */
-			pm_runtime_put_sync_suspend(mdwc->dev);
+			if (!dwc->runtime_suspend_on_usb_suspend)
+				pm_runtime_put_sync_suspend(mdwc->dev);
 			dbg_event(0xFF, "!BSV psync",
 				atomic_read(&mdwc->dev->power.usage_count));
 			work = true;
