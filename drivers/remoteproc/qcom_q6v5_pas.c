@@ -819,9 +819,6 @@ static int adsp_stop(struct rproc *rproc)
 	if (handover)
 		qcom_pas_handover(&adsp->q6v5);
 
-	if (mpss_have_extended_mem)
-		adsp->ssr_hyp_assign_mem = true;
-
 	if (is_mss_ssr_hyp_assign_en(adsp)) {
 		ret = mpss_extended_mem_hyp_assign_control(adsp, false);
 		if (ret)
