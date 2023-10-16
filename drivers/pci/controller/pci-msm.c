@@ -37,7 +37,6 @@
 #include <linux/kfifo.h>
 #include <linux/clk/qcom.h>
 #include <linux/random.h>
-#include <linux/iommu.h>
 
 #include "../pci.h"
 
@@ -5686,8 +5685,7 @@ int msm_pcie_deenumerate(u32 rc_idx)
 	pci_stop_root_bus(bridge->bus);
 	pci_remove_root_bus(bridge->bus);
 
-	if (!dev->power_on || dev->link_status == MSM_PCIE_LINK_DOWN
-			|| dev->user_suspend)
+	if(!dev->power_on || dev->user_suspend)
 		goto out;
 
 	/* Mask all the interrupts */
@@ -7625,21 +7623,8 @@ out:
 
 static void msm_pcie_shutdown(struct platform_device *pdev)
 {
-	int ret = 0;
-	int rc_idx;
-	struct msm_pcie_dev_t *dev;
-	struct iommu_domain *domain = iommu_get_domain_for_dev(&pdev->dev);
-
-	ret = of_property_read_u32((&pdev->dev)->of_node,
-			"cell-index", &rc_idx);
-	if (ret) {
-		pr_err("%s: Did not find RC index.\n", __func__);
-		return;
-	}
-
-	dev = &msm_pcie_dev[rc_idx];
-
-	iommu_detach_device(domain, &pdev->dev);
+	pr_info("%s\n", __func__);
+	msm_pcie_remove(pdev);
 }
 
 static int msm_pcie_link_retrain(struct msm_pcie_dev_t *pcie_dev,
