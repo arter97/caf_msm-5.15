@@ -79,6 +79,14 @@ enum qcom_scm_ice_cipher {
 	QCOM_SCM_ICE_CIPHER_AES_256_CBC = 4,
 };
 
+enum qcom_scm_custom_reset_type {
+	QCOM_SCM_RST_NONE,
+	QCOM_SCM_RST_SHUTDOWN_TO_RTC_MODE = 0x80000005,
+	QCOM_SCM_RST_SHUTDOWN_TO_TWM_MODE,
+	QCOM_SCM_RST_MAX
+};
+extern enum qcom_scm_custom_reset_type qcom_scm_custom_reset_type;
+
 #define QCOM_SCM_VMID_HLOS       0x3
 #define QCOM_SCM_VMID_MSS_MSA    0xF
 #define QCOM_SCM_VMID_WLAN       0x18
@@ -168,6 +176,11 @@ extern int qcom_scm_iommu_secure_map(phys_addr_t sg_list_addr, size_t num_sg,
 				unsigned long iova, size_t total_len);
 extern int qcom_scm_iommu_secure_unmap(u64 sec_id, int cbndx,
 				unsigned long iova, size_t total_len);
+extern int qcom_scm_paravirt_smmu_attach(u64 sid, u64 asid, u64 ste_pa,
+				u64 ste_size, u64 cd_pa, u64 cd_size);
+extern int qcom_scm_paravirt_tlb_inv(u64 asid, u64 sid);
+extern int qcom_scm_paravirt_smmu_detach(u64 sid);
+
 extern int
 qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
 			    size_t mem_regions_sz, u32 *srcvms, size_t src_sz,
@@ -248,8 +261,21 @@ extern int qcom_scm_smmu_notify_secure_lut(u64 dev_id, bool secure);
 
 extern int qcom_scm_qdss_invoke(phys_addr_t addr, size_t size, u64 *out);
 
+extern int qcom_scm_camera_tz_get_status(uint32_t status_mask,
+			uint32_t *result);
+extern int qcom_scm_camera_tz_reg_read(uint32_t region, uint32_t offset,
+			uint32_t *data);
+extern int qcom_scm_camera_tz_reg_write(uint32_t region, uint32_t offset,
+			uint32_t data);
+extern int qcom_scm_camera_tz_reg_write_bulk(uint32_t region,
+			uint32_t num_registers, void *offsets,
+			void *data, uint32_t size);
+extern int qcom_scm_camera_tz_reset_hw_block(uint32_t status_mask,
+			uint32_t region, uint32_t *status);
 extern int qcom_scm_camera_protect_all(uint32_t protect, uint32_t param);
 extern int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask);
+extern int qcom_scm_camera_send_topology(uint32_t phy_sel, uint32_t topology);
+extern int qcom_scm_camera_reset_pipeLine(uint32_t phy_sel, uint32_t stream);
 
 extern int qcom_scm_tsens_reinit(int *tsens_ret);
 
@@ -273,10 +299,13 @@ extern int qcom_scm_invoke_smc_legacy(phys_addr_t in_buf, size_t in_buf_size,
 extern int qcom_scm_invoke_callback_response(phys_addr_t out_buf,
 		size_t out_buf_size, int32_t *result, u64 *response_type,
 		unsigned int *data);
+extern int qcom_scm_ddrbw_profiler(phys_addr_t in_buf, size_t in_buf_size,
+		phys_addr_t out_buf, size_t out_buf_size);
 
 extern int qcom_scm_lmh_dcvsh(u32 payload_fn, u32 payload_reg, u32 payload_val,
 			      u64 limit_node, u32 node_id, u64 version);
 extern int qcom_scm_lmh_profile_change(u32 profile_id);
 extern bool qcom_scm_lmh_dcvsh_available(void);
+
 
 #endif

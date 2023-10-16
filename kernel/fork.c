@@ -374,42 +374,48 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 		 * will be reinitialized.
 		 */
 		*new = data_race(*orig);
-		INIT_LIST_HEAD(&new->anon_vma_chain);
+		INIT_VMA(new);
 		new->vm_next = new->vm_prev = NULL;
 		dup_anon_vma_name(orig, new);
 	}
 	return new;
 }
 
-static inline void ____vm_area_free(struct vm_area_struct *vma)
-{
-	kmem_cache_free(vm_area_cachep, vma);
-}
-
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-static void __vm_area_free(struct rcu_head *head)
+static void __free_vm_area_struct(struct rcu_head *head)
 {
 	struct vm_area_struct *vma = container_of(head, struct vm_area_struct,
 						  vm_rcu);
-	____vm_area_free(vma);
+	kmem_cache_free(vm_area_cachep, vma);
+}
+
+static inline void free_vm_area_struct(struct vm_area_struct *vma)
+{
+	call_rcu(&vma->vm_rcu, __free_vm_area_struct);
+}
+#else
+static inline void free_vm_area_struct(struct vm_area_struct *vma)
+{
+	kmem_cache_free(vm_area_cachep, vma);
 }
 #endif
 
-void vm_area_free(struct vm_area_struct *vma)
+void vm_area_free_no_check(struct vm_area_struct *vma)
 {
 	free_anon_vma_name(vma);
-#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-	if (atomic_read(&vma->vm_mm->mm_users) > 1) {
-		if (vma->vm_file)
-			vma_put_file_ref(vma);
-
-		call_rcu(&vma->vm_rcu, __vm_area_free);
-		return;
-	}
-#endif
 	if (vma->vm_file)
 		fput(vma->vm_file);
-	____vm_area_free(vma);
+	free_vm_area_struct(vma);
+}
+
+void vm_area_free(struct vm_area_struct *vma)
+{
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+	/* Free only after refcount dropped to negative */
+	if (atomic_dec_return(&vma->file_ref_count) >= 0)
+		return;
+#endif
+	vm_area_free_no_check(vma);
 }
 
 static void account_kernel_stack(struct task_struct *tsk, int account)
@@ -509,6 +515,7 @@ void free_task(struct task_struct *tsk)
 	arch_release_task_struct(tsk);
 	if (tsk->flags & PF_KTHREAD)
 		free_kthread_struct(tsk);
+	bpf_task_storage_free(tsk);
 	free_task_struct(tsk);
 }
 EXPORT_SYMBOL(free_task);
@@ -793,7 +800,6 @@ void __put_task_struct(struct task_struct *tsk)
 	cgroup_free(tsk);
 	task_numa_free(tsk, true);
 	security_task_free(tsk);
-	bpf_task_storage_free(tsk);
 	exit_creds(tsk);
 	delayacct_tsk_free(tsk);
 	put_signal_struct(tsk->signal);
@@ -1206,6 +1212,7 @@ void mmput_async(struct mm_struct *mm)
 		schedule_work(&mm->async_put_work);
 	}
 }
+EXPORT_SYMBOL_GPL(mmput_async);
 #endif
 
 /**
@@ -2889,7 +2896,7 @@ static bool clone3_args_valid(struct kernel_clone_args *kargs)
 	 * - make the CLONE_DETACHED bit reusable for clone3
 	 * - make the CSIGNAL bits reusable for clone3
 	 */
-	if (kargs->flags & (CLONE_DETACHED | CSIGNAL))
+	if (kargs->flags & (CLONE_DETACHED | (CSIGNAL & (~CLONE_NEWTIME))))
 		return false;
 
 	if ((kargs->flags & (CLONE_SIGHAND | CLONE_CLEAR_SIGHAND)) ==

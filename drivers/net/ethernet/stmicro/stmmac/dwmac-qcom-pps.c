@@ -32,18 +32,14 @@ static DECLARE_WAIT_QUEUE_HEAD(avb_class_b_msg_wq);
 
 static int strlcmp(const char *s, const char *t, size_t n)
 {
-	int ret;
-
 	while (n-- && *t != '\0') {
 		if (*s != *t) {
-			ret = ((unsigned char)*s - (unsigned char)*t);
-			n = 0;
+			return ((unsigned char)*s - (unsigned char)*t);
 		} else {
 			++s, ++t;
-			ret = (unsigned char)*s;
 		}
 	}
-	return ret;
+	return (unsigned char)*s;
 }
 
 static void align_target_time_reg(u32 ch, struct stmmac_priv *priv,
@@ -96,8 +92,8 @@ static u32 pps_config_sub_second_increment(void __iomem *ioaddr,
 	if (!(value & PTP_TCR_TSCTRLSSR))
 		data = div_u64((data * 1000), 465);
 
-	data &= PTP_SSIR_SSINC_MASK;
-
+	if (data > PTP_SSIR_SSINC_MAX)
+		data = PTP_SSIR_SSINC_MAX;
 	reg_value = data;
 	if (gmac4)
 		reg_value <<= GMAC4_PTP_SSIR_SSINC_SHIFT;

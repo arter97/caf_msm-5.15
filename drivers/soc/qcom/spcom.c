@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -114,7 +114,7 @@
 #define DEVICE_NAME	"spcom"
 
 /* maximum clients that can register over a single channel */
-#define SPCOM_MAX_CHANNEL_CLIENTS 2
+#define SPCOM_MAX_CHANNEL_CLIENTS 5
 
 /* maximum shared DMA_buf buffers should be >= SPCOM_MAX_CHANNELS  */
 #define SPCOM_MAX_DMA_BUF_PER_CH (SPCOM_MAX_CHANNELS + 4)
@@ -678,8 +678,12 @@ static int spcom_handle_create_channel_command(void *cmd_buf, int cmd_size)
 	mutex_lock(&spcom_dev->chdev_count_lock);
 	ret = spcom_create_channel_chardev(cmd->ch_name, cmd->is_sharable);
 	mutex_unlock(&spcom_dev->chdev_count_lock);
-	if (ret)
-		spcom_pr_err("failed to create ch[%s], ret [%d]\n", cmd->ch_name, ret);
+	if (ret) {
+		if (-EINVAL == ret)
+			spcom_pr_err("failed to create channel, ret [%d]\n", ret);
+		else
+			spcom_pr_err("failed to create ch[%s], ret [%d]\n", cmd->ch_name, ret);
+	}
 
 	return ret;
 }
@@ -2275,6 +2279,9 @@ static int spcom_send_message(void *arg, void *buffer, bool is_modified)
 		return -ENOMEM;
 	hdr = tx_buf;
 
+	if (ch->is_sharable)
+		mutex_lock(&ch->shared_sync_lock);
+
 	mutex_lock(&ch->lock);
 
 	/* For SPCOM server, get next request size must be called before sending a response
@@ -2290,11 +2297,10 @@ static int spcom_send_message(void *arg, void *buffer, bool is_modified)
 	if (ch->is_sharable) {
 
 		if (ch->is_server) {
+			mutex_unlock(&ch->shared_sync_lock);
 			spcom_pr_err("server spcom channel cannot be shared\n");
 			goto send_message_err;
 		}
-
-		mutex_lock(&ch->shared_sync_lock);
 		ch->active_pid = current_pid();
 	}
 
@@ -2502,7 +2508,7 @@ static int spcom_create_channel(const char *ch_name, bool is_sharable)
 		/* Channel is already created as sharable */
 		if (spcom_dev->channels[i].is_sharable) {
 			spcom_pr_err("already created channel as sharable\n");
-			return -EALREADY;
+			return 0;
 		}
 
 		/* Cannot create sharable channel if channel already created */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef UFS_QCOM_H_
@@ -11,6 +11,7 @@
 #include <linux/phy/phy.h>
 #include <linux/pm_qos.h>
 #include <linux/notifier.h>
+#include <linux/panic_notifier.h>
 #include "ufshcd.h"
 #include "unipro.h"
 
@@ -43,10 +44,24 @@
 #define SLOW 1
 #define FAST 2
 
+/* CPU Clusters Info */
+enum cpu_cluster_info {
+	SILVER_CORE,
+	GOLD_CORE,
+	GOLD_PRIME_CORE,
+	MAX_NUM_CLUSTERS,
+};
+
 enum ufs_qcom_phy_submode {
 	UFS_QCOM_PHY_SUBMODE_NON_G4,
 	UFS_QCOM_PHY_SUBMODE_G4,
 	UFS_QCOM_PHY_SUBMODE_G5,
+};
+
+enum ufs_qcom_ber_mode {
+	UFS_QCOM_BER_MODE_G1_G4,
+	UFS_QCOM_BER_MODE_G5,
+	UFS_QCOM_BER_MODE_MAX,
 };
 
 #define UFS_QCOM_LIMIT_NUM_LANES_RX	2
@@ -62,6 +77,7 @@ enum ufs_qcom_phy_submode {
 #define UFS_QCOM_LIMIT_HS_RATE		PA_HS_MODE_B
 #define UFS_QCOM_LIMIT_DESIRED_MODE	FAST
 #define UFS_QCOM_LIMIT_PHY_SUBMODE	UFS_QCOM_PHY_SUBMODE_G4
+#define UFS_MEM_REG_PA_ERR_CODE	0xCC
 
 /* default value of auto suspend is 3 seconds */
 #define UFS_QCOM_AUTO_SUSPEND_DELAY	3000
@@ -252,6 +268,9 @@ enum ufs_qcom_phy_init_type {
  */
 #define UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH (1 << 16)
 
+/* UECPA - Host UIC Error Code Data Link Layer */
+#define UIC_DATA_LINK_LAYER_EC_PA_ERROR_IND_RECEIVED	0x4000
+
 static inline void
 ufs_qcom_get_controller_revision(struct ufs_hba *hba,
 				 u8 *major, u16 *minor, u16 *step)
@@ -440,6 +459,43 @@ static inline void get_alg2_grp_params(unsigned int group, int *core, int *task)
 	 __get_alg2_grp_params(p->val, core, task);
 }
 
+/**
+ * struct ufs_qcom_ber_hist - record the detail of each BER event.
+ * @pos: index of event.
+ * @uec_pa: PA error type.
+ * @err_code: error code, only needed for PA error.
+ * @gear: the gear info when PHY PA occurs.
+ * @tstamp: record timestamp.
+ * @run_time: valid running time since last event.
+ * @full_time: total time since last event.
+ * @cnt: total error count.
+ * @name: mode name.
+ */
+struct ufs_qcom_ber_hist {
+	#define UFS_QCOM_EVT_LEN    32
+	int pos;
+	u32 uec_pa[UFS_QCOM_EVT_LEN];
+	u32 err_code[UFS_QCOM_EVT_LEN];
+	u32 gear[UFS_QCOM_EVT_LEN];
+	ktime_t tstamp[UFS_QCOM_EVT_LEN];
+	s64 run_time[UFS_QCOM_EVT_LEN];
+	s64 full_time[UFS_QCOM_EVT_LEN];
+	u32 cnt;
+	char *name;
+};
+
+struct ufs_qcom_ber_table {
+	enum ufs_qcom_ber_mode mode;
+	u32 ber_threshold;
+};
+
+struct ufs_qcom_regs {
+	struct list_head list;
+	const char *prefix;
+	u32 *ptr;
+	size_t len;
+};
+
 struct ufs_qcom_host {
 	/*
 	 * Set this capability if host controller supports the QUniPro mode
@@ -521,6 +577,7 @@ struct ufs_qcom_host {
 
 	struct ufs_vreg *vddp_ref_clk;
 	struct ufs_vreg *vccq_parent;
+	struct ufs_vreg *vccq_shutdown;
 	bool work_pending;
 	bool bypass_g4_cfgready;
 	bool is_dt_pm_level_read;
@@ -553,9 +610,19 @@ struct ufs_qcom_host {
 	atomic_t hi_pri_en;
 	atomic_t therm_mitigation;
 	cpumask_t perf_mask;
-	cpumask_t def_mask;
+	cpumask_t silver_mask;
+	cpumask_t gold_mask;
+	cpumask_t gold_prime_mask;
 	u32 vccq_lpm_uV;
 	bool disable_wb_support;
+	struct ufs_qcom_ber_hist ber_hist[UFS_QCOM_BER_MODE_MAX];
+	struct list_head regs_list_head;
+	bool ber_th_exceeded;
+	u32 valid_evt_cnt[UFS_EVT_CNT];
+	bool irq_affinity_support;
+	bool bypass_pbl_rst_wa;
+	struct notifier_block ufs_qcom_panic_nb;
+
 };
 
 static inline u32

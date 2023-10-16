@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2020, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -152,6 +152,11 @@ static int tsens2xxx_get_temp(struct tsens_sensor *sensor, int *temp)
 	tmdev = sensor->tmdev;
 	sensor_addr = TSENS_TM_SN_STATUS(tmdev->tsens_tm_addr);
 	trdy = TSENS_TM_TRDY(tmdev->tsens_tm_addr);
+
+	if (sensor->cached_temp != INT_MIN) {
+		*temp = sensor->cached_temp;
+		goto dbg;
+	}
 
 	code = readl_relaxed(trdy);
 
@@ -454,7 +459,7 @@ static int tsens2xxx_set_trip_temp(struct tsens_sensor *tm_sensor,
 			(tm_sensor->hw_id * TSENS_TM_SN_ADDR_OFFSET)));
 	}
 
-	if (low_temp != INT_MIN) {
+	if (low_temp != -INT_MAX) {
 		tmdev->sensor[tm_sensor->hw_id].thr_state.low_temp = low_temp;
 		reg_cntl = readl_relaxed((TSENS_TM_SN_UPPER_LOWER_THRESHOLD
 				(tmdev->tsens_tm_addr)) +
@@ -490,7 +495,7 @@ static int tsens2xxx_set_trip_temp(struct tsens_sensor *tm_sensor,
 		}
 	}
 
-	if (low_temp != INT_MIN) {
+	if (low_temp != -INT_MAX) {
 		rc = tsens_tm_activate_trip_type(tm_sensor,
 				TSENS_TRIP_CONFIGURABLE_LOW,
 				THERMAL_DEVICE_ENABLED);
@@ -705,11 +710,13 @@ static irqreturn_t tsens_tm_irq_thread(int irq, void *data)
 
 		if (upper_thr || lower_thr) {
 			/* Use id for multiple controllers */
+			tm->sensor[i].cached_temp = temp;
 			pr_debug("sensor:%d trigger temp (%d degC)\n",
 				tm->sensor[i].hw_id, temp);
 			thermal_zone_device_update(tm->sensor[i].tzd,
 						THERMAL_EVENT_UNSPECIFIED);
 		}
+		tm->sensor[i].cached_temp = INT_MIN;
 	}
 
 	/* Disable monitoring sensor trip threshold for triggered sensor */

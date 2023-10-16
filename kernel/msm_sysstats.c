@@ -186,12 +186,17 @@ static unsigned long get_task_unreclaimable_info(struct task_struct *task)
 	int ret = 0;
 
 	for_each_thread(task, thread) {
+		/* task is already locked don't lock/unlock again. */
+		if (task != thread)
+			task_lock(thread);
 		if (unlikely(!group_leader_files))
 			group_leader_files = task->group_leader->files;
 		files = thread->files;
 		if (files && (group_leader_files != files ||
 			thread == task->group_leader))
 			ret = iterate_fd(files, 0, get_dma_info, &size);
+		if (task != thread)
+			task_unlock(thread);
 		if (ret)
 			break;
 	}
@@ -377,6 +382,8 @@ static int sysstats_all_pids_of_name(struct sk_buff *skb, struct netlink_callbac
 		goto out;
 
 	comm = nla_strdup_cust(nla, GFP_KERNEL);
+	if (!comm)
+		goto out;
 
 	iter.tgid = cb->args[0];
 	iter.task = NULL;

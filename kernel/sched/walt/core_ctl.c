@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"core_ctl: " fmt
@@ -367,7 +367,7 @@ static ssize_t store_not_preferred(struct cluster_data *state,
 				   const char *buf, size_t count)
 {
 	struct cpu_data *c;
-	unsigned int i;
+	unsigned int i, mask;
 	unsigned int val[MAX_CPUS_PER_CLUSTER];
 	unsigned long flags;
 	int ret;
@@ -380,10 +380,16 @@ static ssize_t store_not_preferred(struct cluster_data *state,
 		return -EINVAL;
 
 	spin_lock_irqsave(&state_lock, flags);
-	for (i = 0; i < state->num_cpus; i++) {
-		c = &per_cpu(cpu_state, i + state->first_cpu);
+	for (i = 0, mask = 0; i < state->num_cpus;) {
+		if (!cpumask_test_cpu(i + mask + state->first_cpu, cpu_possible_mask)) {
+			mask++;
+			continue;
+		}
+
+		c = &per_cpu(cpu_state, i + mask + state->first_cpu);
 		c->not_preferred = val[i];
 		not_preferred_count += !!val[i];
+		i++;
 	}
 	state->nr_not_preferred_cpus = not_preferred_count;
 	spin_unlock_irqrestore(&state_lock, flags);
@@ -396,13 +402,19 @@ static ssize_t show_not_preferred(const struct cluster_data *state, char *buf)
 	struct cpu_data *c;
 	ssize_t count = 0;
 	unsigned long flags;
-	int i;
+	int i, mask;
 
 	spin_lock_irqsave(&state_lock, flags);
-	for (i = 0; i < state->num_cpus; i++) {
-		c = &per_cpu(cpu_state, i + state->first_cpu);
+	for (i = 0, mask = 0; i < state->num_cpus;) {
+		if (!cpumask_test_cpu(i + mask + state->first_cpu, cpu_possible_mask)) {
+			mask++;
+			continue;
+		}
+
+		c = &per_cpu(cpu_state, i + mask + state->first_cpu);
 		count += scnprintf(buf + count, PAGE_SIZE - count,
 				"%u ", c->not_preferred);
+		i++;
 	}
 	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
 	spin_unlock_irqrestore(&state_lock, flags);
@@ -712,7 +724,8 @@ static int compute_cluster_nr_strict_need(int index)
 	struct cluster_data *cluster;
 	int nr_strict_need = 0;
 
-	if (index != 0)
+	/* For single cluster skip configuration */
+	if ((index != 0) || (num_clusters < 2))
 		return 0;
 
 	for_each_cluster(cluster, index) {
@@ -823,12 +836,18 @@ static unsigned int apply_task_need(const struct cluster_data *cluster,
 static unsigned int apply_limits(const struct cluster_data *cluster,
 				 unsigned int need_cpus)
 {
+	if (!cluster->enable)
+		return cluster->num_cpus;
+
 	return min(max(cluster->min_cpus, need_cpus), cluster->max_cpus);
 }
 
 static unsigned int apply_limits_32bit(const struct cluster_data *cluster,
 				       unsigned int need_cpus)
 {
+	if (!cluster->enable)
+		return cluster->num_32bit_cpus;
+
 	return min(need_cpus, cluster->num_32bit_cpus);
 }
 
@@ -969,7 +988,7 @@ static bool eval_need_32bit(struct cluster_data *cluster)
 
 	now = ktime_to_ms(ktime_get());
 
-	if (need_cpus > cluster->active_32bit_cpus) {
+	if (new_need > cluster->active_32bit_cpus) {
 		adj_now = true;
 	} else {
 		/*
@@ -1387,6 +1406,14 @@ static void __ref do_core_ctl(void)
 
 	core_ctl_pause_cpus(&cpus_to_pause);
 	core_ctl_resume_cpus(&cpus_to_unpause);
+
+	/* Update the final active cpus after the real resume and
+	 * pause actions.
+	 */
+	index = 0;
+	for_each_cluster(cluster, index) {
+		cluster->active_cpus = get_active_cpu_count(cluster);
+	}
 }
 
 static int __ref try_core_ctl(void *data)

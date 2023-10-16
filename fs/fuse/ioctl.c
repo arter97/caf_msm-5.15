@@ -9,6 +9,17 @@
 #include <linux/compat.h>
 #include <linux/fileattr.h>
 
+static ssize_t fuse_send_ioctl(struct fuse_mount *fm, struct fuse_args *args)
+{
+	ssize_t ret = fuse_simple_request(fm, args);
+
+	/* Translate ENOSYS, which shouldn't be returned from fs */
+	if (ret == -ENOSYS)
+		ret = -ENOTTY;
+
+	return ret;
+}
+
 /*
  * CUSE servers compiled on 32bit broke on 64bit kernels because the
  * ABI was defined to be 'struct iovec' which is different on 32bit
@@ -259,7 +270,7 @@ long fuse_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg,
 	ap.args.out_pages = true;
 	ap.args.out_argvar = true;
 
-	transferred = fuse_simple_request(fm, &ap.args);
+	transferred = fuse_send_ioctl(fm, &ap.args);
 	err = transferred;
 	if (transferred < 0)
 		goto out;
@@ -342,6 +353,15 @@ long fuse_ioctl_common(struct file *file, unsigned int cmd,
 	if (fuse_is_bad(inode))
 		return -EIO;
 
+#ifdef CONFIG_FUSE_BPF
+	{
+		struct fuse_file *ff = file->private_data;
+
+		/* TODO - this is simply passthrough, not a proper BPF filter */
+		if (ff->backing_file)
+			return fuse_backing_ioctl(file, cmd, arg, flags);
+	}
+#endif
 	return fuse_do_ioctl(file, cmd, arg, flags);
 }
 
@@ -393,7 +413,7 @@ static int fuse_priv_ioctl(struct inode *inode, struct fuse_file *ff,
 	args.out_args[1].size = inarg.out_size;
 	args.out_args[1].value = ptr;
 
-	err = fuse_simple_request(fm, &args);
+	err = fuse_send_ioctl(fm, &args);
 	if (!err) {
 		if (outarg.result < 0)
 			err = outarg.result;
@@ -407,6 +427,12 @@ static struct fuse_file *fuse_priv_ioctl_prepare(struct inode *inode)
 {
 	struct fuse_mount *fm = get_fuse_mount(inode);
 	bool isdir = S_ISDIR(inode->i_mode);
+
+	if (!fuse_allow_current_process(fm->fc))
+		return ERR_PTR(-EACCES);
+
+	if (fuse_is_bad(inode))
+		return ERR_PTR(-EIO);
 
 	if (!S_ISREG(inode->i_mode) && !isdir)
 		return ERR_PTR(-ENOTTY);

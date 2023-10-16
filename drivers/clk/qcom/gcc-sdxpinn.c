@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -730,6 +730,7 @@ static struct clk_rcg2 gcc_emac0_ptp_clk_src = {
 };
 
 static const struct freq_tbl ftbl_gcc_emac0_rgmii_clk_src[] = {
+	F(5000000, P_GPLL0_OUT_EVEN, 10, 1, 6),
 	F(50000000, P_GPLL0_OUT_EVEN, 6, 0, 0),
 	F(125000000, P_GPLL4_OUT_MAIN, 4, 0, 0),
 	F(250000000, P_GPLL4_OUT_MAIN, 2, 0, 0),
@@ -1332,7 +1333,7 @@ static struct clk_rcg2 gcc_sdcc1_apps_clk_src = {
 		.name = "gcc_sdcc1_apps_clk_src",
 		.parent_data = gcc_parent_data_17,
 		.num_parents = ARRAY_SIZE(gcc_parent_data_17),
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_rcg2_floor_ops,
 	},
 	.clkr.vdd_data = {
 		.vdd_classes = gcc_sdxpinn_regulators,
@@ -1365,7 +1366,7 @@ static struct clk_rcg2 gcc_sdcc2_apps_clk_src = {
 		.name = "gcc_sdcc2_apps_clk_src",
 		.parent_data = gcc_parent_data_18,
 		.num_parents = ARRAY_SIZE(gcc_parent_data_18),
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_rcg2_floor_ops,
 	},
 	.clkr.vdd_data = {
 		.vdd_classes = gcc_sdxpinn_regulators,
@@ -1374,6 +1375,32 @@ static struct clk_rcg2 gcc_sdcc2_apps_clk_src = {
 		.rate_max = (unsigned long[VDD_NUM]) {
 			[VDD_LOWER] = 100000000,
 			[VDD_NOMINAL] = 202000000},
+	},
+};
+
+static const struct freq_tbl ftbl_gcc_tlmm_125_clk_src[] = {
+	F(125000000, P_GPLL4_OUT_MAIN, 1, 1, 4),
+	{ }
+};
+
+static struct clk_rcg2 gcc_tlmm_125_clk_src = {
+	.cmd_rcgr = 0x2e000,
+	.mnd_width = 16,
+	.hid_width = 5,
+	.parent_map = gcc_parent_map_1,
+	.freq_tbl = ftbl_gcc_tlmm_125_clk_src,
+	.enable_safe_config = true,
+	.clkr.hw.init = &(const struct clk_init_data){
+		.name = "gcc_tlmm_125_clk_src",
+		.parent_data = gcc_parent_data_1,
+		.num_parents = ARRAY_SIZE(gcc_parent_data_1),
+		.ops = &clk_rcg2_ops,
+	},
+	.clkr.vdd_data = {
+		.vdd_class = &vdd_cx,
+		.num_rate_max = VDD_NUM,
+		.rate_max = (unsigned long[VDD_NUM]) {
+			[VDD_LOWER] = 125000000},
 	},
 };
 
@@ -1945,10 +1972,10 @@ static struct clk_branch gcc_emac_0_clkref_en = {
 };
 
 static struct clk_branch gcc_emac_1_clkref_en = {
-	.halt_reg = 0x98108,
+	.halt_reg = 0x9810c,
 	.halt_check = BRANCH_HALT_INVERT,
 	.clkr = {
-		.enable_reg = 0x98108,
+		.enable_reg = 0x9810c,
 		.enable_mask = BIT(0),
 		.hw.init = &(const struct clk_init_data){
 			.name = "gcc_emac_1_clkref_en",
@@ -2822,6 +2849,24 @@ static struct clk_branch gcc_sys_noc_mvmss_clk = {
 	},
 };
 
+static struct clk_branch gcc_tlmm_125_clk = {
+	.halt_reg = 0x2e018,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x2e018,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "gcc_tlmm_125_clk",
+			.parent_hws = (const struct clk_hw*[]){
+				&gcc_tlmm_125_clk_src.clkr.hw,
+			},
+			.num_parents = 1,
+			.flags = CLK_SET_RATE_PARENT,
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
 static struct clk_branch gcc_usb2_clkref_en = {
 	.halt_reg = 0x98008,
 	.halt_check = BRANCH_HALT_INVERT,
@@ -3101,6 +3146,8 @@ static struct clk_regmap *gcc_sdxpinn_clocks[] = {
 	[GCC_SDCC2_APPS_CLK] = &gcc_sdcc2_apps_clk.clkr,
 	[GCC_SDCC2_APPS_CLK_SRC] = &gcc_sdcc2_apps_clk_src.clkr,
 	[GCC_SYS_NOC_MVMSS_CLK] = &gcc_sys_noc_mvmss_clk.clkr,
+	[GCC_TLMM_125_CLK] = &gcc_tlmm_125_clk.clkr,
+	[GCC_TLMM_125_CLK_SRC] = &gcc_tlmm_125_clk_src.clkr,
 	[GCC_USB2_CLKREF_EN] = &gcc_usb2_clkref_en.clkr,
 	[GCC_USB30_MASTER_CLK] = &gcc_usb30_master_clk.clkr,
 	[GCC_USB30_MASTER_CLK_SRC] = &gcc_usb30_master_clk_src.clkr,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -13,6 +13,8 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/suspend.h>
+#include <linux/math64.h>
 
 /* RTC Register offsets from RTC CTRL REG */
 #define PM8XXX_ALARM_CTRL_OFFSET	0x01
@@ -28,6 +30,12 @@
 #define NUM_8_BIT_RTC_REGS		0x4
 
 #define RTC_SEC_TO_MSEC(s)	((s) * 1000ULL)
+#define RTC_SEC_TO_USEC(s)	((s) * 1000000ULL)
+#define RTC_MSTICKS_TO_US(ticks) div_u64(((ticks) * 999000), 1023)
+
+/* Values used for conversion to milli-seconds */
+#define RTC_MS_TICKS_MAX		1023
+#define RTC_MS_TIME_MAX			999
 
 /**
  * struct pm8xxx_rtc_regs - describe RTC registers per PMIC versions
@@ -257,7 +265,6 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 {
 	int rc, i;
 	u8 value[NUM_8_BIT_RTC_REGS];
-	unsigned int ctrl_reg;
 	unsigned long secs, irq_flags;
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev);
 	const struct pm8xxx_rtc_regs *regs = rtc_dd->regs;
@@ -269,6 +276,11 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 		secs >>= 8;
 	}
 
+	rc = regmap_update_bits(rtc_dd->regmap, regs->alarm_ctrl,
+				regs->alarm_en, 0);
+	if (rc)
+		return rc;
+
 	spin_lock_irqsave(&rtc_dd->ctrl_reg_lock, irq_flags);
 
 	rc = regmap_bulk_write(rtc_dd->regmap, regs->alarm_rw, value,
@@ -278,19 +290,11 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 		goto rtc_rw_fail;
 	}
 
-	rc = regmap_read(rtc_dd->regmap, regs->alarm_ctrl, &ctrl_reg);
-	if (rc)
-		goto rtc_rw_fail;
-
-	if (alarm->enabled)
-		ctrl_reg |= regs->alarm_en;
-	else
-		ctrl_reg &= ~regs->alarm_en;
-
-	rc = regmap_write(rtc_dd->regmap, regs->alarm_ctrl, ctrl_reg);
-	if (rc) {
-		dev_err(dev, "Write to RTC alarm control register failed\n");
-		goto rtc_rw_fail;
+	if (alarm->enabled) {
+		rc = regmap_update_bits(rtc_dd->regmap, regs->alarm_ctrl,
+					regs->alarm_en, regs->alarm_en);
+		if (rc)
+			goto rtc_rw_fail;
 	}
 
 	dev_dbg(dev, "Alarm Set for h:m:s=%ptRt, y-m-d=%ptRdr\n",
@@ -370,22 +374,43 @@ rtc_rw_fail:
 	return rc;
 }
 
-static ssize_t rtc_ms_val_show(struct device *dev,
+static ssize_t rtc_us_val_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	int rc;
-	u8 value[NUM_8_BIT_RTC_REGS], value_ms[2];
-	unsigned long secs = 0, msecs = 0, rtc_ms_total = 0;
+	u8 value[NUM_8_BIT_RTC_REGS], value_ms1[2], value_ms2[2];
+	unsigned long long secs = 0, mticks = 0, usecs = 0, rtc_us_total = 0;
 	unsigned int reg;
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev->parent);
 	const struct pm8xxx_rtc_regs *regs = rtc_dd->regs;
 
+reread:
 	rc = regmap_bulk_read(rtc_dd->regmap, regs->read, value, sizeof(value));
 	if (rc) {
 		dev_err(dev, "RTC read data register failed\n");
 		return rc;
 	}
 
+	/* Read milli-second value */
+	rc = regmap_bulk_read(rtc_dd->regmap, regs->read_ms, value_ms1, sizeof(value_ms1));
+	if (rc) {
+		dev_err(dev, "RTC read data register failed\n");
+		return rc;
+	}
+
+	/* Read milli-second value again*/
+	rc = regmap_bulk_read(rtc_dd->regmap, regs->read_ms, value_ms2, sizeof(value_ms2));
+	if (rc) {
+		dev_err(dev, "RTC read data register failed\n");
+		return rc;
+	}
+	/* check for rollover in ms value like from 1023 to 0 */
+	if (value_ms1[1] != value_ms2[1])
+		goto reread;
+
+	mticks = value_ms2[0] | (value_ms2[1] << 8);
+	if (mticks == 1023 || mticks == 0)
+		goto reread;
 	/*
 	 * Read the LSB again and check if there has been a carry over.
 	 * If there is, redo the read operation.
@@ -406,26 +431,20 @@ static ssize_t rtc_ms_val_show(struct device *dev,
 	}
 
 	secs = value[0] | (value[1] << 8) | (value[2] << 16) |
-	       ((unsigned long)value[3] << 24);
+	       ((unsigned long long)value[3] << 24);
 
-	/* Read milli-second value */
-	rc = regmap_bulk_read(rtc_dd->regmap, regs->read_ms, value_ms, sizeof(value_ms));
-	if (rc) {
-		dev_err(dev, "RTC read data register failed\n");
-		return rc;
-	}
+	/* Mapping 1023 ticks to 999 milli-seconds */
+	usecs = RTC_MSTICKS_TO_US(mticks);
 
-	msecs = value_ms[0] | (value_ms[1] << 8);
+	rtc_us_total = RTC_SEC_TO_USEC(secs) + usecs;
 
-	rtc_ms_total = RTC_SEC_TO_MSEC(secs) + msecs;
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n", rtc_ms_total);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", rtc_us_total);
 }
 
-static DEVICE_ATTR_RO(rtc_ms_val);
+static DEVICE_ATTR_RO(rtc_us_val);
 
 static struct attribute *pm8xxx_rtc_attrs[] = {
-	&dev_attr_rtc_ms_val.attr,
+	&dev_attr_rtc_us_val.attr,
 	NULL,
 };
 
@@ -731,6 +750,10 @@ static int pm8xxx_rtc_resume(struct device *dev)
 {
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev);
 
+#ifdef CONFIG_DEEPSLEEP
+	if (pm_suspend_via_firmware())
+		return pm8xxx_rtc_restore(dev);
+#endif
 	if (device_may_wakeup(dev))
 		disable_irq_wake(rtc_dd->rtc_alarm_irq);
 
@@ -741,6 +764,10 @@ static int pm8xxx_rtc_suspend(struct device *dev)
 {
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev);
 
+#ifdef CONFIG_DEEPSLEEP
+	if (pm_suspend_via_firmware())
+		return pm8xxx_rtc_freeze(dev);
+#endif
 	if (device_may_wakeup(dev))
 		enable_irq_wake(rtc_dd->rtc_alarm_irq);
 
@@ -754,6 +781,13 @@ static const struct dev_pm_ops pm8xxx_rtc_pm_ops = {
 	.resume = pm8xxx_rtc_resume,
 };
 
+static void pm8xxx_rtc_shutdown(struct platform_device *pdev)
+{
+	struct pm8xxx_rtc *rtc_dd = platform_get_drvdata(pdev);
+
+	devm_free_irq(rtc_dd->rtc_dev, rtc_dd->rtc_alarm_irq, rtc_dd);
+}
+
 static struct platform_driver pm8xxx_rtc_driver = {
 	.probe		= pm8xxx_rtc_probe,
 	.driver	= {
@@ -761,6 +795,7 @@ static struct platform_driver pm8xxx_rtc_driver = {
 		.pm		= &pm8xxx_rtc_pm_ops,
 		.of_match_table	= pm8xxx_id_table,
 	},
+	.shutdown	= pm8xxx_rtc_shutdown,
 };
 
 module_platform_driver(pm8xxx_rtc_driver);

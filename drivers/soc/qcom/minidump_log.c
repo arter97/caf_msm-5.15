@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cache.h>
@@ -1428,7 +1428,11 @@ static void register_pstore_info(void)
 }
 #endif
 
+#if !IS_MODULE(CONFIG_QCOM_MINIDUMP)
+static int __init msm_minidump_log_init(void)
+#else
 int msm_minidump_log_init(void)
+#endif
 {
 	register_kernel_sections();
 	is_vmap_stack = IS_ENABLED(CONFIG_VMAP_STACK);
@@ -1453,3 +1457,9 @@ int msm_minidump_log_init(void)
 #endif
 	return 0;
 }
+
+#if !IS_MODULE(CONFIG_QCOM_MINIDUMP)
+late_initcall(msm_minidump_log_init)
+#endif
+
+MODULE_IMPORT_NS(MINIDUMP);

@@ -140,7 +140,7 @@ config DWMAC_QCOM_ETHQOS
 	  stmmac device driver.
 
 config DWMAC_QCOM_VER3
-	tristate "EMAC ETHQOS support for direwolf"
+	bool "EMAC ETHQOS support for direwolf"
 	default n
 	depends on OF && (ARCH_QCOM || COMPILE_TEST)
 	help
@@ -273,6 +273,17 @@ config ETHQOS_QCOM_VER4
 	  for the  configuration of IO Macro block. This config is
 	  only applicable for EMAC version 4. Other targets should
 	  not enable this config.
+
+config ETHQOS_QCOM_SERDES
+	bool "Enable Serdes driver"
+	depends on STMMAC_ETH
+	default n
+	help
+	  SerDes is to provide data transmission over a single line or
+	  a differential pair in order to minimize the number of I/O pins
+	  and interconnects.
+	  Serdes driver by default comes up on 1Gbps mode in SGMII and USXGMII
+	  due to h/w limitation.
 
 endif
 

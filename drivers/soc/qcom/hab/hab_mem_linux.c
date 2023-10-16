@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include "hab.h"
 #include <linux/fdtable.h>
 #include <linux/dma-buf.h>
 #include "hab_grantable.h"
+
+#define VFIO_DEV_DT_NAME "vfio_"
 
 enum hab_page_list_type {
 	HAB_PAGE_LIST_IMPORT = 0x1,
@@ -447,6 +449,8 @@ static int habmem_add_export_compress(struct virtual_channel *vchan,
 		ret = -ENOMEM;
 		goto err_add_exp;
 	}
+	exp = &exp_super->exp;
+	exp->payload_count = page_count;
 	platform_data = kzalloc(
 			sizeof(struct exp_platform_data),
 			GFP_KERNEL);
@@ -455,8 +459,6 @@ static int habmem_add_export_compress(struct virtual_channel *vchan,
 		goto err_alloc;
 	}
 
-	exp = &exp_super->exp;
-	exp->payload_count = page_count;
 	platform_data->dmabuf = buf;
 	exp_super->offset = offset;
 	exp_super->platform_data = (void *)platform_data;
@@ -470,15 +472,17 @@ static int habmem_add_export_compress(struct virtual_channel *vchan,
 		goto err_compress_pfns;
 	}
 
+	exp_super->payload_size = *payload_size;
 	*export_id = exp->export_id;
 	return 0;
 
 err_compress_pfns:
 	kfree(platform_data);
 err_alloc:
-	spin_lock(&exp->pchan->expid_lock);
-	idr_remove(&exp->pchan->expid_idr, exp->export_id);
-	spin_unlock(&exp->pchan->expid_lock);
+	spin_lock_bh(&vchan->pchan->expid_lock);
+	idr_remove(&vchan->pchan->expid_idr, exp->export_id);
+	spin_unlock_bh(&vchan->pchan->expid_lock);
+
 	vfree(exp_super);
 err_add_exp:
 	dma_buf_put((struct dma_buf *)buf);
@@ -692,14 +696,34 @@ static struct sg_table *hab_mem_map_dma_buf(
 		sg_set_page(sg, pages[i], PAGE_SIZE, 0);
 	}
 
+	if (strstr(dev_name(attachment->dev), VFIO_DEV_DT_NAME)) {
+		pr_debug("detect %s for dma map %ld nent %ld pages\n",
+			dev_name(attachment->dev), sgt->nents, pglist->npages);
+		ret = dma_map_sg(attachment->dev, sgt->sgl, sgt->nents,
+				direction);
+		if (!ret) {
+			pr_err("kiumd map dmabuf failed %ld nent\n",
+				sgt->nents);
+			sg_free_table(sgt);
+			kfree(sgt);
+			sgt = NULL;
+		} else
+			pr_debug("dma map OK nent old %ld new %ld\n", sgt->nents,
+				ret);
+	}
+
 	return sgt;
 }
-
 
 static void hab_mem_unmap_dma_buf(struct dma_buf_attachment *attachment,
 	struct sg_table *sgt,
 	enum dma_data_direction direction)
 {
+	if (strstr(dev_name(attachment->dev), VFIO_DEV_DT_NAME)) {
+		dma_unmap_sg(attachment->dev, sgt->sgl, sgt->nents, direction);
+		pr_debug("%s kiumd dma unmap done\n", dev_name(attachment->dev));
+	}
+
 	sg_free_table(sgt);
 	kfree(sgt);
 }

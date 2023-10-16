@@ -19,7 +19,6 @@
 
 # required by zram.ko
   __alloc_percpu
-  android_kmalloc_64_create
   bio_endio
   bio_end_io_acct_remapped
   bio_start_io_acct
@@ -82,7 +81,6 @@
   strcpy
   strlcpy
   strlen
-  __sysfs_match_string
   sysfs_streq
   unregister_blkdev
   up_read
@@ -124,7 +122,6 @@
   kstrdup
   __list_add_valid
   __list_del_entry_valid
-  __lock_page
   memstart_addr
   page_mapping
   prepare_to_wait_event
@@ -142,4 +139,5 @@
   system_wq
   unlock_page
   unregister_shrinker
+  wait_on_page_bit
   __wake_up

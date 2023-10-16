@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/rpmsg.h>
@@ -59,8 +59,12 @@ static inline int get_cid_from_rpdev(struct rpmsg_device *rpdev)
 		cid = ADSP_DOMAIN_ID;
 	else if (!strcmp(label, "slpi"))
 		cid = SDSP_DOMAIN_ID;
-	else if (!strcmp(label, "mdsp"))
+	else if (!strcmp(label, "mdsp") || !strcmp(label, "modem"))
 		cid = MDSP_DOMAIN_ID;
+	else if (!strcmp(label, "gpdsp0"))
+		cid = GPDSP_DOMAIN_ID;
+	else if (!strcmp(label, "gpdsp1"))
+		cid = GPDSP1_DOMAIN_ID;
 
 	return cid;
 }
