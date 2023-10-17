@@ -2788,6 +2788,9 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 	for (chan = 0; chan < tx_channels_count; chan++) {
 		qmode = priv->plat->tx_queues_cfg[chan].mode_to_use;
 
+		if (priv->plat->tx_queues_cfg[chan].fifo_sz_bytes > 0)
+			txfifosz = priv->plat->tx_queues_cfg[chan].fifo_sz_bytes;
+
 		stmmac_dma_tx_mode(priv, priv->ioaddr, txmode, chan,
 				txfifosz, qmode);
 	}
