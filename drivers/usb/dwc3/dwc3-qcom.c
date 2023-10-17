@@ -798,8 +798,6 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 	struct device_node	*np = pdev->dev.of_node, *dwc3_np;
 	struct device		*dev = &pdev->dev;
 	int			ret;
-	struct device_link	*link;
-	struct device		*dwc3_dev;
 
 	dwc3_np = of_get_compatible_child(np, "snps,dwc3");
 	if (!dwc3_np) {
@@ -813,32 +811,10 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 		goto node_put;
 	}
 
-	list_for_each_entry(link, &dev->links.consumers, s_node) {
-		dev_dbg(dev, "linkSts: %d flags: %d snmae: %s cname: %s\n", link->status,
-			link->flags, dev_name(link->supplier), dev_name(link->consumer));
-	}
-
-	list_for_each_entry(link, &dev->links.suppliers, c_node) {
-		dev_dbg(dev, "linkSts: %d flags: %d snmae: %s cname: %s\n", link->status,
-			link->flags, dev_name(link->supplier), dev_name(link->consumer));
-	}
-
 	qcom->dwc3 = of_find_device_by_node(dwc3_np);
 	if (!qcom->dwc3) {
 		ret = -ENODEV;
 		dev_err(dev, "failed to get dwc3 platform device\n");
-	}
-
-	dwc3_dev = &qcom->dwc3->dev;
-
-	list_for_each_entry(link, &dwc3_dev->links.consumers, s_node) {
-		dev_dbg(dev, "linkSts: %d flags: %d snmae: %s cname: %s\n", link->status,
-			link->flags, dev_name(link->supplier), dev_name(link->consumer));
-	}
-
-	list_for_each_entry(link, &dwc3_dev->links.suppliers, c_node) {
-		dev_dbg(dev, "linkSts: %d flags: %d snmae: %s cname: %s\n", link->status,
-			link->flags, dev_name(link->supplier), dev_name(link->consumer));
 	}
 
 node_put:
