@@ -4450,6 +4450,8 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -8209,6 +8211,8 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		i = 0;
