@@ -83,7 +83,7 @@ static ssize_t reset_reason_show(struct kobject *kobj,
 				char *buf)
 {
 	struct qcom_reboot_reason *reboot = container_of(kobj, struct qcom_reboot_reason, kobj);
-	const char *reset_reason = "unknown";
+	const char *reset_reason = "normal";
 	struct poweroff_reason *reason;
 
 	for (reason = reasons; reason->pon_reason; reason++) {
@@ -112,7 +112,7 @@ static int reset_reason_sysfs(struct qcom_reboot_reason *reboot)
 	int ret;
 	u8 *buf;
 	size_t len;
-	unsigned char reason_unknown = 0x0;
+	unsigned char reason_normal = 0x0;
 
 	ret = kobject_init_and_add(&reboot->kobj, &qcom_reset_kobj_type,
 			kernel_kobj, "reset_reason");
@@ -134,7 +134,7 @@ static int reset_reason_sysfs(struct qcom_reboot_reason *reboot)
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
-	nvmem_cell_write(reboot->nvmem_cell, &reason_unknown, sizeof(reason_unknown));
+	nvmem_cell_write(reboot->nvmem_cell, &reason_normal, sizeof(reason_normal));
 	reboot->last_reset_reason = buf[0];
 	kfree(buf);
 
