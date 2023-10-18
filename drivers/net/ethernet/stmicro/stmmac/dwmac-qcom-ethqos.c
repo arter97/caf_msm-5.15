@@ -7638,8 +7638,6 @@ static int qcom_ethqos_resume(struct device *dev)
 	enable_irq(priv->dev->irq);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
-			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
@@ -7648,6 +7646,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret)
 			return -EINVAL;
+
+		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
+			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
