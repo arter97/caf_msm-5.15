@@ -4191,13 +4191,6 @@ int mhi_dev_write_channel(struct mhi_req *wreq)
 
 		el = &ring->ring_cache[ring->rd_offset];
 		tre_len = el->tre.len;
-		if (wreq->len > tre_len) {
-			mhi_log(wreq->vf_id, MHI_MSG_ERROR,
-				"rlen = %lu, tlen = %d: client buf > tre len\n",
-				 wreq->len, tre_len);
-			bytes_written = -ENOMEM;
-			goto exit;
-		}
 
 		bytes_to_write = min(usr_buf_remaining, tre_len);
 		usr_buf_offset = wreq->len - bytes_to_write;
