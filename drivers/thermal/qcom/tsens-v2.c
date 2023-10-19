@@ -103,10 +103,8 @@ static const struct tsens_ops ops_generic_v2 = {
 	.get_temp	= get_temp_tsens_valid,
 	.get_cold_status  = get_cold_int_status,
 	.get_max_temp  = get_max_temp_tsens_valid,
-#if defined(CONFIG_DEEPSLEEP) || defined(CONFIG_HIBERNATION)
 	.suspend = tsens_v2_tsens_suspend,
 	.resume = tsens_v2_tsens_resume,
-#endif
 };
 
 struct tsens_plat_data data_tsens_v2 = {
