@@ -33,6 +33,7 @@
 #define GLINK_SUBDEV_NAME	"glink"
 #define SMD_SUBDEV_NAME		"smd"
 #define SSR_SUBDEV_NAME		"ssr"
+#define QMP_MSG_LEN	64
 
 #define MAX_NUM_OF_SS           10
 #define MAX_REGION_NAME_LENGTH  16
@@ -179,6 +180,17 @@ static int qcom_add_minidump_segments(struct rproc *rproc, struct minidump_subsy
 	iounmap(ptr);
 	return 0;
 }
+
+int qcom_rproc_toggle_load_state(struct qmp *qmp, const char *name, bool enable)
+{
+	char buf[QMP_MSG_LEN] = {};
+
+	snprintf(buf, sizeof(buf),
+		 "{class: image, res: load_state, name: %s, val: %s}",
+		 name, enable ? "on" : "off");
+	return qmp_send(qmp, buf, sizeof(buf));
+}
+EXPORT_SYMBOL_GPL(qcom_rproc_toggle_load_state);
 
 void qcom_minidump(struct rproc *rproc, unsigned int minidump_id, rproc_dumpfn_t dumpfn)
 {
