@@ -5713,10 +5713,16 @@ static int dwc3_msm_smmu_fault_handler(struct iommu_domain *domain, struct devic
 	const struct debugfs_reg32 *dwc3_regs = dwc->regset->regs;
 	int size = dwc->regset->nregs, i;
 
-	ipc_log_string(mdwc->dwc_dma_ipc_log_ctxt, "[Reg_Name: Offset\t Value]");
-	for (i = 0; i < size; i++)
-		dump_dwc3_regs(dwc3_regs[i].name, dwc3_regs[i].offset,
-			dwc3_msm_read_reg(mdwc->base, dwc3_regs[i].offset));
+	/* Skip regdump if dwc is not in resume. */
+	if (!pm_runtime_suspended(dwc->dev)) {
+		ipc_log_string(mdwc->dwc_dma_ipc_log_ctxt,
+				"[Reg_Name: Offset\t Value]");
+		for (i = 0; i < size; i++)
+			dump_dwc3_regs(dwc3_regs[i].name,
+					dwc3_regs[i].offset,
+					dwc3_msm_read_reg(mdwc->base,
+					dwc3_regs[i].offset));
+	}
        /*
 	* Let the iommu core know we're not really handling this fault;
 	* we just use it to dump the registers for debugging purposes.
