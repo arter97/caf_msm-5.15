@@ -7337,6 +7337,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	else
 		priv->dma_cap.asp = 0;
 
+	ret = qcom_ethmsgq_init(&pdev->dev);
+	if (ret < 0)
+		goto err_clk;
+
 	if (ethqos->early_eth_enabled) {
 		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
@@ -7394,10 +7398,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->wol_irq_enable = ethqos_wol_irq_enable;
 		plat_dat->wol_irq_disable = ethqos_wol_irq_disable;
 	}
-
-	ret = qcom_ethmsgq_init(&pdev->dev);
-	if (ret < 0)
-		goto err_clk;
 
 	qcom_ethqos_register_vm_notifier(ethqos);
 
