@@ -35,6 +35,7 @@
 #include <net/inet_common.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/gunyah/gh_vm.h>
+#include <linux/gunyah/gh_rm_drv.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -6349,9 +6350,23 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 {
 	struct qcom_ethqos *ethqos = container_of(nb, struct qcom_ethqos, vm_nb);
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	gh_vmid_t cb_vm_id = *(gh_vmid_t *)ptr;
+	gh_vmid_t v2x_vm_id;
+	int result;
 
-	pr_info("qcom-ethqos: ethqos 0x%p stmmac_priv 0x%p event = %d\n",
-		ethqos, ethqos->priv, event);
+	result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
+	if (result) {
+		ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
+		return NOTIFY_DONE;
+	}
+
+	if (cb_vm_id != v2x_vm_id) {
+		ETHQOSINFO("vm id mismatch, ignoring cb_vm %u v2x_vm %u event %u",
+			   cb_vm_id, v2x_vm_id, event);
+		return NOTIFY_DONE;
+	}
+
+	ETHQOSINFO("vm_ssr 0x%p stmmac_priv 0x%p event = %d\n", ethqos, ethqos->priv, event);
 
 	if (event == GH_VM_EARLY_POWEROFF) {
 		stmmac_stop_rx(priv, priv->ioaddr, 4);
