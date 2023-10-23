@@ -6200,7 +6200,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!status_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
@@ -6221,7 +6221,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!speed_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			speed = cpu_to_be32(mparams.link_speed);
