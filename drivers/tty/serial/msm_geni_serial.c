@@ -6,6 +6,7 @@
 
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
+#include <linux/cpumask.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/console.h>
@@ -619,15 +620,20 @@ static void msm_geni_enable_disable_se_clk(struct uart_port *uport, bool enable)
  * The below API is required to check if uport->lock (spinlock)
  * is taken by the serial layer or not. If the lock is not taken
  * then we can rely on the isr to be fired and if the lock is taken
- * by the serial layer then we need to poll for the interrupts.
+ * by the serial layer or if it is a single core then we need to
+ * poll for the interrupts.
  *
  * Returns true(1) if spinlock is already taken by framework (serial layer)
+ * or if it is a single core system
  * Return false(0) if spinlock is not taken by framework.
  */
 static bool msm_geni_serial_spinlocked(struct uart_port *uport)
 {
 	unsigned long flags;
 	bool locked;
+
+	if (num_present_cpus() <= 1)
+		return true;
 
 	locked = spin_trylock_irqsave(&uport->lock, flags);
 	if (locked)
