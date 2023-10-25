@@ -238,46 +238,46 @@
 /**
  * the attributes of the rule (routing or filtering)
  */
-#define IPA_FLT_TOS			(1ul << 0)
-#define IPA_FLT_PROTOCOL		(1ul << 1)
-#define IPA_FLT_SRC_ADDR		(1ul << 2)
-#define IPA_FLT_DST_ADDR		(1ul << 3)
-#define IPA_FLT_SRC_PORT_RANGE		(1ul << 4)
-#define IPA_FLT_DST_PORT_RANGE		(1ul << 5)
-#define IPA_FLT_TYPE			(1ul << 6)
-#define IPA_FLT_CODE			(1ul << 7)
-#define IPA_FLT_SPI			(1ul << 8)
-#define IPA_FLT_SRC_PORT		(1ul << 9)
-#define IPA_FLT_DST_PORT		(1ul << 10)
-#define IPA_FLT_TC			(1ul << 11)
-#define IPA_FLT_FLOW_LABEL		(1ul << 12)
-#define IPA_FLT_NEXT_HDR		(1ul << 13)
-#define IPA_FLT_META_DATA		(1ul << 14)
-#define IPA_FLT_FRAGMENT		(1ul << 15)
-#define IPA_FLT_TOS_MASKED		(1ul << 16)
-#define IPA_FLT_MAC_SRC_ADDR_ETHER_II	(1ul << 17)
-#define IPA_FLT_MAC_DST_ADDR_ETHER_II	(1ul << 18)
-#define IPA_FLT_MAC_SRC_ADDR_802_3	(1ul << 19)
-#define IPA_FLT_MAC_DST_ADDR_802_3	(1ul << 20)
-#define IPA_FLT_MAC_ETHER_TYPE		(1ul << 21)
-#define IPA_FLT_MAC_DST_ADDR_L2TP	(1ul << 22)
-#define IPA_FLT_TCP_SYN			(1ul << 23)
-#define IPA_FLT_TCP_SYN_L2TP		(1ul << 24)
-#define IPA_FLT_L2TP_INNER_IP_TYPE	(1ul << 25)
-#define IPA_FLT_L2TP_INNER_IPV4_DST_ADDR (1ul << 26)
-#define IPA_FLT_IS_PURE_ACK		(1ul << 27)
-#define IPA_FLT_VLAN_ID			(1ul << 28)
-#define IPA_FLT_MAC_SRC_ADDR_802_1Q	(1ul << 29)
-#define IPA_FLT_MAC_DST_ADDR_802_1Q	(1ul << 30)
-#define IPA_FLT_L2TP_UDP_INNER_MAC_DST_ADDR (1ul << 31)
+#define IPA_FLT_TOS			(1LU << 0)
+#define IPA_FLT_PROTOCOL		(1LU << 1)
+#define IPA_FLT_SRC_ADDR		(1LU << 2)
+#define IPA_FLT_DST_ADDR		(1LU << 3)
+#define IPA_FLT_SRC_PORT_RANGE		(1LU << 4)
+#define IPA_FLT_DST_PORT_RANGE		(1LU << 5)
+#define IPA_FLT_TYPE			(1LU << 6)
+#define IPA_FLT_CODE			(1LU << 7)
+#define IPA_FLT_SPI			(1LU << 8)
+#define IPA_FLT_SRC_PORT		(1LU << 9)
+#define IPA_FLT_DST_PORT		(1LU << 10)
+#define IPA_FLT_TC			(1LU << 11)
+#define IPA_FLT_FLOW_LABEL		(1LU << 12)
+#define IPA_FLT_NEXT_HDR		(1LU << 13)
+#define IPA_FLT_META_DATA		(1LU << 14)
+#define IPA_FLT_FRAGMENT		(1LU << 15)
+#define IPA_FLT_TOS_MASKED		(1LU << 16)
+#define IPA_FLT_MAC_SRC_ADDR_ETHER_II	(1LU << 17)
+#define IPA_FLT_MAC_DST_ADDR_ETHER_II	(1LU << 18)
+#define IPA_FLT_MAC_SRC_ADDR_802_3	(1LU << 19)
+#define IPA_FLT_MAC_DST_ADDR_802_3	(1LU << 20)
+#define IPA_FLT_MAC_ETHER_TYPE		(1LU << 21)
+#define IPA_FLT_MAC_DST_ADDR_L2TP	(1LU << 22)
+#define IPA_FLT_TCP_SYN			(1LU << 23)
+#define IPA_FLT_TCP_SYN_L2TP		(1LU << 24)
+#define IPA_FLT_L2TP_INNER_IP_TYPE	(1LU << 25)
+#define IPA_FLT_L2TP_INNER_IPV4_DST_ADDR (1LU << 26)
+#define IPA_FLT_IS_PURE_ACK		(1LU << 27)
+#define IPA_FLT_VLAN_ID			(1LU << 28)
+#define IPA_FLT_MAC_SRC_ADDR_802_1Q	(1LU << 29)
+#define IPA_FLT_MAC_DST_ADDR_802_1Q	(1LU << 30)
+#define IPA_FLT_L2TP_UDP_INNER_MAC_DST_ADDR (1LU << 31)
 
 /* Extended attributes for the rule (routing or filtering) */
-#define IPA_FLT_EXT_L2TP_UDP_TCP_SYN        (1ul << 0)
-#define IPA_FLT_EXT_L2TP_UDP_INNER_ETHER_TYPE       (1ul << 1)
-#define IPA_FLT_EXT_MTU     (1ul << 2)
-#define IPA_FLT_EXT_L2TP_UDP_INNER_NEXT_HDR		(1ul << 3)
-#define IPA_FLT_EXT_NEXT_HDR				(1ul << 4)
-#define IPA_FLT_EXT_NAT_T				(1ul << 5)
+#define IPA_FLT_EXT_L2TP_UDP_TCP_SYN        (1LU << 0)
+#define IPA_FLT_EXT_L2TP_UDP_INNER_ETHER_TYPE       (1LU << 1)
+#define IPA_FLT_EXT_MTU     (1LU << 2)
+#define IPA_FLT_EXT_L2TP_UDP_INNER_NEXT_HDR		(1LU << 3)
+#define IPA_FLT_EXT_NEXT_HDR				(1LU << 4)
+#define IPA_FLT_EXT_NAT_T				(1LU << 5)
 
 
 /**
@@ -783,9 +783,9 @@ enum ipa3_nat_mem_in {
  * BELOW.
  */
 enum ipa_ip_type {
-	IPA_IP_v4,
-	IPA_IP_v6,
-	IPA_IP_MAX,
+	IPA_IP_v4 = 0,
+	IPA_IP_v6 = 1,
+	IPA_IP_MAX = 2,
 	IPA_IP_v4_VLAN = IPA_IP_MAX,
 	IPA_IP_v6_VLAN,
 	IPA_IP_MAX_WLAN

@@ -194,6 +194,9 @@
 #define PCS_TYPE_SEL_10GBR			GENMASK(3, 0)
 #define PCS_TYPE_SEL_10GBX			BIT(0)
 
+/* SR MII PCS Control 2 defines */
+#define PCS_TYPE_SEL_2500BASEX			GENMASK(3, 1)
+
 /* SR MII PCS KR Control defines */
 #define USXG_MODE_SEL				GENMASK(12, 10)
 #define USXGMII_5G				BIT(10)

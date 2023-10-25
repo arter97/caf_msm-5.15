@@ -11,5 +11,6 @@ obj-$(CONFIG_GH_GUEST_POPS)     += gh_guest_pops.o
 obj-$(CONFIG_GUNYAH)            += gunyah.o
 gunyah-y                        := gh_main.o gh_secure_vm_virtio_backend.o
 gunyah-$(CONFIG_GH_SECURE_VM_LOADER) += gh_secure_vm_loader.o
+gunyah-$(CONFIG_QCOM_GVM_DUMP) += gvm_dump_debugfs.o
 gunyah-$(CONFIG_GH_PROXY_SCHED)	+= gh_proxy_sched.o
 CFLAGS_gh_secure_vm_virtio_backend.o = -DDYNAMIC_DEBUG_MODULE

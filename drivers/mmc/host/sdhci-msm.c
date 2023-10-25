@@ -2301,6 +2301,8 @@ static int sdhci_msm_vreg_init(struct device *dev,
 	int ret = 0;
 	struct sdhci_msm_vreg_data *curr_slot;
 	struct sdhci_msm_reg_data *curr_vdd_reg, *curr_vdd_io_reg;
+	struct mmc_host *mmc = msm_host->mmc;
+	struct sdhci_host *host = mmc_priv(mmc);
 
 	curr_slot = msm_host->vreg_data;
 	if (!curr_slot)
@@ -2322,8 +2324,16 @@ static int sdhci_msm_vreg_init(struct device *dev,
 		if (ret)
 			goto out;
 	}
-	if (curr_vdd_io_reg)
+	if (curr_vdd_io_reg) {
 		ret = sdhci_msm_vreg_init_reg(dev, curr_vdd_io_reg);
+		if (ret)
+			goto out;
+		/* In eMMC case vdd-io might be a fixed 1.8V regulator */
+		if (mmc->caps & MMC_CAP_NONREMOVABLE &&
+			!regulator_is_supported_voltage(curr_vdd_io_reg->reg,
+				2700000, 3600000))
+			host->flags &= ~SDHCI_SIGNALING_330;
+	}
 out:
 	if (ret)
 		dev_err(dev, "vreg reset failed (%d)\n", ret);
@@ -3706,7 +3716,7 @@ static void sdhci_msm_reset(struct sdhci_host *host, u8 mask)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
-	if ((host->mmc->caps2 & MMC_CAP2_CQE) && (mask & SDHCI_RESET_ALL))
+	if ((host->mmc) && (host->mmc->caps2 & MMC_CAP2_CQE) && (mask & SDHCI_RESET_ALL))
 		cqhci_deactivate(host->mmc);
 
 	if (msm_host->rst_n_disable && host->mmc && host->mmc->card &&

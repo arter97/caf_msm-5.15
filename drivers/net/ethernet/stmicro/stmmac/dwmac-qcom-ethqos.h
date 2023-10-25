@@ -317,13 +317,13 @@ static struct emac_icc_data emac_axi_icc_data[] = {
 	},
 	{
 		.name = "SPEED_5Gbps",
-		.average_bandwidth = 1250000,
-		.peak_bandwidth = 1250000,
+		.average_bandwidth = 825000,
+		.peak_bandwidth = 825000,
 	},
 	{
 		.name = "SPEED_10Gbps",
-		.average_bandwidth = 2500000,
-		.peak_bandwidth = 2500000,
+		.average_bandwidth = 1100000,
+		.peak_bandwidth = 1100000,
 	},
 };
 
@@ -356,12 +356,12 @@ static struct emac_icc_data emac_apb_icc_data[] = {
 	{
 		.name = "SPEED_5Gbps",
 		.average_bandwidth = 0,
-		.peak_bandwidth = 1250000,
+		.peak_bandwidth = 825000,
 	},
 	{
 		.name = "SPEED_10Gbps",
 		.average_bandwidth = 0,
-		.peak_bandwidth = 2500000,
+		.peak_bandwidth = 1100000,
 	},
 };
 
@@ -494,6 +494,7 @@ struct qcom_ethqos {
 	/*Backup variable for suspend resume*/
 	int backup_suspend_speed;
 	u32 backup_bmcr;
+	u32 backup_mmd_loopback[4];
 	unsigned backup_autoneg:1;
 	bool probed;
 	bool ipa_enabled;
@@ -526,6 +527,7 @@ struct qcom_ethqos {
 
 	struct mac_csr_data *mac_reg_list;
 	bool power_state;
+	bool gdsc_off_on_suspend;
 };
 
 struct pps_cfg {
@@ -668,5 +670,7 @@ static inline void qcom_ethstate_update(struct plat_stmmacenet_data *plat, enum 
 	/* Not enabled */
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
+#define EMAC_GDSC_EMAC_NAME "gdsc_emac"
 
 #endif

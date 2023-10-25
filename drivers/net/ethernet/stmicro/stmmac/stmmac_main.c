@@ -1034,7 +1034,7 @@ static void stmmac_mac_flow_ctrl(struct stmmac_priv *priv, u32 duplex)
 			priv->pause, tx_cnt);
 }
 
-static void stmmac_set_speed100(struct stmmac_priv *priv)
+void stmmac_set_speed100(struct stmmac_priv *priv)
 {
 	u16 bmcr_val, ctrl1000_val, adv_val, autoneg_10G_ctrl, pma_ctrl;
 	struct phy_device *phydev = priv->phydev;
@@ -1198,7 +1198,8 @@ static void stmmac_validate(struct phylink_config *config,
 	/* Early ethernet settings to bring up link in 100M,
 	 * Auto neg Off with full duplex link.
 	 */
-	if (priv->phydev && priv->plat->early_eth && !priv->early_eth_config_set) {
+	if (priv->phydev && !priv->plat->fixed_phy_mode &&
+	    priv->plat->early_eth && !priv->early_eth_config_set) {
 		priv->phydev->autoneg = AUTONEG_DISABLE;
 		priv->phydev->speed = SPEED_100;
 		priv->phydev->duplex = DUPLEX_FULL;
@@ -1351,6 +1352,14 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 			break;
 		case SPEED_1000:
 			ctrl |= priv->hw->link.speed1000;
+			break;
+		default:
+			return;
+		}
+	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
+		switch (speed) {
+		case SPEED_2500:
+			ctrl |= priv->hw->link.xgmii.speed2500;
 			break;
 		default:
 			return;
@@ -3326,10 +3335,15 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		}
 	}
 
-	if (priv->plat->rgmii_rst) {
-		reset_control_assert(priv->plat->rgmii_rst);
-		mdelay(100);
-		reset_control_deassert(priv->plat->rgmii_rst);
+	if (priv->plat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		if (priv->plat->rgmii_rst) {
+			reset_control_assert(priv->plat->rgmii_rst);
+			mdelay(5);
+			reset_control_deassert(priv->plat->rgmii_rst);
+		}
 	}
 
 	/* DMA Configuration */
@@ -3763,19 +3777,20 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 				netdev_warn(priv->dev,
 					    "failed to enable PTP reference clock: %pe\n",
 					    ERR_PTR(ret));
-		}
+
 		ret = stmmac_init_ptp(priv);
 		if (ret == -EOPNOTSUPP) {
 			netdev_warn(priv->dev, "PTP not supported by HW\n");
 		} else if (ret) {
 			netdev_warn(priv->dev, "PTP init failed\n");
-		} else if (ptp_register) {
+		} else {
 			stmmac_ptp_register(priv);
 			clk_set_rate(priv->plat->clk_ptp_ref,
 				     priv->plat->clk_ptp_rate);
 		}
 
 		ret = priv->plat->init_pps(priv);
+		}
 	}
 
 	priv->eee_tw_timer = STMMAC_DEFAULT_TWT_LS;
@@ -4435,6 +4450,8 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -8194,6 +8211,8 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		i = 0;

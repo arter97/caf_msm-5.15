@@ -288,6 +288,11 @@ static int msm_nand_resume(struct device *dev)
 			pr_err("Failed to enable DMA in NANDc\n");
 			goto out;
 		}
+
+		ret = msm_nand_boost_mode_enable(info);
+		if (unlikely(ret))
+			pr_err("Failed to enable Boost Mode Err: %d\n", ret);
+
 		if (info->nand_chip.qpic_version >= 2 &&
 			info->nand_chip.qpic_min_version >= 1) {
 			ret = msm_nand_init_status_pipe(info);
@@ -474,14 +479,43 @@ static inline void msm_nand_prep_ce(struct sps_command_element *ce,
 	ce->mask = 0xFFFFFFFF;
 }
 
-static int msm_nand_sps_get_iovec(struct sps_pipe *pipe, uint32_t indx,
+/* To check interrupt mode is enable or disable */
+static __always_inline bool msm_nand_is_interrupt_mode_enable(struct msm_nand_info *info)
+{
+	return (info->nand_chip.caps & MSM_NAND_INTERRUPT_MODE_ENABLE);
+}
+
+/* Waiting for descriptors completion on Polling/Interrupt mode */
+static inline int msm_nand_sps_get_iovec(struct msm_nand_info *info,
+				struct msm_nand_sps_endpt *end_point,
 				unsigned int cnt, struct sps_iovec *iovec)
 {
 	int ret = 0;
 
+	if (msm_nand_is_interrupt_mode_enable(info)) {
+		/*
+		 * Wait for IO completion, clear it for respective pipe to handle further
+		 * interrupts on the pipe.
+		 */
+		wait_for_completion_io(&end_point->completion);
+		switch (end_point->index) {
+		case SPS_DATA_CONS_PIPE_INDEX:
+			reinit_completion(&(info->sps.data_cons.completion));
+			break;
+		case SPS_DATA_PROD_PIPE_INDEX:
+			reinit_completion(&(info->sps.data_prod.completion));
+			break;
+		case SPS_CMD_CONS_PIPE_INDEX:
+			reinit_completion(&(info->sps.cmd_pipe.completion));
+			break;
+		case SPS_DATA_PROD_STAT_PIPE_INDEX:
+			reinit_completion(&(info->sps.data_prod_stat.completion));
+		}
+	}
+
 	do {
 		do {
-			ret = sps_get_iovec((pipe), (iovec));
+			ret = sps_get_iovec((end_point->handle), (iovec));
 		} while (((iovec)->addr == 0x0) && ((iovec)->size == 0x0));
 		if (ret)
 			return ret;
@@ -506,13 +540,13 @@ static inline void msm_nand_prep_single_desc(struct msm_nand_sps_cmd *sps_cmd,
 	msm_nand_prep_ce(&sps_cmd->ce, addr, command, data);
 	sps_cmd->flags = SPS_IOVEC_FLAG_CMD | flags;
 }
+
 /*
- * Read a single NANDc register as mentioned by its parameter addr. The return
- * value indicates whether read is successful or not. The register value read
- * is stored in val.
+ * Read or Write a single NANDc register as mentioned by its parameter addr.
+ * The return value indicates whether read or write is successful or not.
  */
-static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
-				uint32_t *val)
+static int msm_nand_flash_rd_rw_reg(struct msm_nand_info *info, uint32_t addr,
+				uint32_t *val, uint32_t command)
 {
 	int ret = 0, submitted_num_desc = 1;
 	struct msm_nand_sps_cmd *cmd;
@@ -526,8 +560,9 @@ static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
 	wait_event(chip->dma_wait_queue, (dma_buffer = msm_nand_get_dma_buffer(
 		    chip, sizeof(*dma_buffer))));
 	cmd = &dma_buffer->cmd;
-	msm_nand_prep_single_desc(cmd, addr, READ, msm_virt_to_dma(chip,
-			&dma_buffer->data), SPS_IOVEC_FLAG_INT);
+	msm_nand_prep_single_desc(cmd, addr, command,
+			(command == READ) ? msm_virt_to_dma(chip, &dma_buffer->data) : *val,
+			SPS_IOVEC_FLAG_INT);
 
 	mutex_lock(&info->lock);
 	ret = msm_nand_get_device(chip->dev);
@@ -541,9 +576,9 @@ static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
 		msm_nand_put_device(chip->dev);
 		goto out;
 	}
-	ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, submitted_num_desc,
-			&iovec_temp);
+
+	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				submitted_num_desc, &iovec_temp);
 	if (ret) {
 		pr_err("Failed to get iovec for pipe %d: (ret%d)\n",
 				(info->sps.cmd_pipe.index), ret);
@@ -552,7 +587,9 @@ static int msm_nand_flash_rd_reg(struct msm_nand_info *info, uint32_t addr,
 	ret = msm_nand_put_device(chip->dev);
 	if (ret)
 		goto out;
-	*val = dma_buffer->data;
+
+	if (command == READ)
+		*val = dma_buffer->data;
 out:
 	mutex_unlock(&info->lock);
 	msm_nand_release_dma_buffer(chip, dma_buffer, sizeof(*dma_buffer));
@@ -644,10 +681,8 @@ static int msm_nand_flash_read_id(struct msm_nand_info *info,
 		msm_nand_put_device(chip->dev);
 		goto out;
 	}
-	err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
-			&iovec_temp);
-
+	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				dma_buffer->xfer.iovec_count, &iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.cmd_pipe.index), err);
@@ -764,8 +799,8 @@ static int msm_nand_version_check(struct msm_nand_info *info,
 	int err = 0;
 
 	/* Lookup the version to identify supported features */
-	err = msm_nand_flash_rd_reg(info, MSM_NAND_VERSION(info),
-		&nand_ver);
+	err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_VERSION(info),
+		&nand_ver, READ);
 	if (err) {
 		pr_err("Failed to read NAND_VERSION, err=%d\n", err);
 		goto out;
@@ -775,8 +810,8 @@ static int msm_nand_version_check(struct msm_nand_info *info,
 	nandc_version->nand_minor = (nand_ver & MSM_NAND_VERSION_MINOR_MASK) >>
 		MSM_NAND_VERSION_MINOR_SHIFT;
 
-	err = msm_nand_flash_rd_reg(info, MSM_NAND_QPIC_VERSION(info),
-		&qpic_ver);
+	err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_QPIC_VERSION(info),
+		&qpic_ver, READ);
 	if (err) {
 		pr_err("Failed to read QPIC_VERSION, err=%d\n", err);
 		goto out;
@@ -954,19 +989,15 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 		pr_err("Failed to submit commands %d\n", ret);
 		goto put_dev;
 	}
-
-	ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
-			&iovec_temp);
-
+	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				dma_buffer->xfer.iovec_count, &iovec_temp);
 	if (ret) {
 		pr_err("Failed to get iovec for pipe %d: (ret:%d)\n",
 				(info->sps.cmd_pipe.index), ret);
 		goto put_dev;
 	}
-	ret = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-			info->sps.data_prod.index, submitted_num_desc,
-			&iovec_temp);
+	ret = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+				submitted_num_desc, &iovec_temp);
 	if (ret) {
 		pr_err("Failed to get iovec for pipe %d: (ret:%d)\n",
 				(info->sps.data_prod.index), ret);
@@ -1020,6 +1051,7 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 					flash->blksize;
 	flash->ecc_correctability =
 			onfi_param_page_ptr->number_of_bits_ecc_correctability;
+	flash->timing_mode_support = onfi_param_page_ptr->timing_mode_support;
 
 	pr_info("Found an ONFI compliant device %s\n",
 			onfi_param_page_ptr->device_model);
@@ -1923,19 +1955,17 @@ static int msm_nand_is_erased_page_ps(struct mtd_info *mtd, loff_t from,
 		goto put_dev;
 	}
 	/* Poll for command descriptors completion */
-	err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index,
-			dma_buffer->xfer.iovec_count,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				dma_buffer->xfer.iovec_count,
+				&iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.cmd_pipe.index), err);
 		goto put_dev;
 	}
 	/* Poll for data descriptors completion */
-	err = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-			info->sps.data_prod.index, submitted_num_desc,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+				submitted_num_desc, &iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.data_prod.index), err);
@@ -1945,9 +1975,8 @@ static int msm_nand_is_erased_page_ps(struct mtd_info *mtd, loff_t from,
 	 * Poll for data status descriptors completion
 	 * the number of desc. is same as data desc.
 	 */
-	err = msm_nand_sps_get_iovec(info->sps.data_prod_stat.handle,
-			info->sps.data_prod_stat.index, submitted_num_desc,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod_stat,
+				submitted_num_desc, &iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.data_prod_stat.index), err);
@@ -2171,19 +2200,17 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 			goto put_dev;
 		}
 		/* Poll for command descriptors completion */
-		err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-				info->sps.cmd_pipe.index,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+					dma_buffer->xfer.iovec_count,
+					&iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
 					(info->sps.cmd_pipe.index), err);
 			goto put_dev;
 		}
 		/* Poll for data descriptors completion */
-		err = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-				info->sps.data_prod.index, submitted_num_desc,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+					submitted_num_desc, &iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
 					(info->sps.data_prod.index), err);
@@ -2193,9 +2220,8 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 		 * Poll for data status descriptors completion
 		 * the number of desc. is same as data desc.
 		 */
-		err = msm_nand_sps_get_iovec(info->sps.data_prod_stat.handle,
-			info->sps.data_prod_stat.index, submitted_num_desc,
-			&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod_stat,
+					submitted_num_desc, &iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
 				(info->sps.data_prod_stat.index), err);
@@ -2545,19 +2571,16 @@ static int msm_nand_is_erased_page(struct mtd_info *mtd, loff_t from,
 		pr_err("Failed to submit commands %d\n", err);
 		goto put_dev;
 	}
-
-	err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index,
-			dma_buffer->xfer.iovec_count,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				dma_buffer->xfer.iovec_count,
+				&iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.cmd_pipe.index), err);
 		goto put_dev;
 	}
-	err = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-			info->sps.data_prod.index, submitted_num_desc,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+				submitted_num_desc, &iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
 				(info->sps.data_prod.index), err);
@@ -2780,19 +2803,16 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			pr_err("Failed to submit commands %d\n", err);
 			goto put_dev;
 		}
-
-		err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-				info->sps.cmd_pipe.index,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+					dma_buffer->xfer.iovec_count,
+					&iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
 					(info->sps.cmd_pipe.index), err);
 			goto put_dev;
 		}
-		err = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-				info->sps.data_prod.index, submitted_num_desc,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+					submitted_num_desc, &iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
 					(info->sps.data_prod.index), err);
@@ -3331,19 +3351,16 @@ static int msm_nand_write_oob(struct mtd_info *mtd, loff_t to,
 			pr_err("Failed to submit commands %d\n", err);
 			goto put_dev;
 		}
-
-		err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-				info->sps.cmd_pipe.index,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+					dma_buffer->xfer.iovec_count,
+					&iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d (err:%d)\n",
 					(info->sps.cmd_pipe.index), err);
 			goto put_dev;
 		}
-		err = msm_nand_sps_get_iovec(info->sps.data_cons.handle,
-				info->sps.data_cons.index, submitted_num_desc,
-				&iovec_temp);
+		err = msm_nand_sps_get_iovec(info, &info->sps.data_cons,
+					submitted_num_desc, &iovec_temp);
 		if (err) {
 			pr_err("Failed to get iovec for pipe %d (err:%d)\n",
 					(info->sps.data_cons.index), err);
@@ -3593,9 +3610,9 @@ static int msm_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 		pr_err("Failed to submit commands %d\n", err);
 		goto put_dev;
 	}
-	err = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
-			&iovec_temp);
+	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				dma_buffer->xfer.iovec_count,
+				&iovec_temp);
 	if (err) {
 		pr_err("Failed to get iovec for pipe %d (err: %d)\n",
 				(info->sps.cmd_pipe.index), err);
@@ -3789,17 +3806,16 @@ static int msm_nand_block_isbad(struct mtd_info *mtd, loff_t ofs)
 			goto put_dev;
 		}
 
-		ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-				info->sps.cmd_pipe.index, dma_buffer->xfer.iovec_count,
-				&iovec_temp);
+		ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+					dma_buffer->xfer.iovec_count,
+					&iovec_temp);
 		if (ret) {
 			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
 					(info->sps.cmd_pipe.index), ret);
 			goto put_dev;
 		}
-		ret = msm_nand_sps_get_iovec(info->sps.data_prod.handle,
-				info->sps.data_prod.index, submitted_num_desc,
-				&iovec_temp);
+		ret = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
+					submitted_num_desc, &iovec_temp);
 		if (ret) {
 			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
 					(info->sps.data_prod.index), ret);
@@ -4174,8 +4190,20 @@ static int msm_nand_init_endpoint(struct msm_nand_info *info,
 		sps_config->dest_pipe_index = pipe_index;
 	}
 
-	sps_config->options = SPS_O_AUTO_ENABLE | SPS_O_POLL |
-				SPS_O_ACK_TRANSFERS;
+	sps_config->options = SPS_O_AUTO_ENABLE | SPS_O_ACK_TRANSFERS;
+
+	if (msm_nand_is_interrupt_mode_enable(info)) {
+		switch (pipe_index) {
+		case SPS_DATA_PROD_PIPE_INDEX:
+		case SPS_DATA_PROD_STAT_PIPE_INDEX:
+		case SPS_DATA_CONS_PIPE_INDEX:
+			sps_config->options |= SPS_O_HYBRID | SPS_O_EOT;
+			break;
+		case SPS_CMD_CONS_PIPE_INDEX:
+			sps_config->options |= SPS_O_HYBRID | SPS_O_DESC_DONE;
+		}
+	} else
+		sps_config->options |= SPS_O_POLL;
 
 	if (pipe_index == SPS_DATA_PROD_PIPE_INDEX ||
 			pipe_index == SPS_DATA_CONS_PIPE_INDEX ||
@@ -4211,6 +4239,14 @@ static int msm_nand_init_endpoint(struct msm_nand_info *info,
 	}
 
 	sps_event->options = SPS_O_EOT;
+
+	if (msm_nand_is_interrupt_mode_enable(info)) {
+		if (pipe_index == SPS_CMD_CONS_PIPE_INDEX)
+			sps_event->options = SPS_O_DESC_DONE;
+		init_completion(&(end_point->completion));
+		sps_event->xfer_done = &(end_point->completion);
+	}
+
 	sps_event->mode = SPS_TRIGGER_WAIT;
 	sps_event->user = (void *)info;
 
@@ -4350,7 +4386,6 @@ static int msm_nand_enable_dma(struct msm_nand_info *info)
 	ret = msm_nand_get_device(chip->dev);
 	if (ret)
 		goto out;
-
 	ret = sps_transfer_one(info->sps.cmd_pipe.handle,
 			msm_virt_to_dma(chip, &sps_cmd->ce),
 			sizeof(struct sps_command_element), NULL,
@@ -4359,9 +4394,8 @@ static int msm_nand_enable_dma(struct msm_nand_info *info)
 		pr_err("Failed to submit command: %d\n", ret);
 		goto put_dev;
 	}
-	ret = msm_nand_sps_get_iovec(info->sps.cmd_pipe.handle,
-			info->sps.cmd_pipe.index, submitted_num_desc,
-			&iovec_temp);
+	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
+				submitted_num_desc, &iovec_temp);
 	if (ret) {
 		pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
 				(info->sps.cmd_pipe.index), ret);
@@ -4374,6 +4408,26 @@ out:
 	msm_nand_release_dma_buffer(chip, sps_cmd, sizeof(*sps_cmd));
 	return ret;
 
+}
+
+/* Enable the boost mode based on flags */
+static int msm_nand_boost_mode_enable(struct msm_nand_info *info)
+{
+	int err = 0;
+	uint32_t reg = 0;
+
+	if ((info->nand_chip.caps & MSM_NAND_CAP_BOOST_MODE) &&
+		(info->flash_dev.timing_mode_support == 0x1F)) {
+		err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info),
+				&reg, READ);
+		if (!err) {
+			reg |= (1 << BOOST_MODE_EN);
+			err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info),
+					&reg, WRITE);
+		}
+	}
+
+	return err;
 }
 
 static int msm_nand_parse_smem_ptable(int *nr_parts)
@@ -4605,6 +4659,24 @@ static int msm_nand_probe(struct platform_device *pdev)
 	}
 	info->nand_phys = res->start;
 
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,boost_mode"))
+		info->nand_chip.caps |= MSM_NAND_CAP_BOOST_MODE;
+
+	/* Enable Interrupt mode based on flags
+	 * Update bam_irq_type.
+	 */
+	if (of_property_read_bool(pdev->dev.of_node,
+				"qcom,nand_interrupt_mode")) {
+		info->nand_chip.caps |= MSM_NAND_INTERRUPT_MODE_ENABLE;
+		of_property_read_u32_index(pdev->dev.of_node, "interrupts", 2,
+						&(info->bam_irq_type));
+		if (info->bam_irq_type == IRQ_TYPE_EDGE_RISING) {
+			pr_err("Edge trigger interrupt mode not supported\n");
+			err = -EPERM;
+			goto out;
+		}
+	}
+
 	err = of_property_read_u32(pdev->dev.of_node,
 				   "qcom,reg-adjustment-offset",
 				   &adjustment_offset);
@@ -4712,7 +4784,7 @@ static int msm_nand_probe(struct platform_device *pdev)
 	info->nand_chip.qpic_min_version = qpic_version.qpic_minor;
 	if (info->nand_chip.qpic_version >= 2 &&
 			info->nand_chip.qpic_min_version >= 1) {
-		info->nand_chip.caps = MSM_NAND_CAP_PAGE_SCOPE_READ;
+		info->nand_chip.caps |= MSM_NAND_CAP_PAGE_SCOPE_READ;
 		err = msm_nand_init_status_pipe(info);
 		if (err)
 			goto free_bam;
@@ -4727,6 +4799,11 @@ static int msm_nand_probe(struct platform_device *pdev)
 		err = -ENXIO;
 		goto free_bam;
 	}
+
+	err = msm_nand_boost_mode_enable(info);
+	if (unlikely(err))
+		pr_err("Failed to enable Boost Mode Err: %d\n", err);
+
 	for (i = 0; i < nr_parts; i++) {
 		mtd_part[i].offset *= info->mtd.erasesize;
 		mtd_part[i].size *= info->mtd.erasesize;

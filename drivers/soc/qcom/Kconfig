@@ -743,9 +743,9 @@ config QCOM_IRQ_STAT
 	depends on QCOM_WDT_CORE
 	help
 	  This give irq stats for top hitter at
-	  watchdog pet, watchdog bark and kernel panics.
+	  watchdog bark and kernel panics.
 	  This provides additional debug information
-	  for irq counts on cpu and ipi counts.
+	  for irq counts.
 
 config QCOM_LOGBUF_VENDOR_HOOKS
 	tristate "QTI Logbuf Vendor Hooks Support"
@@ -1075,6 +1075,27 @@ config QCOM_RAMDUMP
 	  provides APIs to collect ramdumps which can be extracted from
 	  userspace. Say 'Y' here to enable this driver. It's safe to say
 	  'N' here if you don't plan on collecting ramdumps.
+
+config QCOM_GVM_DUMP
+	  tristate "Enable Guest VMs Ramdump Support"
+	  depends on DEBUG_FS && GH_SECURE_VM_LOADER
+	  default n
+	  help
+	   This option enables guest VMs ram dump support in multiVM
+	   configuration. Dump can be extracted from userspace when
+	   GVM goes down. Say 'Y' here to enable this driver. It's
+	   safe to say 'N' here if GVM ramdump is not required.
+	   If the feature is enabled dump collection can be controlled by
+	   /sys/kernel/debug/gvm_dump_enable before GVM resets.
+
+config QCOM_SANITIZE_GVM_MEMORY
+	  tristate "Sanitize Guest VM memory"
+	  depends on QCOM_GVM_DUMP
+	  default n
+	  help
+	   This option enables guest VM memory sanitization from PVM in
+	   multiVM configuration. Provide the zero-ed out memory to GVM
+	   before vm creation if GVM dump was collected on VM exit.
 
 config QCOM_CPU_VENDOR_HOOKS
         tristate "QTI Vendor Hooks Support"
