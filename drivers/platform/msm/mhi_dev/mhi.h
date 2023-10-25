@@ -267,8 +267,8 @@ struct mhi_config {
 
 #define NUM_CHANNELS			128
 #define HW_CHANNEL_BASE			100
-#define NUM_HW_CHANNELS			15
-#define HW_CHANNEL_END			127
+#define NUM_HW_CHANNELS			28
+#define HW_CHANNEL_END			128
 #define MHI_ENV_VALUE			2
 #define MHI_MASK_ROWS_CH_EV_DB		4
 #define TRB_MAX_DATA_SIZE		8192
@@ -603,8 +603,6 @@ struct mhi_dev {
 	u32				mhi_chan_hw_base;
 	u32				mhi_num_ipc_pages_dev_fac;
 	void				*dma_cache;
-	void				*read_handle;
-	void				*write_handle;
 	/* Physical scratch buffer for writing control data to the host */
 	dma_addr_t			cache_dma_handle;
 	bool				mhi_dma_ready;
@@ -645,6 +643,7 @@ struct mhi_dev {
 	bool				no_m0_timeout;
 
 	bool				stop_polling_m0;
+	bool				msi_disable;
 
 	/* Registered client callback list */
 	struct list_head		client_cb_list;
@@ -682,18 +681,8 @@ struct mhi_dev_ctx {
 	struct ep_pcie_register_event	event_reg;
 	u32				ifc_id;
 	struct ep_pcie_hw		*phandle;
-	struct mhi_dev			*mhi_dev[MHI_MAX_NUM_INSTANCES];
 
-	/*
-	 * Physical scratch buffer address used when picking host data
-	 * from the host used in mhi_read()
-	 */
-	dma_addr_t			read_dma_handle;
-	/*
-	 * Physical scratch buffer address used when writing to the host
-	 * region from device used in mhi_write()
-	 */
-	dma_addr_t			write_dma_handle;
+	struct mhi_dev			*mhi_dev[MHI_MAX_NUM_INSTANCES];
 
 	/* Tx, Rx DMA channels */
 	struct dma_chan			*tx_dma_chan;

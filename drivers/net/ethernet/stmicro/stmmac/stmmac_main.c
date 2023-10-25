@@ -1356,6 +1356,14 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		default:
 			return;
 		}
+	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
+		switch (speed) {
+		case SPEED_2500:
+			ctrl |= priv->hw->link.xgmii.speed2500;
+			break;
+		default:
+			return;
+		}
 	} else {
 		switch (speed) {
 		case SPEED_2500:
@@ -3327,10 +3335,15 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		}
 	}
 
-	if (priv->plat->rgmii_rst) {
-		reset_control_assert(priv->plat->rgmii_rst);
-		mdelay(100);
-		reset_control_deassert(priv->plat->rgmii_rst);
+	if (priv->plat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		if (priv->plat->rgmii_rst) {
+			reset_control_assert(priv->plat->rgmii_rst);
+			mdelay(5);
+			reset_control_deassert(priv->plat->rgmii_rst);
+		}
 	}
 
 	/* DMA Configuration */
@@ -3764,19 +3777,20 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 				netdev_warn(priv->dev,
 					    "failed to enable PTP reference clock: %pe\n",
 					    ERR_PTR(ret));
-		}
+
 		ret = stmmac_init_ptp(priv);
 		if (ret == -EOPNOTSUPP) {
 			netdev_warn(priv->dev, "PTP not supported by HW\n");
 		} else if (ret) {
 			netdev_warn(priv->dev, "PTP init failed\n");
-		} else if (ptp_register) {
+		} else {
 			stmmac_ptp_register(priv);
 			clk_set_rate(priv->plat->clk_ptp_ref,
 				     priv->plat->clk_ptp_rate);
 		}
 
 		ret = priv->plat->init_pps(priv);
+		}
 	}
 
 	priv->eee_tw_timer = STMMAC_DEFAULT_TWT_LS;
@@ -4436,6 +4450,8 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -8195,6 +8211,8 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		i = 0;

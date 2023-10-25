@@ -772,6 +772,8 @@ static int __init gh_init(void)
 	if (ret)
 		pr_err("gunyah: virtio backend init failed %d\n", ret);
 
+	enable_gvm_dump_debugfs();
+
 	return ret;
 
 err_gh_init:
@@ -785,6 +787,7 @@ static void __exit gh_exit(void)
 {
 	misc_deregister(&gh_dev);
 	gh_proxy_sched_exit();
+	cleanup_gvm_dump_list();
 	gh_secure_vm_loader_exit();
 	gh_virtio_backend_exit();
 }

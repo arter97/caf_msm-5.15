@@ -608,6 +608,7 @@ static void qcom_xpcs_handle_an_intr(struct dw_xpcs_qcom *xpcs,
 		XPCSINFO("Finished Autonegotiation for USXGMII\n");
 		return;
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		ret = qcom_xpcs_sgmii_read_intr_status(xpcs);
 		if (ret < 0)
 			goto out;
@@ -1033,6 +1034,35 @@ static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t inte
 
 		ret &= ~PCS_TYPE_SEL_10GBR;
 		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_10GBX);
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~DW_VR_MII_PCS_MODE_MASK;
+		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
+		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
+	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~PCS_TYPE_SEL_2500BASEX;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_2500BASEX);
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_KR_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~BIT(11);
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_KR_CTRL, ret | BIT(11));
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DEBUG_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~(BIT(8) | BIT(9));
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DEBUG_CTRL, ret | (BIT(8) | BIT(9)));
 
 		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
 		if (ret < 0)

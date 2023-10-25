@@ -413,6 +413,12 @@ static ssize_t inv_sensor_on_store(struct device *dev,
 	pr_debug("sensor [%s] requested  %s, input [%d]\n",
 			sensor_l_info[ind], (on == 1) ? "On" : "Off", data);
 
+#ifdef CONFIG_ENABLE_ASM_ACC_GYRO_BUFFERING
+	if (ind == SENSOR_L_ACCEL)
+		st->accel_enable = on;
+	if (ind == SENSOR_L_GYRO)
+		st->gyro_enable = on;
+#endif
 	if (on == st->sensor_l[ind].on) {
 		pr_debug("sensor [%s] is already %s, input [%d]\n",
 			sensor_l_info[ind], (on == 1) ? "On" : "Off", data);

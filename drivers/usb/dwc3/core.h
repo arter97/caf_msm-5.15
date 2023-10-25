@@ -1109,6 +1109,8 @@ struct dwc3_scratchpad_array {
  *		    fifo resized.
  * @clear_stall_protocol: endpoint number that requires a delayed status phase.
  * @debug_root: root debugfs directory for this device to put its files in.
+ * @runtime_suspend_on_usb_suspend: true if dwc3 runtime suspend is allowed
+ *			during bus suspend scenario.
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1320,6 +1322,7 @@ struct dwc3 {
 	int			max_cfg_eps;
 	int			last_fifo_depth;
 	int			num_ep_resized;
+	bool			runtime_suspend_on_usb_suspend;
 
 	ANDROID_KABI_USE(1, struct{ u8 clear_stall_protocol; u8 padding1;
 				u8 padding2; u8 padding3; u8 padding4; u8 padding5;
