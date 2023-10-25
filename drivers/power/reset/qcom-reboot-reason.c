@@ -112,7 +112,6 @@ static int reset_reason_sysfs(struct qcom_reboot_reason *reboot)
 	int ret;
 	u8 *buf;
 	size_t len;
-	unsigned char reason_unknown = 0x0;
 
 	ret = kobject_init_and_add(&reboot->kobj, &qcom_reset_kobj_type,
 			kernel_kobj, "reset_reason");
@@ -134,7 +133,6 @@ static int reset_reason_sysfs(struct qcom_reboot_reason *reboot)
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
-	nvmem_cell_write(reboot->nvmem_cell, &reason_unknown, sizeof(reason_unknown));
 	reboot->last_reset_reason = buf[0];
 	kfree(buf);
 
