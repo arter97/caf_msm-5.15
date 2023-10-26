@@ -342,6 +342,11 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 	struct device_node *node;
 	int ret = 0;
 
+	if(!priv->phydev){
+		ETHQOSERR("phydev is NULL\n");
+		return;
+	}
+
 	if (priv->phydev && !priv->phydev->autoneg)
 		linkmode_copy(priv->adv_old, priv->phydev->advertising);
 

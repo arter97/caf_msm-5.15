@@ -3762,7 +3762,8 @@ static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
 	unsigned int phydata = 0;
-	if ((priv->phydev->phy_id &
+
+	if (priv->phydev && priv->phydev->drv && (priv->phydev->phy_id &
 	     priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)
 		phy_rgmii_digital_loopback_mmd_config(dev->phydev, config,
 						      ethqos->backup_mmd_loopback);
