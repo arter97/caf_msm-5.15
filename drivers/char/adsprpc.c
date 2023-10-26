@@ -757,6 +757,7 @@ skip_buf_cache:
 					"rh hyp unassign failed with %d for phys 0x%llx, size %zu\n",
 					hyp_err, buf->phys, buf->size);
 			}
+			mb();
 		}
 		trace_fastrpc_dma_free(cid, buf->phys, buf->size);
 		dma_free_attrs(fl->sctx->smmu.dev, buf->size, buf->virt,
@@ -1072,6 +1073,7 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map, uint32_t flags)
 					"rh hyp unassign failed with %d for phys 0x%llx, size %zu\n",
 					hyp_err, map->phys, map->size);
 			}
+			mb();
 		}
 		trace_fastrpc_dma_unmap(cid, map->phys, map->size);
 		if (!IS_ERR_OR_NULL(map->table))
@@ -1385,6 +1387,7 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 				err = -EADDRNOTAVAIL;
 				goto bail;
 			}
+			mb();
 		}
 		map->va = va;
 	}
@@ -1568,6 +1571,7 @@ static int fastrpc_buf_alloc(struct fastrpc_file *fl, size_t size,
 			err = -EADDRNOTAVAIL;
 			goto bail;
 		}
+		mb();
 	}
 
 	if (buf_type == USERHEAP_BUF) {
