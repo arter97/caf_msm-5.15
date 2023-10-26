@@ -6427,7 +6427,18 @@ static void stmmac_tx_timeout(struct net_device *dev, unsigned int txqueue)
 static void stmmac_set_rx_mode(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
+	u32 mka_mcbcq_used = 0;
+	struct netdev_hw_addr *ha;
+	u8 dst_eapol_mac_addr[ETH_ALEN] = {0x1, 0x80, 0xc2, 0x00, 0x00, 0x03};
 
+	if (priv->plat->mka_mcbcq_filtering) {
+		netdev_for_each_mc_addr(ha, dev) {
+			if (!memcmp(dst_eapol_mac_addr, ha->addr, ETH_ALEN))
+				mka_mcbcq_used = 1;
+		}
+		pr_info("Setting MCBCQ to queue %d\n", mka_mcbcq_used);
+		stmmac_rx_queue_routing(priv, priv->hw, PACKET_MCBCQ, mka_mcbcq_used);
+	}
 	stmmac_set_filter(priv, priv->hw, dev);
 }
 
