@@ -6717,9 +6717,11 @@ static int qcom_ethqos_bring_down_phy_if(struct device *dev)
 	if (priv->phy_irq_enabled && !priv->plat->mac2mac_en) {
 		priv->plat->phy_irq_disable(priv);
 
-		rtnl_lock();
-		phylink_disconnect_phy(priv->phylink);
-		rtnl_unlock();
+		if (priv->phylink) {
+			rtnl_lock();
+			phylink_disconnect_phy(priv->phylink);
+			rtnl_unlock();
+		}
 		if (!priv->plat->mac2mac_en && priv->phylink)
 			phylink_destroy(priv->phylink);
 	}
@@ -6950,7 +6952,7 @@ static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
 		if (strnstr(name, "emac0_ptp_aux_ts_i", strlen(name))) {
 			char *pos = strrchr(name, '_');
 
-			if (pos + 1) {
+			if (pos && (pos + 1)) {
 				int index = *(pos + 1) - 48;
 
 				plat_dat->ext_snapshot_num |= (1 << (index + 4));
