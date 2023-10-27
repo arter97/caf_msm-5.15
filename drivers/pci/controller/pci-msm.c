@@ -272,70 +272,71 @@
 #define BDF_OFFSET(bus, devfn) \
 	((bus << 24) | (devfn << 16))
 
+#if IS_ENABLED(CONFIG_IPC_LOGGING)
 #define PCIE_DBG(dev, fmt, arg...) do {			 \
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev) {  \
-			ipc_log_string((dev)->ipc_log_long, \
-				"DBG1:%s: " fmt, __func__, ##arg); \
-			ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
-		} \
+	if (dev) {  \
+		ipc_log_string((dev)->ipc_log_long, \
+			"DBG1:%s: " fmt, __func__, ##arg); \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
 	} \
 	} while (0)
 
 #define PCIE_DBG2(dev, fmt, arg...) do {			 \
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev)   \
-			ipc_log_string((dev)->ipc_log, "DBG2:%s: " fmt, \
-				__func__, ##arg);\
-	} \
+	if (dev)   \
+		ipc_log_string((dev)->ipc_log, "DBG2:%s: " fmt, \
+			__func__, ##arg);\
 	} while (0)
 
 #define PCIE_DBG3(dev, fmt, arg...) do {			 \
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev)   \
-			ipc_log_string((dev)->ipc_log, "DBG3:%s: " fmt, \
-				__func__, ##arg);\
-	} \
+	if (dev)   \
+		ipc_log_string((dev)->ipc_log, "DBG3:%s: " fmt, \
+			__func__, ##arg);\
 	} while (0)
 
 #define PCIE_DUMP(dev, fmt, arg...) do {			\
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev)  \
-			ipc_log_string((dev)->ipc_log_dump, \
-				"DUMP:%s: " fmt, __func__, ##arg); \
-	} \
+	if (dev)  \
+		ipc_log_string((dev)->ipc_log_dump, \
+			"DUMP:%s: " fmt, __func__, ##arg); \
 	} while (0)
 
 #define PCIE_DBG_FS(dev, fmt, arg...) do {			\
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev) \
-			ipc_log_string((dev)->ipc_log_dump, \
-				"DBG_FS:%s: " fmt, __func__, ##arg); \
-	} \
+	if (dev) \
+		ipc_log_string((dev)->ipc_log_dump, \
+			"DBG_FS:%s: " fmt, __func__, ##arg); \
 	pr_alert("%s: " fmt, __func__, ##arg); \
 	} while (0)
 
 #define PCIE_INFO(dev, fmt, arg...) do {			 \
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev) {  \
-			ipc_log_string((dev)->ipc_log_long, \
-				"INFO:%s: " fmt, __func__, ##arg); \
-			ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
+	if (dev) {  \
+		ipc_log_string((dev)->ipc_log_long, \
+			"INFO:%s: " fmt, __func__, ##arg); \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
 		} \
-	} \
 	pr_info("%s: " fmt, __func__, ##arg);  \
 	} while (0)
 
 #define PCIE_ERR(dev, fmt, arg...) do {			 \
-	if (IS_ENABLED(CONFIG_IPC_LOGGING)) { \
-		if (dev) {  \
-			ipc_log_string((dev)->ipc_log_long, \
-				"ERR:%s: " fmt, __func__, ##arg); \
-			ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
-		} \
+	if (dev) {  \
+		ipc_log_string((dev)->ipc_log_long, \
+			"ERR:%s: " fmt, __func__, ##arg); \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
 	} \
 	pr_err("%s: " fmt, __func__, arg);  \
 	} while (0)
+
+#else
+#define PCIE_DBG(dev, fmt, arg...)
+#define PCIE_DBG2(dev, fmt, arg...)
+#define PCIE_DBG3(dev, fmt, arg...)
+#define PCIE_DUMP(dev, fmt, arg...)
+
+#define PCIE_DBG_FS(dev, fmt, arg...) pr_alert("%s: " fmt, __func__, arg)
+
+#define PCIE_INFO(dev, fmt, arg...) pr_info("%s: " fmt, __func__, arg)
+
+#define PCIE_ERR(dev, fmt, arg...) pr_err("%s: " fmt, __func__, arg)
+
+#endif /* CONFIG_IPC_LOGGING */
 
 enum msm_pcie_res {
 	MSM_PCIE_RES_PARF,
@@ -6020,14 +6021,11 @@ out:
 static void msm_aer_print_port_info(struct pci_dev *dev,
 				    struct msm_aer_err_info *info)
 {
-	u8 bus = info->id >> 8;
-	u8 devfn = info->id & 0xff;
-
 	PCIE_DBG(info->rdev, "PCIe: RC%d: %s%s error received: %04x:%02x:%02x.%d\n",
 		 info->rdev->rc_idx, info->multi_error_valid ? "Multiple " : "",
 		 aer_error_severity_string[info->severity],
-		 pci_domain_nr(dev->bus), bus, PCI_SLOT(devfn),
-		 PCI_FUNC(devfn));
+		 pci_domain_nr(dev->bus), info->id >> 8, PCI_SLOT(info->id & 0xff),
+		 PCI_FUNC(info->id & 0xff));
 }
 
 /**
@@ -6819,7 +6817,7 @@ static int msm_pcie_check_l1ss_support(struct pci_dev *pdev, void *dev)
 static int msm_pcie_config_common_clock_enable(struct pci_dev *pdev,
 							void *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
+	struct msm_pcie_dev_t __maybe_unused *pcie_dev = (struct msm_pcie_dev_t *)dev;
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d: PCI device %02x:%02x.%01x\n",
 		pcie_dev->rc_idx, pdev->bus->number, PCI_SLOT(pdev->devfn),
@@ -6841,7 +6839,7 @@ static void msm_pcie_config_common_clock_enable_all(struct msm_pcie_dev_t *dev)
 static int msm_pcie_config_clock_power_management_enable(struct pci_dev *pdev,
 							void *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
+	struct msm_pcie_dev_t __maybe_unused *pcie_dev = (struct msm_pcie_dev_t *)dev;
 	u32 val;
 
 	/* enable only for upstream ports */
@@ -7245,9 +7243,9 @@ static void msm_pcie_create_ipc_logs(u32 rc_idx)
 
 static void msm_pcie_destroy_ipc_logs(u32 rc_idx)
 {
-	ipc_log_context_destroy(&msm_pcie_dev[rc_idx].ipc_log);
-	ipc_log_context_destroy(&msm_pcie_dev[rc_idx].ipc_log_long);
-	ipc_log_context_destroy(&msm_pcie_dev[rc_idx].ipc_log_dump);
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log);
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log_long);
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log_dump);
 }
 
 #else
@@ -8721,9 +8719,6 @@ module_exit(pcie_exit);
 /* RC do not represent the right class; set it to PCI_CLASS_BRIDGE_PCI */
 static void msm_pcie_fixup_early(struct pci_dev *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = PCIE_BUS_PRIV_DATA(dev->bus);
-
-	PCIE_DBG(pcie_dev, "hdr_type %d\n", dev->hdr_type);
 	if (pci_is_root_bus(dev->bus))
 		dev->class = (dev->class & 0xff) | (PCI_CLASS_BRIDGE_PCI << 8);
 }
