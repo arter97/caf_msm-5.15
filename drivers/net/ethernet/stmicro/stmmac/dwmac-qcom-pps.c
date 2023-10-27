@@ -244,7 +244,7 @@ int ppsout_config(struct stmmac_priv *priv, struct pps_cfg *eth_pps_cfg)
 				      priv, eth_pps_cfg, align_ns);
 	}
 
-	writel_relaxed(interval, ioaddr +
+	writel_relaxed(interval - 1, ioaddr +
 		       MAC_PPSX_INTERVAL(eth_pps_cfg->ppsout_ch));
 
 	writel_relaxed(width, ioaddr + MAC_PPSX_WIDTH(eth_pps_cfg->ppsout_ch));
