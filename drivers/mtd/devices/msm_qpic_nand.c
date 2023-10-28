@@ -485,10 +485,10 @@ static __always_inline bool msm_nand_is_interrupt_mode_enable(struct msm_nand_in
 	return (info->nand_chip.caps & MSM_NAND_INTERRUPT_MODE_ENABLE);
 }
 
-/* Waiting for descriptors completion on Polling/Interrupt mode */
-static inline int msm_nand_sps_get_iovec(struct msm_nand_info *info,
-				struct msm_nand_sps_endpt *end_point,
-				unsigned int cnt, struct sps_iovec *iovec)
+/* Waiting for descriptors completion on Polling/Interrupt mode. */
+static inline int msm_nand_sps_poll_iovec(struct msm_nand_info *info,
+						struct msm_nand_sps_endpt *end_point,
+						unsigned int cnt, struct sps_iovec *iovec)
 {
 	int ret = 0;
 
@@ -517,9 +517,60 @@ static inline int msm_nand_sps_get_iovec(struct msm_nand_info *info,
 		do {
 			ret = sps_get_iovec((end_point->handle), (iovec));
 		} while (((iovec)->addr == 0x0) && ((iovec)->size == 0x0));
+		if (ret) {
+			dev_err(dev_node, "Failed to get iovec for pipe %d (err:%d)\n",
+						(end_point->index), ret);
+			return ret;
+		}
+	} while (--(cnt));
+
+	return ret;
+}
+
+/* Wrapper function for descriptors completions.
+ * @info - pointer to NANDc private data
+ * @cmd_cnt - number of descriptors submitted on consumer cmd pipe
+ * @pcnt - number of descriptors submitted on producer(read) data pipe
+ * @pscnt - number of descriptors submitted on producer data status pipe
+ * @ccnt - number of descriptors submitted on consumer(write) data pipe
+ * @iovec - pointer to iovec.
+ */
+static inline int msm_nand_sps_get_iovec(struct msm_nand_info *info,
+				unsigned int cmd_cnt, unsigned int pcnt,
+				unsigned int pscnt, unsigned int ccnt,
+						struct sps_iovec *iovec)
+{
+	int ret = 0;
+
+	/* Poll on system consumer command pipe for descriptors completion */
+	ret = msm_nand_sps_poll_iovec(info, &info->sps.cmd_pipe, cmd_cnt, iovec);
+	if (ret)
+		return ret;
+
+	/* Poll on system producer data pipe for descriptors completion */
+	if (pcnt) {
+		ret = msm_nand_sps_poll_iovec(info, &info->sps.data_prod, pcnt, iovec);
 		if (ret)
 			return ret;
-	} while (--(cnt));
+	}
+
+	/*
+	 * Poll on system producer data status pipe for descriptors completion
+	 * the number of desc. is same as data desc.
+	 */
+	if (pscnt) {
+		ret = msm_nand_sps_poll_iovec(info, &info->sps.data_prod_stat, pscnt, iovec);
+		if (ret)
+			return ret;
+	}
+
+	/* Poll on system consumer data pipe for descriptors completion */
+	if (ccnt) {
+		ret = msm_nand_sps_poll_iovec(info, &info->sps.data_cons, ccnt, iovec);
+		if (ret)
+			return ret;
+	}
+
 	return ret;
 }
 
@@ -577,13 +628,10 @@ static int msm_nand_flash_rd_rw_reg(struct msm_nand_info *info, uint32_t addr,
 		goto out;
 	}
 
-	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				submitted_num_desc, &iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d: (ret%d)\n",
-				(info->sps.cmd_pipe.index), ret);
+	ret = msm_nand_sps_get_iovec(info, submitted_num_desc, 0, 0, 0, &iovec_temp);
+	if (ret)
 		goto out;
-	}
+
 	ret = msm_nand_put_device(chip->dev);
 	if (ret)
 		goto out;
@@ -681,13 +729,9 @@ static int msm_nand_flash_read_id(struct msm_nand_info *info,
 		msm_nand_put_device(chip->dev);
 		goto out;
 	}
-	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				dma_buffer->xfer.iovec_count, &iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.cmd_pipe.index), err);
+	err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count, 0, 0, 0, &iovec_temp);
+	if (err)
 		goto out;
-	}
 	pr_debug("Read ID register value 0x%x\n", dma_buffer->data[3]);
 	if (!read_onfi_signature)
 		pr_debug("nandid: %x maker %02x device %02x\n",
@@ -989,20 +1033,10 @@ static int msm_nand_flash_onfi_probe(struct msm_nand_info *info)
 		pr_err("Failed to submit commands %d\n", ret);
 		goto put_dev;
 	}
-	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				dma_buffer->xfer.iovec_count, &iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d: (ret:%d)\n",
-				(info->sps.cmd_pipe.index), ret);
+	ret = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+					submitted_num_desc, 0, 0, &iovec_temp);
+	if (ret)
 		goto put_dev;
-	}
-	ret = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-				submitted_num_desc, &iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d: (ret:%d)\n",
-				(info->sps.data_prod.index), ret);
-		goto put_dev;
-	}
 
 	ret = msm_nand_put_device(chip->dev);
 	mutex_unlock(&info->lock);
@@ -1956,34 +1990,13 @@ static int msm_nand_is_erased_page_ps(struct mtd_info *mtd, loff_t from,
 		pr_err("Failed to submit commands %d\n", err);
 		goto put_dev;
 	}
-	/* Poll for command descriptors completion */
-	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.cmd_pipe.index), err);
+
+	/* Poll for command, data and status descriptors completion */
+	err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+			submitted_num_desc, submitted_num_desc, 0, &iovec_temp);
+	if (err)
 		goto put_dev;
-	}
-	/* Poll for data descriptors completion */
-	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-				submitted_num_desc, &iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.data_prod.index), err);
-		goto put_dev;
-	}
-	/*
-	 * Poll for data status descriptors completion
-	 * the number of desc. is same as data desc.
-	 */
-	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod_stat,
-				submitted_num_desc, &iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.data_prod_stat.index), err);
-		goto put_dev;
-	}
+
 	err = msm_nand_put_device(chip->dev);
 	mutex_unlock(&info->lock);
 	if (err)
@@ -2201,34 +2214,13 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 			pr_err("Failed to submit commands %d\n", err);
 			goto put_dev;
 		}
-		/* Poll for command descriptors completion */
-		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-					dma_buffer->xfer.iovec_count,
-					&iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
-					(info->sps.cmd_pipe.index), err);
+
+		/* Poll for command and data and status descriptors completion */
+		err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+					submitted_num_desc, submitted_num_desc,
+								0, &iovec_temp);
+		if (err)
 			goto put_dev;
-		}
-		/* Poll for data descriptors completion */
-		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-					submitted_num_desc, &iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
-					(info->sps.data_prod.index), err);
-			goto put_dev;
-		}
-		/*
-		 * Poll for data status descriptors completion
-		 * the number of desc. is same as data desc.
-		 */
-		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod_stat,
-					submitted_num_desc, &iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
-				(info->sps.data_prod_stat.index), err);
-			goto put_dev;
-		}
 
 		err = msm_nand_put_device(chip->dev);
 		mutex_unlock(&info->lock);
@@ -2575,21 +2567,10 @@ static int msm_nand_is_erased_page(struct mtd_info *mtd, loff_t from,
 		pr_err("Failed to submit commands %d\n", err);
 		goto put_dev;
 	}
-	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.cmd_pipe.index), err);
+	err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+					submitted_num_desc, 0, 0, &iovec_temp);
+	if (err)
 		goto put_dev;
-	}
-	err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-				submitted_num_desc, &iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d: (err:%d)\n",
-				(info->sps.data_prod.index), err);
-		goto put_dev;
-	}
 
 	err = msm_nand_put_device(chip->dev);
 	mutex_unlock(&info->lock);
@@ -2807,21 +2788,10 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			pr_err("Failed to submit commands %d\n", err);
 			goto put_dev;
 		}
-		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-					dma_buffer->xfer.iovec_count,
-					&iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
-					(info->sps.cmd_pipe.index), err);
+		err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+					submitted_num_desc, 0, 0, &iovec_temp);
+		if (err)
 			goto put_dev;
-		}
-		err = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-					submitted_num_desc, &iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d: (err: %d)\n",
-					(info->sps.data_prod.index), err);
-			goto put_dev;
-		}
 
 		err = msm_nand_put_device(chip->dev);
 		mutex_unlock(&info->lock);
@@ -3355,21 +3325,10 @@ static int msm_nand_write_oob(struct mtd_info *mtd, loff_t to,
 			pr_err("Failed to submit commands %d\n", err);
 			goto put_dev;
 		}
-		err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-					dma_buffer->xfer.iovec_count,
-					&iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d (err:%d)\n",
-					(info->sps.cmd_pipe.index), err);
+		err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+						0, 0, submitted_num_desc, &iovec_temp);
+		if (err)
 			goto put_dev;
-		}
-		err = msm_nand_sps_get_iovec(info, &info->sps.data_cons,
-					submitted_num_desc, &iovec_temp);
-		if (err) {
-			pr_err("Failed to get iovec for pipe %d (err:%d)\n",
-					(info->sps.data_cons.index), err);
-			goto put_dev;
-		}
 
 		err = msm_nand_put_device(chip->dev);
 		mutex_unlock(&info->lock);
@@ -3614,14 +3573,9 @@ static int msm_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 		pr_err("Failed to submit commands %d\n", err);
 		goto put_dev;
 	}
-	err = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				dma_buffer->xfer.iovec_count,
-				&iovec_temp);
-	if (err) {
-		pr_err("Failed to get iovec for pipe %d (err: %d)\n",
-				(info->sps.cmd_pipe.index), err);
+	err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count, 0, 0, 0, &iovec_temp);
+	if (err)
 		goto put_dev;
-	}
 	err = msm_nand_put_device(chip->dev);
 	if (err)
 		goto unlock_mutex;
@@ -3810,21 +3764,10 @@ static int msm_nand_block_isbad(struct mtd_info *mtd, loff_t ofs)
 			goto put_dev;
 		}
 
-		ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-					dma_buffer->xfer.iovec_count,
-					&iovec_temp);
-		if (ret) {
-			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
-					(info->sps.cmd_pipe.index), ret);
+		ret = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
+						submitted_num_desc, 0, 0, &iovec_temp);
+		if (ret)
 			goto put_dev;
-		}
-		ret = msm_nand_sps_get_iovec(info, &info->sps.data_prod,
-					submitted_num_desc, &iovec_temp);
-		if (ret) {
-			pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
-					(info->sps.data_prod.index), ret);
-			goto put_dev;
-		}
 
 		ret = msm_nand_put_device(chip->dev);
 		mutex_unlock(&info->lock);
