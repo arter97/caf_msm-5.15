@@ -238,7 +238,7 @@ static void blktrans_release(struct gendisk *disk, fmode_t mode)
 	if (dev->mtd) {
 		if (dev->tr->release)
 			dev->tr->release(dev);
-		put_mtd_device(dev->mtd);
+		__put_mtd_device(dev->mtd);
 	}
 unlock:
 	mutex_unlock(&dev->lock);
@@ -432,7 +432,7 @@ int del_mtd_blktrans_dev(struct mtd_blktrans_dev *old)
 	if (old->open) {
 		if (old->tr->release)
 			old->tr->release(old);
-		put_mtd_device(old->mtd);
+		__put_mtd_device(old->mtd);
 	}
 
 	old->mtd = NULL;
