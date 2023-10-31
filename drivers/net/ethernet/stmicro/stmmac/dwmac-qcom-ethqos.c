@@ -6205,6 +6205,13 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
 			status_prop->value = kstrdup("okay", GFP_KERNEL);
+
+                        if (!(status_prop->value)) {
+                                ETHQOSERR("kstrdup failed to allocate space\n");
+                                kfree(status_prop);
+                                return -ENOMEM;
+                        }
+
 			status_prop->length = strlen(status_prop->value) + 1;
 
 			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
