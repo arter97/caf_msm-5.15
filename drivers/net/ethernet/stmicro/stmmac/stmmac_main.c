@@ -3954,6 +3954,8 @@ static int stmmac_open(struct net_device *dev)
 	if (ret)
 		goto irq_error;
 
+	priv->irq_number = dev->irq;
+
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
@@ -7653,6 +7655,12 @@ int stmmac_suspend(struct device *dev)
 			hrtimer_cancel(&priv->tx_queue[chan].txtimer);
 	}
 
+	/* Free the IRQ lines */
+	if(priv->irq_number !=0 ) {
+		free_irq(ndev->irq, ndev);
+		priv->irq_number = 0;
+	}
+
 	if (priv->eee_enabled) {
 		priv->tx_path_in_lpi_mode = false;
 		del_timer_sync(&priv->eee_ctrl_timer);
@@ -7806,6 +7814,16 @@ int stmmac_resume(struct device *dev)
 	stmmac_set_rx_mode(ndev);
 
 	stmmac_restore_hw_vlan_rx_fltr(priv, ndev, priv->hw);
+
+	if(priv->irq_number == 0) {
+		ret = request_irq(ndev->irq, stmmac_interrupt,
+					IRQF_SHARED, ndev->name, ndev);
+		if (unlikely(ret < 0))
+			netdev_err(priv->dev,
+					"%s: ERROR: allocating the IRQ %d (error: %d)\n",
+					__func__, ndev->irq, ret);
+		priv->irq_number = ndev->irq;
+	}
 
 	stmmac_enable_all_queues(priv);
 	stmmac_enable_all_dma_irq(priv);
