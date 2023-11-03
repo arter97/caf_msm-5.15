@@ -2637,6 +2637,7 @@ static void gsi_disable(struct usb_function *f)
 
 static void gsi_suspend(struct usb_function *f)
 {
+	int ret = 0;
 	bool block_db;
 	struct f_gsi *gsi = func_to_gsi(f);
 
@@ -2658,6 +2659,27 @@ static void gsi_suspend(struct usb_function *f)
 	post_event(&gsi->d_port, EVT_SUSPEND);
 	queue_delayed_work(gsi->d_port.ipa_usb_wq, &gsi->d_port.usb_ipa_w, 0);
 	log_event_dbg("gsi suspended");
+
+	/*
+	 * If host suspended bus without receiving notification request then
+	 * initiate remote-wakeup. As driver won't be able to do it later since
+	 * notification request is already queued. If remote wakeup is not
+	 * allowed, dequeue that request as we are in some incomplete state and
+	 * this request is of no use now and most likely we would initiate a
+	 * protocol disconnect during suspend.
+	 */
+	if (gsi->c_port.notify_req_queued) {
+		if (usb_gsi_remote_wakeup_allowed(f)) {
+			log_event_dbg("%s: pending response, trigger wakeup\n",
+				      __func__);
+			schedule_work(&gsi->wakeup_work);
+		} else {
+			ret = usb_ep_dequeue(gsi->c_port.notify,
+					     gsi->c_port.notify_req);
+			if (ret < 0)
+				log_event_err("%s:dequeue failed\n", __func__);
+		}
+	}
 }
 
 static void gsi_resume(struct usb_function *f)
