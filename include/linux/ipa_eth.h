@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_ETH_H_
@@ -10,6 +10,9 @@
 #include <linux/ipa.h>
 #include <linux/msm_ipa.h>
 #include <linux/msm_gsi.h>
+
+#define IPA_ETH_MAX_DMA_CH 6
+#define IPA_ETH_CONFIG_LEN 20
 
 /* New architecture prototypes */
 
@@ -54,6 +57,7 @@ enum ipa_eth_client_type {
 enum ipa_eth_pipe_traffic_type {
 	IPA_ETH_PIPE_BEST_EFFORT,
 	IPA_ETH_PIPE_LOW_LATENCY,
+	IPA_ETH_PIPE_BEST_EFFORT_VLAN,
 	IPA_ETH_PIPE_TRAFFIC_TYPE_MAX,
 };
 
@@ -68,6 +72,19 @@ enum ipa_eth_pipe_direction {
 };
 
 #define IPA_ETH_INST_ID_MAX (2)
+
+struct ipa_eth_dma_ch_config {
+	enum ipa_eth_pipe_direction dir;
+	enum ipa_eth_pipe_traffic_type traffic_type;
+};
+
+struct ipa_eth_config {
+	int num_dma_channel;
+	char config[IPA_ETH_CONFIG_LEN];
+
+	/* dma channels config list */
+	struct ipa_eth_dma_ch_config dma_config[IPA_ETH_MAX_DMA_CH];
+};
 
 /**
  * struct ipa_eth_ntn_setup_info - parameters for ntn ethernet
@@ -193,6 +210,7 @@ struct ipa_eth_client_pipe_info {
 	enum ipa_eth_pipe_direction dir;
 	struct ipa_eth_pipe_setup_info info;
 	struct ipa_eth_client *client_info;
+	enum ipa_eth_pipe_traffic_type traffic_type;
 
 	/* output params */
 	ipa_eth_hdl_t pipe_hdl;
@@ -279,5 +297,7 @@ enum ipa_client_type ipa_eth_get_ipa_client_type_from_eth_type(
 	enum ipa_eth_client_type eth_client_type, enum ipa_eth_pipe_direction dir);
 bool ipa_eth_client_exist(
 	enum ipa_eth_client_type eth_client_type, int inst_id);
+int ipa_eth_get_config_type(
+	enum ipa_eth_client_type client_type, int inst_id, struct ipa_eth_config *eth_config);
 
 #endif // _IPA_ETH_H_
