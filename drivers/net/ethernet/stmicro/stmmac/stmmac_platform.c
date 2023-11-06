@@ -305,6 +305,10 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 			plat->tx_queues_cfg[queue].use_prio = true;
 		}
 
+		if (of_property_read_bool(q_node, "snps,fifo_depth"))
+			of_property_read_u32(q_node, "snps,fifo_depth",
+					     &plat->tx_queues_cfg[queue].fifo_sz_bytes);
+
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
 			plat->tx_queues_cfg[queue].skip_sw = true;
 

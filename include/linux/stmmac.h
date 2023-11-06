@@ -152,6 +152,7 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
+	u32 fifo_sz_bytes;
 	bool skip_sw;
 };
 
