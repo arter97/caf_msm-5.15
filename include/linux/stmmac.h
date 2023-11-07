@@ -333,6 +333,7 @@ struct plat_stmmacenet_data {
 	bool pcs_v3;
 	bool pm_lite;
 	bool fixed_phy_mode;
+	bool fixed_phy_mode_needs_mdio;
 	bool crc_strip_en;
 	bool plat_wait_for_emac_rx_clk_en;
 	bool rx_clk_rdy;
@@ -342,5 +343,6 @@ struct plat_stmmacenet_data {
 	struct completion mdio_op;
 	bool mac_suspended;
 	bool separate_wol_pin;
+	bool mka_mcbcq_filtering;
 };
 #endif

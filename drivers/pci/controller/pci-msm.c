@@ -14,10 +14,15 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+
+#if IS_ENABLED(CONFIG_IPC_LOGGING)
 #include <linux/ipc_logging.h>
+#endif
+
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/jiffies.h>
+#include <linux/kconfig.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/msm_pcie.h>
@@ -267,56 +272,71 @@
 #define BDF_OFFSET(bus, devfn) \
 	((bus << 24) | (devfn << 16))
 
+#if IS_ENABLED(CONFIG_IPC_LOGGING)
 #define PCIE_DBG(dev, fmt, arg...) do {			 \
-	if ((dev) && (dev)->ipc_log_long)   \
+	if (dev) {  \
 		ipc_log_string((dev)->ipc_log_long, \
 			"DBG1:%s: " fmt, __func__, ##arg); \
-	if ((dev) && (dev)->ipc_log)   \
 		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
+	} \
 	} while (0)
 
 #define PCIE_DBG2(dev, fmt, arg...) do {			 \
-	if ((dev) && (dev)->ipc_log)   \
+	if (dev)   \
 		ipc_log_string((dev)->ipc_log, "DBG2:%s: " fmt, \
-				__func__, ##arg);\
+			__func__, ##arg);\
 	} while (0)
 
 #define PCIE_DBG3(dev, fmt, arg...) do {			 \
-	if ((dev) && (dev)->ipc_log)   \
+	if (dev)   \
 		ipc_log_string((dev)->ipc_log, "DBG3:%s: " fmt, \
-				__func__, ##arg);\
+			__func__, ##arg);\
 	} while (0)
 
 #define PCIE_DUMP(dev, fmt, arg...) do {			\
-	if ((dev) && (dev)->ipc_log_dump) \
+	if (dev)  \
 		ipc_log_string((dev)->ipc_log_dump, \
 			"DUMP:%s: " fmt, __func__, ##arg); \
 	} while (0)
 
 #define PCIE_DBG_FS(dev, fmt, arg...) do {			\
-	if ((dev) && (dev)->ipc_log_dump) \
+	if (dev) \
 		ipc_log_string((dev)->ipc_log_dump, \
 			"DBG_FS:%s: " fmt, __func__, ##arg); \
 	pr_alert("%s: " fmt, __func__, ##arg); \
 	} while (0)
 
 #define PCIE_INFO(dev, fmt, arg...) do {			 \
-	if ((dev) && (dev)->ipc_log_long)   \
+	if (dev) {  \
 		ipc_log_string((dev)->ipc_log_long, \
 			"INFO:%s: " fmt, __func__, ##arg); \
-	if ((dev) && (dev)->ipc_log)   \
 		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
+		} \
 	pr_info("%s: " fmt, __func__, ##arg);  \
 	} while (0)
 
 #define PCIE_ERR(dev, fmt, arg...) do {			 \
-	if ((dev) && (dev)->ipc_log_long)   \
+	if (dev) {  \
 		ipc_log_string((dev)->ipc_log_long, \
 			"ERR:%s: " fmt, __func__, ##arg); \
-	if ((dev) && (dev)->ipc_log)   \
 		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, ##arg); \
+	} \
 	pr_err("%s: " fmt, __func__, arg);  \
 	} while (0)
+
+#else
+#define PCIE_DBG(dev, fmt, arg...)
+#define PCIE_DBG2(dev, fmt, arg...)
+#define PCIE_DBG3(dev, fmt, arg...)
+#define PCIE_DUMP(dev, fmt, arg...)
+
+#define PCIE_DBG_FS(dev, fmt, arg...) pr_alert("%s: " fmt, __func__, arg)
+
+#define PCIE_INFO(dev, fmt, arg...) pr_info("%s: " fmt, __func__, arg)
+
+#define PCIE_ERR(dev, fmt, arg...) pr_err("%s: " fmt, __func__, arg)
+
+#endif /* CONFIG_IPC_LOGGING */
 
 enum msm_pcie_res {
 	MSM_PCIE_RES_PARF,
@@ -5651,6 +5671,9 @@ int msm_pcie_enumerate(u32 rc_idx)
 
 	pci_save_state(pcidev);
 	dev->default_state = pci_store_saved_state(pcidev);
+
+	if (dev->boot_option & MSM_PCIE_NO_PROBE_ENUMERATION)
+		dev_pm_syscore_device(&pcidev->dev, true);
 out:
 	mutex_unlock(&dev->enumerate_lock);
 
@@ -6002,14 +6025,11 @@ out:
 static void msm_aer_print_port_info(struct pci_dev *dev,
 				    struct msm_aer_err_info *info)
 {
-	u8 bus = info->id >> 8;
-	u8 devfn = info->id & 0xff;
-
 	PCIE_DBG(info->rdev, "PCIe: RC%d: %s%s error received: %04x:%02x:%02x.%d\n",
 		 info->rdev->rc_idx, info->multi_error_valid ? "Multiple " : "",
 		 aer_error_severity_string[info->severity],
-		 pci_domain_nr(dev->bus), bus, PCI_SLOT(devfn),
-		 PCI_FUNC(devfn));
+		 pci_domain_nr(dev->bus), info->id >> 8, PCI_SLOT(info->id & 0xff),
+		 PCI_FUNC(info->id & 0xff));
 }
 
 /**
@@ -6801,7 +6821,7 @@ static int msm_pcie_check_l1ss_support(struct pci_dev *pdev, void *dev)
 static int msm_pcie_config_common_clock_enable(struct pci_dev *pdev,
 							void *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
+	struct msm_pcie_dev_t __maybe_unused *pcie_dev = (struct msm_pcie_dev_t *)dev;
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d: PCI device %02x:%02x.%01x\n",
 		pcie_dev->rc_idx, pdev->bus->number, PCI_SLOT(pdev->devfn),
@@ -6823,7 +6843,7 @@ static void msm_pcie_config_common_clock_enable_all(struct msm_pcie_dev_t *dev)
 static int msm_pcie_config_clock_power_management_enable(struct pci_dev *pdev,
 							void *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
+	struct msm_pcie_dev_t __maybe_unused *pcie_dev = (struct msm_pcie_dev_t *)dev;
 	u32 val;
 
 	/* enable only for upstream ports */
@@ -7203,6 +7223,44 @@ static int msm_pcie_setup_drv(struct msm_pcie_dev_t *pcie_dev,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_IPC_LOGGING)
+static void msm_pcie_create_ipc_logs(u32 rc_idx)
+{
+	char rc_name[MAX_RC_NAME_LEN];
+
+	scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-short", rc_idx);
+	msm_pcie_dev[rc_idx].ipc_log =
+		ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
+	scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-long", rc_idx);
+	msm_pcie_dev[rc_idx].ipc_log_long =
+		ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
+	scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-dump", rc_idx);
+	msm_pcie_dev[rc_idx].ipc_log_dump =
+		ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
+	if (msm_pcie_dev[rc_idx].ipc_log == NULL ||
+			msm_pcie_dev[rc_idx].ipc_log_long == NULL ||
+				msm_pcie_dev[rc_idx].ipc_log_dump == NULL)
+		pr_err("%s: unable to create IPC log context for %s\n",
+			__func__, rc_name);
+
+}
+
+static void msm_pcie_destroy_ipc_logs(u32 rc_idx)
+{
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log);
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log_long);
+	ipc_log_context_destroy(msm_pcie_dev[rc_idx].ipc_log_dump);
+}
+
+#else
+static int msm_pcie_create_ipc_logs(u32 rc_idx)
+{ return 0; }
+
+static void msm_pcie_destroy_ipc_logs(u32 rc_idx)
+{ }
+
+#endif
+
 static int msm_pcie_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -7226,13 +7284,13 @@ static int msm_pcie_probe(struct platform_device *pdev)
 	if (rc_idx >= MAX_RC_NUM)
 		goto out;
 
+	msm_pcie_create_ipc_logs(rc_idx);
+
 	pcie_drv.rc_num++;
 	pcie_dev = &msm_pcie_dev[rc_idx];
 	pcie_dev->rc_idx = rc_idx;
 	pcie_dev->pdev = pdev;
 	pcie_dev->link_status = MSM_PCIE_LINK_DEINIT;
-
-	PCIE_DBG(pcie_dev, "PCIe: RC index is %d.\n", pcie_dev->rc_idx);
 
 	pcie_dev->l0s_supported = !of_property_read_bool(of_node,
 				"qcom,no-l0s-supported");
@@ -7615,6 +7673,7 @@ static int msm_pcie_remove(struct platform_device *pdev)
 		kfree(dev_info);
 	}
 
+	msm_pcie_destroy_ipc_logs(rc_idx);
 out:
 	mutex_unlock(&pcie_drv.drv_lock);
 
@@ -8590,7 +8649,6 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 static int __init pcie_init(void)
 {
 	int ret = 0, i;
-	char rc_name[MAX_RC_NAME_LEN];
 
 	pr_info("pcie:%s.\n", __func__);
 
@@ -8599,36 +8657,6 @@ static int __init pcie_init(void)
 	mutex_init(&pcie_drv.rpmsg_lock);
 
 	for (i = 0; i < MAX_RC_NUM; i++) {
-		scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-short", i);
-		msm_pcie_dev[i].ipc_log =
-			ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
-		if (msm_pcie_dev[i].ipc_log == NULL)
-			pr_err("%s: unable to create IPC log context for %s\n",
-				__func__, rc_name);
-		else
-			PCIE_DBG(&msm_pcie_dev[i],
-				"PCIe IPC logging is enable for RC%d\n",
-				i);
-		scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-long", i);
-		msm_pcie_dev[i].ipc_log_long =
-			ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
-		if (msm_pcie_dev[i].ipc_log_long == NULL)
-			pr_err("%s: unable to create IPC log context for %s\n",
-				__func__, rc_name);
-		else
-			PCIE_DBG(&msm_pcie_dev[i],
-				"PCIe IPC logging %s is enable for RC%d\n",
-				rc_name, i);
-		scnprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-dump", i);
-		msm_pcie_dev[i].ipc_log_dump =
-			ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
-		if (msm_pcie_dev[i].ipc_log_dump == NULL)
-			pr_err("%s: unable to create IPC log context for %s\n",
-				__func__, rc_name);
-		else
-			PCIE_DBG(&msm_pcie_dev[i],
-				"PCIe IPC logging %s is enable for RC%d\n",
-				rc_name, i);
 		spin_lock_init(&msm_pcie_dev[i].cfg_lock);
 		spin_lock_init(&msm_pcie_dev[i].evt_reg_list_lock);
 		msm_pcie_dev[i].cfg_access = true;
@@ -8701,9 +8729,6 @@ module_exit(pcie_exit);
 /* RC do not represent the right class; set it to PCI_CLASS_BRIDGE_PCI */
 static void msm_pcie_fixup_early(struct pci_dev *dev)
 {
-	struct msm_pcie_dev_t *pcie_dev = PCIE_BUS_PRIV_DATA(dev->bus);
-
-	PCIE_DBG(pcie_dev, "hdr_type %d\n", dev->hdr_type);
 	if (pci_is_root_bus(dev->bus))
 		dev->class = (dev->class & 0xff) | (PCI_CLASS_BRIDGE_PCI << 8);
 }
@@ -8877,7 +8902,7 @@ static void msm_pcie_fixup_suspend(struct pci_dev *dev)
 
 	mutex_unlock(&pcie_dev->recovery_lock);
 }
-DECLARE_PCI_FIXUP_SUSPEND(PCIE_VENDOR_ID_QCOM, PCI_ANY_ID,
+DECLARE_PCI_FIXUP_SUSPEND_LATE(PCIE_VENDOR_ID_QCOM, PCI_ANY_ID,
 			  msm_pcie_fixup_suspend);
 
 /* Resume the PCIe link */

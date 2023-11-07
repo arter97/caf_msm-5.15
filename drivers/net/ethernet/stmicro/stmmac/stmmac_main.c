@@ -1356,6 +1356,14 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		default:
 			return;
 		}
+	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
+		switch (speed) {
+		case SPEED_2500:
+			ctrl |= priv->hw->link.xgmii.speed2500;
+			break;
+		default:
+			return;
+		}
 	} else {
 		switch (speed) {
 		case SPEED_2500:
@@ -3327,10 +3335,15 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
 		}
 	}
 
-	if (priv->plat->rgmii_rst) {
-		reset_control_assert(priv->plat->rgmii_rst);
-		mdelay(100);
-		reset_control_deassert(priv->plat->rgmii_rst);
+	if (priv->plat->interface == PHY_INTERFACE_MODE_RGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+		if (priv->plat->rgmii_rst) {
+			reset_control_assert(priv->plat->rgmii_rst);
+			mdelay(5);
+			reset_control_deassert(priv->plat->rgmii_rst);
+		}
 	}
 
 	/* DMA Configuration */
@@ -3764,19 +3777,20 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 				netdev_warn(priv->dev,
 					    "failed to enable PTP reference clock: %pe\n",
 					    ERR_PTR(ret));
-		}
+
 		ret = stmmac_init_ptp(priv);
 		if (ret == -EOPNOTSUPP) {
 			netdev_warn(priv->dev, "PTP not supported by HW\n");
 		} else if (ret) {
 			netdev_warn(priv->dev, "PTP init failed\n");
-		} else if (ptp_register) {
+		} else {
 			stmmac_ptp_register(priv);
 			clk_set_rate(priv->plat->clk_ptp_ref,
 				     priv->plat->clk_ptp_rate);
 		}
 
 		ret = priv->plat->init_pps(priv);
+		}
 	}
 
 	priv->eee_tw_timer = STMMAC_DEFAULT_TWT_LS;
@@ -4436,6 +4450,8 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI &&
 	    ((!priv->hw->xpcs ||
@@ -6411,7 +6427,18 @@ static void stmmac_tx_timeout(struct net_device *dev, unsigned int txqueue)
 static void stmmac_set_rx_mode(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
+	u32 mka_mcbcq_used = 0;
+	struct netdev_hw_addr *ha;
+	u8 dst_eapol_mac_addr[ETH_ALEN] = {0x1, 0x80, 0xc2, 0x00, 0x00, 0x03};
 
+	if (priv->plat->mka_mcbcq_filtering) {
+		netdev_for_each_mc_addr(ha, dev) {
+			if (!memcmp(dst_eapol_mac_addr, ha->addr, ETH_ALEN))
+				mka_mcbcq_used = 1;
+		}
+		pr_info("Setting MCBCQ to queue %d\n", mka_mcbcq_used);
+		stmmac_rx_queue_routing(priv, priv->hw, PACKET_MCBCQ, mka_mcbcq_used);
+	}
 	stmmac_set_filter(priv, priv->hw, dev);
 }
 
@@ -7666,6 +7693,15 @@ static const struct net_device_ops stmmac_netdev_ops = {
 	.ndo_select_queue = stmmac_tx_select_queue,
 };
 
+static void stmmac_flush_mtl_tx(struct stmmac_priv *priv)
+{
+	u32 tx_channels_count = priv->plat->tx_queues_to_use;
+	u32 chan = 0;
+
+	for (chan = 0; chan < tx_channels_count; chan++)
+		stmmac_flush_tx_mtl(priv, priv->hw, chan);
+}
+
 static void stmmac_reset_subtask(struct stmmac_priv *priv)
 {
 	if (!test_and_clear_bit(STMMAC_RESET_REQUESTED, &priv->state))
@@ -7681,7 +7717,10 @@ static void stmmac_reset_subtask(struct stmmac_priv *priv)
 		usleep_range(1000, 2000);
 
 	set_bit(STMMAC_DOWN, &priv->state);
+	stmmac_stop_all_dma(priv);
+	stmmac_flush_mtl_tx(priv);
 	dev_close(priv->dev);
+	usleep_range(10000, 20000);
 	dev_open(priv->dev, NULL);
 	clear_bit(STMMAC_DOWN, &priv->state);
 	clear_bit(STMMAC_RESETING, &priv->state);
@@ -8195,6 +8234,8 @@ int stmmac_dvr_probe(struct device *device,
 	pm_runtime_enable(device);
 
 	if (!priv->plat->mac2mac_en &&
+	    (!priv->plat->fixed_phy_mode ||
+	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
 	    priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
 		i = 0;

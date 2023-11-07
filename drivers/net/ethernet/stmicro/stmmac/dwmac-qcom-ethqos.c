@@ -35,6 +35,7 @@
 #include <net/inet_common.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/gunyah/gh_vm.h>
+#include <linux/gunyah/gh_rm_drv.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -52,6 +53,7 @@
 #define PHY_USXGMII_LOOPBACK_100	0x0801
 #define PHY_USXGMII_LOOPBACK_10	0x0800
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
+#define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -582,6 +584,9 @@ static int set_ethernet_interface(char *eth_intf)
 		mparams.is_valid_eth_intf = true;
 	} else if (!strcmp("usxgmii", eth_intf)) {
 		mparams.eth_intf =  PHY_INTERFACE_MODE_USXGMII;
+		mparams.is_valid_eth_intf = true;
+	} else if (!strcmp("2500base", eth_intf)) {
+		mparams.eth_intf =  PHY_INTERFACE_MODE_2500BASEX;
 		mparams.is_valid_eth_intf = true;
 	} else {
 		ETHQOSERR("Invalid Eth interface programmed: %s\n", eth_intf);
@@ -1159,7 +1164,6 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 	else
 		rgmii_updatel(ethqos, SDCC_DLL_CONFIG_CDR_EN,
 			      SDCC_DLL_CONFIG_CDR_EN, SDCC_HC_REG_DLL_CONFIG);
-
 	/* Set CDR_EXT_EN */
 	rgmii_updatel(ethqos, SDCC_DLL_CONFIG_CDR_EXT_EN,
 		      SDCC_DLL_CONFIG_CDR_EXT_EN, SDCC_HC_REG_DLL_CONFIG);
@@ -1173,7 +1177,8 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 		      SDCC_DLL_CONFIG_DLL_EN, SDCC_HC_REG_DLL_CONFIG);
 
 	if (ethqos->emac_ver != EMAC_HW_v2_3_2_RG &&
-	    ethqos->emac_ver != EMAC_HW_v2_1_2) {
+	    ethqos->emac_ver != EMAC_HW_v2_1_2 &&
+	    ethqos->emac_ver != EMAC_HW_v2_3_0) {
 		rgmii_updatel(ethqos, SDCC_DLL_MCLK_GATING_EN,
 			      0, SDCC_HC_REG_DLL_CONFIG);
 
@@ -1214,7 +1219,8 @@ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
 		      SDCC_DLL_CONFIG2_DDR_CAL_EN, SDCC_HC_REG_DLL_CONFIG2);
 
 	if (ethqos->emac_ver != EMAC_HW_v2_3_2_RG &&
-	    ethqos->emac_ver != EMAC_HW_v2_1_2) {
+	    ethqos->emac_ver != EMAC_HW_v2_1_2 &&
+	    ethqos->emac_ver != EMAC_HW_v2_3_0) {
 		rgmii_updatel(ethqos, SDCC_DLL_CONFIG2_DLL_CLOCK_DIS,
 			      0, SDCC_HC_REG_DLL_CONFIG2);
 
@@ -2150,6 +2156,11 @@ static int ethqos_configure_mac_v4(struct qcom_ethqos *ethqos)
 		qcom_ethqos_serdes_update(ethqos, ethqos->speed, priv->plat->interface);
 		break;
 
+	case PHY_INTERFACE_MODE_2500BASEX:
+		ret = ethqos_configure_sgmii_v4(ethqos);
+		qcom_ethqos_serdes_update(ethqos, ethqos->speed, priv->plat->interface);
+		break;
+
 	case PHY_INTERFACE_MODE_USXGMII:
 		ret = ethqos_configure_usxgmii_v4(ethqos);
 		qcom_ethqos_serdes_update(ethqos, ethqos->speed, priv->plat->interface);
@@ -2286,9 +2297,9 @@ static void ethqos_handle_phy_interrupt(struct qcom_ethqos *ethqos)
 
 		if (!priv->plat->mac2mac_en) {
 			if (phy_intr_status & LINK_UP_STATE)
-				phylink_mac_change(priv->phylink, LINK_UP);
+				phy_mac_interrupt(priv->phydev);
 			else if (phy_intr_status & LINK_DOWN_STATE)
-				phylink_mac_change(priv->phylink, LINK_DOWN);
+				phy_mac_interrupt(priv->phydev);
 		}
 	}
 }
@@ -3865,6 +3876,7 @@ static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, in
 		return phy_rgmii_digital_loopback(ethqos, speed, config);
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_USXGMII:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		return phy_sgmii_usxgmii_digital_loopback(ethqos, speed, config);
 	default:
 		ETHQOSERR("Invalid interface with PHY loopback\n");
@@ -3965,7 +3977,8 @@ static void setup_config_registers(struct qcom_ethqos *ethqos,
 		ctrl |= priv->hw->link.xgmii.speed5000;
 		break;
 	case SPEED_2500:
-		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII)
+		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
 			ctrl |= priv->hw->link.xgmii.speed2500;
 		else if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII)
 			ctrl |= priv->hw->link.speed2500;
@@ -4264,6 +4277,11 @@ static ssize_t loopback_arg_parse(struct qcom_ethqos *ethqos, char *buf, int *co
 			    (*speed != SPEED_10000 && *speed != SPEED_5000 &&
 			     *speed != SPEED_2500 && *speed != SPEED_1000 &&
 			     *speed != SPEED_100 && *speed != SPEED_10))
+				return -EINVAL;
+			break;
+		case PHY_INTERFACE_MODE_2500BASEX:
+			if ((*config == ENABLE_IO_MACRO_LOOPBACK) ||
+			    (*speed != SPEED_2500))
 				return -EINVAL;
 			break;
 		default:
@@ -5246,7 +5264,8 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	}
 
 	if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
-	    priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
+	    priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		if (create_debufs_for_sgmii_usxgmii(ethqos))
 			goto fail;
 	}
@@ -5370,7 +5389,8 @@ static void ethqos_disable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 	clk_disable_unprepare(ethqos->sgmii_rx_clk);
 	clk_disable_unprepare(ethqos->sgmii_tx_clk);
 
-	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
+	if (plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    plat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		clk_disable_unprepare(ethqos->xgxs_rx_clk);
 		clk_disable_unprepare(ethqos->xgxs_tx_clk);
 	} else if (plat->interface == PHY_INTERFACE_MODE_USXGMII) {
@@ -5502,7 +5522,8 @@ static int ethqos_enable_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos, int inte
 		}
 	}
 
-	if (interface == PHY_INTERFACE_MODE_SGMII) {
+	if (interface == PHY_INTERFACE_MODE_SGMII ||
+	    interface == PHY_INTERFACE_MODE_2500BASEX) {
 		/*Clocks specific to SGMII interface */
 		ethqos->xgxs_rx_clk = devm_clk_get_optional(&pdev->dev, "xgxs_rx");
 		if (IS_ERR(ethqos->xgxs_rx_clk)) {
@@ -5576,7 +5597,8 @@ static int ethqos_resume_sgmii_usxgmii_clks(struct qcom_ethqos *ethqos)
 	if (ret)
 		goto err;
 
-	if (plat->interface == PHY_INTERFACE_MODE_SGMII) {
+	if (plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    plat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		ret = clk_prepare_enable(ethqos->xgxs_rx_clk);
 		if (ret)
 			goto err;
@@ -6213,6 +6235,10 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	}
 
 out:
+	if (plat_dat->fixed_phy_mode)
+		plat_dat->fixed_phy_mode_needs_mdio = of_property_read_bool(pdev->dev.of_node,
+									    "fixed-link-needs-mdio-bus");
+
 	of_node_put(fixed_phy_node);
 	return ret;
 }
@@ -6324,9 +6350,23 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 {
 	struct qcom_ethqos *ethqos = container_of(nb, struct qcom_ethqos, vm_nb);
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	gh_vmid_t cb_vm_id = *(gh_vmid_t *)ptr;
+	gh_vmid_t v2x_vm_id;
+	int result;
 
-	pr_info("qcom-ethqos: ethqos 0x%p stmmac_priv 0x%p event = %d\n",
-		ethqos, ethqos->priv, event);
+	result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
+	if (result) {
+		ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
+		return NOTIFY_DONE;
+	}
+
+	if (cb_vm_id != v2x_vm_id) {
+		ETHQOSINFO("vm id mismatch, ignoring cb_vm %u v2x_vm %u event %u",
+			   cb_vm_id, v2x_vm_id, event);
+		return NOTIFY_DONE;
+	}
+
+	ETHQOSINFO("vm_ssr 0x%p stmmac_priv 0x%p event = %d\n", ethqos, ethqos->priv, event);
 
 	if (event == GH_VM_EARLY_POWEROFF) {
 		stmmac_stop_rx(priv, priv->ioaddr, 4);
@@ -6357,6 +6397,87 @@ static int qcom_ethqos_unregister_vm_notifier(struct qcom_ethqos *ethqos)
 	return 0;
 }
 #endif /* CONFIG_ETHQOS_QCOM_HOSTVM */
+
+signed int ethqos_phylib_mmd_read(struct phy_device *phydev, unsigned int mmd,
+				  unsigned int reg, unsigned char msb,
+				  unsigned char lsb, unsigned int *pdata)
+{
+	unsigned int rdata = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	rdata =  phy_read_mmd(phydev, mmd, reg);
+	*pdata = ((rdata & (mask)) >> (lsb));
+	return 0;
+}
+
+signed int ethqos_phylib_mmd_write(struct phy_device *phydev, unsigned int mmd,
+				   unsigned int reg, unsigned char msb,
+				   unsigned char lsb, unsigned int data)
+{
+	signed int  ret = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ret = phy_modify_mmd(phydev, mmd, reg, mask, (data << lsb));
+
+	return ret;
+}
+
+void ethqos_phylib_udelay(unsigned int usec)
+{
+	if (usec >= 1000) {
+		mdelay(usec / 1000);
+		usec = usec % 1000;
+	}
+	udelay(usec);
+}
+
+int ethqos_phylib_826xb_sds_read(struct phy_device *phydev, unsigned int page,
+				 unsigned int reg, unsigned char msb,
+				 unsigned char lsb, unsigned int *pdata)
+{
+	unsigned int rdata = 0;
+	unsigned int op = (page & 0x3f) | ((reg & 0x1f) << 6) | (0x8000);
+	unsigned int i = 0;
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ethqos_phylib_mmd_write(phydev, 30, 323, 15, 0, op);
+
+	for (i = 0; i < 10; i++) {
+		ethqos_phylib_mmd_read(phydev, 30, 323, 15, 15, &rdata);
+		if (rdata == 0)
+			break;
+		ethqos_phylib_udelay(10);
+	}
+	if (i == 10)
+		return -1;
+
+	ethqos_phylib_mmd_read(phydev, 30, 322, 15, 0, &rdata);
+	*pdata = ((rdata & (mask)) >> (lsb));
+
+	return 0;
+}
+
+int ethqos_phylib_826xb_sds_write(struct phy_device *phydev, unsigned int page,
+				  unsigned int reg, unsigned char msb,
+				  unsigned char lsb, unsigned int data)
+{
+	unsigned int wdata = 0, rdata = 0;
+	unsigned int op = (page & 0x3f) | ((reg & 0x1f) << 6) | (0x8800);
+	unsigned int mask = 0;
+
+	mask = ((0xFFFFFFFF >> (31 - msb)) ^ ((1 << lsb) - 1));
+	ethqos_phylib_826xb_sds_read(phydev, page, reg, 15, 0, &rdata);
+
+	wdata = ((rdata & ~(mask)) | ((data << (lsb)) & (mask)));
+
+	ethqos_phylib_mmd_write(phydev, 30, 321, 15, 0, wdata);
+	ethqos_phylib_mmd_write(phydev, 30, 323, 15, 0, op);
+
+	return 0;
+}
 
 static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 {
@@ -6442,6 +6563,31 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 		rtnl_lock();
 		phylink_connect_phy(priv->phylink, priv->phydev);
 		rtnl_unlock();
+
+		if (phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
+			if (phydev->interface == PHY_INTERFACE_MODE_USXGMII) {
+				ETHQOSDBG("set_max_speed 10G\n");
+				phy_set_max_speed(phydev, SPEED_10000);
+			}
+
+			if (phydev->interface == PHY_INTERFACE_MODE_SGMII) {
+				/* disabling serdes for usxgmii */
+				ethqos_phylib_826xb_sds_write(phydev, 7, 17, 0, 0, 0);
+
+				ETHQOSDBG("set_max_speed 1G\n");
+				phy_set_max_speed(phydev, SPEED_1000);
+
+				/* enabling  serdes  and putting into fore mode for sgmii */
+				ethqos_phylib_826xb_sds_write(phydev, 0, 2, 9, 9, 1);
+				ethqos_phylib_826xb_sds_write(phydev, 0, 2, 8, 8, 0);
+
+				/* Register Access APIs */
+				ethqos_phylib_mmd_write(phydev, 30, 0x105, 0, 0, 0x1);
+				ethqos_phylib_mmd_write(phydev, 30, 0xc3, 4, 0, 0x2);
+				ethqos_phylib_mmd_write(phydev, 30, 0xc2, 9, 5, 0x0);
+				ethqos_phylib_mmd_write(phydev, 30, 0x2a2, 7, 7, 0x0);
+			}
+		}
 
 		if (priv->plat->phy_intr_en_extn_stm && phydev) {
 			ETHQOSDBG("PHY interrupt Mode enabled\n");
@@ -6883,7 +7029,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_mem;
 	} else if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-		   plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+		   plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII ||
+		   plat_dat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		ret = ethqos_init_sgmii_regulators(ethqos);
 		if (ret)
 			goto err_mem;
@@ -6912,7 +7059,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII)
+	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_2500BASEX)
 		qcom_ethqos_serdes_configure_dt(ethqos, plat_dat->interface);
 
 	ethqos->axi_icc_path = of_icc_get(&pdev->dev, "axi_icc_path");
@@ -6963,7 +7111,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII) {
+	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
 		plat_dat->serdes_powersaving = ethqos_serdes_power_saving;
 		plat_dat->xpcs_linkup = ethqos_xpcs_link_up;
@@ -7065,15 +7214,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	}
 #endif
 
-	qcom_ethqos_register_vm_notifier(ethqos);
-
-	ret = qcom_ethmsgq_init(&pdev->dev);
-	if (ret < 0)
-		goto err_mem;
-
 	if (of_property_read_bool(pdev->dev.of_node, "gdsc-off-on-suspend"))
 		ethqos->gdsc_off_on_suspend = true;
 	ETHQOSDBG("gdsc-off-on-suspend = %d\n", ethqos->gdsc_off_on_suspend);
+	if (of_device_is_compatible(np, "qcom,qcs404-ethqos"))
+		plat_dat->rx_clk_runs_in_lpi = 1;
 
 	if (!!of_find_property(np, "qcom,ioss", NULL)) {
 		ETHQOSDBG("%s: IPA ENABLED", __func__);
@@ -7121,7 +7266,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	if (ethqos->emac_ver != EMAC_HW_v3_1_0 && plat_dat->mdio_bus_data &&
 	    (plat_dat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII))
+	     plat_dat->phy_interface == PHY_INTERFACE_MODE_USXGMII ||
+	     plat_dat->phy_interface == PHY_INTERFACE_MODE_2500BASEX))
 		plat_dat->mdio_bus_data->has_xpcs = true;
 
 	if (plat_dat->mdio_bus_data && plat_dat->mdio_bus_data->has_xpcs) {
@@ -7191,6 +7337,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	else
 		priv->dma_cap.asp = 0;
 
+	ret = qcom_ethmsgq_init(&pdev->dev);
+	if (ret < 0)
+		goto err_clk;
+
 	if (ethqos->early_eth_enabled) {
 		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
@@ -7249,6 +7399,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->wol_irq_disable = ethqos_wol_irq_disable;
 	}
 
+	qcom_ethqos_register_vm_notifier(ethqos);
+
 	qcom_ethmsgq_register_notify(qcom_ethsvm_command_req, priv);
 	atomic_set(&priv->plat->phy_clks_suspended, 0);
 	ethqos_create_sysfs(ethqos);
@@ -7264,7 +7416,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 err_clk:
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
-	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	    plat_dat->interface ==  PHY_INTERFACE_MODE_USXGMII ||
+	    plat_dat->interface == PHY_INTERFACE_MODE_2500BASEX) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 	}
@@ -7326,7 +7479,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		clk_disable_unprepare(ethqos->rgmii_clk);
 
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII) {
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII ||
+	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_2500BASEX) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 	}
@@ -7506,8 +7660,6 @@ static int qcom_ethqos_resume(struct device *dev)
 	enable_irq(priv->dev->irq);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
-			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
@@ -7516,6 +7668,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret)
 			return -EINVAL;
+
+		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
+			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 	}
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {

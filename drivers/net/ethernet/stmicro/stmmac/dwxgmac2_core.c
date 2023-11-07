@@ -17,7 +17,7 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 {
 	void __iomem *ioaddr = hw->pcsr;
 	struct stmmac_priv *priv = netdev_priv(dev);
-	u32 tx, rx, intr_en;
+	u32 tx, rx, intr_en, value;
 
 	tx = readl(ioaddr + XGMAC_TX_CONFIG);
 	rx = readl(ioaddr + XGMAC_RX_CONFIG);
@@ -34,7 +34,10 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 			tx |= hw->link.xgmii.speed10000;
 			break;
 		case SPEED_2500:
-			tx |= hw->link.speed2500;
+			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
+				tx |= hw->link.xgmii.speed2500;
+			else
+				tx |= hw->link.speed2500;
 			break;
 		case SPEED_1000:
 		default:
@@ -45,6 +48,12 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 
 	if (hw->crc_strip_en)
 		rx |= XGMAC_CONFIG_CST;
+
+	if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX) {
+		value = readl(ioaddr + XGMAC_MAC_EXTENDED_CONFIG);
+		value |= XGMAC_MAXEXT_TPRE;
+		writel(value, ioaddr + XGMAC_MAC_EXTENDED_CONFIG);
+	}
 
 	writel(tx, ioaddr + XGMAC_TX_CONFIG);
 	writel(rx, ioaddr + XGMAC_RX_CONFIG);
@@ -1642,6 +1651,33 @@ void dwxgmac2_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
 	writel_relaxed(value, ioaddr + XGMAC_MTL_RX_QMAP);
 }
 
+static void dwxgmac2_flush_tx_mtl(struct mac_device_info *hw,
+				  u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 vy_count = 0;
+	unsigned long RETRYCOUNT = 1000;
+	u32 ftq = 0;
+
+	/*Flush Tx Queue */
+	ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+	ftq |= 1;
+	writel(ftq, ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+
+	/*Poll Until Poll Condition */
+	while (1) {
+		if (vy_count > RETRYCOUNT) {
+			pr_err("unable to flush tx queue %d\n", queue);
+			break;
+		}
+		vy_count++;
+		usleep_range(1000, 1500);
+		ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+		if (((ftq) & (0x1)) == 0)
+			break;
+	}
+}
+
 const struct stmmac_ops dwxgmac210_ops = {
 	.core_init = dwxgmac2_core_init,
 	.set_mac = dwxgmac2_set_mac,
@@ -1689,6 +1725,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.set_arp_offload = dwxgmac2_set_arp_offload,
 	.est_configure = dwxgmac3_est_configure,
 	.fpe_configure = dwxgmac3_fpe_configure,
+	.flush_tx_mtl = dwxgmac2_flush_tx_mtl,
 };
 
 static void dwxlgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,

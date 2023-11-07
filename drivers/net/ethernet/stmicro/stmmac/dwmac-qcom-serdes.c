@@ -13,7 +13,7 @@
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
-	int retry = 5000;
+	int retry = 500;
 	unsigned int val;
 
 	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
@@ -1434,6 +1434,7 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 
 	switch (interface) {
 	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		ret = qcom_ethqos_serdes_update_sgmii(ethqos, speed);
 		break;
 	case PHY_INTERFACE_MODE_USXGMII:

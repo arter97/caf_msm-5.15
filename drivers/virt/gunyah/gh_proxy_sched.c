@@ -56,8 +56,9 @@
 /* VCPU is blocked in EL2 for an unspecified reason */
 #define GH_VCPU_STATE_BLOCKED		3
 
-#define GH_VCPU_SUSPEND_STATE_STANDBY	0
-#define GH_VCPU_SUSPEND_STATE_POWERDOWN	1
+#define GH_VCPU_WFI			1
+#define GH_VCPU_CPU_SUSPEND		2
+#define GH_VCPU_SYSTEM_SUSPEND		3
 
 #define SVM_STATE_RUNNING		1
 #define SVM_STATE_SYSTEM_SUSPENDED	3
@@ -628,8 +629,14 @@ int gh_vcpu_run(gh_vmid_t vmid, unsigned int vcpu_id, uint64_t resume_data_0,
 					schedule();
 				break;
 
-			/* VCPU in WFI or suspended/powered down. */
+			/* VCPU in WFI/idle or suspended. */
 			case GH_VCPU_STATE_EXPECTS_WAKEUP:
+				if (resp->state_data_0 == GH_VCPU_SYSTEM_SUSPEND)
+					__pm_relax(vcpu->ws);
+				gh_vcpu_sleep(vcpu);
+				break;
+
+			/* VCPU is powered down. */
 			case GH_VCPU_STATE_POWERED_OFF:
 				__pm_relax(vcpu->ws);
 				gh_vcpu_sleep(vcpu);

@@ -582,8 +582,6 @@ static int inv_mpu_probe(struct i2c_client *client,
 	}
 	pr_info("%s: power on.\n", __func__);
 
-	msleep(100);
-
 	/* power is turned on inside check chip type */
 	result = inv_check_chip_type(indio_dev, id->name);
 	if (result)

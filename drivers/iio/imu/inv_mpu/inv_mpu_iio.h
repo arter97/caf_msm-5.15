@@ -951,6 +951,8 @@ struct inv_mpu_state {
 	int report_evt_cnt;
 	struct mutex acc_sensor_buff;
 	struct mutex gyro_sensor_buff;
+	int accel_enable;
+	int gyro_enable;
 #endif
 
 };

@@ -150,6 +150,7 @@
 #define PCIE20_TRGT_MAP_CTRL_OFF       0x81C
 #define PCIE20_MISC_CONTROL_1          0x8BC
 
+#define PCIE20_SYSTEM_PAGE_SIZE_REG	0x20
 #define PCIE20_SRIOV_BAR_OFF(n)        (n * 0x4)
 #define PCIE20_SRIOV_BAR(n)            (PCIE20_SRIOV_BAR_OFF(n) + 0x24)
 #define PCIE20_TOTAL_VFS_INITIAL_VFS_REG 0xC
@@ -277,7 +278,7 @@
 	} while (0)
 
 #define EP_PCIE_EOM(lane, dev, fmt, arg...) do {			\
-	ipc_log_string((dev)->ipc_log_eom, \
+	ipc_log_string((dev)->ipc_log_eom[lane], \
 		"" fmt, arg); \
 	if (ep_pcie_get_debug_mask())   \
 		pr_alert("%s: " fmt, __func__, arg); \
@@ -453,7 +454,8 @@ struct ep_pcie_dev_t {
 	void                         *ipc_log_sel;
 	void                         *ipc_log_ful;
 	void                         *ipc_log_dump;
-	void                         *ipc_log_eom;
+	void                         *ipc_log_eom[16];
+	void                         *ipc_log_eom_delay;
 	struct mutex                 setup_mtx;
 	struct mutex                 ext_mtx;
 	spinlock_t                   ext_lock;

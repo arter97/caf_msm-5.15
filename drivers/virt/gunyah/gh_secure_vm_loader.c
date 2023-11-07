@@ -302,6 +302,8 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 
 	dev = sec_vm_dev->dev;
 
+	cleanup_gvm_dump_ctx(sec_vm_dev->vmid);
+
 	ret = gh_sec_vm_loader_load_fw(sec_vm_dev, vm);
 	if (ret) {
 		dev_err(dev, "Loading secure VM %s to memory failed %ld\n",
@@ -359,9 +361,23 @@ int gh_secure_vm_loader_reclaim_fw(struct gh_vm *vm)
 
 	ret = gh_reclaim_mem(vm, sec_vm_dev->fw_phys,
 			sec_vm_dev->fw_size, sec_vm_dev->system_vm);
-	if (!ret && !sec_vm_dev->is_static) {
-		dma_free_coherent(dev, sec_vm_dev->fw_size, sec_vm_dev->fw_virt,
-			phys_to_dma(dev, sec_vm_dev->fw_phys));
+
+	if (!ret) {
+
+		/*
+		 * SVM mem reclaim succeeded, collect the SVM dump if dump collection is
+		 * enabled.
+		 *
+		 * Ignore the return value of debugFS creation as failure should not impact
+		 * other cleanup.
+		 */
+
+		if (sec_vm_dev->is_static) {
+			collect_gvm_dump(sec_vm_dev->dev->of_node);
+		} else
+			dma_free_coherent(dev, sec_vm_dev->fw_size, sec_vm_dev->fw_virt,
+				phys_to_dma(dev, sec_vm_dev->fw_phys));
+
 	}
 
 	return ret;

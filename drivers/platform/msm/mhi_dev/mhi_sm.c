@@ -542,7 +542,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	case MHI_DEV_READY_STATE:
 		res = ep_pcie_get_msi_config(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle,
 			&cfg, mhi_sm_ctx->mhi_dev->vf_id);
-		if (res) {
+		if (res && res != -EOPNOTSUPP) {
 			MHI_SM_ERR(mhi->vf_id, "Error retrieving pcie msi logic\n");
 			goto exit;
 		}
@@ -998,7 +998,18 @@ static void mhi_sm_dev_event_manager(struct work_struct *work)
 	struct mhi_sm_device_event *chg_event = container_of(work,
 		struct mhi_sm_device_event, work);
 	struct mhi_sm_dev *mhi_sm_ctx = chg_event->mhi_sm_ctx;
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
+
+	if (!mhi_sm_ctx) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Failed, MHI SM is not initialized\n");
+		return;
+	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
+	if (!mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI reset done\n");
+		return;
+	}
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -1083,7 +1094,18 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 	enum ep_pcie_event pcie_event = chg_event->event;
 	unsigned long flags;
 	struct mhi_sm_dev *mhi_sm_ctx = chg_event->mhi_sm_ctx;
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
+
+	if (!mhi_sm_ctx) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Failed, MHI SM is not initialized\n");
+		return;
+	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
+	if (!mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI reset done\n");
+		return;
+	}
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -1275,6 +1297,11 @@ int mhi_dev_sm_init(struct mhi_dev *mhi_dev)
 
 	vf_id = mhi_dev->vf_id;
 
+	if (vf_id >= MHI_MAX_NUM_INSTANCES) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Returning invalid vf_id\n");
+		return -EINVAL;
+	}
+
 	MHI_SM_FUNC_ENTRY(vf_id);
 
 	if (!mhi_dev_sm_ctx[vf_id])
@@ -1341,6 +1368,7 @@ int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 	if (mhi_sm_ctx->mhi_dev->use_edma)
 		mhi_edma_release();
 	mutex_destroy(&mhi_sm_ctx->mhi_state_lock);
+	kfree(mhi_dev_sm_ctx[vf_id]);
 	mhi_dev_sm_ctx[vf_id] = NULL;
 
 	return 0;
@@ -1474,8 +1502,8 @@ int mhi_dev_notify_sm_event(struct mhi_dev *mhi, enum mhi_dev_event event)
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
-	if (!mhi_sm_ctx) {
-		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized\n");
+	if (!mhi_sm_ctx || !mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized / MHI reset done\n");
 		return -EFAULT;
 	}
 
@@ -1565,17 +1593,21 @@ void mhi_dev_sm_pcie_handler(struct ep_pcie_notify *notify)
 	struct mhi_sm_ep_pcie_event *dstate_change_evt;
 	enum ep_pcie_event event;
 	unsigned long flags;
-	struct mhi_dev_ctx *mhi_hw_ctx = notify->user;
-	struct mhi_dev *mhi = mhi_hw_ctx->mhi_dev[0];
-	struct mhi_sm_dev *mhi_sm_ctx = mhi->mhi_sm_ctx;
+	struct mhi_dev_ctx *mhi_hw_ctx;
+	struct mhi_dev *mhi;
+	struct mhi_sm_dev *mhi_sm_ctx;
 
 	if (WARN_ON(!notify)) {
 		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Null argument - notify\n");
 		return;
 	}
 
-	if (!mhi_sm_ctx) {
-		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized\n");
+	mhi_hw_ctx = notify->user;
+	mhi = mhi_hw_ctx->mhi_dev[0];
+	mhi_sm_ctx = mhi->mhi_sm_ctx;
+
+	if (!mhi_sm_ctx || !mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized / MHI reset done\n");
 		return;
 	}
 
