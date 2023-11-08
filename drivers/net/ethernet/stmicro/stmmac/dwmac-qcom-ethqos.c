@@ -42,6 +42,12 @@
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-serdes.h"
 
+#include <linux/kernel.h>
+#include <linux/netlink.h>
+#include <net/netlink.h>
+#include <net/net_namespace.h>
+
+#define MYGRP 1
 #define PHY_RGMII_LOOPBACK_1000 0x4140
 #define PHY_RGMII_LOOPBACK_100 0x6100
 #define PHY_RGMII_LOOPBACK_10 0x4100
@@ -60,6 +66,7 @@ static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, int config);
 static void __iomem *tlmm_central_base_addr;
 static char buf[2000];
+static struct nlmsghdr *nlh;
 
 static char err_names[10][14] = {"PHY_RW_ERR",
 	"PHY_DET_ERR",
@@ -6488,6 +6495,13 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 	struct device_node *serdes_node = NULL;
 	struct phy_device *phydev = NULL;
 	u32 mode = 0;
+	unsigned int speed = 0;
+	struct sk_buff *skb_out;
+	int res;
+	struct net *net = dev_net(ndev);
+
+	if (!net)
+		return -EINVAL;
 
 	if (!ndev) {
 		ETHQOSERR("Netdevice is NULL\n");
@@ -6610,6 +6624,42 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 	}
 
 	ret = stmmac_resume(&ethqos->pdev->dev);
+
+	if (phydev->interface == PHY_INTERFACE_MODE_USXGMII)
+		speed = SPEED_10000;
+	else if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
+		speed = SPEED_1000;
+
+	if (!net->rtnl) {
+		ETHQOSINFO("Netlink-kernel : No Socket->rtnl created\n");
+		return -EINVAL;
+	}
+
+	if (!netlink_has_listeners(net->rtnl, MYGRP)) {
+		ETHQOSINFO("Netlink-kernel : No listeners\n");
+		return -EINVAL;
+	}
+
+	skb_out = nlmsg_new(sizeof(speed), GFP_KERNEL);
+	if (!skb_out) {
+		ETHQOSINFO("Failed to allocate a new skb\n");
+		return -EINVAL;
+	}
+
+	nlh = nlmsg_put(skb_out, 0, 0, 100, sizeof(speed), 0);
+
+	if (!nlh)
+		return -EINVAL;
+
+	NETLINK_CB(skb_out).portid = 0;
+	NETLINK_CB(skb_out).dst_group = MYGRP;
+
+	memcpy(nlmsg_data(nlh), &speed, sizeof(speed));
+
+	res = netlink_broadcast(net->rtnl, skb_out, 0, MYGRP, GFP_KERNEL);
+	if (res < 0)
+		ETHQOSINFO("Error while sending bak to user, err id: %d\n", res);
+
 	return ret;
 }
 
