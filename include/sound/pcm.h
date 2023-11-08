@@ -488,6 +488,7 @@ struct snd_pcm_substream {
 	unsigned int managed_buffer_alloc:1;
 	ANDROID_VENDOR_DATA(1);
 	ANDROID_KABI_RESERVE(1);
+	unsigned int hw_no_buffer: 1; /* substream may not have a buffer */
 };
 
 #define SUBSTREAM_BUSY(substream) ((substream)->ref_count > 0)
