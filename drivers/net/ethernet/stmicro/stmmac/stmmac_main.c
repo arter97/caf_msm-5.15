@@ -142,6 +142,8 @@ static irqreturn_t stmmac_msi_intr_rx(int irq, void *data);
 static void stmmac_tx_timer_arm(struct stmmac_priv *priv, u32 queue);
 static void stmmac_flush_tx_descriptors(struct stmmac_priv *priv, int queue);
 
+static int stmmac_init_ptp(struct stmmac_priv *priv);
+
 #ifdef CONFIG_DEBUG_FS
 static const struct net_device_ops stmmac_netdev_ops;
 static void stmmac_init_fs(struct net_device *dev);
@@ -703,6 +705,28 @@ static int stmmac_hwtstamp_set(struct net_device *dev, struct ifreq *ifr)
 	u32 av_8021asm_en = 0;
 	int ret = 0;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->clk_ptp_ref && !priv->ptp_init) {
+		ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
+		if (ret < 0) {
+			netdev_warn(priv->dev, "failed to enable PTP reference clock: %d\n", ret);
+		} else {
+			ret = stmmac_init_ptp(priv);
+			if (ret == -EOPNOTSUPP) {
+				netdev_warn(priv->dev, "PTP not supported by HW\n");
+			} else if (ret) {
+				netdev_warn(priv->dev, "PTP init failed\n");
+			} else {
+				stmmac_ptp_register(priv);
+				clk_set_rate(priv->plat->clk_ptp_ref,
+					     priv->plat->clk_ptp_rate);
+			}
+
+			ret = priv->plat->init_pps(priv);
+		}
+	}
+#endif
+
 	if (!(priv->dma_cap.time_stamp || priv->adv_ts)) {
 		netdev_alert(priv->dev, "No support for HW time stamping\n");
 		priv->hwts_tx_en = 0;
@@ -1010,15 +1034,28 @@ static int stmmac_init_ptp(struct stmmac_priv *priv)
 
 	priv->hwts_tx_en = 0;
 	priv->hwts_rx_en = 0;
-
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	priv->ptp_init = true;
+#endif
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static void stmmac_release_ptp(struct stmmac_priv *priv)
 {
-	clk_disable_unprepare(priv->plat->clk_ptp_ref);
-	stmmac_ptp_unregister(priv);
+	if (priv->ptp_init && priv->plat->clk_ptp_ref) {
+		clk_disable_unprepare(priv->plat->clk_ptp_ref);
+		stmmac_ptp_unregister(priv);
+		priv->ptp_init = false;
+	}
 }
+#else
+static void stmmac_release_ptp(struct stmmac_priv *priv)
+{
+		clk_disable_unprepare(priv->plat->clk_ptp_ref);
+		stmmac_ptp_unregister(priv);
+}
+#endif
 
 /**
  *  stmmac_mac_flow_ctrl - Configure flow control in all queues
@@ -3728,7 +3765,11 @@ static int stmmac_fpe_start_wq(struct stmmac_priv *priv)
  *  0 on success and an appropriate (-)ve integer as defined in errno.h
  *  file on failure.
  */
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static int stmmac_hw_setup(struct net_device *dev)
+#else
 static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
+#endif
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
 	u32 rx_cnt = priv->plat->rx_queues_to_use;
@@ -3787,6 +3828,7 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 
 	stmmac_mmc_setup(priv);
 
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->clk_ptp_ref) {
 		if (ptp_register) {
 			ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
@@ -3809,6 +3851,7 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 		ret = priv->plat->init_pps(priv);
 		}
 	}
+#endif
 
 	priv->eee_tw_timer = STMMAC_DEFAULT_TWT_LS;
 
@@ -4551,10 +4594,14 @@ static int stmmac_open(struct net_device *dev)
 		}
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ret = stmmac_hw_setup(dev);
+#else
 #ifdef CONFIG_PTPSUPPORT_OBJ
 	ret = stmmac_hw_setup(dev, true);
 #else
 	ret = stmmac_hw_setup(dev, false);
+#endif
 #endif
 
 	if (ret < 0) {
@@ -8583,7 +8630,11 @@ int stmmac_resume(struct device *dev)
 	stmmac_free_tx_skbufs(priv);
 	stmmac_clear_descriptors(priv);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	stmmac_hw_setup(ndev);
+#else
 	stmmac_hw_setup(ndev, false);
+#endif
 
 	if (!priv->tx_coal_timer_disable) {
 		stmmac_init_coalesce(priv);
