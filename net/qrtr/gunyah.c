@@ -61,8 +61,6 @@ struct gunyah_pipe {
  * @master: primary vm indicator.
  * @peer_name: name of vm peer.
  * @vm_nb: notifier block for vm status from rm
- * @state_lock: lock to protect registered state
- * @registered: state of endpoint
  * @label: label for gunyah resources
  * @tx_dbl: doorbell for tx notifications.
  * @rx_dbl: doorbell for rx notifications.
@@ -83,9 +81,6 @@ struct qrtr_gunyah_dev {
 	bool master;
 	u32 peer_name;
 	struct notifier_block vm_nb;
-	/* lock to protect registered */
-	struct mutex state_lock;
-	bool registered;
 
 	u32 label;
 	void *tx_dbl;
@@ -544,35 +539,23 @@ static int qrtr_gunyah_vm_cb(struct notifier_block *nb, unsigned long cmd,
 	if (peer_vmid != vmid)
 		return NOTIFY_DONE;
 
-	mutex_lock(&qdev->state_lock);
 	switch (cmd) {
 	case GH_VM_BEFORE_POWERUP:
-		if (qdev->registered)
-			break;
 		qrtr_gunyah_fifo_init(qdev);
 		if (qrtr_endpoint_register(&qdev->ep, QRTR_EP_NET_ID_AUTO, false,
 					   NULL)) {
 			pr_err("%s: endpoint register failed\n", __func__);
 			break;
 		}
-		if (qrtr_gunyah_share_mem(qdev, self_vmid, peer_vmid)) {
+		if (qrtr_gunyah_share_mem(qdev, self_vmid, peer_vmid))
 			pr_err("%s: failed to share memory\n", __func__);
-			qrtr_endpoint_unregister(&qdev->ep);
-			break;
-		}
-		qdev->registered = true;
+
 		break;
-	case GH_VM_POWERUP_FAIL:
-		fallthrough;
 	case GH_VM_EARLY_POWEROFF:
-		if (qdev->registered) {
-			qrtr_endpoint_unregister(&qdev->ep);
-			qrtr_gunyah_unshare_mem(qdev, self_vmid, peer_vmid);
-			qdev->registered = false;
-		}
+		qrtr_endpoint_unregister(&qdev->ep);
+		qrtr_gunyah_unshare_mem(qdev, self_vmid, peer_vmid);
 		break;
 	}
-	mutex_unlock(&qdev->state_lock);
 
 	return NOTIFY_DONE;
 }
@@ -739,8 +722,6 @@ static int qrtr_gunyah_probe(struct platform_device *pdev)
 	if (!qdev->ring.buf)
 		return -ENOMEM;
 
-	mutex_init(&qdev->state_lock);
-	qdev->registered = false;
 	spin_lock_init(&qdev->dbl_lock);
 
 	ret = of_property_read_u32(node, "gunyah-label", &qdev->label);
