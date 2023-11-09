@@ -1356,18 +1356,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		default:
 			return;
 		}
-	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
-		switch (speed) {
-		case SPEED_2500:
-			ctrl |= priv->hw->link.xgmii.speed2500;
-			break;
-		default:
-			return;
-		}
 	} else {
 		switch (speed) {
 		case SPEED_2500:
-			ctrl |= priv->hw->link.speed2500;
+			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
+				ctrl |= priv->hw->link.xgmii.speed2500;
+			else
+				ctrl |= priv->hw->link.speed2500;
 			break;
 		case SPEED_1000:
 			ctrl |= priv->hw->link.speed1000;
