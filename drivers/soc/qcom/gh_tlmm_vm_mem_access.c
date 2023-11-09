@@ -125,14 +125,14 @@ static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 		if (IS_ERR(sgl_desc)) {
 			dev_err(gh_tlmm_dev, "Failed to get sgl of IO memories for TLMM\n");
 			rc = PTR_ERR(sgl_desc);
-			goto sgl_error;
+			goto free_acl_desc;
 		}
 
 		rc = gh_rm_mem_share(GH_RM_MEM_TYPE_IO, 0, GH_TLMM_MEM_LABEL,
 				acl_desc, sgl_desc, NULL, &mem_handle);
 		if (rc) {
 			dev_err(gh_tlmm_dev, "Failed to share IO memories for TLMM rc:%d\n", rc);
-			goto error;
+			goto free_sgl_desc;
 		}
 
 		gh_tlmm_vm_info_data->mem_info[SHARED_GPIO].vm_mem_handle = mem_handle;
@@ -143,7 +143,8 @@ static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 		lend_acl_desc = gh_tlmm_vm_get_acl(gh_tlmm_vm_info_data->vm_name, true);
 		if (IS_ERR(lend_acl_desc)) {
 			dev_err(gh_tlmm_dev, "Failed to get acl of IO memories for TLMM\n");
-			return PTR_ERR(lend_acl_desc);
+			rc = PTR_ERR(lend_acl_desc);
+			goto free_sgl_desc;
 		}
 
 		mem_info = gh_tlmm_vm_info_data->mem_info[LEND_GPIO];
@@ -151,7 +152,7 @@ static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 		if (IS_ERR(lend_sgl_desc)) {
 			dev_err(gh_tlmm_dev, "Failed to get sgl of IO memories for lend TLMM\n");
 			rc = PTR_ERR(lend_sgl_desc);
-			goto sgl_error;
+			goto free_lend_acl_desc;
 		}
 
 		memset((gh_memparcel_handle_t *)&mem_handle, 0, sizeof(gh_memparcel_handle_t));
@@ -160,18 +161,20 @@ static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 			lend_acl_desc, lend_sgl_desc, NULL, &mem_handle);
 		if (rc) {
 			dev_err(gh_tlmm_dev, "Failed to lend IO memories for TLMM rc:%d\n", rc);
-			goto error;
+			goto free_lend_sgl_desc;
 		}
 
 		gh_tlmm_vm_info_data->mem_info[LEND_GPIO].vm_mem_handle = mem_handle;
 	}
 
-error:
-	kfree(sgl_desc);
+free_lend_sgl_desc:
 	kfree(lend_sgl_desc);
-sgl_error:
-	kfree(acl_desc);
+free_lend_acl_desc:
 	kfree(lend_acl_desc);
+free_sgl_desc:
+	kfree(sgl_desc);
+free_acl_desc:
+	kfree(acl_desc);
 
 	return rc;
 }
