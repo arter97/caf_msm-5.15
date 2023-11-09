@@ -208,6 +208,10 @@ static int scmi_virtio_protocol_exit(struct device *dev)
 	down_write(&scmi_virtio_be_info.active_protocols_rwsem);
 	idr_for_each_entry(&scmi_virtio_be_info.active_protocols, protocol_h, id) {
 		protocol_info = idr_find(&scmi_virtio_be_info.registered_protocols, id);
+		if (!protocol_info) {
+			pr_err("Protocol %#x not registered; protocol exit failed\n", id);
+			return -ENOENT;
+		}
 		ret = protocol_info->prot_exit_fn(protocol_h);
 		if (ret) {
 			pr_err("Protocol %#x exit function returned: %d\n",
@@ -243,6 +247,10 @@ int scmi_virtio_be_open(const struct scmi_virtio_client_h *client_h)
 	idr_for_each_entry(&scmi_virtio_be_info.active_protocols,
 			   protocol_h, id) {
 		virtio_be_protocol = idr_find(&scmi_virtio_be_info.registered_protocols, id);
+		if (!virtio_be_protocol) {
+			pr_err("Protocol %#x is not registered\n", id);
+			return -ENOENT;
+		}
 		proto_client_h = scmi_virtio_get_client_h(client_h);
 		if (!proto_client_h) {
 			ret = -ENOMEM;
@@ -281,6 +289,10 @@ virtio_proto_open_fail:
 	for ( ; open_protocols_num > 0; open_protocols_num--) {
 		id = open_protocols[open_protocols_num-1];
 		virtio_be_protocol = idr_find(&scmi_virtio_be_info.registered_protocols, id);
+		if (!virtio_be_protocol) {
+			pr_err("Protocol %#x is not registered\n", id);
+			return -ENOENT;
+		}
 		proto_client_h = idr_find(&client_priv->backend_protocol_map, id);
 		close_ret = virtio_be_protocol->prot_ops->close(proto_client_h);
 		if (close_ret)
@@ -314,6 +326,10 @@ int scmi_virtio_be_close(const struct scmi_virtio_client_h *client_h)
 	idr_for_each_entry(&scmi_virtio_be_info.active_protocols,
 			   protocol_h, id) {
 		virtio_be_protocol = idr_find(&scmi_virtio_be_info.registered_protocols, id);
+		if (!virtio_be_protocol) {
+			pr_err("Protocol %#x is not registered\n", id);
+			return -ENOENT;
+		}
 		proto_client_h = idr_find(&client_priv->backend_protocol_map, id);
 		/* We might have failed to alloc idr, in scmi_virtio_be_open() */
 		if (!proto_client_h)
