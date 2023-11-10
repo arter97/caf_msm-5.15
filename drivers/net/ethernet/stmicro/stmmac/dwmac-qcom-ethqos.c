@@ -6341,13 +6341,15 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 	gh_vmid_t v2x_vm_id;
 	int result;
 
-	result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
-	if (result) {
-		ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
-		return NOTIFY_DONE;
+	if (event == GH_VM_BEFORE_POWERUP) {
+		result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
+		if (result) {
+			ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
+			return NOTIFY_DONE;
+		}
+		priv->v2x_vm_id = v2x_vm_id;
 	}
-
-	if (cb_vm_id != v2x_vm_id) {
+	if (cb_vm_id != priv->v2x_vm_id) {
 		ETHQOSINFO("vm id mismatch, ignoring cb_vm %u v2x_vm %u event %u",
 			   cb_vm_id, v2x_vm_id, event);
 		return NOTIFY_DONE;
