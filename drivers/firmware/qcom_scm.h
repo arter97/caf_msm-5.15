@@ -153,6 +153,8 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_PWR_IO_DISABLE_PMIC_ARBITER	0x01
 #define QCOM_SCM_PWR_IO_DEASSERT_PS_HOLD	0x02
 #define QCOM_SCM_PWR_MMU_SYNC			0x08
+#define QCOM_SCM_SVC_BOOT_PMIC			0x22
+#define QCOM_SCM_BOOT_PMIC_SET_D3		0x02
 
 #define QCOM_SCM_SVC_MP				0x0c
 #define QCOM_SCM_MP_RESTORE_SEC_CFG		0x02

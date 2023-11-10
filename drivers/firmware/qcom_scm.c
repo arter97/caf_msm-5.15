@@ -3027,6 +3027,21 @@ void *qcom_get_scm_device(void)
 }
 EXPORT_SYMBOL(qcom_get_scm_device);
 
+int qcom_scm_set_d3w_mode(void)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_BOOT_PMIC,
+		.cmd = QCOM_SCM_BOOT_PMIC_SET_D3,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = 0,
+	};
+
+    ret = qcom_scm_call(__scm->dev, &desc, NULL);
+	return ret;
+}
+EXPORT_SYMBOL(qcom_scm_set_d3w_mode);
+
 static int qcom_scm_do_restart(struct notifier_block *this, unsigned long event,
 			      void *ptr)
 {
