@@ -103,10 +103,10 @@ static struct gh_sgl_desc *gh_tlmm_vm_get_sgl(struct gh_tlmm_mem_info
 /*This API is used both for sharing and lending GPIO's*/
 static int gh_tlmm_vm_mem_share(struct gh_tlmm_vm_info *gh_tlmm_vm_info_data)
 {
-	struct gh_acl_desc *acl_desc;
-	struct gh_sgl_desc *sgl_desc;
-	struct gh_acl_desc *lend_acl_desc;
-	struct gh_sgl_desc *lend_sgl_desc;
+	struct gh_acl_desc *acl_desc = NULL;
+	struct gh_sgl_desc *sgl_desc = NULL;
+	struct gh_acl_desc *lend_acl_desc = NULL;
+	struct gh_sgl_desc *lend_sgl_desc = NULL;
 	gh_memparcel_handle_t mem_handle;
 	struct gh_tlmm_mem_info mem_info;
 	int num_regs = 0;
