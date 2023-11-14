@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/msm_ep_pcie.h>
 #include <linux/iommu.h>
+#include <linux/qcom_scm.h>
 
 #define PCIE20_PARF_SYS_CTRL           0x00
 #define PCIE20_PARF_DB_CTRL            0x10
@@ -506,6 +507,7 @@ struct ep_pcie_dev_t {
 
 	bool				override_disable_sriov;
 	bool				no_path_from_ipa_to_pcie;
+	bool				configure_hard_reset;
 	u32				tcsr_perst_separation_en_offset;
 	u32				tcsr_reset_separation_offset;
 	u32				tcsr_perst_enable_offset;
