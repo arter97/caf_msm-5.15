@@ -186,6 +186,7 @@ int ufshcd_qti_hba_init_crypto_capabilities(struct ufs_hba *hba)
 {
 	int cap_idx;
 	int err = 0;
+	unsigned int max_slots = 0;
 	enum blk_crypto_mode_num blk_mode_num;
 
 	/*
@@ -212,9 +213,13 @@ int ufshcd_qti_hba_init_crypto_capabilities(struct ufs_hba *hba)
 		goto out;
 	}
 
+	max_slots = hba->crypto_capabilities.config_count + 1;
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	max_slots = max_slots -1;
+#endif
+
 	/* The actual number of configurations supported is (CFGC+1) */
-	err = devm_blk_ksm_init(hba->dev, &hba->ksm,
-			hba->crypto_capabilities.config_count + 1);
+	err = devm_blk_ksm_init(hba->dev, &hba->ksm, max_slots);
 	if (err)
 		goto out;
 
