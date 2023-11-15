@@ -8407,8 +8407,7 @@ int stmmac_suspend(struct device *dev)
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
 		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
-			if (!priv->dev->wol_enabled)
-				phylink_suspend(priv->phylink, false);
+			phylink_suspend(priv->phylink, false);
 		} else {
 			if (device_may_wakeup(priv->device))
 				phylink_speed_down(priv->phylink, false);
@@ -8508,8 +8507,7 @@ int stmmac_resume(struct device *dev)
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
 		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
-			if (!priv->dev->wol_enabled)
-				phylink_resume(priv->phylink);
+			phylink_resume(priv->phylink);
 		} else {
 			phylink_resume(priv->phylink);
 			if (device_may_wakeup(priv->device))
