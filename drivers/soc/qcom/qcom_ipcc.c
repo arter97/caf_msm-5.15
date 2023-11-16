@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/irqdomain.h>
+#include <linux/syscore_ops.h>
 #include <linux/platform_device.h>
 #include <linux/mailbox_controller.h>
 #include <dt-bindings/soc/qcom,ipcc.h>
@@ -59,6 +61,8 @@ struct ipcc_mbox_chan {
 	struct mbox_chan *chan;
 	struct ipcc_protocol_data *proto_data;
 };
+
+static struct ipcc_protocol_data *ipcc_proto_data;
 
 static inline u32 qcom_ipcc_get_packed_id(u16 client_id, u16 signal_id)
 {
@@ -303,6 +307,43 @@ static int qcom_ipcc_setup_mbox(struct ipcc_protocol_data *proto_data,
 	return mbox_controller_register(mbox);
 }
 
+#ifdef CONFIG_PM
+static int msm_ipcc_suspend(void)
+{
+	return 0;
+}
+
+static void msm_ipcc_resume(void)
+{
+	int virq;
+	struct irq_desc *desc;
+	const char *name = "null";
+	u32 packed_id;
+	struct ipcc_protocol_data *proto_data = ipcc_proto_data;
+
+	packed_id = readl(proto_data->base + IPCC_REG_RECV_ID);
+	if (packed_id == IPCC_NO_PENDING_IRQ)
+		return;
+
+	virq = irq_find_mapping(proto_data->irq_domain, packed_id);
+	desc = irq_to_desc(virq);
+	if (desc == NULL)
+		name = "stray irq";
+	else if (desc->action && desc->action->name)
+		name = desc->action->name;
+
+	pr_warn("%s: %d triggered %s\n", __func__, virq, name);
+}
+#else
+#define msm_ipcc_suspend NULL
+#define msm_ipcc_resume NULL
+#endif
+
+static struct syscore_ops msm_ipcc_pm_ops = {
+	.suspend = msm_ipcc_suspend,
+	.resume = msm_ipcc_resume,
+};
+
 static int qcom_ipcc_probe(struct platform_device *pdev)
 {
 	struct ipcc_protocol_data *proto_data;
@@ -315,6 +356,7 @@ static int qcom_ipcc_probe(struct platform_device *pdev)
 	if (!proto_data)
 		return -ENOMEM;
 
+	ipcc_proto_data = proto_data;
 	proto_data->dev = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -362,6 +404,7 @@ static int qcom_ipcc_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, proto_data);
+	register_syscore_ops(&msm_ipcc_pm_ops);
 
 	return 0;
 
@@ -377,6 +420,7 @@ static int qcom_ipcc_remove(struct platform_device *pdev)
 {
 	struct ipcc_protocol_data *proto_data = platform_get_drvdata(pdev);
 
+	unregister_syscore_ops(&msm_ipcc_pm_ops);
 	disable_irq_wake(proto_data->irq);
 	if (proto_data->num_chans)
 		mbox_controller_unregister(&proto_data->mbox);
