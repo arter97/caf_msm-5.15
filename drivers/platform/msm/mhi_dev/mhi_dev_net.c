@@ -39,7 +39,7 @@
 #define MHI_DEFAULT_NUM_OF_NW_CLIENTS 1
 #define MAX_MHI_INSTANCES      17
 #define MHI_PF_ID              0
-#define MAX_NUM_OF_CLIENTS     16
+#define MAX_NUM_OF_CLIENTS     15
 
 enum mhi_dev_net_dbg_lvl {
 	MHI_VERBOSE = 0x1,
@@ -218,16 +218,6 @@ static struct mhi_dev_net_chan_attr mhi_chan_attr_table_netdev[] = {
 	},
 	{
 		MHI_CLIENT_IP_SW_18_IN,
-		TRB_MAX_DATA_SIZE,
-		MHI_DIR_IN,
-	},
-	{
-		MHI_CLIENT_IP_SW_19_OUT,
-		TRB_MAX_DATA_SIZE,
-		MHI_DIR_OUT,
-	},
-	{
-		MHI_CLIENT_IP_SW_19_IN,
 		TRB_MAX_DATA_SIZE,
 		MHI_DIR_IN,
 	},
