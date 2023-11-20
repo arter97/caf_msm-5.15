@@ -728,6 +728,13 @@ static void __qcom_glink_rx_done(struct qcom_glink *glink,
 		return;
 	}
 
+	/* Take it off the tree of receive intents */
+	if (!intent->reuse) {
+		spin_lock_irqsave(&channel->intent_lock, flags);
+		idr_remove(&channel->liids, intent->id);
+		spin_unlock_irqrestore(&channel->intent_lock, flags);
+	}
+
 	spin_lock_irqsave(&channel->intent_lock, flags);
 	/* Remove intent from intent defer list */
 	list_del(&intent->node);
@@ -1476,12 +1483,11 @@ static int qcom_glink_native_rx(struct qcom_glink *glink, int iterations)
 	int ret = 0;
 	int i;
 
-	if (should_wake) {
+	if (should_wake && !glink->intentless) {
 		glink_resume_pkt = true;
 		should_wake = false;
+		log_abnormal_wakeup_reason("IRQ %d, %s", glink->irq, glink->irqname);
 		pm_system_wakeup();
-		if (!glink->intentless)
-			log_abnormal_wakeup_reason("IRQ %d, %s", glink->irq, glink->irqname);
 	}
 
 	spin_lock_irqsave(&glink->irq_lock, flags);
