@@ -176,6 +176,11 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 	else
 		plat->rx_sched_algorithm = MTL_RX_ALGORITHM_SP;
 
+	if (of_property_read_bool(rx_node, "snps,mka_mcbcq_filtering"))
+		plat->mka_mcbcq_filtering = true;
+	else
+		plat->mka_mcbcq_filtering = false;
+
 	/* Processing individual RX queue config */
 	for_each_child_of_node(rx_node, q_node) {
 		if (queue >= plat->rx_queues_to_use)
@@ -231,6 +236,9 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 		/* Multicast and broadcast routing */
 		if (of_property_read_bool(q_node, "snps,route-multi-broad"))
 			plat->rx_queues_cfg[queue].mbcast_route = true;
+
+		if (of_property_read_bool(q_node, "snps,skip-queue"))
+			plat->rx_queues_cfg[queue].skip_sw = true;
 
 		queue++;
 	}
@@ -297,7 +305,14 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 			plat->tx_queues_cfg[queue].use_prio = true;
 		}
 
+		if (of_property_read_bool(q_node, "snps,fifo_depth"))
+			of_property_read_u32(q_node, "snps,fifo_depth",
+					     &plat->tx_queues_cfg[queue].fifo_sz_bytes);
+
 		if (of_property_read_bool(q_node, "qcom,ipa_offload"))
+			plat->tx_queues_cfg[queue].skip_sw = true;
+
+		if (of_property_read_bool(q_node, "snps,skip-queue"))
 			plat->tx_queues_cfg[queue].skip_sw = true;
 
 		queue++;

@@ -1324,7 +1324,6 @@ static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, bool is_vf)
 
 	if (dev->phy_rev >= 6) {
 		ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_CTRL1(is_vf), 0x0);
-		ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_LTAR(is_vf), vf_lower);
 		ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_UTAR(is_vf), 0x0);
 
 		/*
@@ -1333,9 +1332,11 @@ static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, bool is_vf)
 		 * to be matched with a single ATU region.
 		 */
 		if (is_vf) {
+			ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_LTAR(is_vf), vf_lower);
 			ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_CTRL2(is_vf),
 						BIT(31) | BIT(26));
 		} else {
+			ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_LTAR(is_vf), lower);
 			ep_pcie_write_reg(dev->iatu, PCIE20_IATU_I_CTRL2(is_vf),
 						BIT(31) | BIT(30) | BIT(19));
 		}
@@ -2503,7 +2504,6 @@ checkbme:
 		dev->link_status = EP_PCIE_LINK_UP;
 	}
 
-	dev->suspending = false;
 	goto out;
 
 link_fail_pipe_clk_deinit:
@@ -2709,13 +2709,13 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 			"PCIe V%d:Linkdown IRQ happened when the link is disabled\n",
 			dev->rev);
-	} else if (dev->suspending) {
+	} else if (!atomic_read(&dev->perst_deast)) {
 		EP_PCIE_DBG(dev,
-			"PCIe V%d:Linkdown IRQ happened when the link is suspending\n",
+			"PCIe V%d:Linkdown IRQ happened when PERST asserted\n",
 			dev->rev);
 	} else {
 		dev->link_status = EP_PCIE_LINK_DISABLED;
-		EP_PCIE_ERR(dev, "PCIe V%d:PCIe link is down for %ld times\n",
+		EP_PCIE_DBG(dev, "PCIe V%d:PCIe link is down for %ld times\n",
 			dev->rev, dev->linkdown_counter);
 		ep_pcie_reg_dump(dev, BIT(EP_PCIE_RES_PHY) |
 				BIT(EP_PCIE_RES_PARF), true);

@@ -943,7 +943,7 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 		return;
 	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet XPCS is ready -system side link up received");
+	update_marker("M - Ethernet XPCS ready - sys side link up rcvd");
 #endif
 	return;
 }

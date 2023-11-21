@@ -355,16 +355,13 @@ static void dwxgmac_mmc_intr_all_mask(void __iomem *mmcaddr)
 	writel(MMC_DEFAULT_MASK, mmcaddr + MMC_XGMAC_RX_IPC_INTR_MASK);
 }
 
-static void dwxgmac_read_mmc_reg(void __iomem *addr, u32 reg, u32 *dest)
+static void dwxgmac_read_mmc_reg(void __iomem *addr, u32 reg, u64 *dest)
 {
 	u64 tmp = 0;
 
 	tmp += readl(addr + reg);
 	tmp += ((u64 )readl(addr + reg + 0x4)) << 32;
-	if (tmp > GENMASK(31, 0))
-		*dest = ~0x0;
-	else
-		*dest = *dest + tmp;
+	*dest = *dest + tmp;
 }
 
 /* This reads the MAC core counters (if actaully supported).

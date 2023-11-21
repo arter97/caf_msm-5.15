@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -303,6 +304,42 @@ static int qcom_ipcc_setup_mbox(struct ipcc_protocol_data *proto_data,
 	return mbox_controller_register(mbox);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int qcom_ipcc_pm_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int qcom_ipcc_pm_resume(struct device *dev)
+{
+	int virq;
+	struct irq_desc *desc;
+	const char *name = "null";
+	u32 packed_id;
+	struct ipcc_protocol_data *proto_data = dev_get_drvdata(dev);
+
+	packed_id = readl(proto_data->base + IPCC_REG_RECV_ID);
+	if (packed_id == IPCC_NO_PENDING_IRQ)
+		return 0;
+
+	virq = irq_find_mapping(proto_data->irq_domain, packed_id);
+	desc = irq_to_desc(virq);
+	if (desc == NULL)
+		name = "stray irq";
+	else if (desc->action && desc->action->name)
+		name = desc->action->name;
+
+	pr_warn("%s: %d triggered %s (client-id: %u; signal-id: %u\n",
+		__func__, virq, name, qcom_ipcc_get_client_id(packed_id),
+		qcom_ipcc_get_signal_id(packed_id));
+
+	return 0;
+}
+#else
+#define qcom_ipcc_pm_suspend NULL
+#define qcom_ipcc_pm_resume NULL
+#endif
+
 static int qcom_ipcc_probe(struct platform_device *pdev)
 {
 	struct ipcc_protocol_data *proto_data;
@@ -354,7 +391,8 @@ static int qcom_ipcc_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_irq(&pdev->dev, proto_data->irq, qcom_ipcc_irq_fn,
-				IRQF_TRIGGER_HIGH | IRQF_NO_SUSPEND, name, proto_data);
+				IRQF_TRIGGER_HIGH | IRQF_NO_SUSPEND |
+				IRQF_NO_THREAD, name, proto_data);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register the irq: %d\n", ret);
 		goto err_req_irq;
@@ -390,12 +428,17 @@ static const struct of_device_id qcom_ipcc_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, qcom_ipcc_of_match);
 
+static const struct dev_pm_ops qcom_ipcc_dev_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(qcom_ipcc_pm_suspend, qcom_ipcc_pm_resume)
+};
+
 static struct platform_driver qcom_ipcc_driver = {
 	.probe = qcom_ipcc_probe,
 	.remove = qcom_ipcc_remove,
 	.driver = {
 		.name = "qcom_ipcc",
 		.of_match_table = qcom_ipcc_of_match,
+		.pm = &qcom_ipcc_dev_pm_ops,
 	},
 };
 

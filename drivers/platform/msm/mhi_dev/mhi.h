@@ -267,8 +267,8 @@ struct mhi_config {
 
 #define NUM_CHANNELS			128
 #define HW_CHANNEL_BASE			100
-#define NUM_HW_CHANNELS			28
-#define HW_CHANNEL_END			128
+#define NUM_HW_CHANNELS			15
+#define HW_CHANNEL_END			127
 #define MHI_ENV_VALUE			2
 #define MHI_MASK_ROWS_CH_EV_DB		4
 #define TRB_MAX_DATA_SIZE		8192

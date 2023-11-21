@@ -1356,18 +1356,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		default:
 			return;
 		}
-	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
-		switch (speed) {
-		case SPEED_2500:
-			ctrl |= priv->hw->link.xgmii.speed2500;
-			break;
-		default:
-			return;
-		}
 	} else {
 		switch (speed) {
 		case SPEED_2500:
-			ctrl |= priv->hw->link.speed2500;
+			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
+				ctrl |= priv->hw->link.xgmii.speed2500;
+			else
+				ctrl |= priv->hw->link.speed2500;
 			break;
 		case SPEED_1000:
 			ctrl |= priv->hw->link.speed1000;
@@ -2787,6 +2782,9 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 
 	for (chan = 0; chan < tx_channels_count; chan++) {
 		qmode = priv->plat->tx_queues_cfg[chan].mode_to_use;
+
+		if (priv->plat->tx_queues_cfg[chan].fifo_sz_bytes > 0)
+			txfifosz = priv->plat->tx_queues_cfg[chan].fifo_sz_bytes;
 
 		stmmac_dma_tx_mode(priv, priv->ioaddr, txmode, chan,
 				txfifosz, qmode);
@@ -6427,7 +6425,18 @@ static void stmmac_tx_timeout(struct net_device *dev, unsigned int txqueue)
 static void stmmac_set_rx_mode(struct net_device *dev)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
+	u32 mka_mcbcq_used = 0;
+	struct netdev_hw_addr *ha;
+	u8 dst_eapol_mac_addr[ETH_ALEN] = {0x1, 0x80, 0xc2, 0x00, 0x00, 0x03};
 
+	if (priv->plat->mka_mcbcq_filtering) {
+		netdev_for_each_mc_addr(ha, dev) {
+			if (!memcmp(dst_eapol_mac_addr, ha->addr, ETH_ALEN))
+				mka_mcbcq_used = 1;
+		}
+		pr_info("Setting MCBCQ to queue %d\n", mka_mcbcq_used);
+		stmmac_rx_queue_routing(priv, priv->hw, PACKET_MCBCQ, mka_mcbcq_used);
+	}
 	stmmac_set_filter(priv, priv->hw, dev);
 }
 
@@ -7682,6 +7691,15 @@ static const struct net_device_ops stmmac_netdev_ops = {
 	.ndo_select_queue = stmmac_tx_select_queue,
 };
 
+static void stmmac_flush_mtl_tx(struct stmmac_priv *priv)
+{
+	u32 tx_channels_count = priv->plat->tx_queues_to_use;
+	u32 chan = 0;
+
+	for (chan = 0; chan < tx_channels_count; chan++)
+		stmmac_flush_tx_mtl(priv, priv->hw, chan);
+}
+
 static void stmmac_reset_subtask(struct stmmac_priv *priv)
 {
 	if (!test_and_clear_bit(STMMAC_RESET_REQUESTED, &priv->state))
@@ -7697,7 +7715,10 @@ static void stmmac_reset_subtask(struct stmmac_priv *priv)
 		usleep_range(1000, 2000);
 
 	set_bit(STMMAC_DOWN, &priv->state);
+	stmmac_stop_all_dma(priv);
+	stmmac_flush_mtl_tx(priv);
 	dev_close(priv->dev);
+	usleep_range(10000, 20000);
 	dev_open(priv->dev, NULL);
 	clear_bit(STMMAC_DOWN, &priv->state);
 	clear_bit(STMMAC_RESETING, &priv->state);

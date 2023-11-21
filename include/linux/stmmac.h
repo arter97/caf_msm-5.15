@@ -152,6 +152,7 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
+	u32 fifo_sz_bytes;
 	bool skip_sw;
 };
 
@@ -343,5 +344,6 @@ struct plat_stmmacenet_data {
 	struct completion mdio_op;
 	bool mac_suspended;
 	bool separate_wol_pin;
+	bool mka_mcbcq_filtering;
 };
 #endif

@@ -1297,6 +1297,11 @@ int mhi_dev_sm_init(struct mhi_dev *mhi_dev)
 
 	vf_id = mhi_dev->vf_id;
 
+	if (vf_id >= MHI_MAX_NUM_INSTANCES) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Returning invalid vf_id\n");
+		return -EINVAL;
+	}
+
 	MHI_SM_FUNC_ENTRY(vf_id);
 
 	if (!mhi_dev_sm_ctx[vf_id])

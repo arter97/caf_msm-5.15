@@ -1295,7 +1295,6 @@ static int tsens_register_irq(struct tsens_priv *priv, char *irqname,
 	return ret;
 }
 
-#if defined(CONFIG_DEEPSLEEP) || defined(CONFIG_HIBERNATION)
 static int tsens_reinit(struct tsens_priv *priv)
 {
 	unsigned long flags;
@@ -1321,40 +1320,51 @@ static int tsens_reinit(struct tsens_priv *priv)
 
 int tsens_v2_tsens_suspend(struct tsens_priv *priv)
 {
-	if (!pm_suspend_via_firmware())
+	if (!pm_suspend_via_firmware() && !priv->tm_disable_on_suspend)
 		return 0;
 
-	if (priv->uplow_irq >= 0)
+	if (priv->uplow_irq >= 0) {
 		disable_irq_nosync(priv->uplow_irq);
+		disable_irq_wake(priv->uplow_irq);
+	}
 
-	if (priv->feat->crit_int && priv->crit_irq >= 0)
+	if (priv->feat->crit_int && priv->crit_irq >= 0) {
 		disable_irq_nosync(priv->crit_irq);
+		disable_irq_wake(priv->crit_irq);
+	}
 
-	if (priv->cold_sensor->tzd && priv->cold_irq >= 0)
+	if (pm_suspend_via_firmware() && priv->cold_sensor->tzd && priv->cold_irq >= 0) {
 		disable_irq_nosync(priv->cold_irq);
-
+		disable_irq_wake(priv->cold_irq);
+	}
 	return 0;
 }
 
 int tsens_v2_tsens_resume(struct tsens_priv *priv)
 {
-	if (!pm_suspend_via_firmware())
+	if (!pm_suspend_via_firmware() && !priv->tm_disable_on_suspend)
 		return 0;
 
-	tsens_reinit(priv);
+	if (!priv->tm_disable_on_suspend)
+		tsens_reinit(priv);
 
-	if (priv->uplow_irq >= 0)
+	if (priv->uplow_irq >= 0) {
 		enable_irq(priv->uplow_irq);
+		enable_irq_wake(priv->uplow_irq);
+	}
 
-	if (priv->feat->crit_int && priv->crit_irq >= 0)
+	if (priv->feat->crit_int && priv->crit_irq >= 0) {
 		enable_irq(priv->crit_irq);
+		enable_irq_wake(priv->crit_irq);
+	}
 
-	if (priv->cold_sensor->tzd && priv->cold_irq >= 0)
+	if (pm_suspend_via_firmware() && priv->cold_sensor->tzd && priv->cold_irq >= 0) {
 		enable_irq(priv->cold_irq);
+		enable_irq_wake(priv->cold_irq);
+	}
 
 	return 0;
 }
-#endif
 
 static int tsens_register(struct tsens_priv *priv)
 {
@@ -1521,6 +1531,8 @@ static int tsens_probe(struct platform_device *pdev)
 	}
 
 	priv->tsens_md = thermal_minidump_register(np->name);
+	priv->tm_disable_on_suspend =
+				of_property_read_bool(np, "tm-disable-on-suspend");
 
 	return tsens_register(priv);
 }
@@ -1544,9 +1556,7 @@ static struct platform_driver tsens_driver = {
 	.remove = tsens_remove,
 	.driver = {
 		.name = "qcom-tsens",
-#if defined(CONFIG_DEEPSLEEP) || defined(CONFIG_HIBERNATION)
 		.pm	= &tsens_pm_ops,
-#endif
 		.of_match_table = tsens_table,
 	},
 };
