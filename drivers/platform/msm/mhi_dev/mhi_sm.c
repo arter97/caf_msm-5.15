@@ -1305,8 +1305,7 @@ int mhi_dev_sm_init(struct mhi_dev *mhi_dev)
 	MHI_SM_FUNC_ENTRY(vf_id);
 
 	if (!mhi_dev_sm_ctx[vf_id])
-		mhi_dev_sm_ctx[vf_id] = devm_kzalloc(mhi_dev->mhi_hw_ctx->dev,
-					sizeof(*mhi_sm_ctx), GFP_KERNEL);
+		mhi_dev_sm_ctx[vf_id] = kzalloc(sizeof(*mhi_sm_ctx), GFP_KERNEL);
 	if (!mhi_dev_sm_ctx[vf_id])
 		return -ENOMEM;
 
