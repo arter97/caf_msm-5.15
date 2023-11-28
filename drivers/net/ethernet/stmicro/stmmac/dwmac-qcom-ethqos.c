@@ -3741,6 +3741,11 @@ static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int
 	struct stmmac_priv *priv = netdev_priv(dev);
 
 	unsigned int phydata = 0;
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->set_loopback &&
+	    ((priv->phydev->phy_id &
+	      priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
+		priv->phydev->drv->set_loopback(priv->phydev, config);
+	}
 	if (config == 1) {
 		/*Backup BMCR before Enabling Phy Loopback */
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
