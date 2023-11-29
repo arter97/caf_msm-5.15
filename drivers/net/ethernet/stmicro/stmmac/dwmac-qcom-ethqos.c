@@ -3734,38 +3734,18 @@ static void ethqos_mac_loopback(struct qcom_ethqos *ethqos, int mode)
 	}
 }
 
-static int phy_rgmii_digital_loopback_mmd_config(struct phy_device *phydev, int config, int *backup)
-{
-	ETHQOSINFO("Configure additional register for KZX9131\n");
-	if (config == 1) {
-		backup[0] = phy_read_mmd(phydev, 0x1C, 0x15);
-		backup[1] = phy_read_mmd(phydev, 0x1C, 0x16);
-		backup[2] = phy_read_mmd(phydev, 0x1C, 0x18);
-		backup[3] = phy_read_mmd(phydev, 0x1C, 0x1B);
-
-		phy_write_mmd(phydev, 0x1C, 0x15, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x16, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x18, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x1B, 0xEEEE);
-	} else if (config == 0) {
-		phy_write_mmd(phydev, 0x1C, 0x15, backup[0]);
-		phy_write_mmd(phydev, 0x1C, 0x16, backup[1]);
-		phy_write_mmd(phydev, 0x1C, 0x18, backup[2]);
-		phy_write_mmd(phydev, 0x1C, 0x1B, backup[3]);
-	}
-	return 0;
-}
-
 static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
+
 	unsigned int phydata = 0;
-	if ((priv->phydev->phy_id &
-	     priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)
-		phy_rgmii_digital_loopback_mmd_config(dev->phydev, config,
-						      ethqos->backup_mmd_loopback);
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->set_loopback &&
+	    ((priv->phydev->phy_id &
+	      priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
+		priv->phydev->drv->set_loopback(priv->phydev, config);
+	}
 	if (config == 1) {
 		/*Backup BMCR before Enabling Phy Loopback */
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
