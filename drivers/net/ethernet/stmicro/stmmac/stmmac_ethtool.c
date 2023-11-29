@@ -880,20 +880,41 @@ static int stmmac_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 static int stmmac_ethtool_op_get_eee(struct net_device *dev,
 				     struct ethtool_eee *edata)
 {
+	int val;
 	struct stmmac_priv *priv = netdev_priv(dev);
 
-	if (!priv->dma_cap.eee)
+	if (!priv->dma_cap.eee || priv->plat->mac2mac_en)
 		return -EOPNOTSUPP;
-
 	edata->eee_enabled = priv->eee_enabled;
 	edata->eee_active = priv->eee_active;
 	edata->tx_lpi_timer = priv->tx_lpi_timer;
 	edata->tx_lpi_enabled = priv->tx_lpi_enabled;
 
-	if (!priv->plat->mac2mac_en)
-		return phylink_ethtool_get_eee(priv->phylink, edata);
-	else
-		return 0;
+	val = phylink_ethtool_get_eee(priv->phylink, edata);
+	if (val < 0)
+		return val;
+
+	/* Currently, the eee status is shown active even in case of speeds for which
+	 * eee is not supported. The below code checks if eee_active after returning from
+	 * phylink_ethtool_get_eee function, and using phy_lookup_setting, we reset
+	 * eee_active if the link speed is not advertised or supported.
+	 */
+	if (edata->eee_active) {
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(common);
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(adv) = {};
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(lp) = {};
+
+		ethtool_convert_legacy_u32_to_link_mode(adv, edata->advertised);
+		ethtool_convert_legacy_u32_to_link_mode(lp, edata->lp_advertised);
+		linkmode_and(common, adv, lp);
+
+		edata->eee_active = !!phy_lookup_setting(priv->phydev->speed,
+							priv->phydev->duplex,
+							common,
+							true);
+	}
+
+	return 0;
 }
 
 static int stmmac_ethtool_op_set_eee(struct net_device *dev,
