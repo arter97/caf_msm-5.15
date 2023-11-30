@@ -2955,10 +2955,6 @@ static void ethqos_set_early_eth_param(struct stmmac_priv *priv,
 {
 	int ret = 0;
 
-	if (priv->plat && priv->plat->mdio_bus_data)
-		priv->plat->mdio_bus_data->phy_mask =
-		 priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
-
 	qcom_ethqos_add_ipaddr(&pparams, priv->dev);
 
 	if (pparams.is_valid_ipv4_addr) {
@@ -7140,6 +7136,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
+	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
 
@@ -7375,19 +7372,24 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_clk;
 
 	if (ethqos->early_eth_enabled) {
-		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID ||
-		    plat_dat->fixed_phy_mode) {
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
 			/* Initialize work*/
 			INIT_WORK(&ethqos->early_eth,
 				  qcom_ethqos_bringup_iface);
 			/* Queue the work*/
 			queue_work(system_wq, &ethqos->early_eth);
+
+			/*Set early eth parameters*/
+			ethqos_set_early_eth_param(priv, ethqos);
 		}
-		/*Set early eth parameters*/
-		ethqos_set_early_eth_param(priv, ethqos);
+
+		if (priv->plat && priv->plat->mdio_bus_data)
+			priv->plat->mdio_bus_data->phy_mask =
+			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
 	}
 
 	if (qcom_ethqos_register_panic_notifier(ethqos))
