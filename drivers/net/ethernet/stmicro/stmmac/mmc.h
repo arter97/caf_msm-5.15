@@ -3,7 +3,7 @@
   MMC Header file
 
   Copyright (C) 2011  STMicroelectronics Ltd
-
+  ​​​​Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.​
 
   Author: Giuseppe Cavallaro <peppe.cavallaro@st.com>
 *******************************************************************************/
@@ -27,104 +27,104 @@
 #define MMC_XGMAC_OFFSET		0x800
 
 struct stmmac_counters {
-	unsigned int mmc_tx_octetcount_gb;
-	unsigned int mmc_tx_framecount_gb;
-	unsigned int mmc_tx_broadcastframe_g;
-	unsigned int mmc_tx_multicastframe_g;
-	unsigned int mmc_tx_64_octets_gb;
-	unsigned int mmc_tx_65_to_127_octets_gb;
-	unsigned int mmc_tx_128_to_255_octets_gb;
-	unsigned int mmc_tx_256_to_511_octets_gb;
-	unsigned int mmc_tx_512_to_1023_octets_gb;
-	unsigned int mmc_tx_1024_to_max_octets_gb;
-	unsigned int mmc_tx_unicast_gb;
-	unsigned int mmc_tx_multicast_gb;
-	unsigned int mmc_tx_broadcast_gb;
-	unsigned int mmc_tx_underflow_error;
-	unsigned int mmc_tx_singlecol_g;
-	unsigned int mmc_tx_multicol_g;
-	unsigned int mmc_tx_deferred;
-	unsigned int mmc_tx_latecol;
-	unsigned int mmc_tx_exesscol;
-	unsigned int mmc_tx_carrier_error;
-	unsigned int mmc_tx_octetcount_g;
-	unsigned int mmc_tx_framecount_g;
-	unsigned int mmc_tx_excessdef;
-	unsigned int mmc_tx_pause_frame;
-	unsigned int mmc_tx_vlan_frame_g;
+	u64 mmc_tx_octetcount_gb;
+	u64 mmc_tx_framecount_gb;
+	u64 mmc_tx_broadcastframe_g;
+	u64 mmc_tx_multicastframe_g;
+	u64 mmc_tx_64_octets_gb;
+	u64 mmc_tx_65_to_127_octets_gb;
+	u64 mmc_tx_128_to_255_octets_gb;
+	u64 mmc_tx_256_to_511_octets_gb;
+	u64 mmc_tx_512_to_1023_octets_gb;
+	u64 mmc_tx_1024_to_max_octets_gb;
+	u64 mmc_tx_unicast_gb;
+	u64 mmc_tx_multicast_gb;
+	u64 mmc_tx_broadcast_gb;
+	u64 mmc_tx_underflow_error;
+	u64 mmc_tx_singlecol_g;
+	u64 mmc_tx_multicol_g;
+	u64 mmc_tx_deferred;
+	u64 mmc_tx_latecol;
+	u64 mmc_tx_exesscol;
+	u64 mmc_tx_carrier_error;
+	u64 mmc_tx_octetcount_g;
+	u64 mmc_tx_framecount_g;
+	u64 mmc_tx_excessdef;
+	u64 mmc_tx_pause_frame;
+	u64 mmc_tx_vlan_frame_g;
 
 	/* MMC RX counter registers */
-	unsigned int mmc_rx_framecount_gb;
-	unsigned int mmc_rx_octetcount_gb;
-	unsigned int mmc_rx_octetcount_g;
-	unsigned int mmc_rx_broadcastframe_g;
-	unsigned int mmc_rx_multicastframe_g;
-	unsigned int mmc_rx_crc_error;
-	unsigned int mmc_rx_align_error;
-	unsigned int mmc_rx_run_error;
-	unsigned int mmc_rx_jabber_error;
-	unsigned int mmc_rx_undersize_g;
-	unsigned int mmc_rx_oversize_g;
-	unsigned int mmc_rx_64_octets_gb;
-	unsigned int mmc_rx_65_to_127_octets_gb;
-	unsigned int mmc_rx_128_to_255_octets_gb;
-	unsigned int mmc_rx_256_to_511_octets_gb;
-	unsigned int mmc_rx_512_to_1023_octets_gb;
-	unsigned int mmc_rx_1024_to_max_octets_gb;
-	unsigned int mmc_rx_unicast_g;
-	unsigned int mmc_rx_length_error;
-	unsigned int mmc_rx_autofrangetype;
-	unsigned int mmc_rx_pause_frames;
-	unsigned int mmc_rx_fifo_overflow;
-	unsigned int mmc_rx_vlan_frames_gb;
-	unsigned int mmc_rx_watchdog_error;
+	u64 mmc_rx_framecount_gb;
+	u64 mmc_rx_octetcount_gb;
+	u64 mmc_rx_octetcount_g;
+	u64 mmc_rx_broadcastframe_g;
+	u64 mmc_rx_multicastframe_g;
+	u64 mmc_rx_crc_error;
+	u64 mmc_rx_align_error;
+	u64 mmc_rx_run_error;
+	u64 mmc_rx_jabber_error;
+	u64 mmc_rx_undersize_g;
+	u64 mmc_rx_oversize_g;
+	u64 mmc_rx_64_octets_gb;
+	u64 mmc_rx_65_to_127_octets_gb;
+	u64 mmc_rx_128_to_255_octets_gb;
+	u64 mmc_rx_256_to_511_octets_gb;
+	u64 mmc_rx_512_to_1023_octets_gb;
+	u64 mmc_rx_1024_to_max_octets_gb;
+	u64 mmc_rx_unicast_g;
+	u64 mmc_rx_length_error;
+	u64 mmc_rx_autofrangetype;
+	u64 mmc_rx_pause_frames;
+	u64 mmc_rx_fifo_overflow;
+	u64 mmc_rx_vlan_frames_gb;
+	u64 mmc_rx_watchdog_error;
 	/* IPC */
-	unsigned int mmc_rx_ipc_intr_mask;
-	unsigned int mmc_rx_ipc_intr;
+	u64 mmc_rx_ipc_intr_mask;
+	u64 mmc_rx_ipc_intr;
 	/* IPv4 */
-	unsigned int mmc_rx_ipv4_gd;
-	unsigned int mmc_rx_ipv4_hderr;
-	unsigned int mmc_rx_ipv4_nopay;
-	unsigned int mmc_rx_ipv4_frag;
-	unsigned int mmc_rx_ipv4_udsbl;
+	u64 mmc_rx_ipv4_gd;
+	u64 mmc_rx_ipv4_hderr;
+	u64 mmc_rx_ipv4_nopay;
+	u64 mmc_rx_ipv4_frag;
+	u64 mmc_rx_ipv4_udsbl;
 
-	unsigned int mmc_rx_ipv4_gd_octets;
-	unsigned int mmc_rx_ipv4_hderr_octets;
-	unsigned int mmc_rx_ipv4_nopay_octets;
-	unsigned int mmc_rx_ipv4_frag_octets;
-	unsigned int mmc_rx_ipv4_udsbl_octets;
+	u64 mmc_rx_ipv4_gd_octets;
+	u64 mmc_rx_ipv4_hderr_octets;
+	u64 mmc_rx_ipv4_nopay_octets;
+	u64 mmc_rx_ipv4_frag_octets;
+	u64 mmc_rx_ipv4_udsbl_octets;
 
 	/* IPV6 */
-	unsigned int mmc_rx_ipv6_gd_octets;
-	unsigned int mmc_rx_ipv6_hderr_octets;
-	unsigned int mmc_rx_ipv6_nopay_octets;
+	u64 mmc_rx_ipv6_gd_octets;
+	u64 mmc_rx_ipv6_hderr_octets;
+	u64 mmc_rx_ipv6_nopay_octets;
 
-	unsigned int mmc_rx_ipv6_gd;
-	unsigned int mmc_rx_ipv6_hderr;
-	unsigned int mmc_rx_ipv6_nopay;
+	u64 mmc_rx_ipv6_gd;
+	u64 mmc_rx_ipv6_hderr;
+	u64 mmc_rx_ipv6_nopay;
 
 	/* Protocols */
-	unsigned int mmc_rx_udp_gd;
-	unsigned int mmc_rx_udp_err;
-	unsigned int mmc_rx_tcp_gd;
-	unsigned int mmc_rx_tcp_err;
-	unsigned int mmc_rx_icmp_gd;
-	unsigned int mmc_rx_icmp_err;
+	u64 mmc_rx_udp_gd;
+	u64 mmc_rx_udp_err;
+	u64 mmc_rx_tcp_gd;
+	u64 mmc_rx_tcp_err;
+	u64 mmc_rx_icmp_gd;
+	u64 mmc_rx_icmp_err;
 
-	unsigned int mmc_rx_udp_gd_octets;
-	unsigned int mmc_rx_udp_err_octets;
-	unsigned int mmc_rx_tcp_gd_octets;
-	unsigned int mmc_rx_tcp_err_octets;
-	unsigned int mmc_rx_icmp_gd_octets;
-	unsigned int mmc_rx_icmp_err_octets;
+	u64 mmc_rx_udp_gd_octets;
+	u64 mmc_rx_udp_err_octets;
+	u64 mmc_rx_tcp_gd_octets;
+	u64 mmc_rx_tcp_err_octets;
+	u64 mmc_rx_icmp_gd_octets;
+	u64 mmc_rx_icmp_err_octets;
 
 	/* FPE */
-	unsigned int mmc_tx_fpe_fragment_cntr;
-	unsigned int mmc_tx_hold_req_cntr;
-	unsigned int mmc_rx_packet_assembly_err_cntr;
-	unsigned int mmc_rx_packet_smd_err_cntr;
-	unsigned int mmc_rx_packet_assembly_ok_cntr;
-	unsigned int mmc_rx_fpe_fragment_cntr;
+	u64 mmc_tx_fpe_fragment_cntr;
+	u64 mmc_tx_hold_req_cntr;
+	u64 mmc_rx_packet_assembly_err_cntr;
+	u64 mmc_rx_packet_smd_err_cntr;
+	u64 mmc_rx_packet_assembly_ok_cntr;
+	u64 mmc_rx_fpe_fragment_cntr;
 };
 
 #endif /* __MMC_H__ */

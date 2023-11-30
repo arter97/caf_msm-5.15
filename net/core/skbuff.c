@@ -83,6 +83,23 @@
 #include "datagram.h"
 #include "sock_destructor.h"
 
+struct kmem_cache *skb_data_cache;
+struct kmem_cache *skb_data_cache_2100;
+struct kmem_cache *skb_data_cache_2350;
+
+#define SKB_DATA_CACHE_SIZE \
+	(SKB_DATA_ALIGN(1984 + NET_SKB_PAD) + \
+	SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+#define SKB_DATA_CACHE_SIZE_2100 \
+	(SKB_DATA_ALIGN(2200 + NET_SKB_PAD) + \
+	SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+#define SKB_DATA_CACHE_SIZE_2300 \
+	(SKB_DATA_ALIGN(2300 + NET_SKB_PAD) + \
+	SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+#define SKB_DATA_CACHE_SIZE_2350 \
+	(SKB_DATA_ALIGN(2350 + NET_SKB_PAD) + \
+	SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+
 struct kmem_cache *skbuff_head_cache __ro_after_init;
 static struct kmem_cache *skbuff_fclone_cache __ro_after_init;
 #ifdef CONFIG_SKB_EXTENSIONS
@@ -354,16 +371,52 @@ static void *kmalloc_reserve(size_t size, gfp_t flags, int node,
 	 * Try a regular allocation, when that fails and we're not entitled
 	 * to the reserves, fail.
 	 */
-	obj = kmalloc_node_track_caller(size,
-					flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
-					node);
+	if (IS_ENABLED(CONFIG_CFG80211_PROP_MULTI_LINK_SUPPORT)) {
+		if (size > SZ_2K && size <= SKB_DATA_CACHE_SIZE)
+			obj = kmem_cache_alloc_node(skb_data_cache,
+						    flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+						    node);
+
+		else if (size > SKB_DATA_CACHE_SIZE && size <= SKB_DATA_CACHE_SIZE_2100)
+			obj = kmem_cache_alloc_node(skb_data_cache_2100,
+						    flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+						    node);
+
+		else if (size > SKB_DATA_CACHE_SIZE_2300 &&
+			 size <= SKB_DATA_CACHE_SIZE_2350)
+			obj = kmem_cache_alloc_node(skb_data_cache_2350,
+						    flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+						    node);
+
+		else
+			obj = kmalloc_node_track_caller(size,
+							flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+							node);
+	} else {
+		obj = kmalloc_node_track_caller(size,
+						flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+						node);
+	}
+
 	if (obj || !(gfp_pfmemalloc_allowed(flags)))
 		goto out;
 
 	/* Try again but now we are using pfmemalloc reserves */
 	ret_pfmemalloc = true;
-	obj = kmalloc_node_track_caller(size, flags, node);
 
+	if (IS_ENABLED(CONFIG_CFG80211_PROP_MULTI_LINK_SUPPORT)) {
+		if (size > SZ_2K && size <= SKB_DATA_CACHE_SIZE)
+			obj = kmem_cache_alloc_node(skb_data_cache, flags, node);
+		else if (size > SKB_DATA_CACHE_SIZE && size <= SKB_DATA_CACHE_SIZE_2100)
+			obj = kmem_cache_alloc_node(skb_data_cache_2100, flags, node);
+		else if (size > SKB_DATA_CACHE_SIZE_2300 &&
+			 size <= SKB_DATA_CACHE_SIZE_2350)
+			obj = kmem_cache_alloc_node(skb_data_cache_2350, flags, node);
+		else
+			obj = kmalloc_node_track_caller(size, flags, node);
+	} else {
+		obj = kmalloc_node_track_caller(size, flags, node);
+	}
 out:
 	if (pfmemalloc)
 		*pfmemalloc = ret_pfmemalloc;
@@ -4528,6 +4581,29 @@ static void skb_extensions_init(void) {}
 
 void __init skb_init(void)
 {
+	if (IS_ENABLED(CONFIG_CFG80211_PROP_MULTI_LINK_SUPPORT)) {
+		skb_data_cache = kmem_cache_create_usercopy("skb_data_cache",
+							    SKB_DATA_CACHE_SIZE, 0,
+							    SLAB_HWCACHE_ALIGN | SLAB_PANIC,
+							    0,
+							    SKB_DATA_CACHE_SIZE,
+							    NULL);
+		skb_data_cache_2100 = kmem_cache_create_usercopy("skb_data_cache_2100",
+								 SKB_DATA_CACHE_SIZE_2100,
+								 0,
+								 SLAB_HWCACHE_ALIGN | SLAB_PANIC,
+								 0,
+								 SKB_DATA_CACHE_SIZE_2100,
+								 NULL);
+		skb_data_cache_2350 = kmem_cache_create_usercopy("skb_data_cache_2350",
+								 SKB_DATA_CACHE_SIZE_2350,
+								 0,
+								 SLAB_HWCACHE_ALIGN | SLAB_PANIC,
+								 0,
+								 SKB_DATA_CACHE_SIZE_2350,
+								 NULL);
+	}
+
 	skbuff_head_cache = kmem_cache_create_usercopy("skbuff_head_cache",
 					      sizeof(struct sk_buff),
 					      0,
@@ -4984,6 +5060,11 @@ void __skb_tstamp_tx(struct sk_buff *orig_skb,
 			skb = alloc_skb(0, GFP_ATOMIC);
 	} else {
 		skb = skb_clone(orig_skb, GFP_ATOMIC);
+
+		if (skb_orphan_frags_rx(skb, GFP_ATOMIC)) {
+			kfree_skb(skb);
+			return;
+		}
 	}
 	if (!skb)
 		return;
@@ -5421,18 +5502,18 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
 	if (skb_cloned(to))
 		return false;
 
-	/* In general, avoid mixing slab allocated and page_pool allocated
-	 * pages within the same SKB. However when @to is not pp_recycle and
-	 * @from is cloned, we can transition frag pages from page_pool to
-	 * reference counted.
-	 *
-	 * On the other hand, don't allow coalescing two pp_recycle SKBs if
-	 * @from is cloned, in case the SKB is using page_pool fragment
+	/* In general, avoid mixing page_pool and non-page_pool allocated
+	 * pages within the same SKB. Additionally avoid dealing with clones
+	 * with page_pool pages, in case the SKB is using page_pool fragment
 	 * references (PP_FLAG_PAGE_FRAG). Since we only take full page
 	 * references for cloned SKBs at the moment that would result in
 	 * inconsistent reference counts.
+	 * In theory we could take full references if @from is cloned and
+	 * !@to->pp_recycle but its tricky (due to potential race with
+	 * the clone disappearing) and rare, so not worth dealing with.
 	 */
-	if (to->pp_recycle != (from->pp_recycle && !skb_cloned(from)))
+	if (to->pp_recycle != from->pp_recycle ||
+	    (from->pp_recycle && skb_cloned(from)))
 		return false;
 
 	if (len <= skb_tailroom(to)) {
