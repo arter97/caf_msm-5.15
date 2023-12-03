@@ -4389,6 +4389,9 @@ static int STMMAC_add_ptp_filters(struct net_device *dev)
 
 	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
 
+	if (!filter)
+		return -ENOMEM;
+
 	if (!priv->dma_cap.num_l3_l4_filters) {
 		/*enable dynamic mapping*/
 		read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
