@@ -2149,7 +2149,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	u32 val = 0;
 	u32 retries = 0;
 	u32 bme = 0;
-	bool perst = true, timedout;
+	bool perst = true, timedout = false;
 	bool ltssm_en = false;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 reg, linkup_ts;
