@@ -14,6 +14,7 @@
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/syscore_ops.h>
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/coupler.h>
 #include <linux/regulator/driver.h>
@@ -602,7 +603,7 @@ static int _regulator_is_enabled(struct regulator_dev *rdev)
 	return rdev->desc->ops->is_enabled(rdev);
 }
 
-static void regulator_debug_print_enabled(struct regulator_dev *rdev)
+static int regulator_debug_print_enabled(struct regulator_dev *rdev)
 {
 	struct regulator *reg;
 	const char *supply_name;
@@ -610,7 +611,7 @@ static void regulator_debug_print_enabled(struct regulator_dev *rdev)
 	int uV = -EPERM;
 
 	if (_regulator_is_enabled(rdev) <= 0)
-		return;
+		return 0;
 
 	uV = regulator_get_voltage_rdev(rdev);
 
@@ -646,6 +647,12 @@ static void regulator_debug_print_enabled(struct regulator_dev *rdev)
 			reg->voltage[PM_SUSPEND_ON].max_uV,
 			reg->uA_load);
 	}
+
+	/* check if the vote is on CX regulator */
+	if(!strcmp(rdev->desc->name, "pm8775_a_s1_level"))
+		return 1;
+
+	return 0;
 }
 
 static void regulator_debug_suspend_trace_probe(void *unused,
@@ -696,10 +703,89 @@ static int reg_debug_suspend_enable_set(void *data, u64 val)
 DEFINE_DEBUGFS_ATTRIBUTE(reg_debug_suspend_enable_fops,
 	reg_debug_suspend_enable_get, reg_debug_suspend_enable_set, "%llu\n");
 
+static int reg_debug_suspend(struct device *dev)
+{
+	struct debug_regulator *dreg;
+	int cnt = 0;
+
+	list_for_each_entry(dreg, &debug_reg_list, list)
+		cnt += regulator_debug_print_enabled(dreg->rdev);
+	if (cnt)
+		pr_err("Enabled CX clients count: %d\n", cnt);
+	else
+		pr_info("No CX client enabled.\n");
+
+	return cnt;
+}
+
+static int reg_debug_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops reg_debug_dev_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(reg_debug_suspend,
+			reg_debug_resume)
+};
+
+static struct platform_device reg_debug_device = {
+	.name = "reg_debug",
+	.id = -1,
+};
+
+static int reg_debug_driver_probe(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static int reg_debug_driver_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct platform_driver reg_debug_driver = {
+	.probe = reg_debug_driver_probe,
+	.remove = reg_debug_driver_remove,
+	.driver = {
+		.name = "reg_debug",
+		.pm = &reg_debug_dev_pm_ops,
+	},
+};
+
+static int reg_syscore_suspend(void)
+{
+	struct debug_regulator *dreg;
+	int cnt = 0;
+
+	list_for_each_entry(dreg, &debug_reg_list, list)
+		cnt += regulator_debug_print_enabled(dreg->rdev);
+	if (cnt)
+		pr_err("Enabled CX clients count: %d\n", cnt);
+	else
+		pr_info("No CX clients enabled.\n");
+
+	return cnt;
+}
+
+static struct syscore_ops reg_sleep_syscore_ops = {
+	.suspend = reg_syscore_suspend,
+};
+
 static int __init regulator_debug_init(void)
 {
 	static struct dentry *dir;
 	int ret;
+
+	ret = platform_device_register(&reg_debug_device);
+	if (ret)
+		return -ENODEV;
+
+	ret = platform_driver_register(&reg_debug_driver);
+	if (ret) {
+		pr_err("%s: fail to register reg_debug device driver\n",
+				__func__);
+		return -ENODEV;
+	}
 
 	dir = debugfs_lookup("regulator", NULL);
 	if (IS_ERR_OR_NULL(dir)) {
@@ -718,6 +804,8 @@ static int __init regulator_debug_init(void)
 		pr_err("%s: unable to create regulator debug_suspend debugfs directory, ret=%d\n",
 			__func__, ret);
 	}
+
+	register_syscore_ops(&reg_sleep_syscore_ops);
 
 	return 0;
 }
