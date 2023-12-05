@@ -11,6 +11,7 @@
 #include <linux/clk-provider.h>
 #include <linux/of.h>
 #include <linux/bitops.h>
+#include <linux/syscore_ops.h>
 #include <linux/clk/qcom.h>
 #include <linux/mfd/syscon.h>
 #include <trace/events/power.h>
@@ -806,7 +807,7 @@ static int clock_debug_print_clock(struct hw_debug_clk *dclk, struct seq_file *s
 	unsigned long clk_rate;
 	bool clk_prepared, clk_enabled;
 	int vdd_level = 0;
-	bool atomic;
+	bool atomic, active_only = false;
 
 	if (!dclk || !dclk->clk_hw) {
 		pr_err("clk param error\n");
@@ -832,6 +833,9 @@ static int clock_debug_print_clock(struct hw_debug_clk *dclk, struct seq_file *s
 		clk_hw = __clk_get_hw(clk);
 		if (!clk_hw)
 			break;
+
+		if (!strstr(clk_hw_get_name(clk_hw), "_ao"))
+			active_only = true;
 
 		clk_rate = clk_hw_get_rate(clk_hw);
 
@@ -883,6 +887,9 @@ static int clock_debug_print_clock(struct hw_debug_clk *dclk, struct seq_file *s
 	} while ((clk = clk_get_parent(clk_hw->clk)));
 
 	clock_debug_output_cont(s, "\n");
+
+	if (active_only)
+		return 0;
 
 	return 1;
 }
@@ -1078,10 +1085,90 @@ int clk_hw_debug_register(struct device *dev, struct clk_hw *clk_hw)
 }
 EXPORT_SYMBOL(clk_hw_debug_register);
 
+static int clock_debug_suspend(struct device *dev)
+{
+	struct hw_debug_clk *dclk;
+	int cnt = 0;
+
+	list_for_each_entry(dclk, &clk_hw_debug_list, list)
+		cnt += clock_debug_print_clock(dclk, NULL);
+
+	if (cnt)
+		pr_err("Enabled clock count: %d\n", cnt);
+	else
+		pr_info("No clocks enabled.\n");
+
+	return cnt;
+}
+
+static int clock_debug_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops clock_debug_dev_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(clock_debug_suspend,
+			clock_debug_resume)
+};
+
+static struct platform_device clock_debug_device = {
+	.name = "clock_debug",
+	.id = -1,
+};
+
+static int clock_debug_driver_probe(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static int clock_debug_driver_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct platform_driver clock_debug_driver = {
+	.probe = clock_debug_driver_probe,
+	.remove = clock_debug_driver_remove,
+	.driver = {
+		.name = "clock_debug",
+		.pm = &clock_debug_dev_pm_ops,
+	},
+};
+
+static int clk_syscore_suspend(void)
+{
+	struct hw_debug_clk *dclk;
+	int cnt = 0;
+
+	list_for_each_entry(dclk, &clk_hw_debug_list, list)
+		cnt += clock_debug_print_clock(dclk, NULL);
+	if (cnt)
+		pr_err("Enabled clock count: %d\n", cnt);
+	else
+		pr_info("No clocks enabled.\n");
+
+	return cnt;
+}
+
+static struct syscore_ops clk_sleep_syscore_ops = {
+	.suspend = clk_syscore_suspend,
+};
+
 int clk_debug_init(void)
 {
 	static struct dentry *rootdir;
 	int ret = 0;
+
+	ret = platform_device_register(&clock_debug_device);
+	if (ret)
+		return -ENODEV;
+
+	ret = platform_driver_register(&clock_debug_driver);
+	if (ret) {
+		pr_err("%s: fail to register clock_debug device driver\n",
+				__func__);
+		return -ENODEV;
+	}
 
 	rootdir = debugfs_lookup("clk", NULL);
 	if (IS_ERR_OR_NULL(rootdir)) {
@@ -1117,6 +1204,8 @@ int clk_debug_init(void)
 		pr_err("%s: unable to create clock debug_suspend_atomic debugfs directory, ret=%d\n",
 			__func__, ret);
 	}
+
+	register_syscore_ops(&clk_sleep_syscore_ops);
 
 	return ret;
 }
