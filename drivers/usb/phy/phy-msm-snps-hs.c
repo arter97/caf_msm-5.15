@@ -1217,7 +1217,7 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 							port_det_w.work);
 	unsigned long delay = 0;
 	int ret;
-	u32 status;
+	u32 status = 0;
 
 	dev_dbg(phy->phy.dev, "state: %d\n", phy->port_state);
 
