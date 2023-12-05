@@ -1172,7 +1172,7 @@ get_rproc_client:
 }
 
 static int adsp_pds_attach(struct device *dev, struct device **devs,
-			   char **pd_names)
+			   char **pd_names, size_t total_devs_size)
 {
 	size_t num_pds = 0;
 	int ret;
@@ -1188,7 +1188,7 @@ static int adsp_pds_attach(struct device *dev, struct device **devs,
 		return 1;
 	}
 
-	while (pd_names[num_pds])
+	while (pd_names[num_pds] && num_pds < total_devs_size)
 		num_pds++;
 
 	for (i = 0; i < num_pds; i++) {
@@ -1390,13 +1390,13 @@ static int adsp_probe(struct platform_device *pdev)
 	adsp_init_bus_scaling(adsp);
 
 	ret = adsp_pds_attach(&pdev->dev, adsp->active_pds,
-			      desc->active_pd_names);
+			      desc->active_pd_names, ARRAY_SIZE(adsp->active_pds));
 	if (ret < 0)
 		goto deinit_wakeup_source;
 	adsp->active_pd_count = ret;
 
 	ret = adsp_pds_attach(&pdev->dev, adsp->proxy_pds,
-			      desc->proxy_pd_names);
+			      desc->proxy_pd_names, ARRAY_SIZE(adsp->proxy_pds));
 	if (ret < 0)
 		goto detach_active_pds;
 	adsp->proxy_pd_count = ret;
