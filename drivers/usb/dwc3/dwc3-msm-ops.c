@@ -148,7 +148,6 @@ static int entry___dwc3_gadget_start(struct kretprobe_instance *ri,
 
 	return 0;
 }
-#ifdef CONFIG_USB_DWC3_MSM_DEBUG
 
 static int entry_trace_event_raw_event_dwc3_log_request(struct kretprobe_instance *ri,
 				   struct pt_regs *regs)
@@ -205,7 +204,6 @@ static int entry_trace_event_raw_event_dwc3_log_ep(struct kretprobe_instance *ri
 
 	return 0;
 }
-#endif
 
 #define ENTRY_EXIT(name) {\
 	.handler = exit_##name,\
@@ -229,13 +227,11 @@ static struct kretprobe dwc3_msm_probes[] = {
 	ENTRY_EXIT(dwc3_gadget_conndone_interrupt),
 	ENTRY_EXIT(dwc3_gadget_pullup),
 	ENTRY(__dwc3_gadget_start),
-#ifdef	CONFIG_USB_DWC3_MSM_DEBUG
 	ENTRY(trace_event_raw_event_dwc3_log_request),
 	ENTRY(trace_event_raw_event_dwc3_log_gadget_ep_cmd),
 	ENTRY(trace_event_raw_event_dwc3_log_trb),
 	ENTRY(trace_event_raw_event_dwc3_log_event),
 	ENTRY(trace_event_raw_event_dwc3_log_ep),
-#endif
 };
 
 
