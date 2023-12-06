@@ -187,9 +187,9 @@ void habmem_remove_export(struct export_desc *exp)
 	}
 
 	ctx = exp->ctx;
-	write_lock_bh(&ctx->exp_lock);
+	write_lock(&ctx->exp_lock);
 	ctx->export_total--;
-	write_unlock_bh(&ctx->exp_lock);
+	write_unlock(&ctx->exp_lock);
 	exp->ctx = NULL;
 
 	habmem_export_put(exp_super);
@@ -351,8 +351,6 @@ int hab_mem_export(struct uhab_context *ctx,
 	struct virtual_channel *vchan;
 	int page_count;
 	int compressed = 0;
-	struct export_desc *exp = NULL;
-	int irqs_disabled = irqs_disabled();
 
 	if (!ctx || !param || !param->sizebytes
 		|| ((param->sizebytes % PAGE_SIZE) != 0)

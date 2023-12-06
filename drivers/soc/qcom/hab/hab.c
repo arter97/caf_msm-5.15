@@ -121,7 +121,7 @@ struct uhab_context *hab_ctx_alloc(int kernel)
  * ->habmem_export_destroy->habmem_exp_release,
  * where dma_buf_unmap_attachment() & dma_buf_detach() might sleep.
  */
-static void hab_ctx_free_fn(struct uhab_context *ctx)
+void hab_ctx_free_fn(struct uhab_context *ctx)
 {
 	struct hab_export_ack_recvd *exp_ack_recvd, *expack_tmp;
 	struct hab_import_ack_recvd *imp_ack_recvd, *impack_tmp;
@@ -275,39 +275,9 @@ static void hab_ctx_free_fn(struct uhab_context *ctx)
 	kfree(ctx);
 }
 
-static void hab_ctx_free_work_fn(struct work_struct *work)
-{
-	struct uhab_context *ctx =
-		container_of(work, struct uhab_context, destroy_work);
-
-	hab_ctx_free_fn(ctx);
-}
-
-
-/*
- * ctx can only be freed after all the vchan releases the refcnt
- * and hab_release() is called.
- *
- * this function might be called in atomic context in following situations
- * (only applicable to Linux):
- * 1. physical_channel_rx_dispatch()->hab_msg_recv()->hab_vchan_put()
- * ->hab_ctx_put()->hab_ctx_free() in tasklet.
- * 2. hab client holds spin_lock and calls hab_vchan_close()->hab_vchan_put()
- * ->hab_vchan_free()->hab_ctx_free().
- */
 void hab_ctx_free(struct kref *ref)
 {
-	struct uhab_context *ctx =
-		container_of(ref, struct uhab_context, refcount);
-
-	if (likely(preemptible())) {
-		hab_ctx_free_fn(ctx);
-	} else {
-		pr_info("In non-preemptive context now, ctx owner %d\n",
-			ctx->owner);
-		INIT_WORK(&ctx->destroy_work, hab_ctx_free_work_fn);
-		schedule_work(&ctx->destroy_work);
-	}
+	hab_ctx_free_os(ref);
 }
 
 /*
@@ -898,19 +868,6 @@ void hab_send_unimport_msg(struct virtual_channel *vchan, uint32_t exp_id)
 		if (ret != 0)
 			pr_err("failed to send unimp msg %d, vcid %x\n",
 				ret, vchan->id);
-	}
-}
-
-void hab_send_unimport_msg(struct virtual_channel *vchan, uint32_t exp_id)
-{
-	struct hab_header header = HAB_HEADER_INITIALIZER;
-
-	if (vchan) {
-		HAB_HEADER_SET_SIZE(header, sizeof(uint32_t));
-		HAB_HEADER_SET_TYPE(header, HAB_PAYLOAD_TYPE_UNIMPORT);
-		HAB_HEADER_SET_ID(header, vchan->otherend_id);
-		HAB_HEADER_SET_SESSION_ID(header, vchan->session_id);
-		physical_channel_send(vchan->pchan, &header, &exp_id);
 	}
 }
 
