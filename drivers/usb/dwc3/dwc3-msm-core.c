@@ -7143,7 +7143,7 @@ static int dwc3_msm_pm_resume(struct device *dev)
 	atomic_set(&mdwc->pm_suspended, 0);
 
 	/* Let DWC3 core complete determine if resume is needed */
-	if (!mdwc->support_mp && !mdwc->in_host_mode)
+	if (!mdwc->in_host_mode)
 		return 0;
 
 	/* Resume dwc to avoid unclocked access by xhci_plat_resume */
