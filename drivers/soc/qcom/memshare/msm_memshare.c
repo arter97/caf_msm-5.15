@@ -325,6 +325,7 @@ static void handle_alloc_generic_req(struct qmi_handle *handle,
 	}
 
 	if (!memblock[index].allotted && alloc_req->num_bytes > 0) {
+
 		if (alloc_req->num_bytes > memblock[index].init_size)
 			alloc_req->num_bytes = memblock[index].init_size;
 
