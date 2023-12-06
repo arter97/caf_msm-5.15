@@ -312,10 +312,9 @@ static int hab_power_down_callback(
 	case SYS_HALT:
 	case SYS_POWER_OFF:
 		pr_debug("reboot called %ld\n", action);
-		hab_hypervisor_unregister(); /* only for single VM guest */
 		break;
 	}
-	pr_debug("reboot called %ld done\n", action);
+	pr_info("reboot called %ld done\n", action);
 	return NOTIFY_DONE;
 }
 
@@ -327,6 +326,7 @@ static void reclaim_cleanup(struct work_struct *reclaim_work)
 {
 	struct export_desc *exp = NULL, *exp_tmp = NULL;
 	struct export_desc_super *exp_super = NULL;
+	struct physical_channel *pchan = NULL;
 	LIST_HEAD(free_list);
 
 	pr_debug("reclaim worker called\n");
@@ -341,7 +341,11 @@ static void reclaim_cleanup(struct work_struct *reclaim_work)
 	list_for_each_entry_safe(exp, exp_tmp, &free_list, node) {
 		list_del(&exp->node);
 		exp_super = container_of(exp, struct export_desc_super, exp);
-		pr_info("cleanup exp id %d from %s\n", exp->export_id, exp->pchan->name);
+		pchan = exp->pchan;
+		spin_lock_bh(&pchan->expid_lock);
+		idr_remove(&pchan->expid_idr, exp->export_id);
+		spin_unlock_bh(&pchan->expid_lock);
+		pr_info("cleanup exp id %u from %s\n", exp->export_id, pchan->name);
 		habmem_export_put(exp_super);
 	}
 }
