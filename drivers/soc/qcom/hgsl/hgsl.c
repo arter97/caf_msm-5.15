@@ -24,7 +24,8 @@
 #include "hgsl.h"
 #include "hgsl_tcsr.h"
 #include "hgsl_memory.h"
-#include "hgsl_hyp.h"
+#include "hgsl_sysfs.h"
+#include "hgsl_debugfs.h"
 
 #define HGSL_DEVICE_NAME "hgsl"
 #define HGSL_DEV_NUM 1
@@ -2415,6 +2416,58 @@ out:
 	return ret;
 }
 
+static int hgsl_ioctl_mem_get_fd(struct file *filep, unsigned long arg)
+{
+	struct hgsl_priv *priv = filep->private_data;
+	struct hgsl_ioctl_mem_get_fd_params params;
+	struct gsl_memdesc_t memdesc;
+	struct hgsl_mem_node *node_found = NULL;
+	struct hgsl_mem_node *tmp = NULL;
+	int ret = 0;
+
+	if (copy_from_user(&params, USRPTR(arg), sizeof(params))) {
+		LOGE("failed to copy params from user");
+		ret = -EFAULT;
+		goto out;
+	}
+	if (copy_from_user(&memdesc, USRPTR(params.memdesc),
+		sizeof(memdesc))) {
+		LOGE("failed to copy memdesc from user");
+		ret = -EFAULT;
+		goto out;
+	}
+
+	mutex_lock(&priv->lock);
+	list_for_each_entry(tmp, &priv->mem_allocated, node) {
+		if ((tmp->memdesc.gpuaddr == memdesc.gpuaddr)
+			&& (tmp->memdesc.size == memdesc.size)) {
+			node_found = tmp;
+			break;
+		}
+	}
+	params.fd = -1;
+	if (node_found && node_found->dma_buf) {
+		get_dma_buf(node_found->dma_buf);
+		params.fd = dma_buf_fd(node_found->dma_buf, O_CLOEXEC);
+		if (params.fd < 0) {
+			LOGE("dma buf to fd failed");
+			ret = -EINVAL;
+			dma_buf_put(node_found->dma_buf);
+		} else if (copy_to_user(USRPTR(arg), &params, sizeof(params))) {
+			LOGE("copy_to_user failed");
+			ret = -EFAULT;
+		}
+	} else {
+		LOGE("can't find the memory 0x%llx, 0x%x, node_found:%p",
+			 memdesc.gpuaddr, memdesc.size, node_found);
+		ret = -EINVAL;
+	}
+	mutex_unlock(&priv->lock);
+
+out:
+	return ret;
+}
+
 static int hgsl_db_issueib_with_alloc_list(struct hgsl_priv *priv,
 	struct hgsl_ioctl_issueib_with_alloc_list_params *param,
 	struct gsl_command_buffer_object_t *ib,
@@ -3124,6 +3177,8 @@ static int hgsl_open(struct inode *inodep, struct file *filep)
 	priv->dev = hgsl;
 	filep->private_data = priv;
 
+	hgsl_sysfs_client_init(priv);
+	hgsl_debugfs_client_init(priv);
 out:
 	if (ret != 0)
 		kfree(priv);
@@ -3190,6 +3245,8 @@ static int _hgsl_release(struct hgsl_priv *priv)
 	struct qcom_hgsl *hgsl = priv->dev;
 	uint32_t i;
 	int ret;
+	hgsl_debugfs_client_release(priv);
+	hgsl_sysfs_client_release(priv);
 
 	read_lock(&hgsl->ctxt_lock);
 	for (i = 0; i < HGSL_CONTEXT_NUM; i++) {
@@ -3588,6 +3645,9 @@ static long hgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case HGSL_IOCTL_MEM_CACHE_OPERATION:
 		ret = hgsl_ioctl_mem_cache_operation(filep, arg);
 		break;
+	case HGSL_IOCTL_MEM_GET_FD:
+		ret = hgsl_ioctl_mem_get_fd(filep, arg);
+		break;
 	case HGSL_IOCTL_ISSUIB_WITH_ALLOC_LIST:
 		ret = hgsl_ioctl_issueib_with_alloc_list(filep, arg);
 		break;
@@ -3844,6 +3904,8 @@ static int qcom_hgsl_probe(struct platform_device *pdev)
 	hgsl_dev->default_iocoherency = of_property_read_bool(pdev->dev.of_node,
 							"default_iocoherency");
 	platform_set_drvdata(pdev, hgsl_dev);
+	hgsl_sysfs_init(pdev);
+	hgsl_debugfs_init(pdev);
 
 	return 0;
 
@@ -3857,6 +3919,8 @@ static int qcom_hgsl_remove(struct platform_device *pdev)
 	struct qcom_hgsl *hgsl = platform_get_drvdata(pdev);
 	struct hgsl_tcsr *tcsr_sender, *tcsr_receiver;
 	int i;
+	hgsl_debugfs_release(pdev);
+	hgsl_sysfs_release(pdev);
 
 	for (i = 0; i < HGSL_TCSR_NUM; i++) {
 		tcsr_sender = hgsl->tcsr[i][HGSL_TCSR_ROLE_SENDER];

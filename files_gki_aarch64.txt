@@ -1733,6 +1733,7 @@ drivers/usb/host/xhci-mem.c
 drivers/usb/host/xhci-mvebu.h
 drivers/usb/host/xhci-pci.c
 drivers/usb/host/xhci-pci.h
+drivers/usb/host/xhci-pci-renesas.c
 drivers/usb/host/xhci-plat.c
 drivers/usb/host/xhci-plat.h
 drivers/usb/host/xhci-rcar.h
@@ -3979,6 +3980,7 @@ include/trace/events/compaction.h
 include/trace/events/cpuhp.h
 include/trace/events/damon.h
 include/trace/events/devfreq.h
+include/trace/events/devlink.h
 include/trace/events/dma_fence.h
 include/trace/events/erofs.h
 include/trace/events/error_report.h
@@ -4817,6 +4819,7 @@ kernel/rcu/tree_stall.h
 kernel/rcu/update.c
 kernel/reboot.c
 kernel/regset.c
+kernel/relay.c
 kernel/resource.c
 kernel/sched/autogroup.h
 kernel/sched/clock.c
@@ -5369,6 +5372,7 @@ net/core/datagram.h
 net/core/dev_addr_lists.c
 net/core/dev.c
 net/core/dev_ioctl.c
+net/core/devlink.c
 net/core/dst.c
 net/core/dst_cache.c
 net/core/fib_notifier.c
@@ -5869,7 +5873,7 @@ net/xfrm/xfrm_hash.c
 net/xfrm/xfrm_hash.h
 net/xfrm/xfrm_inout.h
 net/xfrm/xfrm_input.c
-net/xfrm/xfrm_interface.c
+net/xfrm/xfrm_interface_core.c
 net/xfrm/xfrm_ipcomp.c
 net/xfrm/xfrm_output.c
 net/xfrm/xfrm_policy.c

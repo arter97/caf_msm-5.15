@@ -1198,9 +1198,13 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 	}
 
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
-		if (ret == 0)
-			mdwc->hw_eps[dep->number].flags |=
-						DWC3_MSM_HW_EP_TRANSFER_STARTED;
+		if (ret == 0) {
+			if (mdwc->hw_eps[dep->number].mode == USB_EP_GSI)
+				mdwc->hw_eps[dep->number].flags |=
+					DWC3_MSM_HW_EP_TRANSFER_STARTED;
+			else
+				dep->flags |= DWC3_EP_TRANSFER_STARTED;
+		}
 
 		if (ret != -ETIMEDOUT) {
 			u32 res_id;
@@ -6358,6 +6362,9 @@ static void dwc3_msm_update_interfaces(struct usb_device *udev)
 {
 	int i;
 
+	if (!udev->actconfig)
+		return;
+
 	for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
 		struct usb_interface *intf = udev->actconfig->interface[i];
 		struct usb_interface_descriptor *desc = NULL;
@@ -6789,8 +6796,8 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		/*
 		 * Check udc->driver to find out if we are bound to udc or not.
 		 */
-		if ((dwc->gadget->udc->driver) && (!dwc->softconnect) &&
-			(mdwc->force_disconnect)) {
+		if ((!dwc->softconnect) && (mdwc->force_disconnect)
+			&& (dwc->gadget->udc->driver)) {
 			dbg_event(0xFF, "Force Pullup", 0);
 			usb_gadget_connect(dwc->gadget);
 		}
@@ -7136,15 +7143,27 @@ static int dwc3_msm_pm_resume(struct device *dev)
 {
 	int ret;
 	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+	struct dwc3 *dwc = NULL;
+
+	if (mdwc->dwc3)
+		dwc = platform_get_drvdata(mdwc->dwc3);
 
 	dev_dbg(dev, "dwc3-msm PM resume\n");
 	dbg_event(0xFF, "PM Res", 0);
 
 	atomic_set(&mdwc->pm_suspended, 0);
 
-	/* Let DWC3 core complete determine if resume is needed */
-	if (!mdwc->in_host_mode)
-		return 0;
+	/*
+	 * The expectation is to let DWC3 core complete determine if resume is needed.
+	 * But if power.syscore flag is set, then complete() callbacks won't be called,
+	 * so kickstart otg_sm_work from here instead of relying on core_complete().
+	 */
+	if (!mdwc->in_host_mode) {
+		if (dwc && dwc->dev->power.syscore)
+			goto out;
+		else
+			return 0;
+	}
 
 	/* Resume dwc to avoid unclocked access by xhci_plat_resume */
 	ret = dwc3_msm_resume(mdwc);
@@ -7167,6 +7186,8 @@ static int dwc3_msm_pm_resume(struct device *dev)
 						USB_SPEED_SUPER);
 		}
 	}
+
+out:
 	/* kick in otg state machine */
 	queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
 

@@ -91,6 +91,7 @@ extern enum qcom_scm_custom_reset_type qcom_scm_custom_reset_type;
 #define QCOM_SCM_VMID_MSS_MSA    0xF
 #define QCOM_SCM_VMID_WLAN       0x18
 #define QCOM_SCM_VMID_WLAN_CE    0x19
+#define QCOM_SCM_VMID_CP_SPSS_SP 0x1A
 #define QCOM_SCM_PERM_READ       0x4
 #define QCOM_SCM_PERM_WRITE      0x2
 #define QCOM_SCM_PERM_EXEC       0x1
@@ -261,8 +262,21 @@ extern int qcom_scm_smmu_notify_secure_lut(u64 dev_id, bool secure);
 
 extern int qcom_scm_qdss_invoke(phys_addr_t addr, size_t size, u64 *out);
 
+extern int qcom_scm_camera_tz_get_status(uint32_t status_mask,
+			uint32_t *result);
+extern int qcom_scm_camera_tz_reg_read(uint32_t region, uint32_t offset,
+			uint32_t *data);
+extern int qcom_scm_camera_tz_reg_write(uint32_t region, uint32_t offset,
+			uint32_t data);
+extern int qcom_scm_camera_tz_reg_write_bulk(uint32_t region,
+			uint32_t num_registers, void *offsets,
+			void *data, uint32_t size);
+extern int qcom_scm_camera_tz_reset_hw_block(uint32_t status_mask,
+			uint32_t region, uint32_t *status);
 extern int qcom_scm_camera_protect_all(uint32_t protect, uint32_t param);
 extern int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask);
+extern int qcom_scm_camera_send_topology(uint32_t phy_sel, uint32_t topology);
+extern int qcom_scm_camera_reset_pipeLine(uint32_t phy_sel, uint32_t stream);
 
 extern int qcom_scm_tsens_reinit(int *tsens_ret);
 

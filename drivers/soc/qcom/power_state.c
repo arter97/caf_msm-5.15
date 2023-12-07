@@ -79,6 +79,9 @@ static struct subsystem_event_data event_data[] = {
 	{ "mpss", MDSP_BEFORE_POWERDOWN, MDSP_AFTER_POWERUP },
 	{ "lpass", ADSP_BEFORE_POWERDOWN, ADSP_AFTER_POWERUP },
 	{ "cdsp", CDSP_BEFORE_POWERDOWN, CDSP_AFTER_POWERUP },
+	{ "cdsp1", CDSP1_BEFORE_POWERDOWN, CDSP1_AFTER_POWERUP },
+	{ "gpdsp0", GPDSP0_BEFORE_POWERDOWN, GPDSP0_AFTER_POWERUP },
+	{ "gpdsp1", GPDSP1_BEFORE_POWERDOWN, GPDSP1_AFTER_POWERUP },
 };
 
 struct subsystem_data {
@@ -106,7 +109,7 @@ struct power_state_drvdata {
 	struct msm_rpm_kvp kvp_req;
 	struct syscore_ops ps_ops;
 	enum power_states current_state;
-	u32 subsys_count;
+	int subsys_count;
 	struct list_head sub_sys_list;
 	bool deep_sleep_allowed;
 };
@@ -578,13 +581,11 @@ static int power_state_probe(struct platform_device *pdev)
 	if (!drv->ps_ws)
 		goto remove_pm_notifier;
 
-	ret = power_state_dev_init(drv);
-	if (ret)
-		goto remove_ws;
-
 	INIT_LIST_HEAD(&drv->sub_sys_list);
 
 	drv->subsys_count = of_property_count_strings(dn, "qcom,subsys-name");
+	if (drv->subsys_count < 0)
+		drv->subsys_count = 0;
 	for (i = 0; i < drv->subsys_count; i++) {
 		of_property_read_string_index(dn, "qcom,subsys-name", i, &name);
 
@@ -632,6 +633,10 @@ static int power_state_probe(struct platform_device *pdev)
 		}
 	}
 
+	ret = power_state_dev_init(drv);
+	if (ret)
+		goto remove_ss;
+
 	drv->ps_ops.suspend = power_state_suspend;
 	drv->ps_ops.resume = power_state_resume;
 	register_syscore_ops(&drv->ps_ops);
@@ -645,7 +650,6 @@ remove_ss:
 		list_del(&ss_data->list);
 	}
 	INIT_LIST_HEAD(&drv->sub_sys_list);
-remove_ws:
 	wakeup_source_unregister(drv->ps_ws);
 remove_pm_notifier:
 	unregister_pm_notifier(&drv->ps_pm_nb);
