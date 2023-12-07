@@ -6158,7 +6158,6 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	struct property *status_prop;
 	struct property *speed_prop;
 	int mac2mac_speed;
-	int ret = 0;
 	static u32 speed;
 
 	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
@@ -6180,7 +6179,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!status_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
@@ -6201,7 +6200,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!speed_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			speed = cpu_to_be32(mparams.link_speed);
@@ -6227,7 +6226,7 @@ out:
 									    "fixed-link-needs-mdio-bus");
 
 	of_node_put(fixed_phy_node);
-	return ret;
+	return 0;
 }
 
 static int ethqos_update_phyid(struct device_node *np)
