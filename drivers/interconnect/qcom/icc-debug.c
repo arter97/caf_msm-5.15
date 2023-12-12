@@ -7,7 +7,10 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/syscore_ops.h>
 #include <trace/events/power.h>
+
+#include <dt-bindings/interconnect/qcom,icc.h>
 
 #include "../internal.h"
 
@@ -28,6 +31,7 @@ static int icc_print_enabled(void)
 	struct icc_node *n;
 	struct icc_req *r;
 	u32 avg_bw, peak_bw;
+	int cnt = 0;
 
 	pr_info(" node                                  tag          avg         peak\n");
 	pr_info("--------------------------------------------------------------------\n");
@@ -38,7 +42,6 @@ static int icc_print_enabled(void)
 		list_for_each_entry(n, &provider->nodes, node_list) {
 			if (!n->avg_bw && !n->peak_bw)
 				continue;
-
 			pr_info("%-42s %12u %12u\n",
 				n->name, n->avg_bw, n->peak_bw);
 
@@ -54,14 +57,17 @@ static int icc_print_enabled(void)
 					peak_bw = 0;
 				}
 
-				if (avg_bw || peak_bw)
+				if (avg_bw || peak_bw) {
 					pr_info("  %-27s %12u %12u %12u\n",
 						dev_name(r->dev), r->tag, avg_bw, peak_bw);
+					if (!(r->tag == QCOM_ICC_TAG_ACTIVE_ONLY))
+						cnt++;
+				}
 			}
 		}
 	}
 
-	return 0;
+	return cnt;
 }
 
 static int icc_debug_suspend_get(void *data, u64 *val)
@@ -143,10 +149,85 @@ int qcom_icc_debug_unregister(struct icc_provider *provider)
 }
 EXPORT_SYMBOL(qcom_icc_debug_unregister);
 
+static int icc_debug_suspend(struct device *dev)
+{
+	int cnt;
+
+	cnt = icc_print_enabled();
+	if (cnt)
+		pr_err("Enabled icc count: %d\n", cnt);
+	else
+		pr_info("No interconnects enabled.\n");
+
+	return cnt;
+}
+
+static int icc_debug_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops icc_debug_dev_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(icc_debug_suspend,
+			icc_debug_resume)
+};
+
+static struct platform_device icc_debug_device = {
+	.name = "icc_debug",
+	.id = -1,
+};
+
+static int icc_debug_driver_probe(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static int icc_debug_driver_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct platform_driver icc_debug_driver = {
+	.probe = icc_debug_driver_probe,
+	.remove = icc_debug_driver_remove,
+	.driver = {
+		.name = "icc_debug",
+		.pm = &icc_debug_dev_pm_ops,
+	},
+};
+
+static int icc_syscore_suspend(void)
+{
+	int cnt;
+
+	cnt = icc_print_enabled();
+	if (cnt)
+		pr_err("Enabled icc count: %d\n", cnt);
+	else
+		pr_info("No interconnects enabled.\n");
+
+	return cnt;
+}
+
+static struct syscore_ops icc_sleep_syscore_ops = {
+	.suspend = icc_syscore_suspend,
+};
+
 static int __init qcom_icc_debug_init(void)
 {
 	static struct dentry *dir;
 	int ret;
+
+	ret = platform_device_register(&icc_debug_device);
+	if (ret)
+		return -ENODEV;
+
+	ret = platform_driver_register(&icc_debug_driver);
+	if (ret) {
+		pr_err("%s: failed to register icc_debug device driver\n",
+				__func__);
+		return -ENODEV;
+	}
 
 	dir = debugfs_lookup("interconnect", NULL);
 	if (IS_ERR_OR_NULL(dir)) {
@@ -159,6 +240,9 @@ static int __init qcom_icc_debug_init(void)
 	dentry_suspend = debugfs_create_file_unsafe("debug_suspend",
 						    0644, dir, NULL,
 						    &icc_debug_suspend_fops);
+
+	register_syscore_ops(&icc_sleep_syscore_ops);
+
 	return 0;
 }
 module_init(qcom_icc_debug_init);
