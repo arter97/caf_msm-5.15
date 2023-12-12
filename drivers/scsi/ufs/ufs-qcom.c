@@ -2568,8 +2568,16 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 	case PRE_CHANGE:
 		if (on) {
 			err = ufs_qcom_set_bus_vote(hba, true);
-			if (ufs_qcom_is_link_hibern8(hba))
+			if (ufs_qcom_is_link_hibern8(hba)) {
+				err = ufs_qcom_enable_lane_clks(host);
+				if (err) {
+					ufs_qcom_msg(ERR, hba->dev,
+							"%s: enable lane clks failed, ret=%d\n",
+							__func__, err);
+					return err;
+				}
 				ufs_qcom_phy_set_src_clk_h8_exit(phy);
+			}
 
 			if (!host->ref_clki->enabled) {
 				err = clk_prepare_enable(host->ref_clki->clk);
@@ -2612,8 +2620,15 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		break;
 	case POST_CHANGE:
 		if (!on) {
-			if (ufs_qcom_is_link_hibern8(hba))
+			if (ufs_qcom_is_link_hibern8(hba)) {
 				ufs_qcom_phy_set_src_clk_h8_enter(phy);
+				/*
+				 * As XO is set to the source of lane clocks, hence
+				 * disable lane clocks to unvote on XO and allow XO shutdown
+				 */
+				ufs_qcom_disable_lane_clks(host);
+			}
+
 			err = ufs_qcom_set_bus_vote(hba, false);
 			if (err)
 				return err;
@@ -3648,6 +3663,39 @@ static void ufs_qcom_register_minidump(uintptr_t vaddr, u64 size,
 	}
 }
 
+static void ufs_qcom_set_rate_a(struct ufs_qcom_host *host)
+{
+	size_t len;
+	u8 *data;
+	struct nvmem_cell *nvmem_cell;
+
+	nvmem_cell = nvmem_cell_get(host->hba->dev, "ufs_dev");
+	if (IS_ERR(nvmem_cell)) {
+		dev_err(host->hba->dev, "(%s) Failed to get nvmem cell\n", __func__);
+		return;
+	}
+
+	data = (u8 *)nvmem_cell_read(nvmem_cell, &len);
+	if (IS_ERR(data)) {
+		dev_err(host->hba->dev, "(%s) Failed to read from nvmem\n", __func__);
+		goto cell_put;
+	}
+
+	/*
+	 * data equal to zero shows that ufs 2.x card is connected while
+	 * non-zero value shows that ufs 3.x card is connected
+	 */
+	if (*data) {
+		host->limit_rate = PA_HS_MODE_A;
+		dev_dbg(host->hba->dev, "UFS 3.x device is detected, Mode is set to RATE A\n");
+	}
+
+	kfree(data);
+
+cell_put:
+	nvmem_cell_put(nvmem_cell);
+}
+
 /**
  * ufs_qcom_init - bind phy with controller
  * @hba: host controller instance
@@ -4667,6 +4715,9 @@ static void ufs_qcom_parse_limits(struct ufs_qcom_host *host)
 	of_property_read_u32(np, "limit-rx-pwm-gear", &host->limit_rx_pwm_gear);
 	of_property_read_u32(np, "limit-rate", &host->limit_rate);
 	of_property_read_u32(np, "limit-phy-submode", &host->limit_phy_submode);
+
+	if (of_property_read_bool(np, "limit-rate-ufs3"))
+		ufs_qcom_set_rate_a(host);
 }
 
 /*
