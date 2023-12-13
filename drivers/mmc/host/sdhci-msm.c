@@ -4944,6 +4944,9 @@ static void mmc_cache_card(void *unused, struct mmc_host *mmc)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
+	if (msm_host->is_partial_init_broken)
+		return;
+
 	memcpy(&msm_host->cached_ios, &mmc->ios, sizeof(msm_host->cached_ios));
 	mmc_cache_card_ext_csd(mmc);
 
@@ -4960,7 +4963,15 @@ static int mmc_can_sleep(struct mmc_card *card)
 static void partial_init(void *unused, struct mmc_host *host, bool *partial_init)
 {
 	int err;
+	struct sdhci_host *shost = mmc_priv(host);
 	bool deepsleep = pm_suspend_via_firmware();
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(shost);
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
+
+	if (msm_host->is_partial_init_broken) {
+		*partial_init = false;
+		return;
+	}
 
 	if (deepsleep) {
 		host->ops->hw_reset(host);
@@ -5221,6 +5232,10 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 
 	if (of_property_read_bool(node, "is_rumi"))
 		sdhci_msm_set_rumi_bus_mode(host);
+
+	msm_host->is_partial_init_broken =
+		of_property_read_bool(dev->of_node,
+			"qcom,no-partial-init");
 
 	host_version = readw_relaxed((host->ioaddr + SDHCI_HOST_VERSION));
 	dev_dbg(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",
