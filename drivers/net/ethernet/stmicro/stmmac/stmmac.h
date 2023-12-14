@@ -30,6 +30,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <linux/icmp.h>
+#include <linux/gunyah/gh_rm_drv.h>
 
 struct stmmac_resources {
 	void __iomem *addr;
@@ -322,6 +323,7 @@ struct stmmac_priv {
 	spinlock_t ptp_lock;
 	/* Protects auxiliary snapshot registers from concurrent access. */
 	struct mutex aux_ts_lock;
+	wait_queue_head_t tstamp_busy_wait;
 
 	void __iomem *mmcaddr;
 	void __iomem *ptpaddr;
@@ -383,6 +385,7 @@ struct stmmac_priv {
 	bool wol_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
+	gh_vmid_t v2x_vm_id;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 };
 

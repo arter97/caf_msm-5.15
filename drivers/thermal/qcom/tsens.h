@@ -625,6 +625,8 @@ struct tsens_priv {
 	int				crit_irq;
 	int				cold_irq;
 
+	bool			tm_disable_on_suspend;
+
 	struct dentry			*debug_root;
 	struct dentry			*debug;
 	void				*ipc_log;

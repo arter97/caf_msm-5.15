@@ -38,7 +38,8 @@
 #define DM_VERITY_OPTS_MAX		(3 + DM_VERITY_OPTS_FEC + \
 					 DM_VERITY_ROOT_HASH_VERIFICATION_OPTS)
 
-#define DM_DEFAULT_MAX_PROBE_DELAY 1
+#define DM_DEFAULT_MAX_PROBE_DELAY_SEC 1
+#define DM_DEFAULT_PROBE_FACTOR 5
 
 static unsigned dm_verity_prefetch_cluster = DM_VERITY_DEFAULT_PREFETCH_SIZE;
 
@@ -485,7 +486,7 @@ static int verity_verify_io(struct dm_verity_io *io)
 		sector_t cur_block = io->block + b;
 		struct ahash_request *req = verity_io_hash_req(v, io);
 
-		if (v->validated_blocks &&
+		if (v->validated_blocks && bio->bi_status == BLK_STS_OK &&
 		    likely(test_bit(cur_block, v->validated_blocks))) {
 			verity_bv_skip_block(v, io, &io->iter);
 			continue;
@@ -1063,8 +1064,7 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	sector_t hash_position;
 	char dummy;
 	char *root_hash_digest_to_validate;
-
-	int loopcntr = DM_DEFAULT_MAX_PROBE_DELAY * 200;
+	int loopcntr = DM_DEFAULT_MAX_PROBE_DELAY_SEC * 1000 / DM_DEFAULT_PROBE_FACTOR;
 	v = kzalloc(sizeof(struct dm_verity), GFP_KERNEL);
 	if (!v) {
 		ti->error = "Cannot allocate verity structure";
@@ -1096,7 +1096,8 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		goto bad;
 	}
 	v->version = num;
-	/* Some time we see race condition of early_device probe to
+	/*
+	 * Some time we see race condition of early_device probe to
 	 * dm_get_device() leading to failure leading to  mount
 	 * failure of data device specaially when data device is
 	 * eMMC devices (with rootfs)

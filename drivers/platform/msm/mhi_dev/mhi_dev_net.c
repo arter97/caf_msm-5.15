@@ -39,7 +39,7 @@
 #define MHI_DEFAULT_NUM_OF_NW_CLIENTS 1
 #define MAX_MHI_INSTANCES      17
 #define MHI_PF_ID              0
-#define MAX_NUM_OF_CLIENTS     15
+#define MAX_NUM_OF_CLIENTS     16
 
 enum mhi_dev_net_dbg_lvl {
 	MHI_VERBOSE = 0x1,
@@ -218,6 +218,16 @@ static struct mhi_dev_net_chan_attr mhi_chan_attr_table_netdev[] = {
 	},
 	{
 		MHI_CLIENT_IP_SW_18_IN,
+		TRB_MAX_DATA_SIZE,
+		MHI_DIR_IN,
+	},
+	{
+		MHI_CLIENT_IP_SW_19_OUT,
+		TRB_MAX_DATA_SIZE,
+		MHI_DIR_OUT,
+	},
+	{
+		MHI_CLIENT_IP_SW_19_IN,
 		TRB_MAX_DATA_SIZE,
 		MHI_DIR_IN,
 	},
@@ -981,6 +991,11 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 						sizeof(struct mhi_dev_net_client *), GFP_KERNEL);
 	char mhi_net_vf_ipc_name[12] = "mhi-net-nn";
 
+	if (!mhi_net_client) {
+		mhi_dev_net_log(vf_id, MHI_ERROR, "Memory alloc failed for mhi_net_client\n");
+		return -ENOMEM;
+	}
+
 	if (!mhi_net_ctxt.client_handles) {
 		/*
 		 * 2D array to hold handles of all net dev clients
@@ -1161,6 +1176,11 @@ static int mhi_dev_net_probe(struct platform_device *pdev)
 		} else {
 			mhi_net_ctxt.eth_iface_out_ch =
 				kcalloc(num_mhi_eth_chan, sizeof(uint32_t), GFP_KERNEL);
+			if (!mhi_net_ctxt.eth_iface_out_ch) {
+				mhi_dev_net_log(MHI_PF_ID, MHI_MSG_ERROR,
+						"Memory alloc failed for mhi_net_ctxt.eth_iface_out_ch\n");
+				return -ENOMEM;
+			}
 
 			ret = of_property_read_u32_array((&pdev->dev)->of_node,
 					"qcom,mhi-ethernet-interface-ch-list",

@@ -370,6 +370,21 @@ enum request_irq_err {
 enum ipa_queue_type {
 	IPA_QUEUE_BE = 0,
 };
+
+enum ipa_mul_queue_type {
+	IPA_MUL_QUEUE_BE0 = 0,
+	IPA_MUL_QUEUE_BE1 = 1,
+	IPA_MUL_QUEUE_BE2 = 2,
+	IPA_MUL_QUEUE_BE3 = 3,
+};
+
+enum ipa_mul_channel_type {
+	IPA_MUL_CHANNEL_BE0 = 0,
+	IPA_MUL_CHANNEL_BE1 = 1,
+	IPA_MUL_CHANNEL_BE2 = 2,
+	IPA_MUL_CHANNEL_BE3 = 3,
+};
+
 #endif
 
 /* EEE and LPI defines */
@@ -566,7 +581,6 @@ struct mac_device_info {
 	unsigned int xlgmac;
 	unsigned int num_vlan;
 	u32 vlan_filter[32];
-	unsigned int promisc;
 	bool vlan_fail_q_en;
 	u8 vlan_fail_q;
 	bool crc_strip_en;

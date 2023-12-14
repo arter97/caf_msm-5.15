@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018 - 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_FMWK_H_
@@ -396,6 +396,11 @@ struct ipa_eth_data {
 
 	bool (*ipa_eth_client_exist)(
 		enum ipa_eth_client_type eth_client_type, int inst_id);
+
+	int (*ipa_eth_get_config_type)(
+		enum ipa_eth_client_type client_type,
+		int inst_id,
+		struct ipa_eth_config *eth_config);
 };
 
 #if IS_ENABLED(CONFIG_IPA3)

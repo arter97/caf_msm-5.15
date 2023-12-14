@@ -2138,6 +2138,7 @@ static const struct adsp_data lemans_adsp_resource = {
 	.sysmon_name = "adsp",
 	.qmp_name = "adsp",
 	.ssctl_id = 0x14,
+	.minidump_id = 5,
 };
 
 static const struct adsp_data lemans_cdsp_resource = {
@@ -2151,6 +2152,7 @@ static const struct adsp_data lemans_cdsp_resource = {
 	.sysmon_name = "cdsp",
 	.qmp_name = "cdsp",
 	.ssctl_id = 0x17,
+	.minidump_id = 19,
 };
 
 static const struct adsp_data lemans_cdsp1_resource = {
@@ -2164,6 +2166,7 @@ static const struct adsp_data lemans_cdsp1_resource = {
 	.sysmon_name = "cdsp1",
 	.qmp_name = "cdsp1",
 	.ssctl_id = 0x20,
+	.minidump_id = 20,
 };
 
 static const struct adsp_data lemans_gpdsp0_resource = {
@@ -2177,6 +2180,7 @@ static const struct adsp_data lemans_gpdsp0_resource = {
 	.sysmon_name = "gpdsp0",
 	.qmp_name = "gpdsp0",
 	.ssctl_id = 0x21,
+	.minidump_id = 21,
 };
 
 static const struct adsp_data lemans_gpdsp1_resource = {
@@ -2190,6 +2194,7 @@ static const struct adsp_data lemans_gpdsp1_resource = {
 	.sysmon_name = "gpdsp1",
 	.qmp_name = "gpdsp1",
 	.ssctl_id = 0x22,
+	.minidump_id = 22,
 };
 
 static const struct adsp_data kona_adsp_resource = {
@@ -2270,7 +2275,7 @@ static const struct adsp_data qcs405_modem_resource = {
 	.pas_id = 6,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
-	.ssr_name = "wcnss",
+	.ssr_name = "mpss",
 	.sysmon_name = "wlan",
 	.qmp_name = "wlan",
 	.ssctl_id = 0x12,

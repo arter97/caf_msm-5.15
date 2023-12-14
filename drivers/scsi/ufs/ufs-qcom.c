@@ -3913,9 +3913,13 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 					 &host->vdd_hba_reg_nb);
 
 	/* update phy revision information before calling phy_init() */
-
-	ufs_qcom_phy_save_controller_version(host->generic_phy,
+	err = ufs_qcom_phy_save_controller_version(host->generic_phy,
 			host->hw_ver.major, host->hw_ver.minor, host->hw_ver.step);
+
+	if (err == -EPROBE_DEFER) {
+		pr_err("%s: phy device probe is not completed yet\n", __func__);
+		goto out_variant_clear;
+	}
 
 	err = ufs_qcom_parse_reg_info(host, "qcom,vddp-ref-clk",
 				      &host->vddp_ref_clk);
@@ -5573,6 +5577,28 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/**
+ * ufs_qcom_enable_vccq_shutdown - read from DTS whether vccq_shutdown
+ * should be enabled for puting additional vote on VCCQ LDO during shutdown.
+ * @hba: per adapter instance
+ */
+
+static void ufs_qcom_enable_vccq_shutdown(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int err;
+
+	err = ufs_qcom_parse_reg_info(host, "qcom,vccq-shutdown",
+			&host->vccq_shutdown);
+
+	if (host->vccq_shutdown) {
+		err = ufs_qcom_enable_vreg(hba->dev, host->vccq_shutdown);
+		if (err)
+			ufs_qcom_msg(ERR, hba->dev, "%s: failed enable vccq_shutdown err=%d\n",
+						__func__, err);
+	}
+}
+
 static void ufs_qcom_shutdown(struct platform_device *pdev)
 {
 	struct ufs_hba *hba;
@@ -5589,6 +5615,10 @@ static void ufs_qcom_shutdown(struct platform_device *pdev)
 	ufs_qcom_log_str(host, "0xdead\n");
 	if (host->dbg_en)
 		trace_ufs_qcom_shutdown(dev_name(hba->dev));
+
+	/* put an additional vote on UFS VCCQ LDO if required */
+	ufs_qcom_enable_vccq_shutdown(hba);
+
 	ufshcd_pltfrm_shutdown(pdev);
 
 	/* UFS_RESET TLMM register cannot reset to POR value '1' after warm

@@ -1291,6 +1291,15 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	int phy_data = 0;
 	int ret = 0;
 
+	/* 2500BaseX fallback to SGMII to bring up link at lower speed */
+	if (interface == PHY_INTERFACE_MODE_2500BASEX && speed < SPEED_2500) {
+		priv->plat->interface = PHY_INTERFACE_MODE_SGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_SGMII;
+	} else {
+		priv->plat->interface = interface;
+		priv->plat->phy_interface = interface;
+	}
+
 	if (priv->plat->serdes_powersaving)
 		priv->plat->serdes_powersaving(to_net_dev(config->dev),
 							  priv->plat->bsp_priv, true, true);
@@ -1356,18 +1365,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		default:
 			return;
 		}
-	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
-		switch (speed) {
-		case SPEED_2500:
-			ctrl |= priv->hw->link.xgmii.speed2500;
-			break;
-		default:
-			return;
-		}
 	} else {
 		switch (speed) {
 		case SPEED_2500:
-			ctrl |= priv->hw->link.speed2500;
+			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
+				ctrl |= priv->hw->link.xgmii.speed2500;
+			else
+				ctrl |= priv->hw->link.speed2500;
 			break;
 		case SPEED_1000:
 			ctrl |= priv->hw->link.speed1000;
@@ -2787,6 +2791,9 @@ static void stmmac_dma_operation_mode(struct stmmac_priv *priv)
 
 	for (chan = 0; chan < tx_channels_count; chan++) {
 		qmode = priv->plat->tx_queues_cfg[chan].mode_to_use;
+
+		if (priv->plat->tx_queues_cfg[chan].fifo_sz_bytes > 0)
+			txfifosz = priv->plat->tx_queues_cfg[chan].fifo_sz_bytes;
 
 		stmmac_dma_tx_mode(priv, priv->ioaddr, txmode, chan,
 				txfifosz, qmode);
@@ -7266,6 +7273,10 @@ static int stmmac_vlan_rx_add_vid(struct net_device *ndev, __be16 proto, u16 vid
 	bool is_double = false;
 	int ret;
 
+	ret = pm_runtime_resume_and_get(priv->device);
+	if (ret < 0)
+		return ret;
+
 	if (be16_to_cpu(proto) == ETH_P_8021AD)
 		is_double = true;
 
@@ -7273,16 +7284,18 @@ static int stmmac_vlan_rx_add_vid(struct net_device *ndev, __be16 proto, u16 vid
 	ret = stmmac_vlan_update(priv, is_double);
 	if (ret) {
 		clear_bit(vid, priv->active_vlans);
-		return ret;
+		goto err_pm_put;
 	}
 
 	if (priv->hw->num_vlan) {
 		ret = stmmac_add_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
 		if (ret)
-			return ret;
+			goto err_pm_put;
 	}
+err_pm_put:
+	pm_runtime_put(priv->device);
 
-	return 0;
+	return ret;
 }
 
 static int stmmac_vlan_rx_kill_vid(struct net_device *ndev, __be16 proto, u16 vid)
@@ -7899,7 +7912,7 @@ static void stmmac_napi_del(struct net_device *dev)
 int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
-	int ret = 0;
+	int ret = 0, i;
 
 	if (netif_running(dev))
 		stmmac_release(dev);
@@ -7908,6 +7921,10 @@ int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt)
 
 	priv->plat->rx_queues_to_use = rx_cnt;
 	priv->plat->tx_queues_to_use = tx_cnt;
+	if (!netif_is_rxfh_configured(dev))
+		for (i = 0; i < ARRAY_SIZE(priv->rss.table); i++)
+			priv->rss.table[i] = ethtool_rxfh_indir_default(i,
+									rx_cnt);
 
 	stmmac_napi_add(dev);
 

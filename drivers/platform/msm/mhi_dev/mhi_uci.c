@@ -194,7 +194,9 @@ static const struct chan_attr mhi_chan_attr_table[] = {
 		NULL,
 		NULL,
 		false,
-		true
+		true,
+		false,
+		50
 	},
 	{
 		MHI_CLIENT_QMI_OUT,
@@ -1538,9 +1540,15 @@ static ssize_t mhi_uci_client_write_iter(struct kiocb *iocb,
 	unsigned long memcpy_result;
 	int rc;
 	struct file *file = iocb->ki_filp;
-	ssize_t count = iov_iter_count(buf);
+	ssize_t count;
 
-	if (!file || !buf || !count || !file->private_data) {
+	if (!buf) {
+		uci_log(UCI_DBG_DBG, "Invalid access to write-iter, buf is NULL\n");
+		return -EINVAL;
+	}
+	count = iov_iter_count(buf);
+
+	if (!file || !count || !file->private_data) {
 		uci_log(UCI_DBG_DBG, "Invalid access to write-iter\n");
 		return -EINVAL;
 	}
