@@ -5776,9 +5776,9 @@ static const struct file_operations emac_rec_fops = {
 	.poll = ethqos_poll_rec_dev_emac,
 };
 
-static int ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
-					      struct cdev **emac_cdev,
-					      struct class **emac_class)
+static void ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
+					       struct cdev **emac_cdev,
+					       struct class **emac_class)
 {
 	if (!*emac_class) {
 		ETHQOSERR("failed to destroy device and class\n");
@@ -5800,9 +5800,11 @@ static int ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
 	cdev_del(*emac_cdev);
 	unregister_chrdev_region(*emac_dev_t, 1);
 
+	return;
+
 fail_to_del_node:
 	ETHQOSERR("failed to delete chrdev node\n");
-	return -EINVAL;
+	return;
 }
 
 static int ethqos_create_emac_rec_device_node(dev_t *emac_dev_t,
@@ -7532,11 +7534,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	}
 
 	if (plat_dat->mac_err_rec) {
-		ret = ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
-							 &ethqos->emac_rec_cdev,
-							 &ethqos->emac_rec_class);
-		if (ret == -EINVAL)
-			return ret;
+		ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
+						   &ethqos->emac_rec_cdev,
+						   &ethqos->emac_rec_class);
 	}
 
 	debugfs_remove_recursive(ethqos->debugfs_dir);
