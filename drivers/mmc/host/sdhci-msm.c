@@ -4130,6 +4130,9 @@ static inline void sdhci_msm_get_of_property(struct platform_device *pdev,
 		msm_host->ddr_config = DDR_CONFIG_POR_VAL;
 
 	of_property_read_u32(node, "qcom,dll-config", &msm_host->dll_config);
+
+	if (of_device_is_compatible(node, "qcom,msm8916-sdhci"))
+		host->quirks2 |= SDHCI_QUIRK2_BROKEN_64_BIT_DMA;
 }
 
 static void sdhci_msm_clkgate_bus_delayed_work(struct work_struct *work)
@@ -4431,9 +4434,9 @@ static void sdhci_msm_qos_init(struct sdhci_msm_host *msm_host)
 	struct sdhci_msm_qos_req *qr;
 	struct qos_cpu_group *qcg;
 
-	cpumask_t silver_mask;
-	cpumask_t gold_mask;
-	cpumask_t gold_prime_mask;
+	cpumask_t silver_mask = CPU_MASK_NONE;
+	cpumask_t gold_mask = CPU_MASK_NONE;
+	cpumask_t gold_prime_mask = CPU_MASK_NONE;
 	int cid_cpu[MAX_NUM_CLUSTERS] = {-1, -1, -1};
 	int cid = -1;
 	int prev_cid = -1;

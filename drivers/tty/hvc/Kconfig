@@ -21,6 +21,17 @@ config HVC_CONSOLE
 	  console. This driver allows each pSeries partition to have a console
 	  which is accessed via the HMC.
 
+config HVC_ALLOC_TTY_ADAPTERS
+	int "Number of allocated tty adapters"
+	depends on HVC_DRIVER
+	default 64
+	range 1 64
+	help
+	  The Linux TTY code does not support dynamic addition of tty derived devices
+	  so we need to know how many tty devices we might need when space is allocated
+	  for the tty device.  Since this driver supports hotplug of vty adapters we
+	  need to make sure we have enough allocated.
+
 config HVC_OLD_HVSI
 	bool "Old driver for pSeries serial port (/dev/hvsi*)"
 	depends on HVC_CONSOLE

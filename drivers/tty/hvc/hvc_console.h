@@ -30,7 +30,7 @@
  * for the tty device.  Since this driver supports hotplug of vty adapters we
  * need to make sure we have enough allocated.
  */
-#define HVC_ALLOC_TTY_ADAPTERS	64
+#define HVC_ALLOC_TTY_ADAPTERS	CONFIG_HVC_ALLOC_TTY_ADAPTERS
 
 struct hvc_struct {
 	struct tty_port port;

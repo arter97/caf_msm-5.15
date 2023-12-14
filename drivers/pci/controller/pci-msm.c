@@ -5629,8 +5629,9 @@ int msm_pcie_enumerate(u32 rc_idx)
 		}
 	} else {
 		bridge = dev->bridge;
-		msm_msi_config_access(dev_get_msi_domain(&dev->dev->dev),
-			true);
+		if (!dev->lpi_enable)
+			msm_msi_config_access(dev_get_msi_domain(&dev->dev->dev),
+					true);
 	}
 
 	bridge->sysdata = dev;
@@ -5708,11 +5709,19 @@ int msm_pcie_deenumerate(u32 rc_idx)
 	pci_stop_root_bus(bridge->bus);
 	pci_remove_root_bus(bridge->bus);
 
+	if (!dev->power_on || dev->suspending || dev->user_suspend)
+		goto out;
+
+	if (dev->link_status == MSM_PCIE_LINK_DOWN)
+		goto link_down;
+
 	/* Mask all the interrupts */
 	msm_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_MASK, 0);
 
+link_down:
 	msm_pcie_disable(dev);
 
+out:
 	dev->enumerated = false;
 
 	mutex_unlock(&dev->enumerate_lock);
@@ -6534,7 +6543,7 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 	int i;
 	struct msm_pcie_dev_t *dev = data;
 	struct pci_dev *rp = dev->dev;
-	int aer = rp->aer_cap;
+	int aer;
 	unsigned long irqsave_flags;
 	u32 status = 0, status2 = 0;
 	irqreturn_t ret = IRQ_HANDLED;
@@ -6581,6 +6590,13 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 					"PCIe: RC%d: AER event idx %d.\n",
 					dev->rc_idx, i);
 
+				if (!rp) {
+					PCIE_DBG2(dev, "PCIe: RC%d pci_dev is not allocated.\n",
+										dev->rc_idx);
+					goto done;
+				}
+
+				aer = rp->aer_cap;
 				pci_read_config_dword(rp,
 				aer + PCI_ERR_ROOT_STATUS, &e_src.status);
 				if (!(e_src.status &
@@ -7650,9 +7666,8 @@ static int msm_pcie_remove(struct platform_device *pdev)
 		pci_load_and_free_saved_state(msm_pcie_dev[rc_idx].dev,
 				      &msm_pcie_dev[rc_idx].default_state);
 
+	msm_pcie_deenumerate(rc_idx);
 	msm_pcie_irq_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_vreg_deinit(&msm_pcie_dev[rc_idx]);
-	msm_pcie_clk_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_gpio_deinit(&msm_pcie_dev[rc_idx]);
 	msm_pcie_release_resources(&msm_pcie_dev[rc_idx]);
 
@@ -7676,6 +7691,18 @@ out:
 
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_PCIE_SHUTDOWN_CALLBACK)
+static void msm_pcie_shutdown(struct platform_device *pdev)
+{
+	msm_pcie_remove(pdev);
+}
+
+#else
+static inline void msm_pcie_shutdown(struct platform_device *pdev)
+{
+}
+#endif
 
 static int msm_pcie_link_retrain(struct msm_pcie_dev_t *pcie_dev,
 				struct pci_dev *pci_dev)
@@ -8381,6 +8408,7 @@ static const struct of_device_id msm_pcie_match[] = {
 static struct platform_driver msm_pcie_driver = {
 	.probe	= msm_pcie_probe,
 	.remove	= msm_pcie_remove,
+	.shutdown = msm_pcie_shutdown,
 	.driver	= {
 		.name		= "pci-msm",
 		.pm = &qcom_pcie_pm_ops,

@@ -1084,6 +1084,45 @@ static int ksz9131_config_rgmii_delay(struct phy_device *phydev)
 			      txcdll_val);
 }
 
+static int ksz9131_loopback(struct phy_device *phydev, bool enable)
+{
+	if (enable) {
+		u16 val, ctl = BMCR_LOOPBACK;
+		int ret;
+
+		phy_write_mmd(phydev, 0x1C, 0x15, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x16, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x18, 0xEEEE);
+		phy_write_mmd(phydev, 0x1C, 0x1B, 0xEEEE);
+		if (phydev->speed == SPEED_1000) {
+			val = CTL1000_ENABLE_MASTER | CTL1000_AS_MASTER;
+			phy_modify(phydev, MII_CTRL1000, ~val,
+				   CTL1000_ENABLE_MASTER);
+		}
+		if (phydev->speed == SPEED_1000)
+			ctl |= BMCR_SPEED1000;
+		else if (phydev->speed == SPEED_100)
+			ctl |= BMCR_SPEED100;
+
+		if (phydev->duplex == DUPLEX_FULL)
+			ctl |= BMCR_FULLDPLX;
+
+		phy_modify(phydev, MII_BMCR, ~0, ctl);
+
+		ret = phy_read_poll_timeout(phydev, MII_BMSR, val,
+					    val & BMSR_LSTATUS,
+					    5000, 500000, true);
+		if (ret)
+			return ret;
+	} else {
+		phy_modify(phydev, MII_BMCR, BMCR_LOOPBACK, 0);
+
+		phy_config_aneg(phydev);
+	}
+
+	return 0;
+}
+
 static int ksz9131_config_init(struct phy_device *phydev)
 {
 	struct device_node *of_node;
@@ -1910,6 +1949,7 @@ static struct phy_driver ksphy_driver[] = {
 	.get_stats	= kszphy_get_stats,
 	.suspend	= kszphy_suspend,
 	.resume		= kszphy_resume,
+	.set_loopback	= ksz9131_loopback,
 }, {
 	.phy_id		= PHY_ID_KSZ8873MLL,
 	.phy_id_mask	= MICREL_PHY_ID_MASK,

@@ -756,6 +756,9 @@ static int qcom_glink_rx_done(struct rpmsg_endpoint *ept, void *data)
 	list_for_each_entry_safe(intent, tmp, &channel->defer_intents, node) {
 		if (intent->data == data) {
 			list_del(&intent->node);
+			if (!intent->reuse)
+				idr_remove(&channel->liids, intent->id);
+
 			spin_unlock_irqrestore(&channel->intent_lock, flags);
 
 			qcom_glink_send_rx_done(glink, channel, intent, true);
@@ -1479,12 +1482,11 @@ static int qcom_glink_native_rx(struct qcom_glink *glink, int iterations)
 	int ret = 0;
 	int i;
 
-	if (should_wake) {
+	if (should_wake && !glink->intentless) {
 		glink_resume_pkt = true;
 		should_wake = false;
+		log_abnormal_wakeup_reason("IRQ %d, %s", glink->irq, glink->irqname);
 		pm_system_wakeup();
-		if (!glink->intentless)
-			log_abnormal_wakeup_reason("IRQ %d, %s", glink->irq, glink->irqname);
 	}
 
 	spin_lock_irqsave(&glink->irq_lock, flags);

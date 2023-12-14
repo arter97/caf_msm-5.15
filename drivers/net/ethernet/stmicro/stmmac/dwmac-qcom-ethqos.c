@@ -42,6 +42,12 @@
 #include "stmmac_ptp.h"
 #include "dwmac-qcom-serdes.h"
 
+#include <linux/kernel.h>
+#include <linux/netlink.h>
+#include <net/netlink.h>
+#include <net/net_namespace.h>
+
+#define MYGRP 1
 #define PHY_RGMII_LOOPBACK_1000 0x4140
 #define PHY_RGMII_LOOPBACK_100 0x6100
 #define PHY_RGMII_LOOPBACK_10 0x4100
@@ -60,6 +66,7 @@ static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, int config);
 static void __iomem *tlmm_central_base_addr;
 static char buf[2000];
+static struct nlmsghdr *nlh;
 
 static char err_names[10][14] = {"PHY_RW_ERR",
 	"PHY_DET_ERR",
@@ -3727,38 +3734,18 @@ static void ethqos_mac_loopback(struct qcom_ethqos *ethqos, int mode)
 	}
 }
 
-static int phy_rgmii_digital_loopback_mmd_config(struct phy_device *phydev, int config, int *backup)
-{
-	ETHQOSINFO("Configure additional register for KZX9131\n");
-	if (config == 1) {
-		backup[0] = phy_read_mmd(phydev, 0x1C, 0x15);
-		backup[1] = phy_read_mmd(phydev, 0x1C, 0x16);
-		backup[2] = phy_read_mmd(phydev, 0x1C, 0x18);
-		backup[3] = phy_read_mmd(phydev, 0x1C, 0x1B);
-
-		phy_write_mmd(phydev, 0x1C, 0x15, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x16, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x18, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x1B, 0xEEEE);
-	} else if (config == 0) {
-		phy_write_mmd(phydev, 0x1C, 0x15, backup[0]);
-		phy_write_mmd(phydev, 0x1C, 0x16, backup[1]);
-		phy_write_mmd(phydev, 0x1C, 0x18, backup[2]);
-		phy_write_mmd(phydev, 0x1C, 0x1B, backup[3]);
-	}
-	return 0;
-}
-
 static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
+
 	unsigned int phydata = 0;
-	if ((priv->phydev->phy_id &
-	     priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)
-		phy_rgmii_digital_loopback_mmd_config(dev->phydev, config,
-						      ethqos->backup_mmd_loopback);
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->set_loopback &&
+	    ((priv->phydev->phy_id &
+	      priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
+		priv->phydev->drv->set_loopback(priv->phydev, config);
+	}
 	if (config == 1) {
 		/*Backup BMCR before Enabling Phy Loopback */
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
@@ -6171,7 +6158,6 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	struct property *status_prop;
 	struct property *speed_prop;
 	int mac2mac_speed;
-	int ret = 0;
 	static u32 speed;
 
 	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
@@ -6193,7 +6179,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!status_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
@@ -6214,7 +6200,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			if (!speed_prop) {
 				ETHQOSERR("kzalloc failed\n");
-				ret = -ENOMEM;
+				return -ENOMEM;
 			}
 
 			speed = cpu_to_be32(mparams.link_speed);
@@ -6240,7 +6226,7 @@ out:
 									    "fixed-link-needs-mdio-bus");
 
 	of_node_put(fixed_phy_node);
-	return ret;
+	return 0;
 }
 
 static int ethqos_update_phyid(struct device_node *np)
@@ -6354,13 +6340,15 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 	gh_vmid_t v2x_vm_id;
 	int result;
 
-	result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
-	if (result) {
-		ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
-		return NOTIFY_DONE;
+	if (event == GH_VM_BEFORE_POWERUP) {
+		result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
+		if (result) {
+			ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
+			return NOTIFY_DONE;
+		}
+		priv->v2x_vm_id = v2x_vm_id;
 	}
-
-	if (cb_vm_id != v2x_vm_id) {
+	if (cb_vm_id != priv->v2x_vm_id) {
 		ETHQOSINFO("vm id mismatch, ignoring cb_vm %u v2x_vm %u event %u",
 			   cb_vm_id, v2x_vm_id, event);
 		return NOTIFY_DONE;
@@ -6488,6 +6476,13 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 	struct device_node *serdes_node = NULL;
 	struct phy_device *phydev = NULL;
 	u32 mode = 0;
+	unsigned int speed = 0;
+	struct sk_buff *skb_out;
+	int res;
+	struct net *net = dev_net(ndev);
+
+	if (!net)
+		return -EINVAL;
 
 	if (!ndev) {
 		ETHQOSERR("Netdevice is NULL\n");
@@ -6610,6 +6605,42 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 	}
 
 	ret = stmmac_resume(&ethqos->pdev->dev);
+
+	if (phydev->interface == PHY_INTERFACE_MODE_USXGMII)
+		speed = SPEED_10000;
+	else if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
+		speed = SPEED_1000;
+
+	if (!net->rtnl) {
+		ETHQOSINFO("Netlink-kernel : No Socket->rtnl created\n");
+		return -EINVAL;
+	}
+
+	if (!netlink_has_listeners(net->rtnl, MYGRP)) {
+		ETHQOSINFO("Netlink-kernel : No listeners\n");
+		return -EINVAL;
+	}
+
+	skb_out = nlmsg_new(sizeof(speed), GFP_KERNEL);
+	if (!skb_out) {
+		ETHQOSINFO("Failed to allocate a new skb\n");
+		return -EINVAL;
+	}
+
+	nlh = nlmsg_put(skb_out, 0, 0, 100, sizeof(speed), 0);
+
+	if (!nlh)
+		return -EINVAL;
+
+	NETLINK_CB(skb_out).portid = 0;
+	NETLINK_CB(skb_out).dst_group = MYGRP;
+
+	memcpy(nlmsg_data(nlh), &speed, sizeof(speed));
+
+	res = netlink_broadcast(net->rtnl, skb_out, 0, MYGRP, GFP_KERNEL);
+	if (res < 0)
+		ETHQOSINFO("Error while sending bak to user, err id: %d\n", res);
+
 	return ret;
 }
 
@@ -6667,9 +6698,11 @@ static int qcom_ethqos_bring_down_phy_if(struct device *dev)
 	if (priv->phy_irq_enabled && !priv->plat->mac2mac_en) {
 		priv->plat->phy_irq_disable(priv);
 
-		rtnl_lock();
-		phylink_disconnect_phy(priv->phylink);
-		rtnl_unlock();
+		if (priv->phylink) {
+			rtnl_lock();
+			phylink_disconnect_phy(priv->phylink);
+			rtnl_unlock();
+		}
 		if (!priv->plat->mac2mac_en && priv->phylink)
 			phylink_destroy(priv->phylink);
 	}
@@ -6900,7 +6933,7 @@ static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
 		if (strnstr(name, "emac0_ptp_aux_ts_i", strlen(name))) {
 			char *pos = strrchr(name, '_');
 
-			if (pos + 1) {
+			if (pos && (pos + 1)) {
 				int index = *(pos + 1) - 48;
 
 				plat_dat->ext_snapshot_num |= (1 << (index + 4));
