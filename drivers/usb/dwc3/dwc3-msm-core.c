@@ -3758,13 +3758,13 @@ static void configure_usb_wakeup_interrupts(struct dwc3_msm *mdwc, bool enable)
 		configure_usb_wakeup_interrupt(mdwc,
 			&mdwc->wakeup_irq[DP_HS_PHY_IRQ],
 			mdwc->in_host_mode && !(mdwc->use_pwr_event_for_wakeup
-			& PWR_EVENT_HS_WAKEUP) ?
+			& PWR_EVENT_HS_WAKEUP)  && !mdwc->use_eusb2_phy ?
 			(IRQF_TRIGGER_HIGH | IRQ_TYPE_LEVEL_HIGH) :
 			IRQ_TYPE_EDGE_RISING, true);
 		configure_usb_wakeup_interrupt(mdwc,
 			&mdwc->wakeup_irq[DM_HS_PHY_IRQ],
 			mdwc->in_host_mode && !(mdwc->use_pwr_event_for_wakeup
-			& PWR_EVENT_HS_WAKEUP) ?
+			& PWR_EVENT_HS_WAKEUP) && !mdwc->use_eusb2_phy ?
 			(IRQF_TRIGGER_HIGH | IRQ_TYPE_LEVEL_HIGH) :
 			IRQ_TYPE_EDGE_RISING, true);
 	}
@@ -4502,7 +4502,10 @@ skip_update:
 	 * only in case of power event irq in lpm.
 	 */
 	if (mdwc->resume_pending) {
-		pm_runtime_resume(mdwc->dev);
+		dwc3_msm_resume(mdwc);
+		pm_runtime_disable(mdwc->dev);
+		pm_runtime_set_active(mdwc->dev);
+		pm_runtime_enable(mdwc->dev);
 		mdwc->resume_pending = false;
 	}
 
