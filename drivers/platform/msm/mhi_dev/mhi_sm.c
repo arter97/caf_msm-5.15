@@ -1348,7 +1348,7 @@ EXPORT_SYMBOL(mhi_dev_sm_init);
 int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 {
 	struct mhi_sm_dev *mhi_sm_ctx = mhi_dev->mhi_sm_ctx;
-	int vf_id = 0;
+	int vf_id = mhi_dev->vf_id;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
 	MHI_SM_FUNC_ENTRY(mhi_dev->vf_id);
 
