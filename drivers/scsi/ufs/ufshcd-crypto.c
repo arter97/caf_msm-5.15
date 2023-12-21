@@ -263,16 +263,23 @@ void ufshcd_prepare_lrbp_crypto(struct ufs_hba *hba, struct request *rq,
 		goto out;
 	}
 
-	if (hba->vops && hba->vops->prepare_lrbp_crypto) {
-		if (hba->vops->prepare_lrbp_crypto(hba, rq, lrbp)) {
+	if (!rq->crypt_keyslot) {
+		if (hba->vops && hba->vops->prepare_lrbp_crypto) {
+			if (hba->vops->prepare_lrbp_crypto(hba, rq, lrbp)) {
+				goto out;
+			}
+		} else {
+			pr_err("prepare_lrbp_crypto is null %s\n", __func__);
 			goto out;
 		}
+		return;
 	} else {
-		pr_err("prepare_lrbp_crypto is null %s\n", __func__);
-		goto out;
+		lrbp->crypto_enable = true;
+		lrbp->crypto_key_slot = blk_ksm_get_slot_idx(rq->crypt_keyslot);
+		lrbp->data_unit_num = rq->crypt_ctx->bc_dun[0];
+		return;
 	}
 
-	return;
 out:
 	lrbp->crypto_key_slot = -1;
 	return;
