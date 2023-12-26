@@ -8,11 +8,14 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
+#include <linux/i2c-smbus.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -193,6 +196,9 @@ struct geni_i2c_dev {
 	atomic_t is_xfer_in_progress; /* Used to maintain xfer inprogress status */
 	bool is_deep_sleep; /* For deep sleep restore the config similar to the probe. */
 	bool i2c_test_dev; /* Set this DT flag to enable test bus dump for an SE */
+	struct i2c_smbus_alert_setup alert_data; /* platform data for the smbus_alert */
+	struct i2c_client *ara; /* For SMBus Alert Response Address */
+	bool is_pmbus_supported; /* For supporting PMBus supported devices and SE's */
 };
 
 static struct geni_i2c_dev *gi2c_dev_dbg[MAX_SE];
@@ -1866,6 +1872,83 @@ static int get_geni_se_i2c_hub(struct geni_i2c_dev *gi2c)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_I2C_SMBUS)
+/* handle_smb_irq: IRQ handler for SMB Alert interrupt
+ * @irq: SMB Alert interrupt num
+ * @dev: data cookie
+ * Return: IRQ_HANDLED on success
+ */
+static irqreturn_t handle_smb_irq(int irq, void *dev)
+{
+	struct geni_i2c_dev *gi2c = dev;
+	struct i2c_client *ara =  gi2c->ara;
+
+	if (!ara)
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev, "Not a valid ARA\n");
+
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "SMB Alert Interrupt raised\n");
+
+	/* Invoke SMB Alert handle function for processing received ARA */
+	i2c_handle_smbus_alert(ara);
+	return IRQ_HANDLED;
+}
+
+/**
+ * geni_i2c_smbus_alert_setup: Setup for SMB Alert
+ * @gi2c: I2C geni dev pointer
+ * Return: 0 on success; error value on failure
+ */
+static int geni_i2c_smbus_alert_setup(struct geni_i2c_dev *gi2c)
+{
+	struct i2c_client *ara;
+	struct device_node *np = gi2c->dev->of_node;
+	int gpio = 0, smb_irq, ret;
+
+	if (!np) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: No SMB Alert support platform data\n", __func__);
+		return -ENODEV;
+	}
+
+	gpio = of_get_named_gpio(np, "smbalert-gpio", 0);
+	if (gpio < 0) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Failed to retrieve smbalert-gpio from dts.\n", __func__);
+		return -EINVAL;
+	}
+
+	smb_irq = gpio_to_irq(gpio);
+	if (smb_irq < 0) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Not a Valid IRQ for SMB Alert\n", __func__);
+		return smb_irq;
+	}
+
+	ara = i2c_new_smbus_alert_device(&gi2c->adap, &gi2c->alert_data);
+	if (IS_ERR(ara)) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Setting SMB Alert failed\n", __func__);
+		return PTR_ERR(ara);
+	}
+	gi2c->ara = ara;
+
+	ret = devm_request_irq(gi2c->dev, smb_irq, handle_smb_irq,
+			       IRQF_TRIGGER_RISING, "smb_irq", gi2c);
+	if (ret) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			     "Request_smb_irq failed:%d: err:%d\n", smb_irq, ret);
+		return ret;
+	}
+
+	return 0;
+}
+#else
+static int geni_i2c_smbus_alert_setup(struct geni_i2c_dev *gi2c)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
 /**
  * geni_i2c_resources_init: initialize clk, icc vote, read dt property
  * @pdev: Platform driver handle
@@ -2043,6 +2126,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "Multi-EE usecase\n");
 	}
 
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,pmbus-supported")) {
+		gi2c->is_pmbus_supported = true;
+		dev_info(&pdev->dev, "PMBus support enabled\n");
+	}
+
 	//Strictly only for debug, it's client/slave device decision for an SE.
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,bus-recovery")) {
 		gi2c->bus_recovery_enable  = true;
@@ -2098,6 +2186,16 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	snprintf(ipc_name, I2C_NAME_SIZE, "%s", dev_name(gi2c->dev));
 	gi2c->ipcl = ipc_log_context_create(2, ipc_name, 0);
 	atomic_set(&gi2c->is_xfer_in_progress, 0);
+
+	/* On PMBus supported targets and I2C SE instances, setup SMBus alert feature support */
+	if (gi2c->is_pmbus_supported) {
+		ret = geni_i2c_smbus_alert_setup(gi2c);
+		if (ret < 0) {
+			I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+				    "%s: I2C SMBus Alert setup failed, ret=%d\n", __func__, ret);
+			return ret;
+		}
+	}
 
 	if (gi2c->i2c_test_dev) {
 		/* configure Test bus to dump test bus later, only once */
