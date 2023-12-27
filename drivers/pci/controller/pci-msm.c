@@ -946,7 +946,6 @@ enum i2c_client_id {
 };
 
 struct i2c_driver_data {
-	int rc_index;
 	enum i2c_client_id client_id;
 };
 
@@ -6717,7 +6716,7 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 	int i;
 	struct msm_pcie_dev_t *dev = data;
 	struct pci_dev *rp = dev->dev;
-	int aer = rp->aer_cap;
+	int aer;
 	unsigned long irqsave_flags;
 	u32 status = 0, status2 = 0;
 	irqreturn_t ret = IRQ_HANDLED;
@@ -6764,6 +6763,13 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 					"PCIe: RC%d: AER event idx %d.\n",
 					dev->rc_idx, i);
 
+				if (!rp) {
+					PCIE_DBG2(dev, "PCIe: RC%d pci_dev is not allocated.\n",
+										dev->rc_idx);
+					goto done;
+				}
+
+				aer = rp->aer_cap;
 				pci_read_config_dword(rp,
 				aer + PCI_ERR_ROOT_STATUS, &e_src.status);
 				if (!(e_src.status &
@@ -8930,7 +8936,7 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 	int i;
 
 	/* rpmsg probe hasn't happened yet */
-	if (!pcie_drv->rpdev || !pcie_dev->enumerated)
+	if (!pcie_drv->rpdev)
 		return;
 
 	pcie_itr = pcie_dev;
@@ -8969,7 +8975,6 @@ static void msm_pcie_drv_connect_worker(struct work_struct *work)
 
 #ifdef CONFIG_I2C
 static const struct i2c_driver_data ntn3_data = {
-	.rc_index = 0,
 	.client_id = I2C_CLIENT_ID_NTN3,
 };
 
@@ -9002,9 +9007,14 @@ static int pcie_i2c_ctrl_probe(struct i2c_client *client,
 		}
 
 		data = (struct i2c_driver_data *)match->data;
-		rc_index = data->rc_index;
 		client_id = data->client_id;
 	}
+
+	of_property_read_u32(client->dev.of_node, "rc-index",
+			&rc_index);
+
+	dev_info(&client->dev, "%s: PCIe rc-index: 0x%X\n",
+			__func__, rc_index);
 
 	if (rc_index >= MAX_RC_NUM) {
 		dev_err(&client->dev, "invalid RC index %d\n", rc_index);
