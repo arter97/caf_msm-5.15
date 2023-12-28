@@ -146,7 +146,6 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 {
 	struct fmgr_interface *fmgr_interface = file->private_data;
 	struct fmgr_ioctl_pmbus_msg msg;
-	union i2c_smbus_data buf;
 	struct fault_addr *fault_addr;
 	int ret = 0;
 	uint8_t addr;
@@ -161,21 +160,23 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 		if (msg.size == PMBUS_BYTE) {
 			ret = pmbus_read_byte_data(fmgr_interface->client,
 					msg.page, msg.reg);
-			buf.byte = ret;
+			msg.buf.byte = ret;
 		} else if (msg.size == PMBUS_WORD) {
 			ret = pmbus_read_word_data(fmgr_interface->client,
 					msg.page, msg.phase, msg.reg);
-			buf.word = ret;
+			msg.buf.word = ret;
 		} else {
 			ret = i2c_smbus_read_i2c_block_data(
 					fmgr_interface->client,
-					msg.reg, msg.size + 1, buf.block);
+					msg.reg, msg.size + 1, msg.buf.block);
 		}
 
 		if (ret < 0)
 			return ret;
 
-		ret = copy_to_user(&msg.buf, &buf, sizeof(union i2c_smbus_data));
+		ret = copy_to_user((struct fmgr_ioctl_pmbus_msg *)arg, &msg,
+				sizeof(struct fmgr_ioctl_pmbus_msg));
+
 		break;
 
 	case PMBUS_WRITE:
