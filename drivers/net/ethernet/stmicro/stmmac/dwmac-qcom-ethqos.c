@@ -7348,6 +7348,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	/* Read en_wol from device tree */
 	priv->en_wol = of_property_read_bool(np, "enable-wol");
+	if (of_property_read_bool(np, "disable-frame-preem"))
+		priv->dma_cap.fpesel = 0;
 
 	/* If valid mac address is present from emac partition
 	 * Enable the mac address in the device.
