@@ -280,8 +280,38 @@ static int mhi_netdev_queue_bg_pool(struct mhi_netdev *mhi_netdev,
 	return i;
 }
 
+static void mhi_netdev_queue_skb(struct mhi_netdev *mhi_netdev,
+				struct mhi_device *mhi_dev)
+{
+	struct net_device *ndev = mhi_netdev->ndev;
+	struct sk_buff *skb;
+	int nr_tre = mhi_get_free_desc_count(mhi_dev, DMA_FROM_DEVICE);
+	int i, size, err;
+
+	MSG_VERB("Enter free descriptors: %d\n", nr_tre);
+	if (!nr_tre)
+		return;
+
+	size = (mhi_netdev->mru < ndev->mtu) ? mhi_netdev->mru : ndev->mtu;
+
+	for (i = 0; i < nr_tre; i++) {
+		skb = netdev_alloc_skb(ndev, size);
+		if (unlikely(!skb))
+			break;
+
+		skb->dev = ndev;
+		err = mhi_queue_skb(mhi_dev, DMA_FROM_DEVICE, skb, size, MHI_EOT);
+		if (unlikely(err)) {
+			net_err_ratelimited("%s: Failed to queue RX buf (%d)\n",
+					ndev->name, err);
+			kfree_skb(skb);
+			break;
+		}
+	}
+}
+
 static void mhi_netdev_queue_dma(struct mhi_netdev *mhi_netdev,
-			     struct mhi_device *mhi_dev)
+				struct mhi_device *mhi_dev)
 {
 	struct device *dev = mhi_dev->dev.parent->parent;
 	struct mhi_netbuf *netbuf, *temp_buf;
@@ -499,8 +529,11 @@ static int mhi_netdev_poll(struct napi_struct *napi, int budget)
 		return 0;
 	}
 
-	/* queue new buffers */
-	mhi_netdev_queue_dma(mhi_netdev, mhi_dev);
+	/* queue new buffers based on interface*/
+	if (mhi_netdev->ethernet_interface)
+		mhi_netdev_queue_skb(mhi_netdev, mhi_dev);
+	else
+		mhi_netdev_queue_dma(mhi_netdev, mhi_dev);
 
 	if (rsc_dev)
 		mhi_netdev_queue_dma(mhi_netdev, rsc_dev->mhi_dev);
@@ -792,10 +825,31 @@ static void mhi_netdev_push_skb(struct mhi_netdev *mhi_netdev,
 	netif_receive_skb(skb);
 }
 
-static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
-				  struct mhi_result *mhi_result)
+static void mhi_netdev_xfer_dl_cb_eth(struct mhi_device *mhi_dev,
+				struct mhi_result *mhi_result,
+				struct mhi_netdev *mhi_netdev)
 {
-	struct mhi_netdev *mhi_netdev = dev_get_drvdata(&mhi_dev->dev);
+	struct sk_buff *skb;
+	struct net_device *ndev = mhi_netdev->ndev;
+
+	/* modem is down, drop the buffer */
+	if (mhi_result->transaction_status == -ENOTCONN)
+		return;
+
+	ndev->stats.rx_packets++;
+	ndev->stats.rx_bytes += mhi_result->bytes_xferd;
+
+	skb = mhi_result->buf_addr;
+	skb_put(skb, mhi_result->bytes_xferd);
+	skb->protocol = eth_type_trans(skb, mhi_netdev->ndev);
+
+	netif_receive_skb(skb);
+}
+
+static void mhi_netdev_xfer_dl_cb_rawip(struct mhi_device *mhi_dev,
+					struct mhi_result *mhi_result,
+					struct mhi_netdev *mhi_netdev)
+{
 	struct mhi_netbuf *netbuf = mhi_result->buf_addr;
 	struct mhi_buf *mhi_buf = &netbuf->mhi_buf;
 	struct sk_buff *skb;
@@ -840,6 +894,17 @@ static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
 	} else {
 		__free_pages(netbuf->page, mhi_netdev->order);
 	}
+}
+
+static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
+				struct mhi_result *mhi_result)
+{
+	struct mhi_netdev *mhi_netdev = dev_get_drvdata(&mhi_dev->dev);
+
+	if (mhi_netdev->ethernet_interface)
+		mhi_netdev_xfer_dl_cb_eth(mhi_dev, mhi_result, mhi_netdev);
+	else
+		mhi_netdev_xfer_dl_cb_rawip(mhi_dev, mhi_result, mhi_netdev);
 }
 
 static void mhi_netdev_status_cb(struct mhi_device *mhi_dev,
