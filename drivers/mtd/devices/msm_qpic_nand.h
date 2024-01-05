@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QPIC_NAND_H
@@ -375,6 +375,7 @@ struct msm_nand_info {
 	struct msm_nand_clk_data clk_data;
 	u64 dma_mask;
 	u32 bam_irq_type; /*Edge trigger or Level trigger */
+	unsigned long panic_notifier_dump; /* set upon nand panic notifier call */
 };
 
 extern struct nand_flash_dev nand_flash_ids[];
