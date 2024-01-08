@@ -191,17 +191,21 @@ static void register_kernel_sections(void)
 	struct md_region ksec_entry;
 	char *data_name = "KDATABSS";
 	char *rodata_name = "KROAIDATA";
+#ifdef CONFIG_SMP
 	size_t static_size;
 	void __percpu *base;
 	unsigned int cpu;
+#endif
+
 	void *_sdata, *__bss_stop;
 	void *start_ro, *end_ro;
 
 	_sdata = android_debug_symbol(ADS_SDATA);
 	__bss_stop = android_debug_symbol(ADS_BSS_END);
+#ifdef CONFIG_SMP
 	base = android_debug_symbol(ADS_PER_CPU_START);
 	static_size = (size_t)(android_debug_symbol(ADS_PER_CPU_END) - base);
-
+#endif
 	strscpy(ksec_entry.name, data_name, sizeof(ksec_entry.name));
 	ksec_entry.virt_addr = (u64)_sdata;
 	ksec_entry.phys_addr = virt_to_phys(_sdata);
@@ -218,6 +222,7 @@ static void register_kernel_sections(void)
 	if (msm_minidump_add_region(&ksec_entry) < 0)
 		pr_err("Failed to add rodata section in Minidump\n");
 
+#ifdef CONFIG_SMP
 	/* Add percpu static sections */
 	for_each_possible_cpu(cpu) {
 		void *start = per_cpu_ptr(base, cpu);
@@ -231,6 +236,7 @@ static void register_kernel_sections(void)
 		if (msm_minidump_add_region(&ksec_entry) < 0)
 			pr_err("Failed to add percpu sections in Minidump\n");
 	}
+#endif
 }
 
 static inline bool in_stack_range(
@@ -648,10 +654,12 @@ static void md_dump_task_info(struct task_struct *task, char *status,
 
 	se = &task->se;
 	if (task == curr) {
+#ifdef CONFIG_THREAD_INFO_IN_TASK
 		seq_buf_printf(md_runq_seq_buf,
 			       "[status: curr] pid: %d preempt: %#x\n",
 			       task_pid_nr(task),
 			       task->thread_info.preempt_count);
+#endif
 		return;
 	}
 
@@ -841,7 +849,9 @@ static void md_dump_runqueues(void)
 		seq_buf_printf(md_runq_seq_buf, "%16lld", t->sched_info.last_queued);
 		seq_buf_printf(md_runq_seq_buf, "%16lld", t->sched_info.run_delay);
 		seq_buf_printf(md_runq_seq_buf, "%12ld", t->sched_info.pcount);
+#ifdef CONFIG_SMP
 		seq_buf_printf(md_runq_seq_buf, "%4d", t->on_cpu);
+#endif
 		seq_buf_printf(md_runq_seq_buf, "%5d", t->prio);
 		seq_buf_printf(md_runq_seq_buf, "%*s", 6, md_get_task_state(t));
 #if IS_ENABLED(CONFIG_SCHED_WALT)
@@ -1163,7 +1173,7 @@ static int register_vmap_mem(const char *name, void *virual_addr, size_t dump_le
 	int i = 0;
 
 	while (dump_len) {
-		to_dump = min(dump_len, PAGE_SIZE - offset_in_page(dump_addr));
+		to_dump = min(dump_len, (size_t)(PAGE_SIZE - offset_in_page(dump_addr)));
 		phys_addr = page_to_phys(vmalloc_to_page((const void *)dump_addr));
 		snprintf(entry_name, sizeof(entry_name), "%d_%s", i, name);
 		md_register_minidump_entry(entry_name, (u64)dump_addr, phys_addr, to_dump);
