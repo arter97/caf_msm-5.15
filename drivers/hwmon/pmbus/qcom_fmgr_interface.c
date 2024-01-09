@@ -36,7 +36,7 @@ struct fmgr_interface {
 	struct i2c_client *client;
 	struct cdev cdev;
 	struct device *dev;
-	struct pmbus_driver_info *info;
+	struct pmbus_driver_info info;
 	struct wait_queue_head  waitq;
 	struct mutex queue_lock;
 };
@@ -113,18 +113,20 @@ static void fmgr_interface_alert(struct i2c_client *client,
 {
 	struct fmgr_interface *fmgr_interface;
 	struct fault_addr *addr;
+	const struct pmbus_driver_info *info = pmbus_get_driver_info(client);
 
-	fmgr_interface = (struct fmgr_interface *)client;
+	fmgr_interface = container_of(info, struct fmgr_interface, info);
+
 	addr = kzalloc(sizeof(struct fault_addr), GFP_KERNEL);
 	if (addr == NULL) {
 		dev_err(fmgr_interface->dev, "Failed to allocate memory\n");
 		return;
 	}
 
-	addr->addr = (uint8_t) data;
+	addr->addr = (uint8_t)client->addr;
 
 	mutex_lock(&fmgr_interface->queue_lock);
-	list_add_tail(&fault_queue, &(addr->list));
+	list_add_tail(&(addr->list), &fault_queue);
 	mutex_unlock(&fmgr_interface->queue_lock);
 
 	wake_up_interruptible(&fmgr_interface->waitq);
@@ -448,19 +450,10 @@ static int fmgr_interface_probe(struct i2c_client *i2c, const struct i2c_device_
 	mutex_init(&fmgr_interface->queue_lock);
 
 	fmgr_interface->client = i2c;
+	fmgr_interface->info.pages = 0;
+	fmgr_interface->info.identify = fmgr_identify;
 
-	fmgr_interface->info = devm_kzalloc(fmgr_interface->dev,
-			sizeof(struct pmbus_driver_info), GFP_KERNEL);
-	if (!fmgr_interface->info) {
-		ret = PTR_ERR(fmgr_interface->info);
-		goto device_err;
-	}
-
-	fmgr_interface->info->pages = 0;
-	fmgr_interface->info->identify = fmgr_identify;
-
-	pmbus_do_probe(i2c, fmgr_interface->info);
-
+	pmbus_do_probe(i2c, &fmgr_interface->info);
 	return ret;
 
 device_err:
