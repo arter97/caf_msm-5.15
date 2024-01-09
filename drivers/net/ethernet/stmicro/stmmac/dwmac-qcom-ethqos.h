@@ -199,17 +199,6 @@ do {\
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_14MA ((unsigned long)(0x6))
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_16MA ((unsigned long)(0x7))
 
-/* Data for MAC register dump in panic notifier */
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-/* # of elements required for 1:1 mapping of base address offset to its size of contiguous memory */
-#define MAC_DATA_SIZE 113
-/* Total bytes: # registers * size of registers, rounded up to nearest multiple of 8 */
-#define MAC_DUMP_SIZE 2632
-#else
-#define MAC_DATA_SIZE 1
-#define MAC_DUMP_SIZE 0
-#endif
-
 #define MAC_REG_SIZE 4
 
 static inline u32 PPSCMDX(u32 x, u32 val)
@@ -499,6 +488,7 @@ struct qcom_ethqos {
 	bool ipa_enabled;
 	struct notifier_block panic_nb;
 	struct notifier_block vm_nb;
+	bool panic_notifier_registered;
 
 	struct stmmac_priv *priv;
 
