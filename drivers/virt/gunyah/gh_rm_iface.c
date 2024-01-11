@@ -1611,7 +1611,7 @@ struct gh_vm_crash_msg *gh_rm_vm_get_crash_msg(gh_vmid_t vmid)
 	if (reply_err_code || IS_ERR_OR_NULL(resp_payload)) {
 		err = PTR_ERR(resp_payload);
 		pr_err("%s: Failed to call VM_GET_CRASH_MSG: %d\n",
-			__func__, err);
+			__func__, reply_err_code);
 		return ERR_PTR(err);
 	}
 
