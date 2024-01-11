@@ -1525,6 +1525,115 @@ int gh_rm_console_flush(gh_vmid_t vmid)
 }
 EXPORT_SYMBOL(gh_rm_console_flush);
 
+/**
+ * gh_rm_vm_set_crash_msg: Set the crash msg
+ * @buf: Buffer to be used stored crash msg
+ * @size: Size of the buffer
+ *
+ * The function returns 0 on success and a negative
+ * error code upon failure.
+ */
+int gh_rm_vm_set_crash_msg(const char *buf, size_t size)
+{
+	void *resp;
+	struct gh_vm_set_crash_msg_req_payload *req_payload;
+	size_t resp_payload_size;
+	int reply_err_code = 0;
+	size_t req_payload_size = sizeof(*req_payload) + size;
+
+	if (size < 1 ||
+	    size > GH_RM_CRASH_MSG_MAX_SIZE ||
+	    size % GH_RM_CRASH_MSG_ALIGN_SIZE > 0)
+		return -EINVAL;
+
+	req_payload = kzalloc(req_payload_size, GFP_KERNEL);
+
+	if (!req_payload)
+		return -ENOMEM;
+
+	req_payload->msg_size = size;
+	memcpy(req_payload->data, buf, size);
+
+	resp = gh_rm_call_noblock(GH_RM_RPC_MSG_ID_CALL_VM_SET_CRASH_MSG,
+				  req_payload, req_payload_size,
+				  &resp_payload_size, &reply_err_code);
+	kfree(req_payload);
+
+	if (IS_ERR(resp)) {
+		pr_err("%s: Unable to send VM_SET_CRASH_MSG to RM: %d\n", __func__,
+			PTR_ERR(resp));
+		return PTR_ERR(resp);
+	}
+
+	if (reply_err_code) {
+		pr_err("%s: VM_SET_CRASH_MSG returned error: %d\n", __func__,
+			reply_err_code);
+		return reply_err_code;
+	}
+
+	if (resp_payload_size) {
+		pr_err("%s: Invalid size received for VM_SET_CRASH_MSG: %u\n",
+			__func__, resp_payload_size);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/**
+ * gh_rm_vm_get_crash_msg: Get the crash msg of a particular VM
+ * @vmid: The vmid of the VM. Pass 0 for self.
+ *
+ * The function returns a pointer to gh_vm_crash_msg containing
+ * the crash msg of the VM for the requested vmid. The caller
+ * must kfree the memory when done reading the contents.
+ *
+ * The function encodes the error codes via ERR_PTR. Hence, the
+ * caller is responsible to check it with IS_ERR_OR_NULL().
+ */
+struct gh_vm_crash_msg *gh_rm_vm_get_crash_msg(gh_vmid_t vmid)
+{
+	struct gh_vm_get_crash_msg_req_payload req_payload = {
+		.vmid = vmid,
+	};
+	struct gh_vm_get_crash_msg_resp_payload *resp_payload;
+	struct gh_vm_crash_msg *gh_vm_crash_msg;
+	int err = 0;
+	int reply_err_code = 0;
+	size_t resp_payload_size;
+
+	pr_debug("calling get msg for %d\n", vmid);
+	resp_payload = gh_rm_call(GH_RM_RPC_MSG_ID_CALL_VM_GET_CRASH_MSG,
+				&req_payload, sizeof(req_payload),
+				&resp_payload_size, &reply_err_code);
+	pr_debug("reply_err_code: %d ; resp_payload: 0x%x payload_size: %d\n",
+		 reply_err_code, resp_payload, resp_payload_size);
+	if (reply_err_code || IS_ERR_OR_NULL(resp_payload)) {
+		err = PTR_ERR(resp_payload);
+		pr_err("%s: Failed to call VM_GET_CRASH_MSG: %d\n",
+			__func__, err);
+		return ERR_PTR(err);
+	}
+
+	gh_vm_crash_msg = kmemdup(resp_payload, resp_payload_size, GFP_KERNEL);
+	if (!gh_vm_crash_msg) {
+		gh_vm_crash_msg = ERR_PTR(-ENOMEM);
+		goto out;
+	}
+
+	if (resp_payload_size != sizeof(*resp_payload) + gh_vm_crash_msg->msg_size) {
+		pr_err("%s: Invalid size received for VM_GET_CRASH_MSG: %u\n",
+			__func__, resp_payload_size);
+		kfree(gh_vm_crash_msg);
+		gh_vm_crash_msg = ERR_PTR(-EINVAL);
+		goto out;
+	}
+
+out:
+	kfree(resp_payload);
+	return gh_vm_crash_msg;
+}
+
 static void gh_rm_populate_acl_desc(struct gh_acl_desc *dst_desc,
 				    struct gh_acl_desc *src_desc)
 {
