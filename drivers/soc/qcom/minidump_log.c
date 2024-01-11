@@ -197,24 +197,36 @@ static void register_kernel_sections(void)
 	unsigned int cpu;
 #endif
 
-	void *_sdata, *__bss_stop;
+	void *sdata, *bss_stop;
 	void *start_ro, *end_ro;
 
-	_sdata = android_debug_symbol(ADS_SDATA);
-	__bss_stop = android_debug_symbol(ADS_BSS_END);
+#ifdef CONFIG_ARM
+	sdata = _sdata;
+	bss_stop = __bss_stop;
+#ifdef CONFIG_SMP
+	base = __per_cpu_start;
+	static_size = (size_t)__per_cpu_end;
+#endif
+	start_ro = __start_ro_after_init;
+	end_ro = __end_ro_after_init;
+#else
+	sdata = android_debug_symbol(ADS_SDATA);
+	bss_stop = android_debug_symbol(ADS_BSS_END);
 #ifdef CONFIG_SMP
 	base = android_debug_symbol(ADS_PER_CPU_START);
 	static_size = (size_t)(android_debug_symbol(ADS_PER_CPU_END) - base);
 #endif
+	start_ro = android_debug_symbol(ADS_START_RO_AFTER_INIT);
+	end_ro = android_debug_symbol(ADS_END_RO_AFTER_INIT);
+#endif
+
 	strscpy(ksec_entry.name, data_name, sizeof(ksec_entry.name));
-	ksec_entry.virt_addr = (u64)_sdata;
-	ksec_entry.phys_addr = virt_to_phys(_sdata);
-	ksec_entry.size = roundup((__bss_stop - _sdata), 4);
+	ksec_entry.virt_addr = (u64)sdata;
+	ksec_entry.phys_addr = virt_to_phys(sdata);
+	ksec_entry.size = roundup((bss_stop - sdata), 4);
 	if (msm_minidump_add_region(&ksec_entry) < 0)
 		pr_err("Failed to add data section in Minidump\n");
 
-	start_ro = android_debug_symbol(ADS_START_RO_AFTER_INIT);
-	end_ro = android_debug_symbol(ADS_END_RO_AFTER_INIT);
 	strscpy(ksec_entry.name, rodata_name, sizeof(ksec_entry.name));
 	ksec_entry.virt_addr = (uintptr_t)start_ro;
 	ksec_entry.phys_addr = virt_to_phys(start_ro);
