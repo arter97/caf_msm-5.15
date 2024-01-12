@@ -606,6 +606,7 @@ struct dwc3_msm {
 	bool			dynamic_disable;
 	bool			wcd_usbss;
 	bool			force_disconnect;
+	bool			read_u1u2;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -1196,9 +1197,13 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 	}
 
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
-		if (ret == 0)
-			mdwc->hw_eps[dep->number].flags |=
-						DWC3_MSM_HW_EP_TRANSFER_STARTED;
+		if (ret == 0) {
+			if (mdwc->hw_eps[dep->number].mode == USB_EP_GSI)
+				mdwc->hw_eps[dep->number].flags |=
+					DWC3_MSM_HW_EP_TRANSFER_STARTED;
+			else
+				dep->flags |= DWC3_EP_TRANSFER_STARTED;
+		}
 
 		if (ret != -ETIMEDOUT) {
 			u32 res_id;
@@ -3150,13 +3155,12 @@ static void mdwc3_usb2_phy_soft_reset(struct dwc3_msm *mdwc)
 static void mdwc3_update_u1u2_value(struct dwc3 *dwc)
 {
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
-	static bool read_u1u2;
 
 	/* cache DT based initial value once */
-	if (!read_u1u2) {
+	if (!mdwc->read_u1u2) {
 		mdwc->cached_dis_u1_entry_quirk = dwc->dis_u1_entry_quirk;
 		mdwc->cached_dis_u2_entry_quirk = dwc->dis_u2_entry_quirk;
-		read_u1u2 = true;
+		mdwc->read_u1u2 = true;
 		dbg_log_string("cached_dt_param: u1_disable:%d u2_disable:%d\n",
 			mdwc->cached_dis_u1_entry_quirk, mdwc->cached_dis_u2_entry_quirk);
 	}
@@ -3872,13 +3876,65 @@ disable_sleep_clk:
 	return ret;
 }
 
+static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc)
+{
+	bool can_suspend_ssphy, no_active_ss;
+
+	/*
+	 * Synopsys Superspeed PHY does not support ss_phy_irq, so to detect
+	 * any wakeup events in host mode PHY cannot be suspended.
+	 * This Superspeed PHY can be suspended only in the following cases:
+	 *      1. The core is not in host mode
+	 *      2. A Highspeed device is connected but not a Superspeed device
+	 *
+	 */
+
+	no_active_ss = (!mdwc->in_host_mode) || (mdwc->in_host_mode &&
+		((mdwc->hs_phy->flags & (PHY_HSFS_MODE | PHY_LS_MODE)) &&
+			 !dwc3_msm_is_superspeed(mdwc)));
+	can_suspend_ssphy = dwc3_msm_get_max_speed(mdwc) >= USB_SPEED_SUPER &&
+		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss);
+
+	/* Suspend SS PHY */
+	if (can_suspend_ssphy) {
+		if (mdwc->in_host_mode) {
+			u32 reg = dwc3_msm_read_reg(mdwc->base,
+					DWC3_GUSB3PIPECTL(0));
+
+			reg |= DWC3_GUSB3PIPECTL_DISRXDETU3;
+			dwc3_msm_write_reg(mdwc->base, DWC3_GUSB3PIPECTL(0),
+					reg);
+		}
+		/* indicate phy about SS mode */
+		if (dwc3_msm_is_superspeed(mdwc))
+			mdwc->ss_phy->flags |= DEVICE_IN_SS_MODE;
+		usb_phy_set_suspend(mdwc->ss_phy, 1);
+		mdwc->lpm_flags |= MDWC3_SS_PHY_SUSPEND;
+	} else if (mdwc->use_pwr_event_for_wakeup  & PWR_EVENT_SS_WAKEUP) {
+		mdwc->lpm_flags |= MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP;
+	}
+
+	/*
+	 * When operating in HS host mode, check if pwr event IRQ is
+	 * required for wakeup.
+	 */
+
+	if (mdwc->in_host_mode && (mdwc->use_pwr_event_for_wakeup
+				& PWR_EVENT_HS_WAKEUP))
+		mdwc->lpm_flags |= MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP;
+
+	if (mdwc->lpm_flags & MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP) {
+		dwc3_msm_set_pwr_events(mdwc, true);
+		enable_irq(mdwc->wakeup_irq[PWR_EVNT_IRQ].irq);
+	}
+}
+
 static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 {
 	int ret;
 	struct dwc3 *dwc = NULL;
 	struct dwc3_event_buffer *evt;
 	struct usb_irq *uirq;
-	bool can_suspend_ssphy, no_active_ss;
 
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
@@ -3955,49 +4011,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 	/* Suspend HS PHY */
 	usb_phy_set_suspend(mdwc->hs_phy, 1);
 
-	/*
-	 * Synopsys Superspeed PHY does not support ss_phy_irq, so to detect
-	 * any wakeup events in host mode PHY cannot be suspended.
-	 * This Superspeed PHY can be suspended only in the following cases:
-	 *	1. The core is not in host mode
-	 *	2. A Highspeed device is connected but not a Superspeed device
-	 */
-	no_active_ss = (!mdwc->in_host_mode) || (mdwc->in_host_mode &&
-		((mdwc->hs_phy->flags & (PHY_HSFS_MODE | PHY_LS_MODE)) &&
-			!dwc3_msm_is_superspeed(mdwc)));
-	can_suspend_ssphy = dwc3_msm_get_max_speed(mdwc) >= USB_SPEED_SUPER &&
-		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss);
-	/* Suspend SS PHY */
-	if (can_suspend_ssphy) {
-		if (mdwc->in_host_mode) {
-			u32 reg = dwc3_msm_read_reg(mdwc->base,
-					DWC3_GUSB3PIPECTL(0));
-
-			reg |= DWC3_GUSB3PIPECTL_DISRXDETU3;
-			dwc3_msm_write_reg(mdwc->base, DWC3_GUSB3PIPECTL(0),
-					reg);
-		}
-		/* indicate phy about SS mode */
-		if (dwc3_msm_is_superspeed(mdwc))
-			mdwc->ss_phy->flags |= DEVICE_IN_SS_MODE;
-		usb_phy_set_suspend(mdwc->ss_phy, 1);
-		mdwc->lpm_flags |= MDWC3_SS_PHY_SUSPEND;
-	} else if (mdwc->use_pwr_event_for_wakeup  & PWR_EVENT_SS_WAKEUP) {
-		mdwc->lpm_flags |= MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP;
-	}
-
-	/*
-	 * When operating in HS host mode, check if pwr event IRQ is
-	 * required for wakeup.
-	 */
-	if (mdwc->in_host_mode && (mdwc->use_pwr_event_for_wakeup
-				& PWR_EVENT_HS_WAKEUP))
-		mdwc->lpm_flags |= MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP;
-
-	if (mdwc->lpm_flags & MDWC3_USE_PWR_EVENT_IRQ_FOR_WAKEUP) {
-		dwc3_msm_set_pwr_events(mdwc, true);
-		enable_irq(mdwc->wakeup_irq[PWR_EVNT_IRQ].irq);
-	}
+	dwc3_msm_suspend_phy(mdwc);
 
 	/* make sure above writes are completed before turning off clocks */
 	wmb();
