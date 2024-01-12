@@ -41,7 +41,6 @@ struct msg_format {
 
 struct emac_msgq_priv {
 	struct device *dev;
-	void *msgq_hdl;
 	struct wakeup_source *wakeup_source;
 	bool notify_hw_events;
 	struct workqueue_struct *wq;
@@ -60,12 +59,13 @@ struct emac_be_ev {
 };
 
 static struct emac_msgq_priv *msgq_priv;
+static void *msgq_hdl;
 
 static int emac_msgq_xmit(struct msg_format *msg)
 {
 	int ret = 0;
 
-	ret = gh_msgq_send(msgq_priv->msgq_hdl, msg, sizeof(*msg), 0);
+	ret = gh_msgq_send(msgq_hdl, msg, sizeof(*msg), 0);
 	if (ret)
 		dev_err(msgq_priv->dev, "send msgq failed %d\n", ret);
 
@@ -139,10 +139,10 @@ static int recv_thread(void *data)
 	size_t recv_size;
 	int ret;
 
-	while (!kthread_should_stop()) {
-		ret = gh_msgq_recv(msgq_priv->msgq_hdl, &rx_msg, sizeof(rx_msg),
+	while (!kthread_should_stop() && msgq_hdl) {
+		ret = gh_msgq_recv(msgq_hdl, &rx_msg, sizeof(rx_msg),
 				   &recv_size, 0);
-		if (ret) {
+		if (ret || !msgq_hdl) {
 			pr_err("recv msgq failed ret = %d\n", ret);
 			continue;
 		}
@@ -216,9 +216,9 @@ int qcom_ethmsgq_init(struct device *dev)
 
 	msgq_priv->dev = dev;
 
-	msgq_priv->msgq_hdl = gh_msgq_register(GH_MSGQ_LABEL_ETH);
-	if (IS_ERR_OR_NULL(msgq_priv->msgq_hdl)) {
-		ret = PTR_ERR(msgq_priv->msgq_hdl);
+	msgq_hdl = gh_msgq_register(GH_MSGQ_LABEL_ETH);
+	if (IS_ERR_OR_NULL(msgq_hdl)) {
+		ret = PTR_ERR(msgq_hdl);
 		dev_err(dev, "failed to get gunyah msgq %d\n", ret);
 		return ret;
 	}
@@ -240,8 +240,10 @@ int qcom_ethmsgq_init(struct device *dev)
 
 void qcom_ethmsgq_deinit(struct device *dev)
 {
-	if (msgq_priv->msgq_hdl)
-		gh_msgq_unregister(msgq_priv->msgq_hdl);
+	if (msgq_hdl) {
+		gh_msgq_unregister(msgq_hdl);
+		msgq_hdl = NULL;
+	}
 
 	cancel_work_sync(&msgq_priv->emac_work);
 	destroy_workqueue(msgq_priv->wq);

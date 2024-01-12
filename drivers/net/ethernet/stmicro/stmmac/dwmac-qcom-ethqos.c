@@ -2955,10 +2955,6 @@ static void ethqos_set_early_eth_param(struct stmmac_priv *priv,
 {
 	int ret = 0;
 
-	if (priv->plat && priv->plat->mdio_bus_data)
-		priv->plat->mdio_bus_data->phy_mask =
-		 priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
-
 	qcom_ethqos_add_ipaddr(&pparams, priv->dev);
 
 	if (pparams.is_valid_ipv4_addr) {
@@ -3734,39 +3730,18 @@ static void ethqos_mac_loopback(struct qcom_ethqos *ethqos, int mode)
 	}
 }
 
-static int phy_rgmii_digital_loopback_mmd_config(struct phy_device *phydev, int config, int *backup)
-{
-	ETHQOSINFO("Configure additional register for KZX9131\n");
-	if (config == 1) {
-		backup[0] = phy_read_mmd(phydev, 0x1C, 0x15);
-		backup[1] = phy_read_mmd(phydev, 0x1C, 0x16);
-		backup[2] = phy_read_mmd(phydev, 0x1C, 0x18);
-		backup[3] = phy_read_mmd(phydev, 0x1C, 0x1B);
-
-		phy_write_mmd(phydev, 0x1C, 0x15, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x16, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x18, 0xEEEE);
-		phy_write_mmd(phydev, 0x1C, 0x1B, 0xEEEE);
-	} else if (config == 0) {
-		phy_write_mmd(phydev, 0x1C, 0x15, backup[0]);
-		phy_write_mmd(phydev, 0x1C, 0x16, backup[1]);
-		phy_write_mmd(phydev, 0x1C, 0x18, backup[2]);
-		phy_write_mmd(phydev, 0x1C, 0x1B, backup[3]);
-	}
-	return 0;
-}
-
 static int phy_rgmii_digital_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct platform_device *pdev = ethqos->pdev;
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(dev);
-	unsigned int phydata = 0;
 
-	if (priv->phydev && priv->phydev->drv && (priv->phydev->phy_id &
-	     priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)
-		phy_rgmii_digital_loopback_mmd_config(dev->phydev, config,
-						      ethqos->backup_mmd_loopback);
+	unsigned int phydata = 0;
+	if (priv->phydev && priv->phydev->drv && priv->phydev->drv->set_loopback &&
+	    ((priv->phydev->phy_id &
+	      priv->phydev->drv->phy_id_mask) == PHY_ID_KSZ9131)) {
+		priv->phydev->drv->set_loopback(priv->phydev, config);
+	}
 	if (config == 1) {
 		/*Backup BMCR before Enabling Phy Loopback */
 		ethqos->bmcr_backup = priv->mii->read(priv->mii,
@@ -5801,9 +5776,9 @@ static const struct file_operations emac_rec_fops = {
 	.poll = ethqos_poll_rec_dev_emac,
 };
 
-static int ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
-					      struct cdev **emac_cdev,
-					      struct class **emac_class)
+static void ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
+					       struct cdev **emac_cdev,
+					       struct class **emac_class)
 {
 	if (!*emac_class) {
 		ETHQOSERR("failed to destroy device and class\n");
@@ -5825,9 +5800,11 @@ static int ethqos_delete_emac_rec_device_node(dev_t *emac_dev_t,
 	cdev_del(*emac_cdev);
 	unregister_chrdev_region(*emac_dev_t, 1);
 
+	return;
+
 fail_to_del_node:
 	ETHQOSERR("failed to delete chrdev node\n");
-	return -EINVAL;
+	return;
 }
 
 static int ethqos_create_emac_rec_device_node(dev_t *emac_dev_t,
@@ -6179,7 +6156,6 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 	struct property *status_prop;
 	struct property *speed_prop;
 	int mac2mac_speed;
-	int ret = 0;
 	static u32 speed;
 
 	fixed_phy_node = of_get_child_by_name(pdev->dev.of_node, "fixed-link");
@@ -6206,13 +6182,6 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
 			status_prop->value = kstrdup("okay", GFP_KERNEL);
-
-                        if (!(status_prop->value)) {
-                                ETHQOSERR("kstrdup failed to allocate space\n");
-                                kfree(status_prop);
-                                return -ENOMEM;
-                        }
-
 			status_prop->length = strlen(status_prop->value) + 1;
 
 			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
@@ -6255,7 +6224,7 @@ out:
 									    "fixed-link-needs-mdio-bus");
 
 	of_node_put(fixed_phy_node);
-	return ret;
+	return 0;
 }
 
 static int ethqos_update_phyid(struct device_node *np)
@@ -6369,13 +6338,15 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 	gh_vmid_t v2x_vm_id;
 	int result;
 
-	result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
-	if (result) {
-		ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
-		return NOTIFY_DONE;
+	if (event == GH_VM_BEFORE_POWERUP) {
+		result = gh_rm_get_vmid(GH_TELE_VM, &v2x_vm_id);
+		if (result) {
+			ETHQOSINFO("gh_rm_get_vmid() failed %d", result);
+			return NOTIFY_DONE;
+		}
+		priv->v2x_vm_id = v2x_vm_id;
 	}
-
-	if (cb_vm_id != v2x_vm_id) {
+	if (cb_vm_id != priv->v2x_vm_id) {
 		ETHQOSINFO("vm id mismatch, ignoring cb_vm %u v2x_vm %u event %u",
 			   cb_vm_id, v2x_vm_id, event);
 		return NOTIFY_DONE;
@@ -6581,16 +6552,12 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 		priv->phydev->drv->get_features(priv->phydev);
 
 	if (!priv->plat->mac2mac_en) {
-		rtnl_lock();
-		ret = phylink_connect_phy(priv->phylink, priv->phydev);
-		rtnl_unlock();
 		phydev = priv->phydev;
-		if (ret) {
-			ETHQOSERR("Cannot attach to PHY\n");
-			return ret;
-		}
+		rtnl_lock();
+		phylink_connect_phy(priv->phylink, priv->phydev);
+		rtnl_unlock();
 
-		if (phydev && phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
+		if (phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
 			if (phydev->interface == PHY_INTERFACE_MODE_USXGMII) {
 				ETHQOSDBG("set_max_speed 10G\n");
 				phy_set_max_speed(phydev, SPEED_10000);
@@ -6623,7 +6590,7 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 			if (phydev->drv->config_intr &&
 			    !phydev->drv->config_intr(phydev))
 				ETHQOSDBG("config_phy_intr successful after phy on\n");
-		} else if (!priv->plat->phy_intr_en_extn_stm && phydev) {
+		} else if (!priv->plat->phy_intr_en_extn_stm) {
 			phydev->irq = PHY_POLL;
 			ETHQOSDBG("PHY Polling Mode enabled\n");
 		} else {
@@ -6637,9 +6604,9 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 
 	ret = stmmac_resume(&ethqos->pdev->dev);
 
-	if (phydev && phydev->interface == PHY_INTERFACE_MODE_USXGMII)
+	if (phydev->interface == PHY_INTERFACE_MODE_USXGMII)
 		speed = SPEED_10000;
-	else if (phydev && phydev->interface == PHY_INTERFACE_MODE_SGMII)
+	else if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
 		speed = SPEED_1000;
 
 	if (!net->rtnl) {
@@ -7171,6 +7138,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
+	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
 
@@ -7380,6 +7348,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	/* Read en_wol from device tree */
 	priv->en_wol = of_property_read_bool(np, "enable-wol");
+	if (of_property_read_bool(np, "disable-frame-preem"))
+		priv->dma_cap.fpesel = 0;
 
 	/* If valid mac address is present from emac partition
 	 * Enable the mac address in the device.
@@ -7406,19 +7376,24 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		goto err_clk;
 
 	if (ethqos->early_eth_enabled) {
-		if (plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID ||
-		    plat_dat->fixed_phy_mode) {
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
 			/* Initialize work*/
 			INIT_WORK(&ethqos->early_eth,
 				  qcom_ethqos_bringup_iface);
 			/* Queue the work*/
 			queue_work(system_wq, &ethqos->early_eth);
+
+			/*Set early eth parameters*/
+			ethqos_set_early_eth_param(priv, ethqos);
 		}
-		/*Set early eth parameters*/
-		ethqos_set_early_eth_param(priv, ethqos);
+
+		if (priv->plat && priv->plat->mdio_bus_data)
+			priv->plat->mdio_bus_data->phy_mask =
+			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
 	}
 
 	if (qcom_ethqos_register_panic_notifier(ethqos))
@@ -7561,11 +7536,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	}
 
 	if (plat_dat->mac_err_rec) {
-		ret = ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
-							 &ethqos->emac_rec_cdev,
-							 &ethqos->emac_rec_class);
-		if (ret == -EINVAL)
-			return ret;
+		ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
+						   &ethqos->emac_rec_cdev,
+						   &ethqos->emac_rec_class);
 	}
 
 	debugfs_remove_recursive(ethqos->debugfs_dir);

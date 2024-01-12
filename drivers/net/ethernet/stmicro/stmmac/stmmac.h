@@ -30,6 +30,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <linux/icmp.h>
+#include <linux/gunyah/gh_rm_drv.h>
 
 struct stmmac_resources {
 	void __iomem *addr;
@@ -384,6 +385,7 @@ struct stmmac_priv {
 	bool wol_irq_enabled;
 	bool en_wol;
 	u32 avb_vlan_id;
+	gh_vmid_t v2x_vm_id;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 };
 

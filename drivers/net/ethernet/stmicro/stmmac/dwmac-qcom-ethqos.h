@@ -494,7 +494,6 @@ struct qcom_ethqos {
 	/*Backup variable for suspend resume*/
 	int backup_suspend_speed;
 	u32 backup_bmcr;
-	u32 backup_mmd_loopback[4];
 	unsigned backup_autoneg:1;
 	bool probed;
 	bool ipa_enabled;

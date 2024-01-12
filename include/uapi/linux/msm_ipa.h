@@ -201,7 +201,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 29
+#define IPA_MAX_NUM_IFACE_FLT 30
 
 
 /**
@@ -1510,7 +1510,7 @@ enum ipa_hdr_l2_type {
 	IPA_HDR_L2_ETHERNET_II_AST,
 	IPA_HDR_L2_802_1Q_AST,
 };
-#define IPA_HDR_L2_MAX (IPA_HDR_L2_802_1Q + 1)
+#define IPA_HDR_L2_MAX (IPA_HDR_L2_802_1Q_AST + 1)
 
 #define IPA_HDR_L2_802_1Q IPA_HDR_L2_802_1Q
 

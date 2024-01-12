@@ -1291,6 +1291,15 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	int phy_data = 0;
 	int ret = 0;
 
+	/* 2500BaseX fallback to SGMII to bring up link at lower speed */
+	if (interface == PHY_INTERFACE_MODE_2500BASEX && speed < SPEED_2500) {
+		priv->plat->interface = PHY_INTERFACE_MODE_SGMII;
+		priv->plat->phy_interface = PHY_INTERFACE_MODE_SGMII;
+	} else {
+		priv->plat->interface = interface;
+		priv->plat->phy_interface = interface;
+	}
+
 	if (priv->plat->serdes_powersaving)
 		priv->plat->serdes_powersaving(to_net_dev(config->dev),
 							  priv->plat->bsp_priv, true, true);
@@ -8360,12 +8369,6 @@ int stmmac_dvr_remove(struct device *dev)
 	netif_carrier_off(ndev);
 	unregister_netdev(ndev);
 
-	/* Serdes power down needs to happen after VLAN filter
-	 * is deleted that is triggered by unregister_netdev().
-	 */
-	if (priv->plat->serdes_powerdown)
-		priv->plat->serdes_powerdown(ndev, priv->plat->bsp_priv);
-
 #ifdef CONFIG_DEBUG_FS
 	stmmac_exit_fs(ndev);
 #endif
@@ -8445,8 +8448,7 @@ int stmmac_suspend(struct device *dev)
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_suspend(priv->phylink, true);
 		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
-			if (!priv->dev->wol_enabled)
-				phylink_suspend(priv->phylink, false);
+			phylink_suspend(priv->phylink, false);
 		} else {
 			if (device_may_wakeup(priv->device))
 				phylink_speed_down(priv->phylink, false);
@@ -8546,8 +8548,7 @@ int stmmac_resume(struct device *dev)
 		if (device_may_wakeup(priv->device) && priv->plat->pmt) {
 			phylink_resume(priv->phylink);
 		} else if (priv->phydev && priv->phydev->mac_managed_pm) {
-			if (!priv->dev->wol_enabled)
-				phylink_resume(priv->phylink);
+			phylink_resume(priv->phylink);
 		} else {
 			phylink_resume(priv->phylink);
 			if (device_may_wakeup(priv->device))

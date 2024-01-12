@@ -346,5 +346,6 @@ struct plat_stmmacenet_data {
 	bool mac_suspended;
 	bool separate_wol_pin;
 	bool mka_mcbcq_filtering;
+	bool probe_invoke_if_up;
 };
 #endif

@@ -5629,8 +5629,9 @@ int msm_pcie_enumerate(u32 rc_idx)
 		}
 	} else {
 		bridge = dev->bridge;
-		msm_msi_config_access(dev_get_msi_domain(&dev->dev->dev),
-			true);
+		if (!dev->lpi_enable)
+			msm_msi_config_access(dev_get_msi_domain(&dev->dev->dev),
+					true);
 	}
 
 	bridge->sysdata = dev;
@@ -6542,7 +6543,7 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 	int i;
 	struct msm_pcie_dev_t *dev = data;
 	struct pci_dev *rp = dev->dev;
-	int aer = rp->aer_cap;
+	int aer;
 	unsigned long irqsave_flags;
 	u32 status = 0, status2 = 0;
 	irqreturn_t ret = IRQ_HANDLED;
@@ -6589,6 +6590,13 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 					"PCIe: RC%d: AER event idx %d.\n",
 					dev->rc_idx, i);
 
+				if (!rp) {
+					PCIE_DBG2(dev, "PCIe: RC%d pci_dev is not allocated.\n",
+										dev->rc_idx);
+					goto done;
+				}
+
+				aer = rp->aer_cap;
 				pci_read_config_dword(rp,
 				aer + PCI_ERR_ROOT_STATUS, &e_src.status);
 				if (!(e_src.status &

@@ -8,11 +8,14 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
+#include <linux/i2c-smbus.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -70,7 +73,6 @@
 #define I2C_ADDR_NACK		11
 #define I2C_DATA_NACK		12
 #define GENI_M_CMD_FAILURE	13
-#define GENI_M_CANCEL_DONE	14
 
 #define GENI_HW_PARAM			0x50
 
@@ -194,6 +196,9 @@ struct geni_i2c_dev {
 	atomic_t is_xfer_in_progress; /* Used to maintain xfer inprogress status */
 	bool is_deep_sleep; /* For deep sleep restore the config similar to the probe. */
 	bool i2c_test_dev; /* Set this DT flag to enable test bus dump for an SE */
+	struct i2c_smbus_alert_setup alert_data; /* platform data for the smbus_alert */
+	struct i2c_client *ara; /* For SMBus Alert Response Address */
+	bool is_pmbus_supported; /* For supporting PMBus supported devices and SE's */
 };
 
 static struct geni_i2c_dev *gi2c_dev_dbg[MAX_SE];
@@ -224,7 +229,6 @@ static struct geni_i2c_err_log gi2c_log[] = {
 	[GENI_TIMEOUT] = {-ETIMEDOUT, "I2C TXN timed out"},
 	[GENI_SPURIOUS_IRQ] = {-EINVAL, "Received unexpected interrupt"},
 	[GENI_M_CMD_FAILURE] = {-EINVAL, "Master command failure"},
-	[GENI_M_CANCEL_DONE] = {-EINVAL, "Master cancel done"},
 };
 
 struct geni_i2c_clk_fld {
@@ -698,6 +702,12 @@ static void geni_i2c_irq_handle_watermark(struct geni_i2c_dev *gi2c, u32 m_stat)
 	int i, j;
 	u32 rx_st = readl_relaxed(gi2c->base + SE_GENI_RX_FIFO_STATUS);
 
+	if (!cur) {
+		I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s: Spurious irq\n", __func__);
+		geni_i2c_err(gi2c, GENI_SPURIOUS_IRQ);
+		return;
+	}
+
 	if (((m_stat & M_RX_FIFO_WATERMARK_EN) ||
 	     (m_stat & M_RX_FIFO_LAST_EN)) && (cur->flags & I2C_M_RD)) {
 		u32 rxcnt = rx_st & RX_FIFO_WC_MSK;
@@ -756,7 +766,7 @@ static irqreturn_t geni_i2c_irq(int irq, void *dev)
 		"%s: m_irq_status:0x%x\n", __func__, m_stat);
 
 	if (!cur) {
-		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev, "Spurious irq\n");
+		I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "Spurious irq\n");
 		geni_i2c_err(gi2c, GENI_SPURIOUS_IRQ);
 		gi2c->cmd_done = true;
 		is_clear_watermark = true;
@@ -789,12 +799,23 @@ static irqreturn_t geni_i2c_irq(int irq, void *dev)
 			geni_i2c_err(gi2c, GENI_ILLEGAL_CMD);
 		if (m_stat & M_CMD_ABORT_EN)
 			geni_i2c_err(gi2c, GENI_ABORT_DONE);
-		if (m_stat & M_CMD_FAILURE_EN)
-			geni_i2c_err(gi2c, GENI_M_CMD_FAILURE);
-		if (m_stat & M_CMD_CANCEL_EN) {
-			geni_i2c_err(gi2c, GENI_M_CANCEL_DONE);
-			m_cancel_done = true;
+
+		/* This bit(M_CMD_FAILURE_EN) is set when command execution has been
+		 * completed with failure.
+		 */
+		if (m_stat & M_CMD_FAILURE_EN) {
+			/* Log error else do not override previous set error */
+			if (!gi2c->err)
+				geni_i2c_err(gi2c, GENI_M_CMD_FAILURE);
+			else
+				I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev,
+					    "%s:GENI_M_CMD_FAILURE\n", __func__);
 		}
+
+		/* This bit is set when command cancel request by SW is completed */
+		if (m_stat & M_CMD_CANCEL_EN)
+			m_cancel_done = true;
+
 		gi2c->cmd_done = true;
 		is_clear_watermark = true;
 		goto irqret;
@@ -1857,6 +1878,175 @@ static int get_geni_se_i2c_hub(struct geni_i2c_dev *gi2c)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_I2C_SMBUS)
+/* handle_smb_irq: IRQ handler for SMB Alert interrupt
+ * @irq: SMB Alert interrupt num
+ * @dev: data cookie
+ * Return: IRQ_HANDLED on success
+ */
+static irqreturn_t handle_smb_irq(int irq, void *dev)
+{
+	struct geni_i2c_dev *gi2c = dev;
+	struct i2c_client *ara =  gi2c->ara;
+
+	if (!ara)
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev, "Not a valid ARA\n");
+
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "SMB Alert Interrupt raised\n");
+
+	/* Invoke SMB Alert handle function for processing received ARA */
+	i2c_handle_smbus_alert(ara);
+	return IRQ_HANDLED;
+}
+
+/**
+ * geni_i2c_smbus_alert_setup: Setup for SMB Alert
+ * @gi2c: I2C geni dev pointer
+ * Return: 0 on success; error value on failure
+ */
+static int geni_i2c_smbus_alert_setup(struct geni_i2c_dev *gi2c)
+{
+	struct i2c_client *ara;
+	struct device_node *np = gi2c->dev->of_node;
+	int gpio = 0, smb_irq, ret;
+
+	if (!np) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: No SMB Alert support platform data\n", __func__);
+		return -ENODEV;
+	}
+
+	gpio = of_get_named_gpio(np, "smbalert-gpio", 0);
+	if (gpio < 0) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Failed to retrieve smbalert-gpio from dts.\n", __func__);
+		return -EINVAL;
+	}
+
+	smb_irq = gpio_to_irq(gpio);
+	if (smb_irq < 0) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Not a Valid IRQ for SMB Alert\n", __func__);
+		return smb_irq;
+	}
+
+	ara = i2c_new_smbus_alert_device(&gi2c->adap, &gi2c->alert_data);
+	if (IS_ERR(ara)) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			    "%s: Setting SMB Alert failed\n", __func__);
+		return PTR_ERR(ara);
+	}
+	gi2c->ara = ara;
+
+	ret = devm_request_irq(gi2c->dev, smb_irq, handle_smb_irq,
+			       IRQF_TRIGGER_RISING, "smb_irq", gi2c);
+	if (ret) {
+		I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+			     "Request_smb_irq failed:%d: err:%d\n", smb_irq, ret);
+		return ret;
+	}
+
+	return 0;
+}
+#else
+static int geni_i2c_smbus_alert_setup(struct geni_i2c_dev *gi2c)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
+/**
+ * geni_i2c_resources_init: initialize clk, icc vote, read dt property
+ * @pdev: Platform driver handle
+ * @gi2c: geni i2c structure as a pointer
+ *
+ * Function to initialize clock and icc vote configuration and read require
+ * DTSI property.
+ *
+ * Return: 0 on success OR negative error code for failure.
+ */
+static int geni_i2c_resources_init(struct platform_device *pdev, struct geni_i2c_dev *gi2c)
+{
+	int ret;
+
+	/*
+	 * For LE, clocks, gpio and icb voting will be provided by
+	 * LA. The I2C operates in GSI mode only for LE usecase,
+	 * se irq not required. Below properties will not be present
+	 * in I2C LE dt.
+	 */
+	if (gi2c->is_le_vm)
+		return 0;
+
+	gi2c->i2c_rsc.clk = devm_clk_get(&pdev->dev, "se-clk");
+	if (IS_ERR(gi2c->i2c_rsc.clk)) {
+		ret = PTR_ERR(gi2c->i2c_rsc.clk);
+		dev_err(&pdev->dev, "Err getting SE Core clk %d\n", ret);
+		return ret;
+	}
+
+	gi2c->m_ahb_clk = devm_clk_get(gi2c->dev->parent, "m-ahb");
+	if (IS_ERR(gi2c->m_ahb_clk)) {
+		ret = PTR_ERR(gi2c->m_ahb_clk);
+		dev_err(&pdev->dev, "Err getting M AHB clk %d\n", ret);
+		return ret;
+	}
+
+	gi2c->s_ahb_clk = devm_clk_get(gi2c->dev->parent, "s-ahb");
+	if (IS_ERR(gi2c->s_ahb_clk)) {
+		ret = PTR_ERR(gi2c->s_ahb_clk);
+		dev_err(&pdev->dev, "Err getting S AHB clk %d\n", ret);
+		return ret;
+	}
+
+	gi2c->is_i2c_hub = of_property_read_bool(pdev->dev.of_node, "qcom,i2c-hub");
+	/*
+	 * For I2C_HUB, qup-ddr voting not required and
+	 * core clk should be voted explicitly.
+	 */
+	if (gi2c->is_i2c_hub) {
+		gi2c->core_clk = devm_clk_get(&pdev->dev, "core-clk");
+		if (IS_ERR(gi2c->core_clk)) {
+			ret = PTR_ERR(gi2c->core_clk);
+			dev_err(&pdev->dev, "Err getting core-clk %d\n", ret);
+			return ret;
+		}
+		ret = geni_icc_get(&gi2c->i2c_rsc, NULL);
+		if (ret) {
+			dev_err(&pdev->dev, "%s: Error - geni_icc_get ret:%d\n", __func__, ret);
+			return ret;
+		}
+		gi2c->i2c_rsc.icc_paths[GENI_TO_CORE].avg_bw = GENI_DEFAULT_BW;
+		gi2c->i2c_rsc.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
+
+		/* For I2C HUB, we don't have HW reg to identify RTL/SW base SE.
+		 * Hence setting flag for all I2C HUB instances.
+		 */
+		gi2c->is_i2c_rtl_based  = true;
+		dev_info(gi2c->dev, "%s: RTL based SE\n", __func__);
+	} else {
+		ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
+				GENI_DEFAULT_BW, GENI_DEFAULT_BW,
+				(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
+		if (ret) {
+			dev_err(&pdev->dev, "%s: Error - resources_init ret:%d\n", __func__, ret);
+			return ret;
+		}
+	}
+
+	gi2c->irq = platform_get_irq(pdev, 0);
+	if (gi2c->irq < 0)
+		return gi2c->irq;
+
+	irq_set_status_flags(gi2c->irq, IRQ_NOAUTOEN);
+	ret = devm_request_irq(gi2c->dev, gi2c->irq, geni_i2c_irq, 0, "i2c_geni", gi2c);
+	if (ret) {
+		dev_err(gi2c->dev, "Request_irq failed:%d: err:%d\n", gi2c->irq, ret);
+		return ret;
+	}
+
+	return 0;
+}
 static int geni_i2c_probe(struct platform_device *pdev)
 {
 	struct geni_i2c_dev *gi2c;
@@ -1933,84 +2123,18 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	 * se irq not required. Below properties will not be present
 	 * in I2C LE dt.
 	 */
-	if (!gi2c->is_le_vm) {
-		gi2c->i2c_rsc.clk = devm_clk_get(&pdev->dev, "se-clk");
-		if (IS_ERR(gi2c->i2c_rsc.clk)) {
-			ret = PTR_ERR(gi2c->i2c_rsc.clk);
-			dev_err(&pdev->dev, "Err getting SE Core clk %d\n",
-				ret);
-			return ret;
-		}
-
-		gi2c->m_ahb_clk = devm_clk_get(dev->parent, "m-ahb");
-		if (IS_ERR(gi2c->m_ahb_clk)) {
-			ret = PTR_ERR(gi2c->m_ahb_clk);
-			dev_err(&pdev->dev, "Err getting M AHB clk %d\n", ret);
-			return ret;
-		}
-
-		gi2c->s_ahb_clk = devm_clk_get(dev->parent, "s-ahb");
-		if (IS_ERR(gi2c->s_ahb_clk)) {
-			ret = PTR_ERR(gi2c->s_ahb_clk);
-			dev_err(&pdev->dev, "Err getting S AHB clk %d\n", ret);
-			return ret;
-		}
-
-		gi2c->is_i2c_hub = of_property_read_bool(pdev->dev.of_node,
-					"qcom,i2c-hub");
-		/*
-		 * For I2C_HUB, qup-ddr voting not required and
-		 * core clk should be voted explicitly.
-		 */
-		if (gi2c->is_i2c_hub) {
-			gi2c->core_clk = devm_clk_get(&pdev->dev, "core-clk");
-			if (IS_ERR(gi2c->core_clk)) {
-				ret = PTR_ERR(gi2c->core_clk);
-				dev_err(&pdev->dev, "Err getting core-clk %d\n", ret);
-				return ret;
-			}
-			ret = geni_icc_get(&gi2c->i2c_rsc, NULL);
-			if (ret) {
-				dev_err(&pdev->dev, "%s: Error - geni_icc_get ret:%d\n",
-							__func__, ret);
-				return ret;
-			}
-			gi2c->i2c_rsc.icc_paths[GENI_TO_CORE].avg_bw = GENI_DEFAULT_BW;
-			gi2c->i2c_rsc.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
-
-			/* For I2C HUB, we don't have HW reg to identify RTL/SW base SE.
-			 * Hence setting flag for all I2C HUB instances.
-			 */
-			gi2c->is_i2c_rtl_based  = true;
-			dev_info(gi2c->dev, "%s: RTL based SE\n", __func__);
-		} else {
-			ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
-					GENI_DEFAULT_BW, GENI_DEFAULT_BW,
-					(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
-			if (ret) {
-				dev_err(&pdev->dev, "%s: Error - resources_init ret:%d\n",
-							__func__, ret);
-				return ret;
-			}
-		}
-
-		gi2c->irq = platform_get_irq(pdev, 0);
-		if (gi2c->irq < 0)
-			return gi2c->irq;
-
-		irq_set_status_flags(gi2c->irq, IRQ_NOAUTOEN);
-		ret = devm_request_irq(gi2c->dev, gi2c->irq, geni_i2c_irq,
-					0, "i2c_geni", gi2c);
-		if (ret) {
-			dev_err(gi2c->dev, "Request_irq failed:%d: err:%d\n",
-					   gi2c->irq, ret);
-			return ret;
-		}
-	}
+	ret = geni_i2c_resources_init(pdev, gi2c);
+	if (ret)
+		return ret;
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,shared")) {
 		gi2c->is_shared = true;
 		dev_info(&pdev->dev, "Multi-EE usecase\n");
+	}
+
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,pmbus-supported")) {
+		gi2c->is_pmbus_supported = true;
+		dev_info(&pdev->dev, "PMBus support enabled\n");
 	}
 
 	//Strictly only for debug, it's client/slave device decision for an SE.
@@ -2068,6 +2192,16 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	snprintf(ipc_name, I2C_NAME_SIZE, "%s", dev_name(gi2c->dev));
 	gi2c->ipcl = ipc_log_context_create(2, ipc_name, 0);
 	atomic_set(&gi2c->is_xfer_in_progress, 0);
+
+	/* On PMBus supported targets and I2C SE instances, setup SMBus alert feature support */
+	if (gi2c->is_pmbus_supported) {
+		ret = geni_i2c_smbus_alert_setup(gi2c);
+		if (ret < 0) {
+			I2C_LOG_ERR(gi2c->ipcl, false, gi2c->dev,
+				    "%s: I2C SMBus Alert setup failed, ret=%d\n", __func__, ret);
+			return ret;
+		}
+	}
 
 	if (gi2c->i2c_test_dev) {
 		/* configure Test bus to dump test bus later, only once */
@@ -2408,7 +2542,7 @@ static int geni_i2c_suspend_late(struct device *device)
 		pm_runtime_enable(device);
 	}
 	i2c_unlock_bus(&gi2c->adap, I2C_LOCK_SEGMENT);
-	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__);
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__, ret);
 	return 0;
 }
 #else

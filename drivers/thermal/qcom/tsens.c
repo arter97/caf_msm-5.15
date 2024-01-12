@@ -20,6 +20,7 @@
 #include <linux/slab.h>
 #include <linux/suspend.h>
 #include <linux/thermal.h>
+#include <linux/suspend.h>
 #include <linux/thermal_minidump.h>
 #include "tsens.h"
 #include "thermal_zone_internal.h"
