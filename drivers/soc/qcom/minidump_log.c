@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cache.h>
@@ -163,6 +163,7 @@ module_param_array(key_modules, charp, &n_modump, 0644);
 #endif	/* CONFIG_MODULES */
 #endif
 
+#if defined(CONFIG_ARM64) || defined(CONFIG_QCOM_DYN_MINIDUMP_STACK)
 static int register_stack_entry(struct md_region *ksp_entry, u64 sp, u64 size)
 {
 	struct page *sp_page;
@@ -183,6 +184,7 @@ static int register_stack_entry(struct md_region *ksp_entry, u64 sp, u64 size)
 				ksp_entry->name);
 	return entry;
 }
+#endif
 
 static void register_kernel_sections(void)
 {
@@ -238,73 +240,6 @@ static inline bool in_stack_range(
 	u64 max_addr = base_addr + stack_size;
 
 	return (min_addr <= sp && sp < max_addr);
-}
-
-static unsigned int calculate_copy_pages(u64 sp, struct vm_struct *stack_area)
-{
-	u64 tsk_stack_base = (u64) stack_area->addr;
-	u64 offset;
-	unsigned int stack_pages, copy_pages;
-
-	if (in_stack_range(sp, tsk_stack_base, get_vm_area_size(stack_area))) {
-		offset = sp - tsk_stack_base;
-		stack_pages = get_vm_area_size(stack_area) / PAGE_SIZE;
-		copy_pages = stack_pages - (offset / PAGE_SIZE);
-	} else {
-		copy_pages = 0;
-	}
-	return copy_pages;
-}
-
-void dump_stack_minidump(u64 sp)
-{
-	struct md_region ksp_entry, ktsk_entry;
-	u32 cpu = smp_processor_id();
-	struct vm_struct *stack_vm_area;
-	unsigned int i, copy_pages;
-
-	if (IS_ENABLED(CONFIG_QCOM_DYN_MINIDUMP_STACK))
-		return;
-
-	if (is_idle_task(current))
-		return;
-
-	is_vmap_stack = IS_ENABLED(CONFIG_VMAP_STACK);
-
-	if (sp < KIMAGE_VADDR || sp > -256UL)
-		sp = current_stack_pointer;
-
-	/*
-	 * Since stacks are now allocated with vmalloc, the translation to
-	 * physical address is not a simple linear transformation like it is
-	 * for kernel logical addresses, since vmalloc creates a virtual
-	 * mapping. Thus, virt_to_phys() should not be used in this context;
-	 * instead the page table must be walked to acquire the physical
-	 * address of one page of the stack.
-	 */
-	stack_vm_area = task_stack_vm_area(current);
-	if (is_vmap_stack) {
-		sp &= ~(PAGE_SIZE - 1);
-		copy_pages = calculate_copy_pages(sp, stack_vm_area);
-		for (i = 0; i < copy_pages; i++) {
-			scnprintf(ksp_entry.name, sizeof(ksp_entry.name),
-				  "KSTACK%d_%d", cpu, i);
-			(void)register_stack_entry(&ksp_entry, sp, PAGE_SIZE);
-			sp += PAGE_SIZE;
-		}
-	} else {
-		sp &= ~(THREAD_SIZE - 1);
-		scnprintf(ksp_entry.name, sizeof(ksp_entry.name), "KSTACK%d",
-			  cpu);
-		(void)register_stack_entry(&ksp_entry, sp, THREAD_SIZE);
-	}
-
-	scnprintf(ktsk_entry.name, sizeof(ktsk_entry.name), "KTASK%d", cpu);
-	ktsk_entry.virt_addr = (u64)current;
-	ktsk_entry.phys_addr = virt_to_phys((uintptr_t *)current);
-	ktsk_entry.size = sizeof(struct task_struct);
-	if (msm_minidump_add_region(&ktsk_entry) < 0)
-		pr_err("Failed to add current task %d in Minidump\n", cpu);
 }
 
 #ifdef CONFIG_QCOM_DYN_MINIDUMP_STACK
