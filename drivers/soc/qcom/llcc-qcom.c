@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -482,7 +482,7 @@ static const struct llcc_slice_config sdxpinn_data[] = {
 	{LLCC_MDMHPGRW,     25,  128, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
 	{LLCC_MDMHW,        26,  128, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
 	{LLCC_MDMVPE,       29,   64, 1, 1,      0xC, 0x0, 0, 0x0, 0, 0, 0, 0},
-	{LLCC_APTCM,        30,  128, 3, 1,      0x0, 0x3, 1, 0x0, 1, 0, 0, 0},
+	{LLCC_APTCM,        30,   64, 3, 1,      0x0, 0x1, 1, 0x0, 1, 0, 0, 0},
 	{LLCC_MDMCLAD2,     20,  128, 1, 1,      0x3, 0x0, 0, 0x0, 0, 0, 0, 0},
 };
 
