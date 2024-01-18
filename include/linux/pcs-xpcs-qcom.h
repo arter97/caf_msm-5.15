@@ -3,7 +3,7 @@
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
  * Synopsys DesignWare XPCS helpers
  */
-/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #ifndef __LINUX_PCS_XPCS_QCOM_H
 #define __LINUX_PCS_XPCS_QCOM_H
@@ -53,6 +53,7 @@ int ethqos_xpcs_intr_config(struct net_device *ndev);
 int ethqos_xpcs_intr_enable(struct net_device *ndev);
 int ethqos_xpcs_init(struct net_device *ndev);
 int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs);
+int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm);
 
 #else /* IS_ENABLED(CONFIG_PCS_QCOM) */
 static inline int qcom_xpcs_get_an_mode(struct dw_xpcs_qcom *xpcs,
@@ -136,6 +137,10 @@ static inline int ethqos_xpcs_init(struct net_device *ndev)
 	return 0;
 }
 static inline int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs)
+{
+	return 0;
+}
+static inline int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm)
 {
 	return 0;
 }
