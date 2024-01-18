@@ -453,11 +453,14 @@ static int __arm_smmu_alloc_cb(unsigned long *map, int start, int end,
 {
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
-	struct arm_smmu_device *smmu = cfg->smmu;
+	struct arm_smmu_device *smmu;
 	int idx;
 	int i;
 	int cb = -EINVAL;
 
+	if (!fwspec || !cfg)
+		return cb;
+	smmu = cfg->smmu;
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
 		if (smmu->s2crs[idx].pinned)
 			cb = smmu->s2crs[idx].cbndx;
@@ -1113,7 +1116,7 @@ static bool arm_smmu_master_attached(struct arm_smmu_device *smmu,
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
 
-	if (!cfg || !fwspec)
+	if (!fwspec || !cfg)
 		return false;
 
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
@@ -1959,6 +1962,9 @@ static int arm_smmu_master_alloc_smes(struct device *dev)
 	bool config_smrs = !dev_defer_smr_configuration(dev);
 	int i, idx, ret;
 
+	if (!fwspec || !cfg)
+		return -EINVAL;
+
 	mutex_lock(&smmu->stream_map_mutex);
 	/* Figure out a viable stream map entry allocation */
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
@@ -2770,6 +2776,9 @@ static struct iommu_group *arm_smmu_device_group(struct device *dev)
 	struct arm_smmu_device *smmu = cfg->smmu;
 	struct iommu_group *group = NULL;
 	int i, idx;
+
+	if (!cfg || !fwspec)
+		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&smmu->stream_map_mutex);
 	group = of_get_device_group(dev);
@@ -4121,10 +4130,9 @@ static int __maybe_unused arm_smmu_pm_restore_early(struct device *dev)
 		smmu_domain->pgtbl_ops = pgtbl_ops;
 		arm_smmu_init_context_bank(smmu_domain, pgtbl_cfg);
 	}
-	arm_smmu_pm_resume_common(dev);
-	ret = arm_smmu_runtime_suspend(dev);
+	ret = arm_smmu_pm_resume_common(dev);
 	if (ret) {
-		dev_err(dev, "Failed to suspend\n");
+		dev_err(dev, "Failed to resume\n");
 		return ret;
 	}
 	return 0;
@@ -4135,7 +4143,7 @@ static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 	struct arm_smmu_domain *smmu_domain;
 	struct arm_smmu_cb *cb;
-	int idx;
+	int idx, ret;
 
 	for (idx = 0; idx < smmu->num_context_banks; idx++) {
 		cb = &smmu->cbs[idx];
@@ -4146,6 +4154,11 @@ static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
 				qcom_free_io_pgtable_ops(smmu_domain->pgtbl_ops);
 			}
 		}
+	}
+	ret = arm_smmu_runtime_suspend(dev);
+	if (ret) {
+		dev_err(dev, "Failed to suspend\n");
+		return ret;
 	}
 	return 0;
 }
@@ -4175,7 +4188,7 @@ static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
 	if (pm_suspend_via_firmware())
-		arm_smmu_pm_freeze_late(dev);
+		return arm_smmu_pm_freeze_late(dev);
 
 	if (pm_runtime_suspended(dev))
 		goto clk_unprepare;
