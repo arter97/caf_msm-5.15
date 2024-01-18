@@ -25,13 +25,6 @@
 
 #include "pmbus.h"
 
-struct list_head fault_queue;
-
-struct fault_addr {
-	struct list_head list;
-	uint8_t addr;
-};
-
 struct fmgr_interface {
 	struct i2c_client *client;
 	struct cdev cdev;
@@ -39,6 +32,7 @@ struct fmgr_interface {
 	struct pmbus_driver_info info;
 	struct wait_queue_head  waitq;
 	struct mutex queue_lock;
+	uint8_t addr;
 };
 
 /*
@@ -96,7 +90,8 @@ static __poll_t fmgr_interface_poll(struct file *file,
 	__poll_t mask = 0;
 
 	poll_wait(file, &fmgr_interface->waitq, wait);
-	if (!list_empty(&fault_queue))
+
+	if (fmgr_interface->addr)
 		mask |= POLLIN;
 
 	return mask;
@@ -112,23 +107,11 @@ static void fmgr_interface_alert(struct i2c_client *client,
 			   enum i2c_alert_protocol type, unsigned int data)
 {
 	struct fmgr_interface *fmgr_interface;
-	struct fault_addr *addr;
 	const struct pmbus_driver_info *info = pmbus_get_driver_info(client);
 
 	fmgr_interface = container_of(info, struct fmgr_interface, info);
 
-	addr = kzalloc(sizeof(struct fault_addr), GFP_KERNEL);
-	if (addr == NULL) {
-		dev_err(fmgr_interface->dev, "Failed to allocate memory\n");
-		return;
-	}
-
-	addr->addr = (uint8_t)client->addr;
-
-	mutex_lock(&fmgr_interface->queue_lock);
-	list_add_tail(&(addr->list), &fault_queue);
-	mutex_unlock(&fmgr_interface->queue_lock);
-
+	fmgr_interface->addr = (uint8_t)client->addr;
 	wake_up_interruptible(&fmgr_interface->waitq);
 }
 
@@ -148,9 +131,7 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 {
 	struct fmgr_interface *fmgr_interface = file->private_data;
 	struct fmgr_ioctl_pmbus_msg msg;
-	struct fault_addr *fault_addr;
 	int ret = 0;
-	uint8_t addr;
 
 	switch (cmd) {
 	case PMBUS_READ:
@@ -202,26 +183,15 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 		break;
 
 	case ALERT_ADDR:
-		mutex_lock(&fmgr_interface->queue_lock);
-		fault_addr = list_first_entry(&fault_queue, struct fault_addr,
-						list);
-
-		addr = fault_addr->addr;
-		if (copy_to_user((uint8_t *)arg, &addr,	sizeof(addr))) {
-			mutex_unlock(&fmgr_interface->queue_lock);
+		if (copy_to_user((uint8_t *)arg, &fmgr_interface->addr,
+					sizeof(fmgr_interface->addr)))
 			return -EFAULT;
-		}
 
-		list_del(&fault_addr->list);
-		kfree(fault_addr);
-		mutex_unlock(&fmgr_interface->queue_lock);
 		break;
 
 	case CLEAR_FAULTS:
-		mutex_lock(&fmgr_interface->queue_lock);
-		list_del(&fault_queue);
-		kfree(&fault_queue);
-		mutex_unlock(&fmgr_interface->queue_lock);
+		fmgr_interface->addr = 0;
+
 		break;
 
 	default:
@@ -445,9 +415,7 @@ static int fmgr_interface_probe(struct i2c_client *i2c, const struct i2c_device_
 		goto device_err;
 	}
 
-	INIT_LIST_HEAD(&fault_queue);
 	init_waitqueue_head(&fmgr_interface->waitq);
-	mutex_init(&fmgr_interface->queue_lock);
 
 	fmgr_interface->client = i2c;
 	fmgr_interface->info.pages = 0;
@@ -467,18 +435,6 @@ class_err:
 
 static int fmgr_interface_remove(struct i2c_client *client)
 {
-	struct fmgr_interface *fmgr_interface;
-	struct fault_addr *addr, *tmp;
-
-	fmgr_interface = (struct fmgr_interface *)client;
-
-	mutex_lock(&fmgr_interface->queue_lock);
-	list_for_each_entry_safe(addr, tmp, &fault_queue, list) {
-		list_del(&(addr->list));
-		kfree(addr);
-	}
-	mutex_unlock(&fmgr_interface->queue_lock);
-
 	return 0;
 }
 
