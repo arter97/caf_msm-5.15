@@ -287,7 +287,7 @@ static void context_list_ctor(struct fastrpc_ctx_lst *me)
 {
 	INIT_HLIST_HEAD(&me->interrupted);
 	INIT_HLIST_HEAD(&me->pending);
-	INIT_LIST_HEAD(&me->async_queue);
+	INIT_HLIST_HEAD(&me->async_queue);
 }
 
 struct vfastrpc_file *vfastrpc_file_alloc(void)
@@ -315,6 +315,7 @@ struct vfastrpc_file *vfastrpc_file_alloc(void)
 	vfl->domain = -1;
 	fl->cid = -1;
 	fl->dsp_proc_init = 0;
+	fl->sessionid = 0;
 	mutex_init(&fl->internal_map_mutex);
 	mutex_init(&fl->map_mutex);
 	return vfl;
@@ -496,6 +497,8 @@ static int virt_fastrpc_close(struct vfastrpc_file *vfl)
 	vmsg = (struct virt_msg_hdr *)msg->txbuf;
 	vmsg->pid = fl->tgid;
 	vmsg->tid = current->pid;
+	if (fl->sessionid)
+		vmsg->tid |= (1 << SESSION_ID_INDEX);
 	vmsg->cid = fl->cid;
 	vmsg->cmd = VIRTIO_FASTRPC_CMD_CLOSE;
 	vmsg->len = sizeof(*vmsg);
@@ -625,7 +628,8 @@ static int context_alloc(struct vfastrpc_file *vfl, s64 seq_num,
 
 	INIT_HLIST_NODE(&ctx->hn);
 	hlist_add_fake(&ctx->hn);
-	INIT_LIST_HEAD(&ctx->asyncn);
+	INIT_HLIST_NODE(&ctx->asyncn);
+	hlist_add_fake(&ctx->asyncn);
 	ctx->vfl = vfl;
 	ctx->maps = (struct vfastrpc_mmap **)(&ctx[1]);
 	ctx->lpra = (remote_arg_t *)(&ctx->maps[bufs]);
@@ -851,6 +855,8 @@ static int get_args(struct vfastrpc_invoke_ctx *ctx)
 	vmsg = (struct virt_invoke_msg *)ctx->msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = fl->cid;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_INVOKE;
 	vmsg->hdr.len = size;
@@ -1174,9 +1180,11 @@ void vfastrpc_queue_completed_async_job(struct vfastrpc_invoke_ctx *ctx)
 	unsigned long flags;
 
 	spin_lock_irqsave(&fl->aqlock, flags);
-	list_add_tail(&ctx->asyncn, &fl->clst.async_queue);
-	atomic_add(1, &fl->async_queue_job_count);
-	wake_up_interruptible(&fl->async_wait_queue);
+	if (!hlist_unhashed(&ctx->asyncn)) {
+		hlist_add_head(&ctx->asyncn, &fl->clst.async_queue);
+		atomic_add(1, &fl->async_queue_job_count);
+		wake_up_interruptible(&fl->async_wait_queue);
+	}
 	spin_unlock_irqrestore(&fl->aqlock, flags);
 }
 
@@ -1191,9 +1199,7 @@ int vfastrpc_internal_invoke(struct vfastrpc_file *vfl,
 	struct timespec64 invoket = {0};
 	uint64_t *perf_counter = NULL;
 	bool isasyncinvoke = false;
-	s64 lseq_num = atomic64_fetch_add(1, &vfl->seq_num);
-
-	trace_fastrpc_internal_invoke_start(invoke->handle, invoke->sc, lseq_num);
+	s64 lseq_num = -1;
 
 	VERIFY(err, invoke->handle != FASTRPC_STATIC_HANDLE_KERNEL);
 	if (err) {
@@ -1219,6 +1225,9 @@ int vfastrpc_internal_invoke(struct vfastrpc_file *vfl,
 	if (ctx)
 		goto wait;
 
+	lseq_num = atomic64_fetch_add(1, &vfl->seq_num);
+	trace_fastrpc_internal_invoke_start(invoke->handle, invoke->sc, lseq_num);
+
 	VERIFY(err, 0 == context_alloc(vfl, lseq_num, inv, &ctx));
 	if (err)
 		goto bail;
@@ -1243,19 +1252,20 @@ int vfastrpc_internal_invoke(struct vfastrpc_file *vfl,
 		goto invoke_end;
 wait:
 	interrupted = wait_for_completion_interruptible(&ctx->msg->work);
-	trace_wait_for_completion_end(ctx);
 	VERIFY(err, 0 == (err = interrupted));
 	if (err)
 		goto bail;
+	trace_wait_for_completion_end(ctx);
 	PERF(fl->profile, GET_COUNTER(perf_counter, PERF_PUTARGS),
 	VERIFY(err, 0 == put_args(ctx));
 	PERF_END);
 	if (err)
 		goto bail;
 bail:
-	if (ctx && interrupted == -ERESTARTSYS)
+	if (ctx && interrupted == -ERESTARTSYS) {
+		trace_fastrpc_internal_invoke_interrupted(ctx);
 		context_save_interrupted(ctx);
-	else if (ctx) {
+	} else if (ctx) {
 		if (fl->profile && !interrupted)
 			vfastrpc_update_invoke_count(invoke->handle,
 					perf_counter, &invoket);
@@ -1263,14 +1273,15 @@ bail:
 		if (fl->profile && ctx->perf && ctx->perf_kernel)
 			K_COPY_TO_USER_WITHOUT_ERR(0, ctx->perf_kernel,
 					ctx->perf, M_KERNEL_PERF_LIST*sizeof(uint64_t));
+		lseq_num = ctx->seq_num;
 		context_free(ctx);
+		trace_fastrpc_internal_invoke_end(invoke->handle, invoke->sc, lseq_num);
 	}
 
 invoke_end:
 	if (fl->profile && !interrupted && isasyncinvoke)
 		vfastrpc_update_invoke_count(invoke->handle, perf_counter,
 				&invoket);
-	trace_fastrpc_internal_invoke_end(invoke->handle, invoke->sc, lseq_num);
 	return err;
 }
 
@@ -1279,11 +1290,12 @@ static int vfastrpc_wait_on_async_queue(
 			struct vfastrpc_file *vfl)
 {
 	int err = 0, ierr = 0, interrupted = 0;
-	struct vfastrpc_invoke_ctx *ctx = NULL, *ictx = NULL, *n = NULL;
+	struct vfastrpc_invoke_ctx *ctx = NULL, *ictx = NULL;
 	struct fastrpc_file *fl = to_fastrpc_file(vfl);
 	struct virt_invoke_msg *rsp = NULL;
 	unsigned long flags;
 	uint64_t *perf_counter = NULL;
+	struct hlist_node *n;
 
 read_async_job:
 	interrupted = wait_event_interruptible(fl->async_wait_queue,
@@ -1298,8 +1310,8 @@ read_async_job:
 		goto bail;
 
 	spin_lock_irqsave(&fl->aqlock, flags);
-	list_for_each_entry_safe(ictx, n, &fl->clst.async_queue, asyncn) {
-		list_del_init(&ictx->asyncn);
+	hlist_for_each_entry_safe(ictx, n, &fl->clst.async_queue, asyncn) {
+		hlist_del_init(&ictx->asyncn);
 		atomic_sub(1, &fl->async_queue_job_count);
 		ctx = ictx;
 		break;
@@ -1435,6 +1447,8 @@ static int virt_fastrpc_munmap(struct vfastrpc_file *vfl, uintptr_t raddr,
 	vmsg = (struct virt_munmap_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = fl->cid;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_MUNMAP;
 	vmsg->hdr.len = sizeof(*vmsg);
@@ -1593,6 +1607,8 @@ static int virt_fastrpc_munmap_fd(struct vfastrpc_file *vfl,
 	vmsg = (struct virt_munmap_fd_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = fl->cid;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_MUNMAP_FD;
 	vmsg->hdr.len = total_size;
@@ -1693,6 +1709,8 @@ static int virt_fastrpc_mmap(struct vfastrpc_file *vfl, uint32_t flags,
 	vmsg = (struct virt_mmap_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = fl->cid;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_MMAP;
 	vmsg->hdr.len = total_size;
@@ -1771,7 +1789,7 @@ int vfastrpc_internal_mmap(struct vfastrpc_file *vfl,
 		vmmap.fd = -1;
 		vmmap.refcount = 1;
 		vmmap.va = 0;
-		vmmap.attr = 0;
+		vmmap.attr = VFASTRPC_MAP_ATTR_CACHED;
 		vmmap.len = rbuf->size;
 		vmmap.nents = rbuf->sgt.nents;
 		err = virt_fastrpc_mmap(vfl, ud->flags, rbuf->sgt.sgl,
@@ -2053,6 +2071,8 @@ static int virt_fastrpc_control(struct vfastrpc_file *vfl,
 	vmsg = (struct virt_control_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = fl->cid;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_CONTROL;
 	vmsg->hdr.len = sizeof(*vmsg);
@@ -2234,6 +2254,8 @@ static int virt_fastrpc_open(struct vfastrpc_file *vfl,
 	vmsg = (struct virt_open_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = -1;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_OPEN;
 	vmsg->hdr.len = sizeof(*vmsg);
@@ -2276,7 +2298,16 @@ int vfastrpc_internal_init_process(struct vfastrpc_file *vfl,
 	struct fastrpc_file *fl = to_fastrpc_file(vfl);
 	struct fastrpc_ioctl_init *init = &uproc->init;
 	int domain = vfl->domain;
-	struct vfastrpc_channel_ctx *chan = &vfl->apps->channel[domain];
+	struct vfastrpc_channel_ctx *chan = NULL;
+
+	VERIFY(err, domain >= 0 && domain < vfl->apps->num_channels);
+	if (err) {
+		dev_err(vfl->apps->dev, "user application %s domain is not set\n",
+				current->comm);
+		err = -EBADR;
+		goto bail;
+	}
+	chan = &vfl->apps->channel[domain];
 
 	if (chan->unsigned_support && fl->dev_minor == MINOR_NUM_DEV) {
 		/*
@@ -2297,12 +2328,16 @@ int vfastrpc_internal_init_process(struct vfastrpc_file *vfl,
 	case FASTRPC_INIT_CREATE:
 		fl->pd = DYNAMIC_PD;
 		/* Untrusted apps are not allowed to offload to signedPD on DSP. */
-		if (fl->untrusted_process) {
+		if (fl->untrusted_process || vfl->apps->signed_pd_control) {
 			VERIFY(err, uproc->attrs & FASTRPC_MODE_UNSIGNED_MODULE);
 			if (err) {
 				err = -ECONNREFUSED;
-				dev_err(vfl->apps->dev,
-					"untrusted app trying to offload to signed remote process\n");
+				if (fl->untrusted_process)
+					dev_err(vfl->apps->dev,
+							"untrusted app trying to offload to signed PD\n");
+				else
+					dev_err(vfl->apps->dev,
+							"signed PD is not allowed\n");
 				goto bail;
 			}
 		}
@@ -2343,6 +2378,8 @@ static int virt_fastrpc_get_dsp_info(struct vfastrpc_file *vfl,
 	vmsg = (struct virt_cap_msg *)msg->txbuf;
 	vmsg->hdr.pid = fl->tgid;
 	vmsg->hdr.tid = current->pid;
+	if (fl->sessionid)
+		vmsg->hdr.tid |= (1 << SESSION_ID_INDEX);
 	vmsg->hdr.cid = -1;
 	vmsg->hdr.cmd = VIRTIO_FASTRPC_CMD_GET_DSP_INFO;
 	vmsg->hdr.len = sizeof(*vmsg);

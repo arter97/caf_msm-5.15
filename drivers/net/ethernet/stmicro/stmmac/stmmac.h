@@ -205,6 +205,7 @@ struct stmmac_priv {
 
 	int tx_coalesce;
 	int hwts_tx_en;
+	int irq_number;
 	bool tx_path_in_lpi_mode;
 	bool tso;
 	int sph;
@@ -278,6 +279,7 @@ struct stmmac_priv {
 	spinlock_t ptp_lock;
 	/* Protects auxiliary snapshot registers from concurrent access. */
 	struct mutex aux_ts_lock;
+	wait_queue_head_t tstamp_busy_wait;
 
 	void __iomem *mmcaddr;
 	void __iomem *ptpaddr;

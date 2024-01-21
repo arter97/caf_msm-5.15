@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -59,7 +59,7 @@
 #define CFG_GDSCR_OFFSET	(REG_OFFSET + 0x4)
 
 /* Timeout Delay */
-#define TIMEOUT_US		500
+#define TIMEOUT_US		1500
 
 #define MBOX_TOUT_MS		500
 
@@ -187,13 +187,13 @@ static int gdsc_init_is_enabled(struct gdsc *sc)
 		return 0;
 	}
 
+	regmap = sc->regmap;
+	mask = SW_COLLAPSE_MASK;
+
 	if (sc->collapse_count) {
 		for (i = 0; i < sc->collapse_count; i++)
 			regmap = sc->collapse_vote.regmap[i];
 		mask = BIT(sc->collapse_vote.vote_bit);
-	} else {
-		regmap = sc->regmap;
-		mask = SW_COLLAPSE_MASK;
 	}
 
 	ret = regmap_read(regmap, REG_OFFSET, &regval);
@@ -201,6 +201,10 @@ static int gdsc_init_is_enabled(struct gdsc *sc)
 		return ret;
 
 	sc->is_gdsc_enabled = !(regval & mask);
+
+	if (sc->is_gdsc_enabled && sc->retain_ff_enable)
+		regmap_update_bits(sc->regmap, REG_OFFSET,
+			RETAIN_FF_ENABLE_MASK, RETAIN_FF_ENABLE_MASK);
 
 	return 0;
 }
@@ -1000,6 +1004,15 @@ static int restore_hw_trig_clk_dis(struct device *dev)
 {
 	struct gdsc *sc = dev_get_drvdata(dev);
 	uint32_t regval;
+	int ret;
+
+	if (sc->rdev->supply) {
+		ret = regulator_enable(sc->rdev->supply);
+		if (ret) {
+			dev_err(&sc->rdev->dev, "reg enable failed\n");
+			return ret;
+		}
+	}
 
 	regmap_read(sc->regmap, REG_OFFSET, &regval);
 	if (sc->is_gdsc_hw_ctrl_mode)
@@ -1010,7 +1023,12 @@ static int restore_hw_trig_clk_dis(struct device *dev)
 		regval |= sc->clk_dis_wait_val;
 	}
 
-	return regmap_write(sc->regmap, REG_OFFSET, regval);
+	ret = regmap_write(sc->regmap, REG_OFFSET, regval);
+
+	if (sc->rdev->supply)
+		regulator_disable(sc->rdev->supply);
+
+	return ret;
 }
 
 static int gdsc_pm_resume_early(struct device *dev)

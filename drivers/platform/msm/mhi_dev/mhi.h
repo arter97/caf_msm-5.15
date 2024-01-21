@@ -272,6 +272,7 @@ struct mhi_config {
 #define MHI_ENV_VALUE			2
 #define MHI_MASK_ROWS_CH_EV_DB		4
 #define TRB_MAX_DATA_SIZE		8192
+#define TRB_MAX_DATA_SIZE_16K		16384
 #define MHI_CTRL_STATE			100
 #define MHI_MAX_NUM_INSTANCES		17 /* 1PF and 16 VFs */
 #define MHI_DEFAULT_ERROR_LOG_ID	255
@@ -330,8 +331,8 @@ struct mhi_meminfo {
 
 struct mhi_addr {
 	uint64_t	host_pa;
-	size_t	device_pa;
-	size_t	device_va;
+	uint64_t	device_pa;
+	uint64_t	device_va;
 	size_t		size;
 	dma_addr_t	phy_addr;
 	void		*virt_addr;
@@ -594,10 +595,11 @@ struct mhi_dev {
 	atomic_t			mhi_dev_wake;
 	atomic_t			re_init_done;
 	struct mutex			mhi_write_test;
-	u32				device_local_pa_base;
+	u64				device_local_pa_base;
 	u32				mhi_ep_msi_num;
 	u32				mhi_version;
 	u32				mhi_chan_hw_base;
+	u32				mhi_num_ipc_pages_dev_fac;
 	void				*dma_cache;
 	void				*read_handle;
 	void				*write_handle;
@@ -648,6 +650,8 @@ struct mhi_dev {
 	struct mhi_sm_dev		*mhi_sm_ctx;
 	/* MHI VF number */
 	uint32_t			vf_id;
+
+	bool				no_path_from_ipa_to_pcie;
 
 	int (*device_to_host)(uint64_t dst_pa, void *src, uint32_t len,
 				struct mhi_dev *mhi, struct mhi_req *req);
@@ -739,7 +743,8 @@ extern void *mhi_ipc_default_err_log;
 		pr_err("[0x%x %s] "_msg, bhi_imgtxdb, \
 				__func__, ##__VA_ARGS__); \
 	} \
-	if (mhi_ipc_vf_log[vf_id] && (_msg_lvl >= mhi_ipc_msg_lvl)) { \
+	if (vf_id < MHI_MAX_NUM_INSTANCES && mhi_ipc_vf_log[vf_id] &&    \
+			(_msg_lvl >= mhi_ipc_msg_lvl)) { \
 		ipc_log_string(mhi_ipc_vf_log[vf_id],                     \
 		"[0x%x %s] " _msg, bhi_imgtxdb, __func__, ##__VA_ARGS__); \
 	} \

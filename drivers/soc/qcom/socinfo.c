@@ -356,7 +356,7 @@ struct smem_image_version {
 #define MAX_SOCINFO_ATTRS 50
 /* sysfs attributes */
 #define ATTR_DEFINE(param)      \
-	static DEVICE_ATTR(param, (S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH ), \
+	static DEVICE_ATTR(param, 0444, \
 			msm_get_##param,     \
 			NULL)
 
@@ -371,10 +371,14 @@ struct smem_image_version {
 		int num_parts = 0; \
 		int str_pos = 0, i = 0, ret = 0; \
 		num_parts = socinfo_get_part_count(part_enum); \
+		if (num_parts <= 0) \
+			return -EINVAL;  \
 		part_info = kmalloc_array(num_parts, sizeof(*part_info), GFP_KERNEL); \
 		ret = socinfo_get_subpart_info(part_enum, part_info, num_parts); \
-		if (ret < 0) \
+		if (ret < 0) { \
+			kfree(part_info); \
 			return -EINVAL;  \
+		} \
 		for (i = 0; i < num_parts; i++) { \
 			str_pos += scnprintf(buf+str_pos, PAGE_SIZE-str_pos, "0x%x", \
 					part_info[i]); \
@@ -886,8 +890,9 @@ bool
 socinfo_get_part_info(enum subset_part_type part)
 {
 	uint32_t partinfo;
+	uint32_t num_parts = socinfo_get_num_subset_parts();
 
-	if (part >= NUM_PARTS_MAX) {
+	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
 		pr_err("Bad part number\n");
 		return false;
 	}
@@ -925,10 +930,11 @@ int
 socinfo_get_part_count(enum subset_part_type part)
 {
 	int part_count = 1;
+	uint32_t num_parts = socinfo_get_num_subset_parts();
 
 	/* TODO: part_count to be read from SMEM after firmware adds support */
 
-	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX)) {
+	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
 		pr_err("Bad part number\n");
 		return -EINVAL;
 	}
@@ -1182,6 +1188,7 @@ static const struct soc_id soc_id[] = {
 	{ 341, "SDA845" },
 	{ 345, "SDM636" },
 	{ 346, "SDA636" },
+	{ 347, "QCS605" },
 	{ 349, "SDM632" },
 	{ 350, "SDA632" },
 	{ 351, "SDA450" },

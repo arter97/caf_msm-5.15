@@ -36,6 +36,14 @@ config QCOM_A7PLL
 	  Say Y if you want to support higher CPU frequencies on SDX55
 	  devices.
 
+config QCS_CMN_BLK_PLL
+	tristate "QCS405 CMN BLK PLL"
+	help
+	  Support for the CMN BLK PLL on Qualcomm Technologies, Inc QCS405
+	  devices.
+	  Common block PLL is required for USB and PCIE subsystems.
+	  Say Y if you want to support the Common Block PLL.
+
 config QCOM_CLK_APCS_MSM8916
 	tristate "MSM8916 APCS Clock Controller"
 	depends on QCOM_APCS_IPC || COMPILE_TEST
@@ -324,6 +332,15 @@ config MSM_MMCC_8998
 	  Say Y if you want to support multimedia devices such as display,
 	  graphics, video encode/decode, camera, etc.
 
+config QCS_DEBUGCC_404
+	tristate "QCS404 Debug Clock Controller"
+	depends on QCS_GCC_404
+	help
+	  Support for the debug clock controller on Qualcomm Technologies, Inc.
+	  QCS404 devices.
+	  Say Y if you want to support the debug clocks such as clock measurement
+	  functionality.
+
 config QCS_GCC_404
 	tristate "QCS404 Global Clock Controller"
 	help
@@ -366,6 +383,15 @@ config SC_GCC_7180
 	  Support for the global clock controller on SC7180 devices.
 	  Say Y if you want to use peripheral devices such as UART, SPI,
 	  I2C, USB, UFS, SDCC, etc.
+
+config CLOCK_CPU_SDXLEMUR
+        bool "CPU SDXLEMUR Clock Controller"
+        depends on COMMON_CLK_QCOM
+        help
+          Support for the cpu clock controller on SDXLEMUR
+          based devices.
+          Say Y if you want to support CPU clock scaling using
+          CPUfreq drivers for dynamic power management.
 
 config SC_GCC_7280
 	tristate "SC7280 Global Clock Controller"
@@ -434,13 +460,6 @@ config SC_VIDEOCC_7280
 	  Say Y if you want to support video devices and functionality such as
 	  video encode and decode.
 
-config SDM_CAMCC_845
-	tristate "SDM845 Camera Clock Controller"
-	select SDM_GCC_845
-	help
-	  Support for the camera clock controller on SDM845 devices.
-	  Say Y if you want to support camera devices and camera functionality.
-
 config SDM_GCC_660
 	tristate "SDM660 Global Clock Controller"
 	select QCOM_GDSC
@@ -481,9 +500,18 @@ config QCS_Q6SSTOP_404
 	  Say Y if you want to use the Q6SSTOP branch clocks of the WCSS clock
 	  controller to reset the Q6SSTOP subsystem.
 
+config SDM_CAMCC_845
+	tristate "SDM845 Camera Clock Controller"
+	select SDM_GCC_845
+	help
+	  Support for the camera clock controller on Qualcomm Technologies, Inc
+	  SDM845 devices.
+	  Say Y if you want to support camera devices and functionality such as
+	  capturing pictures.
+
 config SDM_GCC_845
 	tristate "SDM845 Global Clock Controller"
-	select QCOM_GDSC
+	depends on COMMON_CLK_QCOM
 	help
 	  Support for the global clock controller on SDM845 devices.
 	  Say Y if you want to use peripheral devices such as UART, SPI,
@@ -522,6 +550,15 @@ config SDM_LPASSCC_845
 	  Support for the LPASS clock controller on SDM845 devices.
 	  Say Y if you want to use the LPASS branch clocks of the LPASS clock
 	  controller to reset the LPASS subsystem.
+
+config SDM_DEBUGCC_845
+	tristate "SDM845 Debug Clock Controller"
+	depends on COMMON_CLK_QCOM
+	help
+	  Support for the debug clock controller on Qualcomm Technologies, Inc
+	  SDM845 devices.
+	  Say Y if you want to support the debug clocks such as
+	  clock measurement functionality.
 
 config SDX_GCC_55
 	tristate "SDX55 Global Clock Controller"
@@ -1095,6 +1132,52 @@ config SDX_DEBUGCC_BAAGHA
 	  Say Y if you want to support the debug clocks such as
 	  clock measurement functionality.
 
+config SM_GCC_TRINKET
+	tristate "TRINKET Global Clock Controller"
+	depends on COMMON_CLK_QCOM
+	select QCOM_GDSC
+	help
+	  Support for the global clock controller on Qualcomm Technologies, Inc
+	  TRINKET devices.
+	  Say Y if you want to use peripheral devices such as UART, SPI, I2C,
+	  USB, UFS, SD/eMMC, PCIe, etc.
+
+config SM_GPUCC_TRINKET
+	tristate "TRINKET graphics Clock Controller"
+	depends on SM_GCC_TRINKET
+	help
+	  Support for the graphics clock controller on Qualcomm Technologies, Inc.
+	  TRINKET devices.
+	  Say Y if you want to support graphics controller devices and
+	  functionality such as 3D graphics.
+
+config SM_DISPCC_TRINKET
+	tristate "TRINKET Display Clock Controller"
+	depends on SM_GCC_TRINKET
+	help
+	  Support for the display clock controller on Qualcomm Technologies, Inc
+	  TRINKET devices.
+	  Say Y if you want to support display devices and functionality such as
+	  splash screen.
+
+config SM_VIDEOCC_TRINKET
+	tristate "TRINKET Video Clock Controller"
+	depends on SM_GCC_TRINKET
+	help
+	  Support for the video clock controller on Qualcomm Technologies, Inc.
+	  TRINKET devices.
+	  Say Y if you want to support video devices and functionality such as
+	  video encode/decode.
+
+config SM_DEBUGCC_TRINKET
+	tristate "TRINKET Debug Clock Controller"
+	depends on SM_GCC_TRINKET
+	help
+	  Support for the debug clock controller on Qualcomm Technologies, Inc
+	  TRINKET devices.
+	  Say Y if you want to support the debug clocks such as
+	  clock measurement functionality.
+
 config SM_GCC_CROW
 	tristate "CROW Global Clock Controller"
 	depends on COMMON_CLK_QCOM
@@ -1130,6 +1213,51 @@ config SM_GPUCC_CROW
 	  Crow devices.
 	  Say Y if you want to support graphics controller devices and
 	  functionality such as 3D graphics.
+
+config SM_DISPCC_CROW
+	tristate "Crow Display Clock Controller"
+	depends on SM_GCC_CROW
+	help
+	  Support for the display clock controller on Qualcomm Technologies, Inc
+	  Crow devices.
+	  Say Y if you want to support display devices and functionality such as
+	  splash screen.
+
+config SM_DEBUGCC_CROW
+	tristate "Crow Debug Clock Controller"
+	depends on SM_GCC_CROW
+	help
+	  Support for the debug clock controller on Qualcomm Technologies, Inc
+	  Crow devices.
+	  Say Y if you want to support the debug clocks such as clock
+	  measurement functionality.
+
+config SA_GCC_MONACO_AUTO
+	tristate "Monaco_Auto Global Clock Controller"
+	depends on COMMON_CLK_QCOM
+	help
+	  Support for the global clock controller on Qualcomm Technologies, Inc
+	  Monaco_Auto devices.
+	  Say Y if you want to use peripheral devices such as UART, SPI, I2C,
+	  USB, UFS, SD/eMMC, PCIe, etc.
+
+config SA_DISPCC_MONACO_AUTO
+	tristate "Monaco_Auto Display Clock Controller"
+	select SA_GCC_MONACO_AUTO
+	help
+	  Support for the display clock controller on Qualcomm Technologies, Inc.
+	  Monaco_Auto devices.
+	  Say Y if you want to support display devices and functionality such as
+	  splash screen.
+
+config SA_DEBUGCC_MONACO_AUTO
+	tristate "Monaco_Auto Debug Clock Controller"
+	depends on SA_GCC_MONACO_AUTO
+	help
+	  Support for the debug clock controller on Qualcomm Technologies, Inc
+	  Monaco_Auto devices.
+	  Say Y if you want to support the debug clocks such as
+	  clock measurement functionality.
 
 endif
 

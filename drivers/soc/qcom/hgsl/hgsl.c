@@ -24,7 +24,8 @@
 #include "hgsl.h"
 #include "hgsl_tcsr.h"
 #include "hgsl_memory.h"
-#include "hgsl_hyp.h"
+#include "hgsl_sysfs.h"
+#include "hgsl_debugfs.h"
 
 #define HGSL_DEVICE_NAME "hgsl"
 #define HGSL_DEV_NUM 1
@@ -40,6 +41,9 @@
 
 #define CMDBATCH_EOF       0x00000100
 #define ECP_MAX_NUM_IB1    (2000)
+
+/* ibDescs stored in indirect buffer */
+#define CMDBATCH_INDIRECT   0x00000200
 
 /* Max retry count of waiting for free space of doorbell queue. */
 #define HGSL_QFREE_MAX_RETRY_COUNT     (500)
@@ -68,7 +72,6 @@
 #define QHDR_STATUS_INACTIVE 0x00
 #define QHDR_STATUS_ACTIVE 0x01
 
-#define HGSL_CONTEXT_NUM                     (256)
 #define HGSL_SEND_MSG_MAX_RETRY_COUNT        (150)
 
 // Skip all commands from the bad context
@@ -90,6 +93,9 @@ enum HGSL_DBQ_METADATA_COMMAND_INFO {
 #define HGSL_DBQ_WRITE_INDEX_OFFSET_IN_DWORD (0x0)
 #define HGSL_DBQ_READ_INDEX_OFFSET_IN_DWORD  (0x1)
 
+#define HGSL_DBQ_IBDESC_SHORT_WAIT_MSEC (5)
+#define HGSL_DBQ_IBDESC_LONG_WAIT_MSEC (30000)
+
 enum HGSL_DBQ_METADATA_COOPERATIVE_RESET_INFO {
 	HGSL_DBQ_HOST_TO_GVM_HARDRESET_REQ,
 	HGSL_DBQ_GVM_TO_HOST_HARDRESET_DISPATCH_IN_BUSY,
@@ -100,6 +106,18 @@ enum HGSL_DBQ_METADATA_CONTEXT_OFFSET_INFO {
 	HGSL_DBQ_CONTEXT_TIMESTAMP_OFFSET_IN_DWORD,
 	HGSL_DBQ_CONTEXT_DESTROY_OFFSET_IN_DWORD,
 	HGSL_DBQ_METADATA_CTXT_TOTAL_ENTITY_NUM,
+};
+
+enum HGSL_DBQ_IBDESC_REQUEST_TYPE {
+	HGSL_DBQ_IBDESC_REQUEST_ACQUIRE,
+	HGSL_DBQ_IBDESC_REQUEST_RELEASE,
+};
+
+enum HGSL_DBQ_IBDESC_WAIT_TYPE {
+	/* If caller can retry, use short wait */
+	HGSL_DBQ_IBDESC_SHORT_WAIT,
+	/* If caller not capable of retrying, use long wait */
+	HGSL_DBQ_IBDESC_LONG_WAIT,
 };
 
 /* DBQ structure
@@ -148,6 +166,13 @@ static void db_set_busy_state(void *dbq_base, int in_busy);
 static struct hgsl_context *hgsl_get_context(struct qcom_hgsl *hgsl,
 				uint32_t context_id);
 static void hgsl_put_context(struct hgsl_context *ctxt);
+
+static bool dbq_check_ibdesc_state(struct qcom_hgsl *hgsl, struct hgsl_context *ctxt,
+		uint32_t request_type);
+
+static int dbq_wait_free_ibdesc(struct qcom_hgsl *hgsl,
+		struct hgsl_context *context, uint32_t request_type,
+		uint32_t wait_type);
 
 static uint32_t hgsl_dbq_get_state_info(uint32_t *va_base, uint32_t command,
 				uint32_t ctxt_id, uint32_t offset)
@@ -215,6 +240,8 @@ static void hgsl_dbq_set_state_info(uint32_t *va_base, uint32_t command,
 
 /* HFI command define. */
 #define HTOF_MSG_ISSUE_CMD 130
+
+#define HFI_HEADER_CMD_SIZE_MAX (255)
 
 #define MSG_ISSUE_INF_SZ()	(sizeof(struct hgsl_db_cmds) >> 2)
 #define MSG_ISSUE_IBS_SZ(numIB) \
@@ -1111,7 +1138,7 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 			struct hgsl_fw_ib_desc ib_descs[],
 			uint64_t user_profile_gpuaddr)
 {
-	int ret;
+	int ret = 0;
 	uint32_t msg_dwords;
 	uint32_t msg_buf_sz;
 	struct hgsl_db_cmds *cmds;
@@ -1120,6 +1147,8 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 	struct db_msg_id db_msg_id;
 	struct doorbell_queue *dbq = ctxt->dbq;
 	struct qcom_hgsl  *hgsl = priv->dev;
+	bool is_batch_ibdesc = false;
+	uint8_t *dst;
 
 	ret = hgsl_dbcq_issue_cmd(priv, ctxt, num_ibs, gmu_cmd_flags,
 							timestamp, ib_descs, user_profile_gpuaddr);
@@ -1132,6 +1161,10 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 	db_msg_id.msg_id = HTOF_MSG_ISSUE_CMD;
 	db_msg_id.seq_no = atomic_inc_return(&dbq->seq_num);
 
+	if ((num_ibs > (UINT_MAX / (sizeof(struct hgsl_fw_ib_desc) >> 2))) ||
+		(MSG_ISSUE_INF_SZ() > (UINT_MAX - MSG_ISSUE_IBS_SZ(num_ibs))))
+		return -EINVAL;
+
 	msg_dwords = MSG_ISSUE_INF_SZ() + MSG_ISSUE_IBS_SZ(num_ibs);
 	msg_buf_sz = ALIGN(msg_dwords, 4) << 2;
 
@@ -1142,9 +1175,15 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 	}
 
 	if ((msg_buf_sz >= dbq->data.dwords) || (msg_buf_sz > (MSG_SZ_MASK >> MSG_SZ_SHIFT))) {
-		LOGE("msg size %d exceed queue size %d or max hfi cmd size %d",
-			msg_buf_sz, dbq->data.dwords, (MSG_SZ_MASK >> MSG_SZ_SHIFT));
-		return -EINVAL;
+		if ((MSG_ISSUE_IBS_SZ(num_ibs) << 2) <= dbq->ibdesc_max_size) {
+			msg_dwords = MSG_ISSUE_INF_SZ();
+			msg_buf_sz = ALIGN(msg_dwords, 4) << 2;
+			is_batch_ibdesc = true;
+			LOGI("Number of IBs exceed. Proceeding with CMDBATCH_IBDESC");
+		} else {
+			dev_err(hgsl->dev, "number of IBs exceed\n");
+			return -EINVAL;
+		}
 	}
 
 	ret = hgsl_db_next_timestamp(ctxt, timestamp);
@@ -1163,7 +1202,29 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 	cmds->cmd_flags = gmu_cmd_flags;
 	cmds->timestamp = *timestamp;
 	cmds->user_profile_gpuaddr = user_profile_gpuaddr;
-	memcpy(cmds->ib_descs, ib_descs, sizeof(ib_descs[0]) * num_ibs);
+	if (!is_batch_ibdesc) {
+		memcpy(cmds->ib_descs, ib_descs, sizeof(ib_descs[0]) * num_ibs);
+	} else {
+		mutex_lock(&dbq->lock);
+		/* wait for the buffer */
+		ret = dbq_wait_free_ibdesc(hgsl, ctxt,
+				HGSL_DBQ_IBDESC_REQUEST_ACQUIRE,
+				HGSL_DBQ_IBDESC_SHORT_WAIT);
+		if (ret) {
+			mutex_unlock(&dbq->lock);
+			goto err;
+		}
+		dbq->ibdesc_priv.buf_inuse = true;
+		dbq->ibdesc_priv.context_id = ctxt->context_id;
+		dbq->ibdesc_priv.timestamp = *timestamp;
+		cmds->cmd_flags = gmu_cmd_flags | CMDBATCH_INDIRECT;
+		cmds->ib_desc_gmuaddr = dbq->gmuaddr +
+					(HGSL_DBQ_IBDESC_BASE_OFFSET_IN_DWORD << 2);
+		dst = (uint8_t *)dbq->vbase +
+					(HGSL_DBQ_IBDESC_BASE_OFFSET_IN_DWORD << 2);
+		memcpy(dst, ib_descs, sizeof(ib_descs[0]) * num_ibs);
+		mutex_unlock(&dbq->lock);
+	}
 
 	req.msg_has_response = 0;
 	req.msg_has_ret_packet = 0;
@@ -1185,6 +1246,7 @@ static int hgsl_db_issue_cmd(struct hgsl_priv  *priv,
 	if (ret == 0)
 		ctxt->queued_ts = *timestamp;
 
+err:
 	hgsl_free(cmds);
 	return ret;
 }
@@ -1336,6 +1398,8 @@ static int hgsl_dbq_init(struct qcom_hgsl *hgsl,
 	dbq->state = DB_STATE_Q_FAULT;
 	dbq->dma = dma_buf;
 	dbq->dbq_idx = dbq_idx;
+	dbq->gmuaddr = hgsl->dbq_info[dbq_idx].gmuaddr;
+	dbq->ibdesc_max_size = hgsl->dbq_info[dbq_idx].ibdesc_max_size;
 	atomic_set(&dbq->seq_num, 0);
 
 	dma_buf_begin_cpu_access(dbq->dma, DMA_BIDIRECTIONAL);
@@ -1369,13 +1433,33 @@ err:
 	return ret;
 }
 
-static inline void _unmap_shadow(struct hgsl_context *ctxt)
+static void _cleanup_shadow(struct hgsl_hab_channel_t *hab_channel,
+				struct hgsl_context *ctxt)
 {
-	if (ctxt->shadow_ts) {
-		dma_buf_vunmap(ctxt->shadow_ts_node.dma_buf, &ctxt->map);
-		dma_buf_end_cpu_access(ctxt->shadow_ts_node.dma_buf, DMA_FROM_DEVICE);
-		ctxt->shadow_ts = NULL;
+	struct hgsl_mem_node *mem_node = ctxt->shadow_ts_node;
+
+	if (!mem_node)
+		return;
+
+	if (mem_node->dma_buf) {
+		if (ctxt->shadow_ts) {
+			dma_buf_vunmap(mem_node->dma_buf, &ctxt->map);
+			ctxt->shadow_ts = NULL;
+		}
+		dma_buf_end_cpu_access(mem_node->dma_buf, DMA_FROM_DEVICE);
 	}
+
+	if (ctxt->is_fe_shadow) {
+		hgsl_hyp_mem_unmap_smmu(hab_channel, mem_node);
+		hgsl_sharedmem_free(mem_node);
+	} else {
+		hgsl_hyp_put_shadowts_mem(hab_channel, mem_node);
+		kfree(mem_node);
+	}
+
+	ctxt->shadow_ts_flags = 0;
+	ctxt->is_fe_shadow = false;
+	ctxt->shadow_ts_node = NULL;
 }
 
 static inline void _destroy_context(struct kref *kref)
@@ -1397,10 +1481,10 @@ static inline void _destroy_context(struct kref *kref)
 					HGSL_DBQ_CONTEXT_DESTROY_OFFSET_IN_DWORD,
 					1);
 	}
-	_unmap_shadow(ctxt);
-	ctxt->destroyed = true;
-	/* ensure update is done before return */
+	/* ensure update dbq meta is done */
 	dma_wmb();
+
+	ctxt->destroyed = true;
 }
 
 static struct hgsl_context *hgsl_get_context(struct qcom_hgsl *hgsl,
@@ -1522,12 +1606,21 @@ static void hgsl_get_shadowts_mem(struct hgsl_hab_channel_t *hab_channel,
 	struct dma_buf *dma_buf = NULL;
 	int ret = 0;
 
+	if (ctxt->shadow_ts_node)
+		return;
+
+	ctxt->shadow_ts_node = hgsl_zalloc(sizeof(*ctxt->shadow_ts_node));
+	if (ctxt->shadow_ts_node == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
 	ret = hgsl_hyp_get_shadowts_mem(hab_channel, ctxt->context_id,
-				&ctxt->shadow_ts_flags, &ctxt->shadow_ts_node);
+				&ctxt->shadow_ts_flags, ctxt->shadow_ts_node);
 	if (ret)
 		goto out;
 
-	dma_buf = ctxt->shadow_ts_node.dma_buf;
+	dma_buf = ctxt->shadow_ts_node->dma_buf;
 	if (dma_buf) {
 		dma_buf_begin_cpu_access(dma_buf, DMA_FROM_DEVICE);
 		ret = dma_buf_vmap(dma_buf, &ctxt->map);
@@ -1538,13 +1631,8 @@ static void hgsl_get_shadowts_mem(struct hgsl_hab_channel_t *hab_channel,
 	LOGD("0x%llx, 0x%llx", (uint64_t)ctxt, (uint64_t)ctxt->map.vaddr);
 
 out:
-	if (ret) {
-		if (dma_buf)
-			dma_buf_end_cpu_access(dma_buf, DMA_FROM_DEVICE);
-		hgsl_hyp_put_shadowts_mem(hab_channel, &ctxt->shadow_ts_node);
-		ctxt->shadow_ts_flags = 0;
-		memset(&ctxt->shadow_ts_node, 0, sizeof(ctxt->shadow_ts_node));
-	}
+	if (ret)
+		_cleanup_shadow(hab_channel, ctxt);
 }
 
 static int hgsl_ioctl_get_shadowts_mem(struct file *filep, unsigned long arg)
@@ -1567,11 +1655,16 @@ static int hgsl_ioctl_get_shadowts_mem(struct file *filep, unsigned long arg)
 		goto out;
 	}
 
+	if (!ctxt->shadow_ts_node) {
+		ret = -ENODEV;
+		goto out;
+	}
+
 	params.flags = ctxt->shadow_ts_flags;
-	params.size = ctxt->shadow_ts_node.memdesc.size64;
+	params.size = ctxt->shadow_ts_node->memdesc.size64;
 	params.fd = -1;
 
-	dma_buf = ctxt->shadow_ts_node.dma_buf;
+	dma_buf = ctxt->shadow_ts_node->dma_buf;
 	if (dma_buf) {
 		/* increase reference count before install fd. */
 		get_dma_buf(dma_buf);
@@ -1612,18 +1705,89 @@ out:
 	return ret;
 }
 
+static bool dbq_check_ibdesc_state(struct qcom_hgsl *hgsl,
+	struct hgsl_context *ctxt, uint32_t request_type)
+{
+	struct doorbell_queue *dbq = ctxt->dbq;
+	bool wait_required = false;
+
+	if (dbq == NULL || !dbq->ibdesc_priv.buf_inuse)
+		return wait_required;
+
+	if (request_type == HGSL_DBQ_IBDESC_REQUEST_RELEASE) {
+		if (ctxt->context_id == dbq->ibdesc_priv.context_id)
+			wait_required = true;
+	} else if (request_type == HGSL_DBQ_IBDESC_REQUEST_ACQUIRE)
+		wait_required = true;
+
+	return wait_required;
+}
+
+static int dbq_wait_free_ibdesc(struct qcom_hgsl *hgsl,
+		struct hgsl_context *context, uint32_t request_type,
+		uint32_t wait_type)
+{
+	struct hgsl_context *ctxt = NULL;
+	struct doorbell_queue *dbq = context->dbq;
+	signed long start;
+	bool expired = false;
+	int timeout = 0;
+	int ret = 0;
+
+	if (!dbq_check_ibdesc_state(hgsl, context, request_type))
+		return 0;
+
+	ctxt = hgsl_get_context(hgsl, dbq->ibdesc_priv.context_id);
+	if (!ctxt) {
+		LOGE("Invalid context id %d\n", dbq->ibdesc_priv.context_id);
+		return -EINVAL;
+	}
+
+	if (wait_type == HGSL_DBQ_IBDESC_SHORT_WAIT)
+		timeout = msecs_to_jiffies(HGSL_DBQ_IBDESC_SHORT_WAIT_MSEC);
+	else if (wait_type == HGSL_DBQ_IBDESC_LONG_WAIT)
+		timeout = msecs_to_jiffies(HGSL_DBQ_IBDESC_LONG_WAIT_MSEC);
+
+	start = jiffies;
+	do {
+		ret = hgsl_check_shadow_timestamp(ctxt, GSL_TIMESTAMP_RETIRED,
+					dbq->ibdesc_priv.timestamp, &expired);
+		if (ret || expired)
+			break;
+		mutex_unlock(&dbq->lock);
+		if (msleep_interruptible(1))
+			ret = -EINTR;
+		mutex_lock(&dbq->lock);
+		if (ret == -EINTR)
+			break;
+	} while ((jiffies - start) < timeout);
+
+	if (expired)
+		dbq->ibdesc_priv.buf_inuse = false;
+	else {
+		if (ret && ret != -EINTR && ret != -EAGAIN)
+			LOGE("Wait to free ibdesc failed %d", ret);
+		if (!ret)
+			ret = -EAGAIN;
+	}
+
+	hgsl_put_context(ctxt);
+
+	return ret;
+}
+
 static int hgsl_ctxt_create_dbq(struct hgsl_priv *priv,
 	struct hgsl_hab_channel_t *hab_channel,
-	struct hgsl_context *ctxt)
+	struct hgsl_context *ctxt, uint32_t dbq_info, bool dbq_info_checked)
 {
 	struct qcom_hgsl *hgsl = priv->dev;
-	uint32_t dbq_info;
 	uint32_t dbq_idx;
 	uint32_t db_signal;
 	uint32_t queue_gmuaddr;
 	uint32_t irq_idx;
 	int ret;
 
+	/* if backend can support the latest context dbq, then use dbcq */
 	ret = hgsl_hyp_query_dbcq(hab_channel, ctxt->devhandle, ctxt->context_id,
 		HGSL_CTXT_QUEUE_TOTAL_SIZE, &db_signal, &queue_gmuaddr, &irq_idx);
 	if (!ret) {
@@ -1631,10 +1795,18 @@ static int hgsl_ctxt_create_dbq(struct hgsl_priv *priv,
 		return 0;
 	}
 
-	ret = hgsl_hyp_dbq_create(hab_channel,
-				ctxt->context_id, &dbq_info);
-	if (ret)
-		return ret;
+	/* otherwise, it may support RPC_CONTEXT_CREATE v1,
+	 * a valid dbq_info is already returned, then skip the query
+	 */
+	if (!dbq_info_checked) {
+		ret = hgsl_hyp_dbq_create(hab_channel,
+					ctxt->context_id, &dbq_info);
+		if (ret)
+			return ret;
+	}
+
+	if (dbq_info == -1)
+		return -EINVAL;
 
 	dbq_idx = dbq_info >> 16;
 	db_signal = dbq_info & 0xFFFF;
@@ -1654,11 +1826,36 @@ static int hgsl_ctxt_create_dbq(struct hgsl_priv *priv,
 
 static int hgsl_ctxt_destroy(struct hgsl_priv *priv,
 	struct hgsl_hab_channel_t *hab_channel,
-	uint32_t context_id, uint32_t *rval)
+	uint32_t context_id, uint32_t *rval, bool can_retry)
 {
 	struct hgsl_context *ctxt = NULL;
 	int ret;
 	bool put_channel = false;
+	struct doorbell_queue *dbq = NULL;
+
+	ctxt = hgsl_get_context(priv->dev, context_id);
+	if (!ctxt) {
+		LOGE("Invalid context id %d\n", context_id);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	dbq = ctxt->dbq;
+	if (dbq != NULL) {
+		mutex_lock(&dbq->lock);
+		/* if ibdesc is held by the context, release it here */
+		ret = dbq_wait_free_ibdesc(priv->dev, ctxt,
+				HGSL_DBQ_IBDESC_REQUEST_RELEASE,
+				HGSL_DBQ_IBDESC_LONG_WAIT);
+		if (ret && !can_retry)
+			dbq->ibdesc_priv.buf_inuse = false;
+		mutex_unlock(&dbq->lock);
+		if (ret && can_retry) {
+			hgsl_put_context(ctxt);
+			goto out;
+		}
+	}
+	hgsl_put_context(ctxt);
 
 	ctxt = hgsl_remove_context(priv, context_id);
 	if (!ctxt) {
@@ -1686,12 +1883,17 @@ static int hgsl_ctxt_destroy(struct hgsl_priv *priv,
 		put_channel = true;
 	}
 
-	hgsl_hyp_put_shadowts_mem(hab_channel, &ctxt->shadow_ts_node);
+	if (!ctxt->is_fe_shadow)
+		_cleanup_shadow(hab_channel, ctxt);
 
 	ret = hgsl_hyp_ctxt_destroy(hab_channel,
 		ctxt->devhandle, ctxt->context_id, rval, ctxt->dbcq_export_id);
 
 	hgsl_dbcq_close(ctxt);
+
+	if (ctxt->is_fe_shadow)
+		_cleanup_shadow(hab_channel, ctxt);
+
 	hgsl_free(ctxt);
 
 out:
@@ -1724,6 +1926,9 @@ static int hgsl_ioctl_ctxt_create(struct file *filep, unsigned long arg)
 	int ret = 0;
 	struct hgsl_hab_channel_t *hab_channel = NULL;
 	bool ctxt_created = false;
+	bool dbq_off = (!hgsl->global_hyp_inited || hgsl->db_off);
+	uint32_t dbq_info = -1;
+	bool dbq_info_checked = false;
 
 	if (copy_from_user(&params, USRPTR(arg), sizeof(params))) {
 		LOGE("failed to copy params from user");
@@ -1751,29 +1956,35 @@ static int hgsl_ioctl_ctxt_create(struct file *filep, unsigned long arg)
 		params.flags |= GSL_CONTEXT_FLAG_USER_GENERATED_TS;
 	}
 
-	ret = hgsl_hyp_ctxt_create(hab_channel, &params);
-	if (ret)
-		goto out;
+	ret = hgsl_hyp_ctxt_create_v1(hgsl->dev, priv, hab_channel,
+			ctxt, &params, dbq_off, &dbq_info);
+	if (ret) {
+		/* fallback to legacy mode */
+		ret = hgsl_hyp_ctxt_create(hab_channel, &params);
+		if (ret)
+			goto out;
 
-	if (params.ctxthandle >= HGSL_CONTEXT_NUM) {
-		LOGE("invalid ctxt id %d", params.ctxthandle);
-		ret = -EINVAL;
-		goto out;
-	}
+		if (params.ctxthandle >= HGSL_CONTEXT_NUM) {
+			LOGE("invalid ctxt id %d", params.ctxthandle);
+			ret = -EINVAL;
+			goto out;
+		}
 
-	ctxt->context_id = params.ctxthandle;
-	ctxt->devhandle = params.devhandle;
-	ctxt->pid = priv->pid;
-	ctxt->priv = priv;
-	ctxt->flags = params.flags;
+		ctxt->context_id = params.ctxthandle;
+		ctxt->devhandle = params.devhandle;
+		ctxt->pid = priv->pid;
+		ctxt->priv = priv;
+		ctxt->flags = params.flags;
+	} else
+		dbq_info_checked = true;
 
 	kref_init(&ctxt->kref);
 	init_waitqueue_head(&ctxt->wait_q);
 	mutex_init(&ctxt->lock);
 
 	hgsl_get_shadowts_mem(hab_channel, ctxt);
-	if (hgsl->global_hyp_inited && !hgsl->db_off)
-		hgsl_ctxt_create_dbq(priv, hab_channel, ctxt);
+	if (!dbq_off)
+		hgsl_ctxt_create_dbq(priv, hab_channel, ctxt, dbq_info, dbq_info_checked);
 
 	if (hgsl_ctxt_use_global_dbq(ctxt)) {
 		ret = hgsl_hsync_timeline_create(ctxt);
@@ -1808,13 +2019,15 @@ out:
 	LOGD("%d", params.ctxthandle);
 	if (ret) {
 		if (ctxt_created)
-			hgsl_ctxt_destroy(priv, hab_channel, params.ctxthandle, NULL);
+			hgsl_ctxt_destroy(priv, hab_channel, params.ctxthandle, NULL, false);
 		else if (ctxt && (params.ctxthandle < HGSL_CONTEXT_NUM)) {
-			_unmap_shadow(ctxt);
-			hgsl_hyp_put_shadowts_mem(hab_channel, &ctxt->shadow_ts_node);
+			if (!ctxt->is_fe_shadow)
+				_cleanup_shadow(hab_channel, ctxt);
 			hgsl_hyp_ctxt_destroy(hab_channel, ctxt->devhandle, ctxt->context_id,
-				NULL, ctxt->dbcq_export_id);
+						NULL, ctxt->dbcq_export_id);
 			hgsl_dbcq_close(ctxt);
+			if (ctxt->is_fe_shadow)
+				_cleanup_shadow(hab_channel, ctxt);
 			kfree(ctxt);
 		}
 		LOGE("failed to create context");
@@ -1843,7 +2056,7 @@ static int hgsl_ioctl_ctxt_destroy(struct file *filep, unsigned long arg)
 		goto out;
 	}
 
-	ret = hgsl_ctxt_destroy(priv, hab_channel, params.ctxthandle, &params.rval);
+	ret = hgsl_ctxt_destroy(priv, hab_channel, params.ctxthandle, &params.rval, true);
 
 	if (ret == 0) {
 		if (copy_to_user(USRPTR(arg), &params, sizeof(params)))
@@ -2041,6 +2254,7 @@ static int hgsl_ioctl_mem_alloc(struct file *filep, unsigned long arg)
 	}
 
 	mem_node->flags = params.flags;
+	mem_node->default_iocoherency = hgsl->default_iocoherency;
 
 	ret = hgsl_sharedmem_alloc(hgsl->dev, params.sizebytes, params.flags, mem_node);
 	if (ret)
@@ -2204,6 +2418,7 @@ out:
 static int hgsl_ioctl_mem_map_smmu(struct file *filep, unsigned long arg)
 {
 	struct hgsl_priv *priv = filep->private_data;
+	struct qcom_hgsl *hgsl = priv->dev;
 	struct hgsl_ioctl_mem_map_smmu_params params;
 	int ret = 0;
 	struct hgsl_mem_node *mem_node = NULL;
@@ -2231,6 +2446,7 @@ static int hgsl_ioctl_mem_map_smmu(struct file *filep, unsigned long arg)
 	mem_node->flags = params.flags;
 	mem_node->fd = params.fd;
 	mem_node->memtype = params.memtype;
+	mem_node->default_iocoherency = hgsl->default_iocoherency;
 	ret = hgsl_hyp_mem_map_smmu(hab_channel, params.size, params.offset, mem_node);
 
 	if (ret == 0) {
@@ -2357,6 +2573,58 @@ static int hgsl_ioctl_mem_cache_operation(struct file *filep, unsigned long arg)
 out:
 	if (ret)
 		LOGE("ret %d", ret);
+	return ret;
+}
+
+static int hgsl_ioctl_mem_get_fd(struct file *filep, unsigned long arg)
+{
+	struct hgsl_priv *priv = filep->private_data;
+	struct hgsl_ioctl_mem_get_fd_params params;
+	struct gsl_memdesc_t memdesc;
+	struct hgsl_mem_node *node_found = NULL;
+	struct hgsl_mem_node *tmp = NULL;
+	int ret = 0;
+
+	if (copy_from_user(&params, USRPTR(arg), sizeof(params))) {
+		LOGE("failed to copy params from user");
+		ret = -EFAULT;
+		goto out;
+	}
+	if (copy_from_user(&memdesc, USRPTR(params.memdesc),
+		sizeof(memdesc))) {
+		LOGE("failed to copy memdesc from user");
+		ret = -EFAULT;
+		goto out;
+	}
+
+	mutex_lock(&priv->lock);
+	list_for_each_entry(tmp, &priv->mem_allocated, node) {
+		if ((tmp->memdesc.gpuaddr == memdesc.gpuaddr)
+			&& (tmp->memdesc.size == memdesc.size)) {
+			node_found = tmp;
+			break;
+		}
+	}
+	params.fd = -1;
+	if (node_found && node_found->dma_buf) {
+		get_dma_buf(node_found->dma_buf);
+		params.fd = dma_buf_fd(node_found->dma_buf, O_CLOEXEC);
+		if (params.fd < 0) {
+			LOGE("dma buf to fd failed");
+			ret = -EINVAL;
+			dma_buf_put(node_found->dma_buf);
+		} else if (copy_to_user(USRPTR(arg), &params, sizeof(params))) {
+			LOGE("copy_to_user failed");
+			ret = -EFAULT;
+		}
+	} else {
+		LOGE("can't find the memory 0x%llx, 0x%x, node_found:%p",
+			 memdesc.gpuaddr, memdesc.size, node_found);
+		ret = -EINVAL;
+	}
+	mutex_unlock(&priv->lock);
+
+out:
 	return ret;
 }
 
@@ -3069,6 +3337,8 @@ static int hgsl_open(struct inode *inodep, struct file *filep)
 	priv->dev = hgsl;
 	filep->private_data = priv;
 
+	hgsl_sysfs_client_init(priv);
+	hgsl_debugfs_client_init(priv);
 out:
 	if (ret != 0)
 		kfree(priv);
@@ -3080,7 +3350,8 @@ static int hgsl_cleanup(struct hgsl_priv *priv)
 	struct hgsl_mem_node *node_found = NULL;
 	struct hgsl_mem_node *tmp = NULL;
 	int ret;
-	bool need_notify = (!list_empty(&priv->mem_mapped) || !list_empty(&priv->mem_allocated));
+	bool need_notify = (!list_empty(&priv->mem_mapped) ||
+				!list_empty(&priv->mem_allocated));
 	struct hgsl_hab_channel_t *hab_channel = NULL;
 
 	if (need_notify) {
@@ -3134,6 +3405,8 @@ static int _hgsl_release(struct hgsl_priv *priv)
 	struct qcom_hgsl *hgsl = priv->dev;
 	uint32_t i;
 	int ret;
+	hgsl_debugfs_client_release(priv);
+	hgsl_sysfs_client_release(priv);
 
 	read_lock(&hgsl->ctxt_lock);
 	for (i = 0; i < HGSL_CONTEXT_NUM; i++) {
@@ -3141,7 +3414,7 @@ static int _hgsl_release(struct hgsl_priv *priv)
 			(hgsl->contexts[i] != NULL) &&
 			(priv == hgsl->contexts[i]->priv)) {
 			read_unlock(&hgsl->ctxt_lock);
-			hgsl_ctxt_destroy(priv, NULL, i, NULL);
+			hgsl_ctxt_destroy(priv, NULL, i, NULL, false);
 			read_lock(&hgsl->ctxt_lock);
 		}
 	}
@@ -3532,6 +3805,9 @@ static long hgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case HGSL_IOCTL_MEM_CACHE_OPERATION:
 		ret = hgsl_ioctl_mem_cache_operation(filep, arg);
 		break;
+	case HGSL_IOCTL_MEM_GET_FD:
+		ret = hgsl_ioctl_mem_get_fd(filep, arg);
+		break;
 	case HGSL_IOCTL_ISSUIB_WITH_ALLOC_LIST:
 		ret = hgsl_ioctl_issueib_with_alloc_list(filep, arg);
 		break;
@@ -3785,7 +4061,11 @@ static int qcom_hgsl_probe(struct platform_device *pdev)
 	if (!hgsl_dev->db_off)
 		hgsl_init_global_hyp_channel(hgsl_dev);
 
+	hgsl_dev->default_iocoherency = of_property_read_bool(pdev->dev.of_node,
+							"default_iocoherency");
 	platform_set_drvdata(pdev, hgsl_dev);
+	hgsl_sysfs_init(pdev);
+	hgsl_debugfs_init(pdev);
 
 	return 0;
 
@@ -3799,6 +4079,8 @@ static int qcom_hgsl_remove(struct platform_device *pdev)
 	struct qcom_hgsl *hgsl = platform_get_drvdata(pdev);
 	struct hgsl_tcsr *tcsr_sender, *tcsr_receiver;
 	int i;
+	hgsl_debugfs_release(pdev);
+	hgsl_sysfs_release(pdev);
 
 	for (i = 0; i < HGSL_TCSR_NUM; i++) {
 		tcsr_sender = hgsl->tcsr[i][HGSL_TCSR_ROLE_SENDER];

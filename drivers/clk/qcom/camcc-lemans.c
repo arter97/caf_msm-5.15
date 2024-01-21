@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021, 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -18,6 +18,7 @@
 #include "clk-alpha-pll.h"
 #include "clk-branch.h"
 #include "clk-pll.h"
+#include "clk-pm.h"
 #include "clk-rcg.h"
 #include "clk-regmap.h"
 #include "common.h"
@@ -53,7 +54,7 @@ enum {
 };
 
 static const struct pll_vco lucid_evo_vco[] = {
-	{ 249600000, 2000000000, 0 },
+	{ 249600000, 2020000000, 0 },
 };
 
 static const struct pll_vco rivian_evo_vco[] = {
@@ -96,7 +97,7 @@ static struct clk_alpha_pll cam_cc_pll0 = {
 				[VDD_LOW] = 1066000000,
 				[VDD_LOW_L1] = 1500000000,
 				[VDD_NOMINAL] = 1800000000,
-				[VDD_HIGH] = 2000000000},
+				[VDD_HIGH] = 2020000000},
 		},
 	},
 };
@@ -216,7 +217,7 @@ static struct clk_alpha_pll cam_cc_pll3 = {
 				[VDD_LOW] = 1066000000,
 				[VDD_LOW_L1] = 1500000000,
 				[VDD_NOMINAL] = 1800000000,
-				[VDD_HIGH] = 2000000000},
+				[VDD_HIGH] = 2020000000},
 		},
 	},
 };
@@ -280,7 +281,7 @@ static struct clk_alpha_pll cam_cc_pll4 = {
 				[VDD_LOW] = 1066000000,
 				[VDD_LOW_L1] = 1500000000,
 				[VDD_NOMINAL] = 1800000000,
-				[VDD_HIGH] = 2000000000},
+				[VDD_HIGH] = 2020000000},
 		},
 	},
 };
@@ -344,7 +345,7 @@ static struct clk_alpha_pll cam_cc_pll5 = {
 				[VDD_LOW] = 1066000000,
 				[VDD_LOW_L1] = 1500000000,
 				[VDD_NOMINAL] = 1800000000,
-				[VDD_HIGH] = 2000000000},
+				[VDD_HIGH] = 2020000000},
 		},
 	},
 };
@@ -1919,6 +1920,45 @@ static struct clk_branch cam_cc_sleep_clk = {
 	},
 };
 
+static struct clk_branch cam_cc_sm_obs_clk = {
+	.halt_reg = 0x1510c,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x1510c,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "cam_cc_sm_obs_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
+static struct clk_branch cam_cc_titan_top_accu_shift_clk = {
+	.halt_reg = 0x131f0,
+	.halt_check = BRANCH_HALT_VOTED,
+	.clkr = {
+		.enable_reg = 0x131f0,
+		.enable_mask = BIT(0),
+		.hw.init = &(const struct clk_init_data){
+			.name = "cam_cc_titan_top_accu_shift_clk",
+			.parent_hws = (const struct clk_hw*[]){
+				&cam_cc_xo_clk_src.clkr.hw,
+			},
+			.num_parents = 1,
+			.flags = CLK_SET_RATE_PARENT,
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
+/*
+ * Keep clocks always enabled:
+ *	cam_cc_gdsc_clk
+ */
+static struct critical_clk_offset lemans_critical_clk_list[] = {
+	{ .offset = 0x131ec, .mask = BIT(0) },
+};
+
 static struct clk_regmap *cam_cc_lemans_clocks[] = {
 	[CAM_CC_CAMNOC_AXI_CLK] = &cam_cc_camnoc_axi_clk.clkr,
 	[CAM_CC_CAMNOC_AXI_CLK_SRC] = &cam_cc_camnoc_axi_clk_src.clkr,
@@ -2003,6 +2043,8 @@ static struct clk_regmap *cam_cc_lemans_clocks[] = {
 	[CAM_CC_SLEEP_CLK_SRC] = &cam_cc_sleep_clk_src.clkr,
 	[CAM_CC_SLOW_AHB_CLK_SRC] = &cam_cc_slow_ahb_clk_src.clkr,
 	[CAM_CC_XO_CLK_SRC] = &cam_cc_xo_clk_src.clkr,
+	[CAM_CC_SM_OBS_CLK] = NULL,
+	[CAM_CC_TITAN_TOP_ACCU_SHIFT_CLK] = NULL,
 };
 
 static const struct qcom_reset_map cam_cc_lemans_resets[] = {
@@ -2030,13 +2072,94 @@ static struct qcom_cc_desc cam_cc_lemans_desc = {
 	.num_resets = ARRAY_SIZE(cam_cc_lemans_resets),
 	.clk_regulators = cam_cc_lemans_regulators,
 	.num_clk_regulators = ARRAY_SIZE(cam_cc_lemans_regulators),
+	.critical_clk_en = lemans_critical_clk_list,
+	.num_critical_clk = ARRAY_SIZE(lemans_critical_clk_list),
 };
 
 static const struct of_device_id cam_cc_lemans_match_table[] = {
 	{ .compatible = "qcom,lemans-camcc" },
+	{ .compatible = "qcom,monaco_auto-camcc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, cam_cc_lemans_match_table);
+
+static int cam_cc_lemans_fixup(struct platform_device *pdev, struct regmap *regmap)
+{
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,monaco_auto-camcc")) {
+		cam_cc_camnoc_axi_clk_src.cmd_rcgr = 0x13154;
+		cam_cc_camnoc_axi_clk.halt_reg = 0x1316c;
+		cam_cc_camnoc_axi_clk.clkr.enable_reg = 0x1316c;
+		cam_cc_camnoc_dcd_xo_clk.halt_reg = 0x13174;
+		cam_cc_camnoc_dcd_xo_clk.clkr.enable_reg = 0x13174;
+		cam_cc_camnoc_xo_clk.halt_reg = 0x13178;
+		cam_cc_camnoc_xo_clk.clkr.enable_reg = 0x13178;
+
+		cam_cc_csi0phytimer_clk_src.cmd_rcgr = 0x15054;
+		cam_cc_csi1phytimer_clk_src.cmd_rcgr = 0x15078;
+		cam_cc_csi2phytimer_clk_src.cmd_rcgr = 0x15098;
+		cam_cc_csid_clk_src.cmd_rcgr = 0x13134;
+
+		cam_cc_mclk0_clk_src.cmd_rcgr = 0x15000;
+		cam_cc_mclk1_clk_src.cmd_rcgr = 0x1501c;
+		cam_cc_mclk2_clk_src.cmd_rcgr = 0x15038;
+
+		cam_cc_fast_ahb_clk_src.cmd_rcgr = 0x13104;
+		cam_cc_slow_ahb_clk_src.cmd_rcgr = 0x1311c;
+		cam_cc_xo_clk_src.cmd_rcgr = 0x131b8;
+		cam_cc_sleep_clk_src.cmd_rcgr = 0x131d4;
+
+		cam_cc_core_ahb_clk.halt_reg = 0x131b4;
+		cam_cc_core_ahb_clk.clkr.enable_reg = 0x131b4;
+
+		cam_cc_cpas_ahb_clk.halt_reg = 0x130f4;
+		cam_cc_cpas_ahb_clk.clkr.enable_reg = 0x130f4;
+		cam_cc_cpas_fast_ahb_clk.halt_reg = 0x130fc;
+		cam_cc_cpas_fast_ahb_clk.clkr.enable_reg = 0x130fc;
+
+		cam_cc_csi0phytimer_clk.halt_reg = 0x1506c;
+		cam_cc_csi0phytimer_clk.clkr.enable_reg = 0x1506c;
+		cam_cc_csi1phytimer_clk.halt_reg = 0x15090;
+		cam_cc_csi1phytimer_clk.clkr.enable_reg = 0x15090;
+		cam_cc_csi2phytimer_clk.halt_reg = 0x150b0;
+		cam_cc_csi2phytimer_clk.clkr.enable_reg = 0x150b0;
+		cam_cc_csid_clk.halt_reg = 0x1314c;
+		cam_cc_csid_clk.clkr.enable_reg = 0x1314c;
+		cam_cc_csid_csiphy_rx_clk.halt_reg = 0x15074;
+		cam_cc_csid_csiphy_rx_clk.clkr.enable_reg = 0x15074;
+		cam_cc_csiphy0_clk.halt_reg = 0x15070;
+		cam_cc_csiphy0_clk.clkr.enable_reg = 0x15070;
+		cam_cc_csiphy1_clk.halt_reg = 0x15094;
+		cam_cc_csiphy1_clk.clkr.enable_reg = 0x15094;
+		cam_cc_csiphy2_clk.halt_reg = 0x150b4;
+		cam_cc_csiphy2_clk.clkr.enable_reg = 0x150b4;
+
+		cam_cc_mclk0_clk.halt_reg = 0x15018;
+		cam_cc_mclk0_clk.clkr.enable_reg = 0x15018;
+		cam_cc_mclk1_clk.halt_reg = 0x15034;
+		cam_cc_mclk1_clk.clkr.enable_reg = 0x15034;
+		cam_cc_mclk2_clk.halt_reg = 0x15050;
+		cam_cc_mclk2_clk.clkr.enable_reg = 0x15050;
+
+		cam_cc_lemans_clocks[CAM_CC_CCI_3_CLK] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_CCI_3_CLK_SRC] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_CSI3PHYTIMER_CLK] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_CSI3PHYTIMER_CLK_SRC] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_CSIPHY3_CLK] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_MCLK3_CLK] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_MCLK3_CLK_SRC] = NULL;
+		cam_cc_lemans_clocks[CAM_CC_SM_OBS_CLK] =
+					&cam_cc_sm_obs_clk.clkr;
+		cam_cc_lemans_clocks[CAM_CC_TITAN_TOP_ACCU_SHIFT_CLK] =
+				&cam_cc_titan_top_accu_shift_clk.clkr;
+
+		lemans_critical_clk_list[0].offset = 0x131d0;
+	}
+
+	/* Enabling always ON clocks */
+	clk_restore_critical_clocks(&pdev->dev);
+
+	return 0;
+}
 
 static int cam_cc_lemans_probe(struct platform_device *pdev)
 {
@@ -2047,13 +2170,9 @@ static int cam_cc_lemans_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 
-	ret = qcom_cc_runtime_init(pdev, &cam_cc_lemans_desc);
+	ret = register_qcom_clks_pm(pdev, true, &cam_cc_lemans_desc);
 	if (ret)
-		return ret;
-
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret)
-		return ret;
+		dev_err(&pdev->dev, "Failed register cam_cc_pm_rt_ops clocks\n");
 
 	clk_lucid_evo_pll_configure(&cam_cc_pll0, regmap, cam_cc_pll0.config);
 	clk_rivian_evo_pll_configure(&cam_cc_pll2, regmap, cam_cc_pll2.config);
@@ -2061,11 +2180,9 @@ static int cam_cc_lemans_probe(struct platform_device *pdev)
 	clk_lucid_evo_pll_configure(&cam_cc_pll4, regmap, cam_cc_pll4.config);
 	clk_lucid_evo_pll_configure(&cam_cc_pll5, regmap, cam_cc_pll5.config);
 
-	/*
-	 * Keep clocks always enabled:
-	 *	cam_cc_gdsc_clk
-	 */
-	regmap_update_bits(regmap, 0x131ec, BIT(0), BIT(0));
+	ret = cam_cc_lemans_fixup(pdev, regmap);
+	if (ret)
+		return ret;
 
 	ret = qcom_cc_really_probe(pdev, &cam_cc_lemans_desc, regmap);
 	if (ret) {
@@ -2084,19 +2201,12 @@ static void cam_cc_lemans_sync_state(struct device *dev)
 	qcom_cc_sync_state(dev, &cam_cc_lemans_desc);
 }
 
-static const struct dev_pm_ops cam_cc_lemans_pm_ops = {
-	SET_RUNTIME_PM_OPS(qcom_cc_runtime_suspend, qcom_cc_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
-};
-
 static struct platform_driver cam_cc_lemans_driver = {
 	.probe = cam_cc_lemans_probe,
 	.driver = {
 		.name = "cam_cc-lemans",
 		.of_match_table = cam_cc_lemans_match_table,
 		.sync_state = cam_cc_lemans_sync_state,
-		.pm = &cam_cc_lemans_pm_ops,
 	},
 };
 

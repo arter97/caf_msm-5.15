@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cache.h>
@@ -968,7 +968,6 @@ static void md_dump_data(unsigned long addr, int nbytes, const char *name)
 
 static void md_reg_context_data(struct pt_regs *regs)
 {
-	unsigned int i;
 	int nbytes = 128;
 
 	if (user_mode(regs) ||  !regs->pc)
@@ -977,12 +976,6 @@ static void md_reg_context_data(struct pt_regs *regs)
 	md_dump_data(regs->pc - nbytes, nbytes * 2, "PC");
 	md_dump_data(regs->regs[30] - nbytes, nbytes * 2, "LR");
 	md_dump_data(regs->sp - nbytes, nbytes * 2, "SP");
-	for (i = 0; i < 30; i++) {
-		char name[4];
-
-		snprintf(name, sizeof(name), "X%u", i);
-		md_dump_data(regs->regs[i] - nbytes, nbytes * 2, name);
-	}
 }
 
 static inline void md_dump_panic_regs(void)
@@ -1461,3 +1454,5 @@ int msm_minidump_log_init(void)
 #if !IS_MODULE(CONFIG_QCOM_MINIDUMP)
 late_initcall(msm_minidump_log_init)
 #endif
+
+MODULE_IMPORT_NS(MINIDUMP);

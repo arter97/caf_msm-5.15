@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CRYPTO_INLINE_CRYPTO_ENGINE_REGS_H_
@@ -155,9 +155,9 @@
 
 #if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 #define crypto_qti_ice_writel(ice, val, reg)    \
-    writel_relaxed((val), (ice)->mmio + (reg))
+	writel_relaxed((val), (ice)->mmio + (reg))
 #define crypto_qti_ice_readl(ice, reg)  \
-    readl_relaxed((ice)->mmio + (reg))
-#endif //CONFIG_QTI_CRYPTO_FDE
+	readl_relaxed((ice)->mmio + (reg))
+#endif /* CONFIG_QTI_CRYPTO_FDE */
 
 #endif /* _CRYPTO_INLINE_CRYPTO_ENGINE_REGS_H_ */

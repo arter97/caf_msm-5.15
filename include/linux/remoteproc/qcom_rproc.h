@@ -2,6 +2,7 @@
 #define __QCOM_RPROC_H__
 
 struct notifier_block;
+struct rproc;
 
 /**
  * enum qcom_ssr_notify_type - Startup/Shutdown events related to a remoteproc
@@ -30,6 +31,7 @@ void *qcom_register_ssr_notifier(const char *name, struct notifier_block *nb);
 void *qcom_register_early_ssr_notifier(const char *name, struct notifier_block *nb);
 int qcom_unregister_early_ssr_notifier(void *notify, struct notifier_block *nb);
 int qcom_unregister_ssr_notifier(void *notify, struct notifier_block *nb);
+int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *dtb_fw_name);
 
 #else
 
@@ -55,7 +57,18 @@ static inline int qcom_unregister_ssr_notifier(void *notify,
 {
 	return 0;
 }
+static inline int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *dtb_fw_name)
+{
+	return -EINVAL;
+}
 
+
+#endif
+
+#if IS_ENABLED(CONFIG_QCOM_Q6V5_PAS)
+void adsp_set_ops_stop(struct rproc *rproc, bool suspend);
+#else
+static inline void adsp_set_ops_stop(struct rproc *rproc, bool suspend) { }
 #endif
 
 #endif

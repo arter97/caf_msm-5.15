@@ -53,14 +53,12 @@ int crypto_qti_debug(const struct ice_mmio_data *mmio_data);
 int crypto_qti_keyslot_program(const struct ice_mmio_data *mmio_data,
 			       const struct blk_crypto_key *key,
 			       unsigned int slot, u8 data_unit_mask,
-			       int capid);
+			       int capid, int storage_type);
 int crypto_qti_keyslot_evict(const struct ice_mmio_data *mmio_data,
-							unsigned int slot);
+						unsigned int slot, int storage_type);
 int crypto_qti_derive_raw_secret(const u8 *wrapped_key,
 				 unsigned int wrapped_key_size, u8 *secret,
 				 unsigned int secret_size);
-
-//ICE
 #if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 /* MSM ICE Crypto Data Unit of target DUN of Transfer Request */
 enum ice_crypto_data_unit {
@@ -102,20 +100,14 @@ int crypto_qti_ice_setup_ice_hw(const char *storage_type, int enable);
 int crypto_qti_ice_config_start(struct request *req,
 				struct ice_data_setting *setting);
 unsigned int crypto_qti_ice_get_num_fde_slots(void);
-int crypto_qti_ice_add_userdata(const unsigned char *inhash);
-void crypto_qti_ice_set_fde_flag(int flag);
-#else //CONFIG_QTI_CRYPTO_FDE
+int crypto_qti_ice_init_fde_node(struct device *dev);
+#else /* CONFIG_QTI_CRYPTO_FDE */
 static inline int crypto_qti_ice_setup_ice_hw(const char *storage_type, int enable)
 {
 	return 0;
 }
-static inline int crypto_qti_ice_add_userdata(const unsigned char *inhash)
-{
-	return -EOPNOTSUPP;
-}
-static inline void crypto_qti_ice_set_fde_flag(int flag)
-{}
-#endif //CONFIG_QTI_CRYPTO_FDE
+
+#endif /* CONFIG_QTI_CRYPTO_FDE */
 #else
 static inline int crypto_qti_init_crypto(void *mmio_data)
 {
@@ -136,12 +128,12 @@ static inline int crypto_qti_keyslot_program(
 					    const struct blk_crypto_key *key,
 					    unsigned int slot,
 					    u8 data_unit_mask,
-					    int capid)
+					    int capid, int storage_type)
 {
 	return -EOPNOTSUPP;
 }
 static inline int crypto_qti_keyslot_evict(const struct ice_mmio_data *mmio_data,
-						unsigned int slot)
+						unsigned int slot, int storage_type)
 {
 	return -EOPNOTSUPP;
 }
