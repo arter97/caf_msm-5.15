@@ -1253,15 +1253,14 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
-
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
-
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
 	}
-
+#endif
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
 
@@ -1273,11 +1272,16 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving)
+		ret = priv->plat->enable_power_saving(priv->dev, true);
 
+	netdev_info(priv->dev, "enable power saving ret = %d\n", ret);
+#else
 	if (priv->plat->serdes_powersaving)
 		priv->plat->serdes_powersaving(to_net_dev(config->dev),
 					       priv->plat->bsp_priv, false, false);
-
+#endif
 }
 
 static void stmmac_mac_link_up(struct phylink_config *config,
@@ -1300,6 +1304,12 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		priv->plat->phy_interface = interface;
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving)
+		ret = priv->plat->enable_power_saving(priv->dev, false);
+
+	netdev_info(priv->dev, "enable power saving ret = %d\n", ret);
+#else
 	if (priv->plat->serdes_powersaving)
 		priv->plat->serdes_powersaving(to_net_dev(config->dev),
 							  priv->plat->bsp_priv, true, true);
@@ -1309,7 +1319,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
 	}
-
+#endif
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, false);
 
@@ -4456,6 +4466,11 @@ static int stmmac_open(struct net_device *dev)
 		return ret;
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving)
+		priv->plat->enable_power_saving(priv->dev, false);
+#endif
+
 	if (!priv->plat->mac2mac_en &&
 	    (!priv->plat->fixed_phy_mode ||
 	    (priv->plat->fixed_phy_mode && priv->plat->fixed_phy_mode_needs_mdio)) &&
@@ -4598,6 +4613,12 @@ static int stmmac_open(struct net_device *dev)
 		netdev_info(priv->dev, "OpenAVB will not work, explicitly add VLAN");
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		ret = priv->plat->enable_power_saving(priv->dev, true);
+		netdev_info(priv->dev, "%s enable power saving", __func__, ret);
+	}
+#endif
 	return 0;
 
 irq_error:
