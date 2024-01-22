@@ -274,7 +274,6 @@ static int usb_conn_probe(struct platform_device *pdev)
 	device_set_wakeup_capable(&pdev->dev, true);
 
 	/* Perform initial detection */
-	info->last_role = -1;
 	usb_conn_queue_dwork(info, 0);
 
 	return 0;
