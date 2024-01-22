@@ -153,6 +153,8 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_PWR_IO_DISABLE_PMIC_ARBITER	0x01
 #define QCOM_SCM_PWR_IO_DEASSERT_PS_HOLD	0x02
 #define QCOM_SCM_PWR_MMU_SYNC			0x08
+#define QCOM_SCM_SVC_BOOT_PMIC			0x22
+#define QCOM_SCM_BOOT_PMIC_SET_D3		0x02
 
 #define QCOM_SCM_SVC_MP				0x0c
 #define QCOM_SCM_MP_RESTORE_SEC_CFG		0x02
@@ -217,8 +219,15 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_QDSS_INVOKE			0x01
 
 #define QCOM_SCM_SVC_CAMERA			0x18
+#define QCOM_SCM_CAMERA_TZ_STATUS		0x01
+#define QCOM_SCM_CAMERA_REG_READ		0x02
+#define QCOM_SCM_CAMERA_REG_WRITE		0x03
+#define QCOM_SCM_CAMERA_REG_WRITE_BULK		0x04
+#define QCOM_SCM_CAMERA_RESET_HW_BLOCK		0x05
 #define QCOM_SCM_CAMERA_PROTECT_ALL		0x06
 #define QCOM_SCM_CAMERA_PROTECT_PHY_LANES	0x07
+#define QCOM_SCM_CAMERA_TOPOLOGY                0x08
+#define QCOM_SCM_CAMERA_STREAM_NOTIF            0x09
 
 #define QCOM_SCM_SVC_WAITQ			0x24
 #define QCOM_SCM_WAITQ_ACK			0x01

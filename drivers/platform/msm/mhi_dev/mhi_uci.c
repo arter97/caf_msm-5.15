@@ -1008,7 +1008,7 @@ static int open_client_mhi_channels(struct uci_client *uci_client)
 	int rc = 0;
 
 	if (!mhi_uci_are_channels_connected(uci_client)) {
-		uci_log(UCI_DBG_ERROR, "Channels are not connected\n");
+		uci_log(UCI_DBG_VERBOSE, "Channels are not connected\n");
 		return -ENODEV;
 	}
 
@@ -1540,9 +1540,15 @@ static ssize_t mhi_uci_client_write_iter(struct kiocb *iocb,
 	unsigned long memcpy_result;
 	int rc;
 	struct file *file = iocb->ki_filp;
-	ssize_t count = iov_iter_count(buf);
+	ssize_t count;
 
-	if (!file || !buf || !count || !file->private_data) {
+	if (!buf) {
+		uci_log(UCI_DBG_DBG, "Invalid access to write-iter, buf is NULL\n");
+		return -EINVAL;
+	}
+	count = iov_iter_count(buf);
+
+	if (!file || !count || !file->private_data) {
 		uci_log(UCI_DBG_DBG, "Invalid access to write-iter\n");
 		return -EINVAL;
 	}
@@ -1615,7 +1621,7 @@ void mhi_uci_chan_state_notify(struct mhi_dev *mhi,
 	int rc;
 
 	if (ch_id < 0 || ch_id >= MHI_MAX_SOFTWARE_CHANNELS) {
-		uci_log(UCI_DBG_ERROR, "Invalid ch_id:%d\n", ch_id);
+		uci_log(UCI_DBG_VERBOSE, "Invalid ch_id:%d\n", ch_id);
 		return;
 	}
 

@@ -129,6 +129,16 @@ static struct kobj_attribute cpu_max_freq_attr =
 static struct kobj_attribute inst_attr =
 	__ATTR(inst, 0444, get_cpu_total_instruction, NULL);
 
+#if IS_ENABLED(CONFIG_SCHED_WALT)
+static ssize_t get_core_ctl_register(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t set_core_ctl_register(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf,
+	size_t count);
+static struct kobj_attribute core_ctl_register_attr =
+	__ATTR(core_ctl_register, 0644, get_core_ctl_register,
+	set_core_ctl_register);
+#endif
 static struct kobj_attribute evnt_gplaf_pid_attr =
 	__ATTR(evnt_gplaf_pid, 0644, get_game_start_pid, set_game_start_pid);
 static struct kobj_attribute splh_notif_attr =
@@ -1322,7 +1332,7 @@ static int init_lplh_notif(const char *buf)
 		return -EINVAL;
 	cp = buf;
 	if (sscanf(cp, INIT ":%hu", &nClusters)) {
-		if (!nClusters)
+		if (!nClusters || nClusters > LPLH_CLUSTER_MAX_CNT)
 			return -EINVAL;
 
 		*ptmp++ = nClusters;
@@ -1362,7 +1372,7 @@ static int init_lplh_notif(const char *buf)
 				while ((cp1 = strpbrk(cp1 + 1, ",")))
 					nValues++;
 
-				if (nValues % 2 != 0)
+				if (nValues % 2 != 0 || LPLH_IPC_FREQ_VTBL_MAX_CNT < nValues/2)
 					return -EINVAL;
 
 				*ptmp++ = nValues/2;

@@ -111,7 +111,7 @@ struct power_state_drvdata {
 	struct msm_rpm_kvp kvp_req;
 	struct syscore_ops ps_ops;
 	enum power_states current_state;
-	u32 subsys_count;
+	int subsys_count;
 	struct list_head sub_sys_list;
 	bool deep_sleep_allowed;
 };
@@ -133,6 +133,7 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+		adsp_set_ops_stop(rproc, true);
 		rproc_shutdown(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -160,6 +161,7 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 		break;
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+		adsp_set_ops_stop(rproc, false);
 		ret = rproc_boot(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -601,6 +603,8 @@ static int power_state_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&drv->sub_sys_list);
 
 	drv->subsys_count = of_property_count_strings(dn, "qcom,subsys-name");
+	if (drv->subsys_count < 0)
+		drv->subsys_count = 0;
 	for (i = 0; i < drv->subsys_count; i++) {
 		of_property_read_string_index(dn, "qcom,subsys-name", i, &name);
 

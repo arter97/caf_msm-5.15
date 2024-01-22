@@ -123,6 +123,7 @@ static inline void qcom_scm_populate_mem_map_info(
 extern bool qcom_scm_is_available(void);
 extern void *qcom_get_scm_device(void);
 
+extern int qcom_scm_set_d3w_mode(void);
 extern int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus);
 extern int qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus);
 extern void qcom_scm_cpu_power_down(u32 flags);
@@ -263,8 +264,21 @@ extern int qcom_scm_smmu_notify_secure_lut(u64 dev_id, bool secure);
 
 extern int qcom_scm_qdss_invoke(phys_addr_t addr, size_t size, u64 *out);
 
+extern int qcom_scm_camera_tz_get_status(uint32_t status_mask,
+			uint32_t *result);
+extern int qcom_scm_camera_tz_reg_read(uint32_t region, uint32_t offset,
+			uint32_t *data);
+extern int qcom_scm_camera_tz_reg_write(uint32_t region, uint32_t offset,
+			uint32_t data);
+extern int qcom_scm_camera_tz_reg_write_bulk(uint32_t region,
+			uint32_t num_registers, void *offsets,
+			void *data, uint32_t size);
+extern int qcom_scm_camera_tz_reset_hw_block(uint32_t status_mask,
+			uint32_t region, uint32_t *status);
 extern int qcom_scm_camera_protect_all(uint32_t protect, uint32_t param);
 extern int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask);
+extern int qcom_scm_camera_send_topology(uint32_t phy_sel, uint32_t topology);
+extern int qcom_scm_camera_reset_pipeLine(uint32_t phy_sel, uint32_t stream);
 
 extern int qcom_scm_tsens_reinit(int *tsens_ret);
 

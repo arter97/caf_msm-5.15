@@ -126,4 +126,11 @@ config GH_GUEST_POPS
           one, it'll emulate a power key press action by sending an input
           notification to user-space.
 
+config GH_GUEST_PANIC_NOTIFIER
+        tristate "Gunyah Guest panic notifer driver"
+        depends on GH_RM_DRV
+        help
+          The driver runs on guest VMs and is majorly responsible for passing the
+          crash information to PVM. This includes, GH_RM_CRASH_MSG_MAX_SIZE bytes
+          of VM's dmesg buffer.
 endif

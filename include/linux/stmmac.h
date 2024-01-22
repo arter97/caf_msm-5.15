@@ -295,6 +295,7 @@ struct plat_stmmacenet_data {
 	bool has_crossts;
 	int int_snapshot_num;
 	int ext_snapshot_num;
+	bool int_snapshot_en;
 	bool ext_snapshot_en;
 	bool multi_msi_en;
 	int msi_mac_vec;
@@ -345,5 +346,6 @@ struct plat_stmmacenet_data {
 	bool mac_suspended;
 	bool separate_wol_pin;
 	bool mka_mcbcq_filtering;
+	bool probe_invoke_if_up;
 };
 #endif

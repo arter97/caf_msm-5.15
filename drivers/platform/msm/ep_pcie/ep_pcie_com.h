@@ -18,6 +18,9 @@
 #include <linux/delay.h>
 #include <linux/msm_ep_pcie.h>
 #include <linux/iommu.h>
+#if IS_ENABLED(CONFIG_QCOM_SCM)
+#include <linux/qcom_scm.h>
+#endif
 
 #define PCIE20_PARF_SYS_CTRL           0x00
 #define PCIE20_PARF_DB_CTRL            0x10
@@ -215,9 +218,7 @@
 #define BME_CHECK_MAX_COUNT		      100000
 #define PHY_STABILIZATION_DELAY_US_MIN	      1000
 #define PHY_STABILIZATION_DELAY_US_MAX	      1000
-#define REFCLK_STABILIZATION_DELAY_US_MIN     1000
-#define REFCLK_STABILIZATION_DELAY_US_MAX     1000
-#define PHY_READY_TIMEOUT_COUNT               30000
+#define PHY_READY_TIMEOUT_MS                  30000
 #define MSI_EXIT_L1SS_WAIT	              10
 #define MSI_EXIT_L1SS_WAIT_MAX_COUNT          100
 #define XMLH_LINK_UP                          0x400
@@ -471,6 +472,7 @@ struct ep_pcie_dev_t {
 	ulong                        d3_counter;
 	ulong                        perst_ast_counter;
 	ulong                        perst_deast_counter;
+	ktime_t                      ltssm_detect_ts;
 	ulong                        wake_counter;
 	ulong                        msi_counter;
 	ulong                        msix_counter;
@@ -506,6 +508,7 @@ struct ep_pcie_dev_t {
 
 	bool				override_disable_sriov;
 	bool				no_path_from_ipa_to_pcie;
+	bool				configure_hard_reset;
 	u32				tcsr_perst_separation_en_offset;
 	u32				tcsr_reset_separation_offset;
 	u32				tcsr_perst_enable_offset;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -282,6 +282,23 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_pcs_loopback);
+
+int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm)
+{
+	int ret;
+
+	ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (lpm)
+		ret |= LPM_EN;
+	else
+		ret &= ~LPM_EN;
+
+	return qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret);
+}
+EXPORT_SYMBOL_GPL(qcom_xpcs_lpm);
 
 /* KREEE: USXGMII 10GBase-R/KR mode
  * KX4EEE: SGMII 10GBase-X/KX4 mode
@@ -800,7 +817,8 @@ static void qcom_xpcs_get_state(struct phylink_pcs *pcs,
 	}
 }
 
-void qcom_xpcs_link_up_sgmii(struct dw_xpcs_qcom *xpcs, int speed, int duplex)
+void qcom_xpcs_link_up_sgmii_2500basex(struct dw_xpcs_qcom *xpcs, int speed,
+				       int duplex, phy_interface_t interface)
 {
 	int mmd_ctrl, an_ctrl;
 	int ret = 0;
@@ -856,7 +874,7 @@ out:
 	if (xpcs->fixed_phy_mode)
 		XPCSINFO("mac2mac mode: PCS link up speed = %d\n",
 			 speed);
-	XPCSINFO("SGMII link is up\n");
+	XPCSINFO("%s link is up\n", phy_modes(interface));
 	return;
 err:
 	XPCSERR("Failed to bring up SGMII link\n");
@@ -917,6 +935,93 @@ out:
 	XPCSERR("Failed to bring up USXGMII link\n");
 }
 
+static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t interface)
+{
+	int ret;
+
+	g_interface = interface;
+	if (interface == PHY_INTERFACE_MODE_SGMII) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~PCS_TYPE_SEL_10GBR;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_10GBX);
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~DW_VR_MII_PCS_MODE_MASK;
+		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
+		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
+	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~PCS_TYPE_SEL_10GBR;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_2500BASEX);
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_KR_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~BIT(11);
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_KR_CTRL, ret | BIT(11));
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DEBUG_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~(BIT(8) | BIT(9));
+		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DEBUG_CTRL, ret | (BIT(8) | BIT(9)));
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~DW_VR_MII_PCS_MODE_MASK;
+		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
+		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
+	} else if (interface == PHY_INTERFACE_MODE_USXGMII) {
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~PCS_TYPE_SEL_10GBR;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret);
+
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
+		if (ret < 0)
+			goto out;
+
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret | LPM_EN);
+
+		usleep_range(1, 20);
+
+		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
+		if (ret < 0)
+			goto out;
+
+		ret &= ~LPM_EN;
+		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret);
+
+		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
+		if (ret < 0)
+			goto out;
+
+		return qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_EN);
+	}
+
+	XPCSERR("Incompatible MII interface: %d\n", interface);
+	return -EINVAL;
+
+out:
+	XPCSERR("Register read failed\n");
+	return -EINVAL;
+}
+
 /* USXGMII: Return early if interrupt was enabled.
  * Autonegotiation ISR will set speed and duplex instead.
  * SGMII: For 2.5Gbps, let ISR do NOP since SGMII+ not supported in
@@ -931,7 +1036,8 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 	switch (interface) {
 	case PHY_INTERFACE_MODE_2500BASEX:
 	case PHY_INTERFACE_MODE_SGMII:
-		qcom_xpcs_link_up_sgmii(xpcs, speed, duplex);
+		qcom_xpcs_select_mode(xpcs, interface);
+		qcom_xpcs_link_up_sgmii_2500basex(xpcs, speed, duplex, interface);
 		break;
 	case PHY_INTERFACE_MODE_USXGMII:
 		if (xpcs->intr_en)
@@ -1021,93 +1127,6 @@ static const struct phylink_pcs_ops qcom_xpcs_phylink_ops = {
 	.pcs_get_state = qcom_xpcs_get_state,
 	.pcs_link_up = qcom_xpcs_link_up,
 };
-
-static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t interface)
-{
-	int ret;
-
-	g_interface = interface;
-	if (interface == PHY_INTERFACE_MODE_SGMII) {
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~PCS_TYPE_SEL_10GBR;
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_10GBX);
-
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~DW_VR_MII_PCS_MODE_MASK;
-		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
-		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
-	} else if (interface == PHY_INTERFACE_MODE_2500BASEX) {
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~PCS_TYPE_SEL_2500BASEX;
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret | PCS_TYPE_SEL_2500BASEX);
-
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_KR_CTRL);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~BIT(11);
-		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_KR_CTRL, ret | BIT(11));
-
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DEBUG_CTRL);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~(BIT(8) | BIT(9));
-		ret = qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DEBUG_CTRL, ret | (BIT(8) | BIT(9)));
-
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_AN_CTRL);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~DW_VR_MII_PCS_MODE_MASK;
-		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
-		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
-	} else if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~PCS_TYPE_SEL_10GBR;
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL2, ret);
-
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
-		if (ret < 0)
-			goto out;
-
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret | LPM_EN);
-
-		usleep_range(1, 20);
-
-		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
-		if (ret < 0)
-			goto out;
-
-		ret &= ~LPM_EN;
-		ret = qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret);
-
-		ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_DIG_CTRL1);
-		if (ret < 0)
-			goto out;
-
-		return qcom_xpcs_write(xpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_EN);
-	}
-
-	XPCSERR("Incompatible MII interface: %d\n", interface);
-	return -EINVAL;
-
-out:
-	XPCSERR("Register read failed\n");
-	return -EINVAL;
-}
 
 struct dw_xpcs_qcom *qcom_xpcs_create(void __iomem *addr, phy_interface_t interface)
 {

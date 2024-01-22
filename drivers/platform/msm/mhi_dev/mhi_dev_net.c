@@ -991,6 +991,11 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 						sizeof(struct mhi_dev_net_client *), GFP_KERNEL);
 	char mhi_net_vf_ipc_name[12] = "mhi-net-nn";
 
+	if (!mhi_net_client) {
+		mhi_dev_net_log(vf_id, MHI_ERROR, "Memory alloc failed for mhi_net_client\n");
+		return -ENOMEM;
+	}
+
 	if (!mhi_net_ctxt.client_handles) {
 		/*
 		 * 2D array to hold handles of all net dev clients
@@ -1171,6 +1176,11 @@ static int mhi_dev_net_probe(struct platform_device *pdev)
 		} else {
 			mhi_net_ctxt.eth_iface_out_ch =
 				kcalloc(num_mhi_eth_chan, sizeof(uint32_t), GFP_KERNEL);
+			if (!mhi_net_ctxt.eth_iface_out_ch) {
+				mhi_dev_net_log(MHI_PF_ID, MHI_MSG_ERROR,
+						"Memory alloc failed for mhi_net_ctxt.eth_iface_out_ch\n");
+				return -ENOMEM;
+			}
 
 			ret = of_property_read_u32_array((&pdev->dev)->of_node,
 					"qcom,mhi-ethernet-interface-ch-list",
