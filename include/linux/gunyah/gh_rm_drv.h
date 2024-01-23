@@ -310,6 +310,16 @@ struct gh_vm_status {
 	u16 app_status;
 } __packed;
 
+/* VM Crash Msg */
+#define GH_RM_CRASH_MSG_MAX_SIZE	192
+#define GH_RM_CRASH_MSG_ALIGN_SIZE	4
+
+struct gh_vm_crash_msg {
+	u16 msg_size;
+	u16 reserved;
+	u8 data[0];
+} __packed;
+
 struct notifier_block;
 
 typedef int (*gh_virtio_mmio_cb_t)(gh_vmid_t peer, const char *vm_name,
@@ -387,6 +397,8 @@ int gh_rm_console_open(gh_vmid_t vmid);
 int gh_rm_console_close(gh_vmid_t vmid);
 int gh_rm_console_write(gh_vmid_t vmid, const char *buf, size_t size);
 int gh_rm_console_flush(gh_vmid_t vmid);
+int gh_rm_vm_set_crash_msg(const char *buf, size_t size);
+struct gh_vm_crash_msg *gh_rm_vm_get_crash_msg(gh_vmid_t vmid);
 int gh_rm_mem_qcom_lookup_sgl(u8 mem_type, gh_label_t label,
 			      struct gh_acl_desc *acl_desc,
 			      struct gh_sgl_desc *sgl_desc,
@@ -603,11 +615,6 @@ static inline int gh_rm_console_close(gh_vmid_t vmid)
 
 static inline int gh_rm_console_write(gh_vmid_t vmid, const char *buf,
 					size_t size)
-{
-	return -EINVAL;
-}
-
-static inline int gh_rm_console_flush(gh_vmid_t vmid)
 {
 	return -EINVAL;
 }

@@ -258,7 +258,12 @@ static int gh_vcpu_release(struct inode *inode, struct file *filp)
 {
 	struct gh_vcpu *vcpu = filp->private_data;
 
-	gh_put_vm(vcpu->vm);
+	/* need to create workqueue if critical vm */
+	if (vcpu->vm->keep_running)
+		gh_vcpu_create_wq(vcpu->vm->vmid, vcpu->vcpu_id);
+	else
+		gh_put_vm(vcpu->vm);
+
 	return 0;
 }
 
@@ -449,7 +454,26 @@ int gh_reclaim_mem(struct gh_vm *vm, phys_addr_t phys,
 	}
 
 	ret = hyp_assign_phys(phys, size, srcVM, 1, destVM, destVMperm, 1);
+	if (ret)
+		pr_err("failed hyp_assign for %pa address\t"
+			" of size %zx - subsys VMid %d rc:%d\n",
+				&phys, size, vmid, ret);
 
+	if (vm->ext_region_supported) {
+		if (!is_system_vm) {
+			ret = gh_rm_mem_reclaim(vm->ext_region->ext_mem_handle, 0);
+			if (ret)
+				pr_err("Failed to reclaim memory for %d, %d\n",
+							vm->vmid, ret);
+		}
+		ret |= hyp_assign_phys(vm->ext_region->ext_phys,
+					vm->ext_region->ext_size, srcVM, 1, destVM, destVMperm, 1);
+		if (ret)
+			pr_err("failed hyp_assign for %pa address\t"
+				" of size %zx - subsys VMid %d rc:%d\n",
+					&vm->ext_region->ext_phys,
+					vm->ext_region->ext_size, vmid, ret);
+	}
 	return ret;
 }
 
@@ -485,6 +509,11 @@ int gh_provide_mem(struct gh_vm *vm, phys_addr_t phys,
 	sgl_desc->sgl_entries[0].ipa_base = phys;
 	sgl_desc->sgl_entries[0].size = size;
 
+	if (vm->ext_region_supported) {
+		destVMperm[0] = PERM_READ;
+		acl_desc->acl_entries[0].perms = GH_RM_ACL_R;
+	}
+
 	ret = hyp_assign_phys(phys, size, srcVM, 1, destVM, destVMperm, 1);
 	if (ret) {
 		pr_err("failed hyp_assign for %pa address of size %zx - subsys VMid %d rc:%d\n",
@@ -499,12 +528,18 @@ int gh_provide_mem(struct gh_vm *vm, phys_addr_t phys,
 	 * Whereas any memory lent to a non system VM, can be reclaimed
 	 * when VM terminates.
 	 */
-	if (is_system_vm)
+	if (is_system_vm) {
 		ret = gh_rm_mem_donate(GH_RM_MEM_TYPE_NORMAL, 0, 0,
 			acl_desc, sgl_desc, NULL, &vm->mem_handle);
-	else
-		ret = gh_rm_mem_lend(GH_RM_MEM_TYPE_NORMAL, 0, 0, acl_desc,
-				sgl_desc, NULL, &vm->mem_handle);
+	} else {
+		if (vm->ext_region_supported)
+			ret = gh_rm_mem_lend(GH_RM_MEM_TYPE_NORMAL, 0,
+					vm->ext_region->ext_label, acl_desc,
+					sgl_desc, NULL, &vm->ext_region->ext_mem_handle);
+		else
+			ret = gh_rm_mem_lend(GH_RM_MEM_TYPE_NORMAL, 0, 0, acl_desc,
+					sgl_desc, NULL, &vm->mem_handle);
+	}
 
 	if (ret)
 		ret = hyp_assign_phys(phys, size, destVM, 1,
@@ -627,8 +662,20 @@ static int gh_vm_mmap(struct file *file, struct vm_area_struct *vma)
 static int gh_vm_release(struct inode *inode, struct file *filp)
 {
 	struct gh_vm *vm = filp->private_data;
+	struct gh_vm_crash_msg *crash_msg;
 
-	gh_put_vm(vm);
+	crash_msg = gh_rm_vm_get_crash_msg(vm->vmid);
+
+	if (!IS_ERR_OR_NULL(crash_msg)) {
+		pr_debug("crash_msg %x\n", crash_msg);
+		pr_debug("VM crash MSg size %d\n", crash_msg->msg_size);
+		pr_info("VMID %d Crash Msg:\n%s\n", vm->vmid, crash_msg->data);
+	} else {
+		pr_err("got NULL ptr for VMID= %d\n", vm->vmid);
+	}
+
+	if (!vm->keep_running)
+		gh_put_vm(vm);
 	return 0;
 }
 
@@ -642,11 +689,17 @@ static const struct file_operations gh_vm_fops = {
 static struct gh_vm *gh_create_vm(void)
 {
 	struct gh_vm *vm;
+	struct gh_ext_reg *ext_region;
 	int ret;
 
 	vm = kzalloc(sizeof(*vm), GFP_KERNEL);
 	if (!vm)
 		return ERR_PTR(-ENOMEM);
+
+	ext_region = kzalloc(sizeof(*ext_region), GFP_KERNEL);
+	if (!ext_region)
+		return ERR_PTR(-ENOMEM);
+	vm->ext_region = ext_region;
 
 	mutex_init(&vm->vm_lock);
 	vm->rm_nb.priority = 1;

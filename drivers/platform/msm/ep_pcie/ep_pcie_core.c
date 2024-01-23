@@ -2807,12 +2807,21 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 			dev->rev, dev->d3_counter);
 		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(1));
 
-		if (dev->enumerated)
+		if (dev->enumerated) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_HOT);
-		else
+			if (dev->configure_hard_reset) {
+#if IS_ENABLED(CONFIG_QCOM_SCM)
+				qcom_scm_set_d3w_mode();
+#endif
+				EP_PCIE_ERR(dev,
+					"PCIe V%d: Configuring SOC to hard reset, during D3cold\n",
+					dev->rev);
+			}
+		} else {
 			EP_PCIE_DBG(dev,
 				"PCIe V%d: do not notify client about this D3 hot event since enumeration by HLOS is not done yet\n",
 				dev->rev);
+		}
 		if (atomic_read(&dev->host_wake_pending))
 			ep_pcie_core_wakeup_host_internal(
 				EP_PCIE_EVENT_PM_D3_HOT);
@@ -3902,8 +3911,10 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 {
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 
-	if (atomic_read(&dev->host_wake_pending))
+	if (atomic_read(&dev->host_wake_pending)) {
+		EP_PCIE_DBG(dev, "PCIe V%d: Host wake is already pending, returning\n", dev->rev);
 		return 0;
+	}
 
 	if (!atomic_read(&dev->perst_deast)) {
 		if (event == EP_PCIE_EVENT_INVALID) {
@@ -3912,12 +3923,14 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		}
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
+		atomic_set(&dev->host_wake_pending, 1);
 	} else if (dev->l23_ready) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);
 		/*D3 hot handling*/
 		ep_pcie_core_issue_inband_pme();
+		atomic_set(&dev->host_wake_pending, 1);
 	} else {
 		/*D0 handling*/
 		EP_PCIE_DBG(dev,
@@ -3926,7 +3939,6 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 	}
 
 
-	atomic_set(&dev->host_wake_pending, 1);
 	EP_PCIE_DBG(dev,
 		"PCIe V%d: Set wake pending : %d and return ; perst is %s de-asserted; D3hot is %s set\n",
 		dev->rev, atomic_read(&dev->host_wake_pending),
@@ -4527,6 +4539,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 				&ep_pcie_dev.pcie_cesta_clkreq_offset);
 	if (ret)
 		ep_pcie_dev.pcie_cesta_clkreq_offset = 0;
+
+	ep_pcie_dev.configure_hard_reset = of_property_read_bool((&pdev->dev)->of_node,
+					"qcom,pcie-configure-hard-reset");
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: pcie configure hard reset is %s enabled\n",
+		ep_pcie_dev.rev, ep_pcie_dev.configure_hard_reset ? "" : "not");
 
 	memcpy(ep_pcie_dev.vreg, ep_pcie_vreg_info,
 				sizeof(ep_pcie_vreg_info));

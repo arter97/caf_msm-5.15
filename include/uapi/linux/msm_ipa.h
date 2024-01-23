@@ -201,7 +201,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 29
+#define IPA_MAX_NUM_IFACE_FLT 30
 
 
 /**
