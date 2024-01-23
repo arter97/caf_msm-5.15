@@ -2,7 +2,7 @@
 
 // Copyright (c) 2018-19, Linaro Limited
 // Copyright (c) 2021, The Linux Foundation. All rights reserved.
-// Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/module.h>
 #include <linux/of.h>
@@ -6181,6 +6181,11 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
 			status_prop->value = kstrdup("okay", GFP_KERNEL);
+			if (!(status_prop->value)) {
+				ETHQOSERR("kstrdup failed to allocate space\n");
+				kfree(status_prop);
+				return -ENOMEM;
+			}
 			status_prop->length = strlen(status_prop->value) + 1;
 
 			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
