@@ -6404,11 +6404,6 @@ int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
 	}
 
 	if (enable) {
-		if (priv->hw->qxpcs) {
-			ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
-			if (ret < 0)
-				ETHQOSERR("Failed to enable SerDes loopback\n");
-		}
 
 		if (priv->plat->xpcs_powersaving)
 			priv->plat->xpcs_powersaving(ndev, true);
@@ -6436,14 +6431,6 @@ int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
 
 		if (priv->plat->xpcs_powersaving)
 			priv->plat->xpcs_powersaving(ndev, false);
-
-		if (priv->hw->qxpcs) {
-			ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
-			if (ret < 0) {
-				ETHQOSERR("Failed to disable SerDes loopback\n");
-				goto err;
-			}
-		}
 	}
 
 	ethqos->enable_power_saving = enable;
@@ -7518,27 +7505,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_clk;
 
-	if (ethqos->early_eth_enabled) {
-		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
-			/* Initialize work*/
-			INIT_WORK(&ethqos->early_eth,
-				  qcom_ethqos_bringup_iface);
-			/* Queue the work*/
-			queue_work(system_wq, &ethqos->early_eth);
-
-			/*Set early eth parameters*/
-			ethqos_set_early_eth_param(priv, ethqos);
-		}
-
-		if (priv->plat && priv->plat->mdio_bus_data)
-			priv->plat->mdio_bus_data->phy_mask =
-			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
-	}
-
 	if (qcom_ethqos_register_panic_notifier(ethqos))
 		ETHQOSERR("Failed to register panic notifier");
 
@@ -7595,6 +7561,26 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		priv->plat->enable_power_saving(ndev, true);
 #endif
 
+	if (ethqos->early_eth_enabled) {
+		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+			/* Initialize work*/
+			INIT_WORK(&ethqos->early_eth,
+				  qcom_ethqos_bringup_iface);
+			/* Queue the work*/
+			queue_work(system_wq, &ethqos->early_eth);
+
+			/*Set early eth parameters*/
+			ethqos_set_early_eth_param(priv, ethqos);
+		}
+
+		if (priv->plat && priv->plat->mdio_bus_data)
+			priv->plat->mdio_bus_data->phy_mask =
+			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
+	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 		update_marker("M - Ethernet probe end");
 #endif
