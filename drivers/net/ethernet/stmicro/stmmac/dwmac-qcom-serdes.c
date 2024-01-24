@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -9,6 +9,18 @@
 #include <linux/of.h>
 
 #include "dwmac-qcom-serdes.h"
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+void qcom_ethqos_serdes_power_ctrl(struct qcom_ethqos *ethqos, bool on)
+{
+	ETHQOSINFO("%s: Power On: %d\n", __func__, on);
+
+	if (on)
+		writel_relaxed(0x1, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	else
+		writel_relaxed(0x0, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+}
+#endif
 
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {

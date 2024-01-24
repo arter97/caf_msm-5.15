@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef	_DWMAC_QCOM_ETHQOS_H
 #define	_DWMAC_QCOM_ETHQOS_H
@@ -517,6 +518,9 @@ struct qcom_ethqos {
 	struct mac_csr_data *mac_reg_list;
 	bool power_state;
 	bool gdsc_off_on_suspend;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	bool enable_power_saving;
+#endif
 };
 
 struct pps_cfg {
