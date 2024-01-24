@@ -1209,8 +1209,18 @@ static const struct mhi_netdev_driver_data sw1_30a_data = {
 	.ethernet_interface = true,
 };
 
+static const struct mhi_netdev_driver_data hw1_30a_data = {
+	.mru = 0x4000,
+	.chain_skb = false,
+	.is_rsc_chan = false,
+	.has_rsc_child = false,
+	.interface_name = "rmnet_mhi",
+	.ethernet_interface = false,
+};
+
 static const struct mhi_device_id mhi_netdev_match_table[] = {
 	{ .chan = "IP_HW0", .driver_data = (kernel_ulong_t)&hw0_308_data },
+	{ .chan = "IP_HW1", .driver_data = (kernel_ulong_t)&hw1_30a_data },
 	{ .chan = "IP_HW0_RSC", .driver_data = (kernel_ulong_t)&hw0_rsc_308_data },
 	{ .chan = "IP_SW0", .driver_data = (kernel_ulong_t)&hw1_308_data },
 	{ .chan = "IP_SW1", .driver_data = (kernel_ulong_t)&sw1_30a_data },
