@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -282,6 +282,23 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_pcs_loopback);
+
+int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm)
+{
+	int ret;
+
+	ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL1);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (lpm)
+		ret |= LPM_EN;
+	else
+		ret &= ~LPM_EN;
+
+	return qcom_xpcs_write(xpcs, DW_SR_MII_PCS_CTRL1, ret);
+}
+EXPORT_SYMBOL_GPL(qcom_xpcs_lpm);
 
 /* KREEE: USXGMII 10GBase-R/KR mode
  * KX4EEE: SGMII 10GBase-X/KX4 mode

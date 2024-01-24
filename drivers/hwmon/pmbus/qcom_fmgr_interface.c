@@ -2,7 +2,7 @@
 /*
  * Userspace interface for /dev/fmgr_interface_device
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cdev.h>
@@ -21,16 +21,12 @@
 #include <linux/io.h>
 #include <linux/of_platform.h>
 #include <linux/poll.h>
+#include <linux/idr.h>
 #include <linux/qcom_fmgr_interface.h>
 
 #include "pmbus.h"
 
-struct list_head fault_queue;
-
-struct fault_addr {
-	struct list_head list;
-	uint8_t addr;
-};
+#define MAX_DEVICES 64
 
 struct fmgr_interface {
 	struct i2c_client *client;
@@ -39,7 +35,12 @@ struct fmgr_interface {
 	struct pmbus_driver_info info;
 	struct wait_queue_head  waitq;
 	struct mutex queue_lock;
+	uint8_t addr;
 };
+
+static struct class *dev_class;
+static dev_t fmgr_interface_major;
+static DEFINE_IDA(fmgr_minor_ida);
 
 /*
  * fmgr_interface_open: open function for dev node.
@@ -96,7 +97,8 @@ static __poll_t fmgr_interface_poll(struct file *file,
 	__poll_t mask = 0;
 
 	poll_wait(file, &fmgr_interface->waitq, wait);
-	if (!list_empty(&fault_queue))
+
+	if (fmgr_interface->addr)
 		mask |= POLLIN;
 
 	return mask;
@@ -112,23 +114,11 @@ static void fmgr_interface_alert(struct i2c_client *client,
 			   enum i2c_alert_protocol type, unsigned int data)
 {
 	struct fmgr_interface *fmgr_interface;
-	struct fault_addr *addr;
 	const struct pmbus_driver_info *info = pmbus_get_driver_info(client);
 
 	fmgr_interface = container_of(info, struct fmgr_interface, info);
 
-	addr = kzalloc(sizeof(struct fault_addr), GFP_KERNEL);
-	if (addr == NULL) {
-		dev_err(fmgr_interface->dev, "Failed to allocate memory\n");
-		return;
-	}
-
-	addr->addr = (uint8_t)client->addr;
-
-	mutex_lock(&fmgr_interface->queue_lock);
-	list_add_tail(&(addr->list), &fault_queue);
-	mutex_unlock(&fmgr_interface->queue_lock);
-
+	fmgr_interface->addr = (uint8_t)client->addr;
 	wake_up_interruptible(&fmgr_interface->waitq);
 }
 
@@ -148,9 +138,7 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 {
 	struct fmgr_interface *fmgr_interface = file->private_data;
 	struct fmgr_ioctl_pmbus_msg msg;
-	struct fault_addr *fault_addr;
 	int ret = 0;
-	uint8_t addr;
 
 	switch (cmd) {
 	case PMBUS_READ:
@@ -202,26 +190,14 @@ static long fmgr_interface_ioctl(struct file *file, unsigned int cmd,
 		break;
 
 	case ALERT_ADDR:
-		mutex_lock(&fmgr_interface->queue_lock);
-		fault_addr = list_first_entry(&fault_queue, struct fault_addr,
-						list);
-
-		addr = fault_addr->addr;
-		if (copy_to_user((uint8_t *)arg, &addr,	sizeof(addr))) {
-			mutex_unlock(&fmgr_interface->queue_lock);
+		if (copy_to_user((uint8_t *)arg, &fmgr_interface->addr,
+					sizeof(fmgr_interface->addr)))
 			return -EFAULT;
-		}
-
-		list_del(&fault_addr->list);
-		kfree(fault_addr);
-		mutex_unlock(&fmgr_interface->queue_lock);
 		break;
 
 	case CLEAR_FAULTS:
-		mutex_lock(&fmgr_interface->queue_lock);
-		list_del(&fault_queue);
-		kfree(&fault_queue);
-		mutex_unlock(&fmgr_interface->queue_lock);
+		fmgr_interface->addr = 0;
+
 		break;
 
 	default:
@@ -402,10 +378,10 @@ static int fmgr_identify(struct i2c_client *client,
 static int fmgr_interface_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 {
 	struct fmgr_interface *fmgr_interface;
-	struct class *dev_class;
 	struct device *dev_ret, *dev;
-	dev_t fmgr_interface_major;
+	int minor;
 	int ret = 0;
+	char name[32] = {'\0'};
 
 	fmgr_interface = devm_kzalloc(&i2c->dev, sizeof(*fmgr_interface), GFP_KERNEL);
 	if (!fmgr_interface)
@@ -414,40 +390,33 @@ static int fmgr_interface_probe(struct i2c_client *i2c, const struct i2c_device_
 	fmgr_interface->dev = &i2c->dev;
 	dev = fmgr_interface->dev;
 
-	ret = alloc_chrdev_region(&fmgr_interface_major, 0, 1, "fmgr_interface");
-	if (ret < 0) {
-		dev_err(dev, "Could not allocate major number\n");
-		return ret;
-	}
-
 	cdev_init(&fmgr_interface->cdev, &fmgr_interface_fops);
 	fmgr_interface->cdev.owner = THIS_MODULE;
 	fmgr_interface->cdev.ops = &fmgr_interface_fops;
 
-	ret = cdev_add(&fmgr_interface->cdev, fmgr_interface_major, 1);
+	minor = ida_simple_get(&fmgr_minor_ida, 0, MAX_DEVICES, GFP_KERNEL);
+	if (minor < 0)
+		return minor;
+
+	ret = cdev_add(&fmgr_interface->cdev, MKDEV(MAJOR(fmgr_interface_major), minor), 1);
 	if (ret < 0) {
 		dev_err(dev, "Cannot add device to system\n");
-		goto class_err;
+		ida_simple_remove(&fmgr_minor_ida,  minor);
+		return ret;
 	}
 
-	dev_class = class_create(THIS_MODULE, "fmgr_interface_class");
-	if (IS_ERR_OR_NULL(dev_class)) {
-		dev_err(dev, "Could not create fmgr_interface class\n");
-		ret = PTR_ERR(dev_class);
-		goto class_err;
-	}
+	snprintf(name, sizeof(name), "fmgr_%x", i2c->addr);
 
-	dev_ret = device_create(dev_class, NULL, fmgr_interface_major, NULL,
-			"fmgr_interface_device");
+	dev_ret = device_create(dev_class, NULL, MKDEV(MAJOR(fmgr_interface_major), minor), NULL,
+		name);
 	if (IS_ERR_OR_NULL(dev_ret)) {
 		dev_err(dev, "Could not create fmgr_interface device\n");
 		ret = PTR_ERR(dev_ret);
-		goto device_err;
+		ida_simple_remove(&fmgr_minor_ida, minor);
+		return ret;
 	}
 
-	INIT_LIST_HEAD(&fault_queue);
 	init_waitqueue_head(&fmgr_interface->waitq);
-	mutex_init(&fmgr_interface->queue_lock);
 
 	fmgr_interface->client = i2c;
 	fmgr_interface->info.pages = 0;
@@ -455,30 +424,10 @@ static int fmgr_interface_probe(struct i2c_client *i2c, const struct i2c_device_
 
 	pmbus_do_probe(i2c, &fmgr_interface->info);
 	return ret;
-
-device_err:
-	class_destroy(dev_class);
-
-class_err:
-	unregister_chrdev_region(MAJOR(fmgr_interface_major), 1);
-
-	return ret;
 }
 
 static int fmgr_interface_remove(struct i2c_client *client)
 {
-	struct fmgr_interface *fmgr_interface;
-	struct fault_addr *addr, *tmp;
-
-	fmgr_interface = (struct fmgr_interface *)client;
-
-	mutex_lock(&fmgr_interface->queue_lock);
-	list_for_each_entry_safe(addr, tmp, &fault_queue, list) {
-		list_del(&(addr->list));
-		kfree(addr);
-	}
-	mutex_unlock(&fmgr_interface->queue_lock);
-
 	return 0;
 }
 
@@ -504,7 +453,40 @@ static struct i2c_driver fmgr_interface_driver = {
 	.id_table = fmgr_interface_dev_id,
 	.remove = fmgr_interface_remove,
 };
-module_i2c_driver(fmgr_interface_driver);
+
+static void __exit fmgr_exit(void)
+{
+	class_destroy(dev_class);
+	unregister_chrdev_region(MAJOR(fmgr_interface_major), 64);
+}
+
+static int __init fmgr_init(void)
+{
+	int ret = 0;
+
+	ret = alloc_chrdev_region(&fmgr_interface_major, 0, MAX_DEVICES, "fmgr_interface");
+	if (ret < 0) {
+		pr_err("Could not allocate major number\n");
+		return ret;
+	}
+
+	dev_class = class_create(THIS_MODULE, "fmgr_interface");
+	if (IS_ERR_OR_NULL(dev_class)) {
+		pr_err("Could not create fmgr_interface class\n");
+		ret = PTR_ERR(dev_class);
+		goto class_err;
+	}
+
+	ret = i2c_add_driver(&fmgr_interface_driver);
+
+	return ret;
+
+class_err:
+	unregister_chrdev_region(MAJOR(fmgr_interface_major), 1);
+	return ret;
+}
+module_init(fmgr_init);
+module_exit(fmgr_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_IMPORT_NS(PMBUS);

@@ -1312,7 +1312,8 @@ int mhi_dev_sm_init(struct mhi_dev *mhi_dev)
 	mhi_sm_ctx = mhi_dev_sm_ctx[vf_id];
 	mhi_dma_fun_ops = &mhi_dev->mhi_hw_ctx->mhi_dma_fun_ops;
 	/*init debugfs*/
-	mhi_sm_debugfs_init();
+	if (mhi_dev->is_mhi_pf)
+		mhi_sm_debugfs_init();
 	mhi_sm_ctx->mhi_sm_wq = alloc_workqueue(
 				"mhi_sm_wq", WQ_HIGHPRI | WQ_UNBOUND, 1);
 	if (!mhi_sm_ctx->mhi_sm_wq) {
@@ -1348,13 +1349,14 @@ EXPORT_SYMBOL(mhi_dev_sm_init);
 int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 {
 	struct mhi_sm_dev *mhi_sm_ctx = mhi_dev->mhi_sm_ctx;
-	int vf_id = 0;
+	int vf_id = mhi_dev->vf_id;
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
 	MHI_SM_FUNC_ENTRY(mhi_dev->vf_id);
 
 	atomic_set(&mhi_sm_ctx->pending_device_events, 0);
 	atomic_set(&mhi_sm_ctx->pending_pcie_events, 0);
-	mhi_sm_debugfs_destroy();
+	if (mhi_dev->is_mhi_pf)
+		mhi_sm_debugfs_destroy();
 	flush_workqueue(mhi_sm_ctx->mhi_sm_wq);
 	destroy_workqueue(mhi_sm_ctx->mhi_sm_wq);
 	/* Initiate MHI DMA reset */
