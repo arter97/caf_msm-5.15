@@ -1291,13 +1291,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
-#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
+
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, true);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to enable SerDes loopback\n");
 	}
-#endif
+
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
 
@@ -1350,13 +1350,13 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	if (priv->plat->serdes_powersaving)
 		priv->plat->serdes_powersaving(to_net_dev(config->dev),
 							  priv->plat->bsp_priv, true, true);
-
+#endif
 	if (priv->hw->qxpcs) {
 		ret = qcom_xpcs_serdes_loopback(priv->hw->qxpcs, false);
 		if (ret < 0)
 			netdev_err(priv->dev, "Failed to disable SerDes loopback\n");
 	}
-#endif
+
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, false);
 
@@ -4661,7 +4661,7 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (priv->plat->enable_power_saving) {
+	if (!priv->plat->fixed_phy_mode && priv->plat->enable_power_saving) {
 		ret = priv->plat->enable_power_saving(priv->dev, true);
 		netdev_info(priv->dev, "%s enable power saving", __func__, ret);
 	}
