@@ -2871,6 +2871,7 @@ static int spi_geni_hib_suspend(struct device *dev)
 	int ret = 0;
 	struct spi_master *spi = get_spi_master(dev);
 	struct spi_geni_master *geni_mas = spi_master_get_devdata(spi);
+	bool force_resume = false;
 
 	if (geni_mas->is_xfer_in_progress) {
 		if (!pm_runtime_status_suspended(dev)) {
@@ -2884,10 +2885,28 @@ static int spi_geni_hib_suspend(struct device *dev)
 
 	/* for GSI mode, GSI channels re-config required for Hibernation */
 	if (geni_mas->gsi_mode) {
-		geni_mas->is_deep_sleep = true;
 		SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
 			    "%s: GSI channels re-config required for hibernation", __func__);
+
+		if (pm_runtime_status_suspended(dev)) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					    "%s: Force Resume", __func__);
+
+			if (!spi_geni_runtime_resume(dev))
+				force_resume = true;
+		}
+		geni_mas->is_deep_sleep = true;
+
+		if (force_resume) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+				    "%s: Force Suspend", __func__);
+			if (spi_geni_runtime_suspend(dev)) {
+				SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					    "%s: Force Suspend Failed", __func__);
+			}
+		}
 	}
+
 	if (!pm_runtime_status_suspended(dev)) {
 		if (list_empty(&spi->queue) && !spi->cur_msg) {
 			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
