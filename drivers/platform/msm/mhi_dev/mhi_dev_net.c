@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -702,6 +702,7 @@ static void mhi_dev_net_ether_setup(struct net_device *dev)
 	ether_setup(dev);
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = ETH_MAX_MTU;
+	dev->mtu = MHI_NET_DEFAULT_MTU;
 }
 
 static int mhi_dev_net_enable_iface(struct mhi_dev_net_client *mhi_dev_net_ptr)
