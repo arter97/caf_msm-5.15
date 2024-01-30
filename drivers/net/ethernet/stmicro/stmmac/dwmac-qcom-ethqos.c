@@ -6729,7 +6729,7 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 			if (phydev->drv->config_intr &&
 			    !phydev->drv->config_intr(phydev))
 				ETHQOSDBG("config_phy_intr successful after phy on\n");
-		} else if (!priv->plat->phy_intr_en_extn_stm) {
+		} else if (!priv->plat->phy_intr_en_extn_stm && phydev) {
 			phydev->irq = PHY_POLL;
 			ETHQOSDBG("PHY Polling Mode enabled\n");
 		} else {
