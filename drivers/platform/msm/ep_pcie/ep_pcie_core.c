@@ -3739,14 +3739,15 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 				msi_cfg->data = data;
 				ep_pcie_dev.conf_ipa_msi_iatu[vf_id] = false;
 			}
-			/*
-			 * All transactions originating from IPA have the RO
-			 * bit set by default. Setup another ATU region to clear
-			 * the RO bit for MSIs triggered via IPA DMA.
-			 */
-			if (ep_pcie_dev.no_path_from_ipa_to_pcie ||
-				(ep_pcie_dev.active_config &&
-				!ep_pcie_dev.conf_ipa_msi_iatu[vf_id])) {
+		}
+		/*
+		 * All transactions originating from IPA have the RO
+		 * bit set by default. Setup another ATU region to clear
+		 * the RO bit for MSIs triggered via IPA DMA.
+		 */
+		if (ep_pcie_dev.no_path_from_ipa_to_pcie ||
+			(ep_pcie_dev.active_config &&
+			!ep_pcie_dev.conf_ipa_msi_iatu[vf_id])) {
 				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
 					EP_PCIE_OATU_INDEX_IPA_MSI,
 					vf_id,
@@ -3757,7 +3758,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 				EP_PCIE_DBG(&ep_pcie_dev,
 					"PCIe V%d: Conf iATU for IPA MSI info: lower:0x%x; upper:0x%x\n",
 					ep_pcie_dev.rev, lower, upper);
-			}
 		}
 		return 0;
 	}
