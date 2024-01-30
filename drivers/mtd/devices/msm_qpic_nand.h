@@ -376,6 +376,7 @@ struct msm_nand_info {
 	struct msm_nand_clk_data clk_data;
 	u64 dma_mask;
 	u32 bam_irq_type; /*Edge trigger or Level trigger */
+	unsigned long panic_notifier_dump; /* set upon nand panic notifier call */
 };
 
 extern struct nand_flash_dev nand_flash_ids[];

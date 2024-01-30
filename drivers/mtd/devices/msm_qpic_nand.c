@@ -4531,7 +4531,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 {
 	struct msm_nand_info *info = dev_get_drvdata(dev_node);
 	struct msm_nand_chip *chip = &info->nand_chip;
-	int err;
+	int err = 0;
 
 	/* We shouldn't request for a new resource during panic
 	 * as the cores and irq's were already in disabled state.
@@ -4542,22 +4542,27 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	if (pm_runtime_suspended(chip->dev))
 		return NOTIFY_DONE;
 
-	mutex_lock(&info->lock);
-	err = msm_nand_get_device(chip->dev);
-	if (err)
-		goto out;
-	pr_info("Dumping APSS bam pipes register dumps\n");
-	sps_get_bam_debug_info(info->sps.bam_handle, 93,
-			(SPS_BAM_PIPE(0) |
-			 SPS_BAM_PIPE(1) |
-			 SPS_BAM_PIPE(2) |
-			 SPS_BAM_PIPE(3)),
-			 0, 2);
-	err = msm_nand_put_device(chip->dev);
+	/*
+	 * It is sufficient to dump the BAM debug dumps on the
+	 * very first crash and ignore any subsequent/back-to-back
+	 * crashes.
+	 */
+	if (!test_and_set_bit(0, &info->panic_notifier_dump)) {
+		err = msm_nand_get_device(chip->dev);
+		if (err)
+			goto out;
+		pr_debug("Dumping APSS bam pipes register dumps\n");
+		sps_get_bam_debug_info(info->sps.bam_handle, 93,
+				(SPS_BAM_PIPE(0) |
+				SPS_BAM_PIPE(1) |
+				SPS_BAM_PIPE(2) |
+				SPS_BAM_PIPE(3)),
+				0, 2);
+		err = msm_nand_put_device(chip->dev);
+	}
 out:
-	mutex_unlock(&info->lock);
 	if (err)
-		pr_err("Failed to get/put the device.\n");
+		pr_err("Failed to get/put the device. err:%d\n", err);
 	return NOTIFY_DONE;
 }
 
