@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -2459,7 +2459,7 @@ checkbme:
 	ret = qcom_ep_pcie_icc_bw_update(dev, dev->current_link_speed, dev->current_link_width);
 	if (ret) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to set bus bandwidth:%d\n", dev->rev, ret);
-		return ret;
+		goto out;
 	}
 
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
