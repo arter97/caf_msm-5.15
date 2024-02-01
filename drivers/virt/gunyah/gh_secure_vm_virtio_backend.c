@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/interrupt.h>
@@ -1301,8 +1301,10 @@ int gh_virtio_mmio_exit(gh_vmid_t vmid, const char *vm_name)
 		if (vb_dev->irq.fd.file)
 			vb_dev->irq.fd.file = NULL;
 		for (i = 0; i < MAX_IO_CONTEXTS; ++i) {
-			if (vb_dev->ioctx[i].ctx)
+			if (vb_dev->ioctx[i].ctx) {
 				eventfd_ctx_put(vb_dev->ioctx[i].ctx);
+				vb_dev->ioctx[i].ctx = NULL;
+			}
 			vb_dev->ioctx[i].fd = 0;
 		}
 		free_pages((unsigned long)vb_dev->config_data, 0);
