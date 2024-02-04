@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HGSL_H_
@@ -56,14 +56,23 @@ struct db_buffer {
 	void  *vaddr;
 };
 
+struct dbq_ibdesc_priv {
+	bool   buf_inuse;
+	uint32_t context_id;
+	uint32_t timestamp;
+};
+
 struct doorbell_queue {
 	struct dma_buf *dma;
 	struct dma_buf_map map;
 	void *vbase;
+	uint64_t  gmuaddr;
 	struct db_buffer data;
 	uint32_t state;
 	int tcsr_idx;
 	uint32_t dbq_idx;
+	struct dbq_ibdesc_priv ibdesc_priv;
+	uint32_t  ibdesc_max_size;
 	struct mutex lock;
 	atomic_t seq_num;
 };
@@ -118,6 +127,7 @@ struct qcom_hgsl {
 	struct hgsl_hyp_priv_t global_hyp;
 	bool global_hyp_inited;
 	struct mutex mutex;
+	struct list_head active_list;
 	struct list_head release_list;
 	struct workqueue_struct *release_wq;
 	struct work_struct release_work;
@@ -173,6 +183,7 @@ struct hgsl_priv {
 	struct mutex lock;
 	struct list_head mem_mapped;
 	struct list_head mem_allocated;
+	int open_count;
 
 	atomic64_t total_mem_size;
 

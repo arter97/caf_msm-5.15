@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(msg) "slatecom_dev:" msg
 
@@ -1051,10 +1051,15 @@ static ssize_t slatecom_char_write(struct file *f, const char __user *buf,
 	unsigned char qcli_cmnd;
 	uint32_t opcode;
 	int ret = 0;
-	struct slatedaemon_priv *dev = container_of(slatecom_intf_drv,
+	struct slatedaemon_priv *dev = NULL;
+
+	if (!slatecom_intf_drv) {
+		pr_err("Invalid use-case, slatecom driver is not ready\n");
+		return -EINVAL;
+	}
+	dev = container_of(slatecom_intf_drv,
 					struct slatedaemon_priv,
 					lhndl);
-
 	if (copy_from_user(&qcli_cmnd, buf, sizeof(unsigned char)))
 		return -EFAULT;
 
@@ -1264,6 +1269,7 @@ static int ssr_slate_cb(struct notifier_block *this,
 		break;
 	case QCOM_SSR_AFTER_POWERUP:
 		pr_debug("Slate after powerup\n");
+		twm_exit = false;
 		slatee.e_type = SLATE_AFTER_POWER_UP;
 		slatecom_set_spi_state(SLATECOM_SPI_FREE);
 		send_uevent(&slatee);
@@ -1377,7 +1383,6 @@ static int ssr_adsp_cb(struct notifier_block *this,
 bool is_twm_exit(void)
 {
 	if (twm_exit) {
-		twm_exit = false;
 		return true;
 	}
 	return false;
