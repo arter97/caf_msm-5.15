@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef	_DWMAC_QCOM_ETHQOS_H
 #define	_DWMAC_QCOM_ETHQOS_H
@@ -198,17 +199,6 @@ do {\
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_12MA ((unsigned long)(0x5))
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_14MA ((unsigned long)(0x6))
 #define TLMM_MDIO_HDRV_PULL_CTL1_TX_HDRV_16MA ((unsigned long)(0x7))
-
-/* Data for MAC register dump in panic notifier */
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-/* # of elements required for 1:1 mapping of base address offset to its size of contiguous memory */
-#define MAC_DATA_SIZE 113
-/* Total bytes: # registers * size of registers, rounded up to nearest multiple of 8 */
-#define MAC_DUMP_SIZE 2632
-#else
-#define MAC_DATA_SIZE 1
-#define MAC_DUMP_SIZE 0
-#endif
 
 #define MAC_REG_SIZE 4
 
@@ -499,6 +489,7 @@ struct qcom_ethqos {
 	bool ipa_enabled;
 	struct notifier_block panic_nb;
 	struct notifier_block vm_nb;
+	bool panic_notifier_registered;
 
 	struct stmmac_priv *priv;
 
@@ -527,6 +518,9 @@ struct qcom_ethqos {
 	struct mac_csr_data *mac_reg_list;
 	bool power_state;
 	bool gdsc_off_on_suspend;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	bool enable_power_saving;
+#endif
 };
 
 struct pps_cfg {

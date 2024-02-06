@@ -662,6 +662,17 @@ static int gh_vm_mmap(struct file *file, struct vm_area_struct *vma)
 static int gh_vm_release(struct inode *inode, struct file *filp)
 {
 	struct gh_vm *vm = filp->private_data;
+	struct gh_vm_crash_msg *crash_msg;
+
+	crash_msg = gh_rm_vm_get_crash_msg(vm->vmid);
+
+	if (!IS_ERR_OR_NULL(crash_msg)) {
+		pr_debug("crash_msg %x\n", crash_msg);
+		pr_debug("VM crash MSg size %d\n", crash_msg->msg_size);
+		pr_info("VMID %d Crash Msg:\n%s\n", vm->vmid, crash_msg->data);
+	} else {
+		pr_err("got NULL ptr for VMID= %d\n", vm->vmid);
+	}
 
 	if (!vm->keep_running)
 		gh_put_vm(vm);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cache.h>
@@ -163,6 +163,7 @@ module_param_array(key_modules, charp, &n_modump, 0644);
 #endif	/* CONFIG_MODULES */
 #endif
 
+#if defined(CONFIG_ARM64) || defined(CONFIG_QCOM_DYN_MINIDUMP_STACK)
 static int register_stack_entry(struct md_region *ksp_entry, u64 sp, u64 size)
 {
 	struct page *sp_page;
@@ -183,32 +184,49 @@ static int register_stack_entry(struct md_region *ksp_entry, u64 sp, u64 size)
 				ksp_entry->name);
 	return entry;
 }
+#endif
 
 static void register_kernel_sections(void)
 {
 	struct md_region ksec_entry;
 	char *data_name = "KDATABSS";
 	char *rodata_name = "KROAIDATA";
+#ifdef CONFIG_SMP
 	size_t static_size;
 	void __percpu *base;
 	unsigned int cpu;
-	void *_sdata, *__bss_stop;
+#endif
+
+	void *sdata, *bss_stop;
 	void *start_ro, *end_ro;
 
-	_sdata = android_debug_symbol(ADS_SDATA);
-	__bss_stop = android_debug_symbol(ADS_BSS_END);
+#ifdef CONFIG_ARM
+	sdata = _sdata;
+	bss_stop = __bss_stop;
+#ifdef CONFIG_SMP
+	base = __per_cpu_start;
+	static_size = (size_t)__per_cpu_end;
+#endif
+	start_ro = __start_ro_after_init;
+	end_ro = __end_ro_after_init;
+#else
+	sdata = android_debug_symbol(ADS_SDATA);
+	bss_stop = android_debug_symbol(ADS_BSS_END);
+#ifdef CONFIG_SMP
 	base = android_debug_symbol(ADS_PER_CPU_START);
 	static_size = (size_t)(android_debug_symbol(ADS_PER_CPU_END) - base);
+#endif
+	start_ro = android_debug_symbol(ADS_START_RO_AFTER_INIT);
+	end_ro = android_debug_symbol(ADS_END_RO_AFTER_INIT);
+#endif
 
 	strscpy(ksec_entry.name, data_name, sizeof(ksec_entry.name));
-	ksec_entry.virt_addr = (u64)_sdata;
-	ksec_entry.phys_addr = virt_to_phys(_sdata);
-	ksec_entry.size = roundup((__bss_stop - _sdata), 4);
+	ksec_entry.virt_addr = (u64)sdata;
+	ksec_entry.phys_addr = virt_to_phys(sdata);
+	ksec_entry.size = roundup((bss_stop - sdata), 4);
 	if (msm_minidump_add_region(&ksec_entry) < 0)
 		pr_err("Failed to add data section in Minidump\n");
 
-	start_ro = android_debug_symbol(ADS_START_RO_AFTER_INIT);
-	end_ro = android_debug_symbol(ADS_END_RO_AFTER_INIT);
 	strscpy(ksec_entry.name, rodata_name, sizeof(ksec_entry.name));
 	ksec_entry.virt_addr = (uintptr_t)start_ro;
 	ksec_entry.phys_addr = virt_to_phys(start_ro);
@@ -216,6 +234,7 @@ static void register_kernel_sections(void)
 	if (msm_minidump_add_region(&ksec_entry) < 0)
 		pr_err("Failed to add rodata section in Minidump\n");
 
+#ifdef CONFIG_SMP
 	/* Add percpu static sections */
 	for_each_possible_cpu(cpu) {
 		void *start = per_cpu_ptr(base, cpu);
@@ -229,6 +248,7 @@ static void register_kernel_sections(void)
 		if (msm_minidump_add_region(&ksec_entry) < 0)
 			pr_err("Failed to add percpu sections in Minidump\n");
 	}
+#endif
 }
 
 static inline bool in_stack_range(
@@ -238,73 +258,6 @@ static inline bool in_stack_range(
 	u64 max_addr = base_addr + stack_size;
 
 	return (min_addr <= sp && sp < max_addr);
-}
-
-static unsigned int calculate_copy_pages(u64 sp, struct vm_struct *stack_area)
-{
-	u64 tsk_stack_base = (u64) stack_area->addr;
-	u64 offset;
-	unsigned int stack_pages, copy_pages;
-
-	if (in_stack_range(sp, tsk_stack_base, get_vm_area_size(stack_area))) {
-		offset = sp - tsk_stack_base;
-		stack_pages = get_vm_area_size(stack_area) / PAGE_SIZE;
-		copy_pages = stack_pages - (offset / PAGE_SIZE);
-	} else {
-		copy_pages = 0;
-	}
-	return copy_pages;
-}
-
-void dump_stack_minidump(u64 sp)
-{
-	struct md_region ksp_entry, ktsk_entry;
-	u32 cpu = smp_processor_id();
-	struct vm_struct *stack_vm_area;
-	unsigned int i, copy_pages;
-
-	if (IS_ENABLED(CONFIG_QCOM_DYN_MINIDUMP_STACK))
-		return;
-
-	if (is_idle_task(current))
-		return;
-
-	is_vmap_stack = IS_ENABLED(CONFIG_VMAP_STACK);
-
-	if (sp < KIMAGE_VADDR || sp > -256UL)
-		sp = current_stack_pointer;
-
-	/*
-	 * Since stacks are now allocated with vmalloc, the translation to
-	 * physical address is not a simple linear transformation like it is
-	 * for kernel logical addresses, since vmalloc creates a virtual
-	 * mapping. Thus, virt_to_phys() should not be used in this context;
-	 * instead the page table must be walked to acquire the physical
-	 * address of one page of the stack.
-	 */
-	stack_vm_area = task_stack_vm_area(current);
-	if (is_vmap_stack) {
-		sp &= ~(PAGE_SIZE - 1);
-		copy_pages = calculate_copy_pages(sp, stack_vm_area);
-		for (i = 0; i < copy_pages; i++) {
-			scnprintf(ksp_entry.name, sizeof(ksp_entry.name),
-				  "KSTACK%d_%d", cpu, i);
-			(void)register_stack_entry(&ksp_entry, sp, PAGE_SIZE);
-			sp += PAGE_SIZE;
-		}
-	} else {
-		sp &= ~(THREAD_SIZE - 1);
-		scnprintf(ksp_entry.name, sizeof(ksp_entry.name), "KSTACK%d",
-			  cpu);
-		(void)register_stack_entry(&ksp_entry, sp, THREAD_SIZE);
-	}
-
-	scnprintf(ktsk_entry.name, sizeof(ktsk_entry.name), "KTASK%d", cpu);
-	ktsk_entry.virt_addr = (u64)current;
-	ktsk_entry.phys_addr = virt_to_phys((uintptr_t *)current);
-	ktsk_entry.size = sizeof(struct task_struct);
-	if (msm_minidump_add_region(&ktsk_entry) < 0)
-		pr_err("Failed to add current task %d in Minidump\n", cpu);
 }
 
 #ifdef CONFIG_QCOM_DYN_MINIDUMP_STACK
@@ -713,10 +666,12 @@ static void md_dump_task_info(struct task_struct *task, char *status,
 
 	se = &task->se;
 	if (task == curr) {
+#ifdef CONFIG_THREAD_INFO_IN_TASK
 		seq_buf_printf(md_runq_seq_buf,
 			       "[status: curr] pid: %d preempt: %#x\n",
 			       task_pid_nr(task),
 			       task->thread_info.preempt_count);
+#endif
 		return;
 	}
 
@@ -906,7 +861,9 @@ static void md_dump_runqueues(void)
 		seq_buf_printf(md_runq_seq_buf, "%16lld", t->sched_info.last_queued);
 		seq_buf_printf(md_runq_seq_buf, "%16lld", t->sched_info.run_delay);
 		seq_buf_printf(md_runq_seq_buf, "%12ld", t->sched_info.pcount);
+#ifdef CONFIG_SMP
 		seq_buf_printf(md_runq_seq_buf, "%4d", t->on_cpu);
+#endif
 		seq_buf_printf(md_runq_seq_buf, "%5d", t->prio);
 		seq_buf_printf(md_runq_seq_buf, "%*s", 6, md_get_task_state(t));
 #if IS_ENABLED(CONFIG_SCHED_WALT)
@@ -1228,7 +1185,7 @@ static int register_vmap_mem(const char *name, void *virual_addr, size_t dump_le
 	int i = 0;
 
 	while (dump_len) {
-		to_dump = min(dump_len, PAGE_SIZE - offset_in_page(dump_addr));
+		to_dump = min(dump_len, (size_t)(PAGE_SIZE - offset_in_page(dump_addr)));
 		phys_addr = page_to_phys(vmalloc_to_page((const void *)dump_addr));
 		snprintf(entry_name, sizeof(entry_name), "%d_%s", i, name);
 		md_register_minidump_entry(entry_name, (u64)dump_addr, phys_addr, to_dump);

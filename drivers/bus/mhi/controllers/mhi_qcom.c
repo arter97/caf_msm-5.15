@@ -280,6 +280,11 @@ static const struct mhi_channel_config modem_qcom_sa525m_mhi_channels[] = {
 	MHI_CHANNEL_CONFIG_DL(47, "IP_SW1", 1024, 5, MHI_EE_AMSS,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false,
 			      false, false, 0, 0),
+	MHI_CHANNEL_CONFIG_UL(100, "IP_HW1", 512, 6, MHI_EE_AMSS,
+			      MHI_DB_BRST_ENABLE, false, 0, false, true, 0),
+	MHI_CHANNEL_CONFIG_DL(101, "IP_HW1", 512, 7, MHI_EE_AMSS,
+			      MHI_DB_BRST_ENABLE, false, 0, false, false,
+			      false, false, 0, 0),
 };
 
 static struct mhi_event_config modem_qcom_sa525m_mhi_events[] = {
@@ -301,6 +306,12 @@ static struct mhi_event_config modem_qcom_sa525m_mhi_events[] = {
 	MHI_EVENT_CONFIG(5, 6, MHI_ER_DATA, 1024, 0,
 			MHI_ER_PRIORITY_HI_NOSLEEP, MHI_DB_BRST_DISABLE,
 			false, false, false, 47),
+	MHI_EVENT_CONFIG(6, 7, MHI_ER_DATA, 1024, 5,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_ENABLE,
+			true, false, false, 100),
+	MHI_EVENT_CONFIG(7, 7, MHI_ER_DATA, 1024, 5,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP,
+			MHI_DB_BRST_ENABLE, true, true, false, 101),
 };
 
 static const struct mhi_controller_config modem_qcom_sdx65_mhi_config = {

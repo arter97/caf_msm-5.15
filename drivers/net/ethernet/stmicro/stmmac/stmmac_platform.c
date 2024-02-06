@@ -779,6 +779,10 @@ int stmmac_pltfr_remove(struct platform_device *pdev)
 	if (plat->exit)
 		plat->exit(pdev, plat->bsp_priv);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (plat->enable_power_saving)
+		plat->enable_power_saving(ndev, true);
+#endif
 	stmmac_remove_config_dt(pdev, plat);
 
 	return ret;

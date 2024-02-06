@@ -2,7 +2,7 @@
 
 // Copyright (c) 2018-19, Linaro Limited
 // Copyright (c) 2021, The Linux Foundation. All rights reserved.
-// Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/module.h>
 #include <linux/of.h>
@@ -79,6 +79,53 @@ static char err_names[10][14] = {"PHY_RW_ERR",
 	"DRIBBLE_ERR",
 	"WDT_ERR",
 };
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static const u32 mac_reg_offsets[] = {0x0, 0x50, 0x60, 0x6c, 0xa0, 0xd0, 0x110,
+					0x11c, 0x140, 0x200, 0x230, 0x240, 0x250,
+					0x260, 0x278, 0x290, 0x300, 0x700, 0x730,
+					0x800, 0x8cc, 0x900, 0x9d0, 0x9f0, 0xa00,
+					0xa20, 0xa5c, 0xc00, 0xc10, 0xc80, 0xc88,
+					0x1000, 0x1008, 0x1020, 0x1030, 0x1040, 0x1060,
+					0x1070, 0x1080, 0x1090, 0x10a0, 0x10b0, 0x10e8,
+					0x3000, 0x3010, 0x3018, 0x302c, 0x3040, 0x3050,
+					0x3080, 0x7000, 0x7030, 0x7040, 0x7048, 0x7070,
+					0x7080, 0x8000, 0x8010, 0x8040, 0x8070, 0x9000,
+					0x9010, 0x9040, 0x9070, 0xa000, 0xa010, 0xa040,
+					0xa070, 0xb000, 0xb010, 0xb040, 0xb070, 0xc000,
+					0xc010, 0xc040, 0xc070, 0xd000, 0xd010, 0xd070,
+					0xe000, 0xe024, 0xe02c, 0xe044, 0xe04c, 0xf000,
+					0xf024, 0xf02c, 0xf044, 0xf04c, 0x10000, 0x10024,
+					0x1002c, 0x10044, 0x1004c, 0x11000, 0x11024,
+					0x1102c, 0x11044, 0x1104c, 0x12000, 0x12024,
+					0x1202c, 0x12044, 0x1204c, 0x13000, 0x1300c,
+					0x13024, 0x13030, 0x13038, 0x13044, 0x13050,
+					0x13060, 0x13070};
+static const u32 mac_reg_sizes[ARRAY_SIZE(mac_reg_offsets)] = {
+					0x18, 0xc, 0x8, 0x30, 0x1c, 0x10, 0x8,
+					0x14, 0x8, 0x28, 0xc, 0xc, 0xc,
+					0xc, 0xc, 0x4, 0x100, 0x10, 0x8,
+					0xac, 0x1c, 0xc0, 0x1c, 0x8, 0x10,
+					0x18, 0xe8, 0x8, 0x4, 0x4, 0x8,
+					0x4, 0xc, 0x4, 0x8, 0x1c, 0xc,
+					0x4, 0x8, 0x8, 0x8, 0x8, 0x10,
+					0xc, 0x4, 0x10, 0x4, 0x8, 0x14,
+					0x8, 0x24, 0xc, 0x4, 0x20, 0x4,
+					0x54, 0xc, 0xc, 0x14, 0x8, 0xc,
+					0x18, 0x14, 0x8, 0xc, 0x18, 0x14,
+					0x8, 0xc, 0x18, 0x14, 0x8, 0xc,
+					0x18, 0x14, 0x8, 0xc, 0x18, 0x8,
+					0x20, 0x4, 0x14, 0x4, 0x34, 0x20,
+					0x4, 0x14, 0x4, 0x34, 0x20, 0x4,
+					0x14, 0x4, 0x34, 0x20, 0x4, 0x14,
+					0x4, 0x34, 0x20, 0x4, 0x14, 0x4,
+					0x34, 0x8, 0xc, 0x4, 0x4, 0x4,
+					0x4, 0x8, 0xc, 0x10};
+
+#else
+static const u32 mac_reg_offsets[] = {0};
+static const u32 mac_reg_sizes[ARRAY_SIZE(mac_reg_offsets)] = {0};
+#endif
 
 #define RGMII_IO_MACRO_DEBUG1		0x20
 #define EMAC_SYSTEM_LOW_POWER_DEBUG	0x28
@@ -2541,8 +2588,13 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_disable_unprepare(priv->plat->pclk);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+		clk_disable_unprepare(priv->plat->clk_ptp_ref);
+#else
 	if (priv->plat->clk_ptp_ref)
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
+#endif
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
@@ -2801,8 +2853,13 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_prepare_enable(priv->plat->pclk);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+		clk_prepare_enable(priv->plat->clk_ptp_ref);
+#else
 	if (priv->plat->clk_ptp_ref)
 		clk_prepare_enable(priv->plat->clk_ptp_ref);
+#endif
 
 	if (ethqos->rgmii_clk)
 		clk_prepare_enable(ethqos->rgmii_clk);
@@ -5867,75 +5924,27 @@ alloc_chrdev1_region_fail:
 static int qcom_ethqos_panic_notifier(struct notifier_block *nb,
 				      unsigned long event, void *ptr)
 {
-	struct qcom_ethqos *ethqos;
-	struct stmmac_priv *priv;
-	u32 i, j, k = 0;
-	#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	u32 mac_reg_sizes[MAC_DATA_SIZE] = {0x18, 0xc, 0x8, 0x30, 0x1c, 0x10, 0x8,
-						0x14, 0x8, 0x28, 0xc, 0xc, 0xc,
-						0xc, 0xc, 0x4, 0x100, 0x10, 0x8,
-						0xac, 0x1c, 0xc0, 0x1c, 0x8, 0x10,
-						0x18, 0xe8, 0x8, 0x4, 0x4, 0x8,
-						0x4, 0xc, 0x4, 0x8, 0x1c, 0xc,
-						0x4, 0x8, 0x8, 0x8, 0x8, 0x10,
-						0xc, 0x4, 0x10, 0x4, 0x8, 0x14,
-						0x8, 0x24, 0xc, 0x4, 0x20, 0x4,
-						0x54, 0xc, 0xc, 0x14, 0x8, 0xc,
-						0x18, 0x14, 0x8, 0xc, 0x18, 0x14,
-						0x8, 0xc, 0x18, 0x14, 0x8, 0xc,
-						0x18, 0x14, 0x8, 0xc, 0x18, 0x8,
-						0x20, 0x4, 0x14, 0x4, 0x34, 0x20,
-						0x4, 0x14, 0x4, 0x34, 0x20, 0x4,
-						0x14, 0x4, 0x34, 0x20, 0x4, 0x14,
-						0x4, 0x34, 0x20, 0x4, 0x14, 0x4,
-						0x34, 0x8, 0xc, 0x4, 0x4, 0x4,
-						0x4, 0x8, 0xc, 0x10};
-	u32 mac_reg_offsets[MAC_DATA_SIZE] = {0x0, 0x50, 0x60, 0x6c, 0xa0, 0xd0, 0x110,
-						0x11c, 0x140, 0x200, 0x230, 0x240, 0x250,
-						0x260, 0x278, 0x290, 0x300, 0x700, 0x730,
-						0x800, 0x8cc, 0x900, 0x9d0, 0x9f0, 0xa00,
-						0xa20, 0xa5c, 0xc00, 0xc10, 0xc80, 0xc88,
-						0x1000, 0x1008, 0x1020, 0x1030, 0x1040, 0x1060,
-						0x1070, 0x1080, 0x1090, 0x10a0, 0x10b0, 0x10e8,
-						0x3000, 0x3010, 0x3018, 0x302c, 0x3040, 0x3050,
-						0x3080, 0x7000, 0x7030, 0x7040, 0x7048, 0x7070,
-						0x7080, 0x8000, 0x8010, 0x8040, 0x8070, 0x9000,
-						0x9010, 0x9040, 0x9070, 0xa000, 0xa010, 0xa040,
-						0xa070, 0xb000, 0xb010, 0xb040, 0xb070, 0xc000,
-						0xc010, 0xc040, 0xc070, 0xd000, 0xd010, 0xd070,
-						0xe000, 0xe024, 0xe02c, 0xe044, 0xe04c, 0xf000,
-						0xf024, 0xf02c, 0xf044, 0xf04c, 0x10000, 0x10024,
-						0x1002c, 0x10044, 0x1004c, 0x11000, 0x11024,
-						0x1102c, 0x11044, 0x1104c, 0x12000, 0x12024,
-						0x1202c, 0x12044, 0x1204c, 0x13000, 0x1300c,
-						0x13024, 0x13030, 0x13038, 0x13044, 0x13050,
-						0x13060, 0x13070};
-	#else
-	u32 mac_reg_sizes[MAC_DATA_SIZE] = {0};
-	u32 mac_reg_offsets[MAC_DATA_SIZE] = {0};
-	#endif
+	struct qcom_ethqos *ethqos = container_of(nb, struct qcom_ethqos, panic_nb);
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	size_t i, j, k = 0;
 
-	ethqos = container_of(nb, struct qcom_ethqos, panic_nb);
-	if (!ethqos) {
-		ETHQOSERR("Ethqos is NULL\n");
-		return -EINVAL;
+	if (atomic_read(&priv->plat->phy_clks_suspended) || !ethqos->mac_reg_list) {
+		ETHQOSERR("EMAC register dump failed\n");
+		return NOTIFY_DONE;
 	}
 
-	priv = qcom_ethqos_get_priv(ethqos);
+	pr_info("Dumping EMAC registers\n");
 
-	if (!atomic_read(&priv->plat->phy_clks_suspended) && ethqos->mac_reg_list) {
-		pr_info("Dumping EMAC registers\n");
-
-		for (i = 0; i < MAC_DATA_SIZE; i++) {
-			for (j = 0; j < mac_reg_sizes[i]; j += MAC_REG_SIZE) {
-				ethqos->mac_reg_list[k++].offset = mac_reg_offsets[i] + j;
-				ethqos->mac_reg_list[k++].value = readl(ethqos->ioaddr +
-								mac_reg_offsets[i] + j);
-			}
+	for (i = 0; i < ARRAY_SIZE(mac_reg_offsets); i++) {
+		for (j = 0; j < mac_reg_sizes[i]; j += MAC_REG_SIZE) {
+			ethqos->mac_reg_list[k].offset = mac_reg_offsets[i] + j;
+			ethqos->mac_reg_list[k].value = readl(ethqos->ioaddr +
+							mac_reg_offsets[i] + j);
+			k++;
 		}
-
-		pr_info("EMAC register dump complete\n");
 	}
+
+	pr_info("EMAC register dump complete: Dumped %u registers\n", k);
 
 	pr_info("qcom-ethqos: ethqos 0x%p\n", ethqos);
 
@@ -6182,6 +6191,11 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 
 			status_prop->name = kstrdup("status", GFP_KERNEL);
 			status_prop->value = kstrdup("okay", GFP_KERNEL);
+			if (!(status_prop->value)) {
+				ETHQOSERR("kstrdup failed to allocate space\n");
+				kfree(status_prop);
+				return -ENOMEM;
+			}
 			status_prop->length = strlen(status_prop->value) + 1;
 
 			if (!(of_update_property(fixed_phy_node, status_prop) == 0)) {
@@ -6261,24 +6275,73 @@ out:
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
-	unsigned long num_registers = MAC_DUMP_SIZE / MAC_REG_SIZE;
+	size_t i;
+	unsigned long num_registers = 0;
+
+	if (ethqos->panic_notifier_registered)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(mac_reg_sizes); i++) {
+		if (mac_reg_sizes[i] % MAC_REG_SIZE) {
+			ETHQOSERR("Invalid register size in mac_reg_sizes found at index %u: %u\n",
+				  i, mac_reg_sizes[i]);
+			return -EINVAL;
+		}
+		num_registers += (mac_reg_sizes[i] / MAC_REG_SIZE);
+	}
+
+	if (num_registers == 0) {
+		ETHQOSDBG("Panic notifier not registered: no registers to capture\n");
+		return 0;
+	}
+
+	ETHQOSDBG("Allocating memory for %lu registers", num_registers);
+	ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data), GFP_KERNEL);
+	if (!ethqos->mac_reg_list) {
+		ETHQOSERR("Failed to allocate memory for panic notifier register dump\n");
+		return -ENOMEM;
+	}
 
 	ethqos->panic_nb.notifier_call	= qcom_ethqos_panic_notifier;
 	ethqos->panic_nb.priority = INT_MAX;
 
-	if (num_registers) {
-		ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data),
-						GFP_KERNEL);
-		if (!ethqos->mac_reg_list) {
-			ETHQOSERR("Failed to allocate memory for panic notifier register dump\n");
-			return -ENOMEM;
-		}
-	}
-
 	ret = atomic_notifier_chain_register(&panic_notifier_list,
 					     &ethqos->panic_nb);
+	if (ret)
+		ETHQOSERR("Failed to register panic notifier\n");
+	else
+		ethqos->panic_notifier_registered = true;
+
 	return ret;
 }
+
+static void qcom_ethqos_unregister_panic_notifier(struct qcom_ethqos *ethqos)
+{
+	kfree(ethqos->mac_reg_list);
+	ethqos->mac_reg_list = NULL;
+
+	if (ethqos->panic_notifier_registered) {
+		atomic_notifier_chain_unregister(&panic_notifier_list,
+						 &ethqos->panic_nb);
+		ethqos->panic_notifier_registered = false;
+	}
+}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static void ethqos_xpcs_power_saving(struct net_device *ndev, bool enable)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int ret = 0;
+
+	if (priv->hw->qxpcs) {
+		ret = qcom_xpcs_lpm(priv->hw->qxpcs, enable);
+		if (ret)
+			ETHQOSERR("XPCS power saving Failed enable %d\n", enable);
+	}
+
+	ETHQOSINFO("XPCS power saving enable %d\n", enable);
+}
+#endif
 
 static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 				      bool power_state, bool needs_serdes_reset)
@@ -6294,9 +6357,18 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 
 	if (power_state) {
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+			qcom_ethqos_serdes_power_ctrl(ethqos, true);
+#endif
 			ret = ethqos_enable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+			ret = qcom_ethqos_enable_serdes_clocks(ethqos);
+			if (ret)
+				return -EINVAL;
+#endif
 
 			if (needs_serdes_reset)
 				qcom_ethqos_serdes_soft_reset(ethqos);
@@ -6304,17 +6376,84 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			ETHQOSINFO("power saving turned off\n");
 		}
 	} else {
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		qcom_ethqos_disable_serdes_clocks(ethqos);
+#endif
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 			ret = ethqos_disable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+			qcom_ethqos_serdes_power_ctrl(ethqos, false);
+#endif
 			ETHQOSINFO("power saving turned on\n");
 		}
 	}
 	ethqos->power_state = power_state;
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+{
+	struct qcom_ethqos *ethqos;
+	int ret = 0;
+	struct stmmac_priv *priv;
+
+	priv = netdev_priv(ndev);
+	if (!priv) {
+		ETHQOSERR("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	ethqos = priv->plat->bsp_priv;
+	if (!ethqos) {
+		ETHQOSERR("ethqos is NULL\n");
+		return -EINVAL;
+	}
+
+	if (ethqos->enable_power_saving == enable) {
+		ETHQOSINFO("Ignore Power save %d\n", ethqos->enable_power_saving);
+		return 0;
+	}
+
+	if (enable) {
+
+		if (priv->plat->xpcs_powersaving)
+			priv->plat->xpcs_powersaving(ndev, true);
+
+		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+			ethqos_disable_sgmii_usxgmii_clks(ethqos);
+
+			if (priv->plat->serdes_powersaving)
+				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
+							       false, false);
+		}
+	} else {
+		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+			if (priv->plat->serdes_powersaving)
+				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
+							       true, true);
+
+			ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+
+			if (ret < 0) {
+				ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
+				goto err;
+			}
+		}
+
+		if (priv->plat->xpcs_powersaving)
+			priv->plat->xpcs_powersaving(ndev, false);
+	}
+
+	ethqos->enable_power_saving = enable;
+
+err:
+	return ret;
+}
+#endif
 
 static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 {
@@ -7148,8 +7287,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->serdes_powerup = ethqos_serdes_power_up;
 		plat_dat->serdes_powersaving = ethqos_serdes_power_saving;
 		plat_dat->xpcs_linkup = ethqos_xpcs_link_up;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		plat_dat->xpcs_powersaving = ethqos_xpcs_power_saving;
+#endif
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	plat_dat->enable_power_saving = ethqos_enable_power_saving;
+#endif
 	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");
 	plat_dat->rx_clk_rdy = false;
 
@@ -7375,27 +7520,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_clk;
 
-	if (ethqos->early_eth_enabled) {
-		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
-		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
-			/* Initialize work*/
-			INIT_WORK(&ethqos->early_eth,
-				  qcom_ethqos_bringup_iface);
-			/* Queue the work*/
-			queue_work(system_wq, &ethqos->early_eth);
-
-			/*Set early eth parameters*/
-			ethqos_set_early_eth_param(priv, ethqos);
-		}
-
-		if (priv->plat && priv->plat->mdio_bus_data)
-			priv->plat->mdio_bus_data->phy_mask =
-			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
-	}
-
 	if (qcom_ethqos_register_panic_notifier(ethqos))
 		ETHQOSERR("Failed to register panic notifier");
 
@@ -7447,6 +7571,31 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos_thermal_netlink_create_sysfs(ethqos);
 	ethqos_create_debugfs(ethqos);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving)
+		priv->plat->enable_power_saving(ndev, true);
+#endif
+
+	if (ethqos->early_eth_enabled) {
+		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_ID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_RXID ||
+		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII_TXID) {
+			/* Initialize work*/
+			INIT_WORK(&ethqos->early_eth,
+				  qcom_ethqos_bringup_iface);
+			/* Queue the work*/
+			queue_work(system_wq, &ethqos->early_eth);
+
+			/*Set early eth parameters*/
+			ethqos_set_early_eth_param(priv, ethqos);
+		}
+
+		if (priv->plat && priv->plat->mdio_bus_data)
+			priv->plat->mdio_bus_data->phy_mask =
+			priv->plat->mdio_bus_data->phy_mask | DUPLEX_FULL | SPEED_100;
+	}
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 		update_marker("M - Ethernet probe end");
 #endif
@@ -7491,6 +7640,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		if (priv->hw->qxpcs->intr_en)
 			free_irq(priv->hw->qxpcs->pcs_intr, priv);
 		qcom_xpcs_destroy(priv->hw->qxpcs);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		priv->hw->qxpcs = NULL;
+		priv->plat->xpcs_powersaving = NULL;
+#endif
 	}
 
 	ethqos_remove_sysfs(ethqos);
@@ -7516,24 +7669,19 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
-
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII ||
 	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_2500BASEX) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 	}
-
+#endif
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
 
 	atomic_set(&priv->plat->phy_clks_suspended, 1);
-
-	if (ethqos->mac_reg_list) {
-		kfree(ethqos->mac_reg_list);
-		ethqos->mac_reg_list = NULL;
-	}
 
 	if (plat_dat->mac_err_rec) {
 		ethqos_delete_emac_rec_device_node(&ethqos->emac_rec_dev_t,
@@ -7558,11 +7706,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
-
-	ret = atomic_notifier_chain_unregister(&panic_notifier_list,
-					     &ethqos->panic_nb);
-	if (ret)
-		return ret;
+	qcom_ethqos_unregister_panic_notifier(ethqos);
 
 	for (i = 0; i < ETH_MAX_NICS; i++) {
 		if (pethqos[i] == ethqos) {
@@ -7614,6 +7758,12 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	disable_irq(priv->dev->irq);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		if (priv->plat->enable_power_saving(ndev, true) < 0)
+			return -EINVAL;
+	}
+#else
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 		qcom_ethqos_disable_serdes_clocks(ethqos);
@@ -7621,6 +7771,7 @@ static int qcom_ethqos_suspend(struct device *dev)
 		if (priv->plat->serdes_powersaving)
 			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, false, false);
 	}
+#endif
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
 
@@ -7696,6 +7847,12 @@ static int qcom_ethqos_resume(struct device *dev)
 
 	enable_irq(priv->dev->irq);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		if (priv->plat->enable_power_saving(ndev, false) < 0)
+			return -EINVAL;
+	}
+#else
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
@@ -7709,6 +7866,7 @@ static int qcom_ethqos_resume(struct device *dev)
 		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
 			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
 	}
+#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
 		/* Temp Enable LOOPBACK_EN.
@@ -7753,6 +7911,12 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (!qcom_ethqos_is_phy_link_up(ethqos)) {
+		if (priv->plat->enable_power_saving)
+			ret = priv->plat->enable_power_saving(ndev, true);
+	}
+#endif
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Resume End");
 #endif
