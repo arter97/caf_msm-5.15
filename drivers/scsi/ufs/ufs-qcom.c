@@ -4991,9 +4991,6 @@ static const struct ufs_hba_variant_ops ufs_hba_qcom_vops = {
 	.setup_xfer_req         = ufs_qcom_qos,
 	.program_key		= ufs_qcom_ice_program_key,
 	.fixup_dev_quirks       = ufs_qcom_fixup_dev_quirks,
-#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
-	.prepare_lrbp_crypto = ufshcd_crypto_qti_prep_lrbp_crypto,
-#endif
 };
 
 /**

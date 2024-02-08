@@ -218,9 +218,6 @@ struct ufshcd_lrb {
 	ktime_t issue_time_stamp;
 	ktime_t compl_time_stamp;
 #ifdef CONFIG_SCSI_UFS_CRYPTO
-#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
-	bool crypto_enable;
-#endif
 	int crypto_key_slot;
 	u64 data_unit_num;
 #endif
@@ -365,11 +362,7 @@ struct ufs_hba_variant_ops {
 			       const union ufs_crypto_cfg_entry *cfg, int slot);
 	void	(*event_notify)(struct ufs_hba *hba,
 				enum ufs_event_type evt, void *data);
-#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
-	int (*prepare_lrbp_crypto)(struct ufs_hba *hba,
-				   struct request *req,
-				   struct ufshcd_lrb *lrbp);
-#endif
+
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
 	ANDROID_KABI_RESERVE(3);

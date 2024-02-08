@@ -754,14 +754,7 @@ int ufs_qcom_ice_resume(struct ufs_qcom_host *host);
 int ufs_qcom_ice_program_key(struct ufs_hba *hba,
 			     const union ufs_crypto_cfg_entry *cfg, int slot);
 void ufs_qcom_ice_disable(struct ufs_qcom_host *host);
-
-#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
-int ufshcd_crypto_qti_prep_lrbp_crypto(struct ufs_hba *hba,
-				       struct request *req,
-				       struct ufshcd_lrb *lrbp);
-#endif
-
-#else //CONFIG_SCSI_UFS_CRYPTO
+#else
 static inline int ufs_qcom_ice_init(struct ufs_qcom_host *host)
 {
 	return 0;
