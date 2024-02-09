@@ -1625,6 +1625,150 @@ out:
 }
 
 /*
+ * Function to prepare SPS data descriptors required for a page
+ * read/write operation.
+ */
+static void msm_nand_prepare_rw_data_desc(struct mtd_oob_ops *ops,
+				struct msm_nand_rw_params *args,
+				struct msm_nand_info *info,
+				struct sps_iovec *iovec,
+				uint32_t *des_count,
+				uint32_t ecc_parity_bytes)
+{
+	struct msm_nand_chip *chip = &info->nand_chip;
+	uint32_t sectordatasize, sectoroobsize;
+	uint32_t sps_flags = 0, curr_cw;
+	/*
+	 * Variable to configure sectordatasize and sectoroobsize
+	 * while reading one codeword or one full page.
+	 */
+	int n = (ops->len <= ONE_CODEWORD_SIZE) ? args->cwperpage : 1;
+
+	for (curr_cw = args->start_sector; curr_cw < args->cwperpage; curr_cw++) {
+		if (ops->mode == MTD_OPS_RAW) {
+			if (ecc_parity_bytes && args->read) {
+				if (curr_cw == (args->cwperpage - n))
+					sps_flags |= SPS_IOVEC_FLAG_INT;
+				/* read only ecc bytes */
+				iovec->addr = args->ecc_dma_addr_curr;
+				iovec->size = ecc_parity_bytes;
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				args->ecc_dma_addr_curr += ecc_parity_bytes;
+			} else {
+				sectordatasize = chip->cw_size;
+				if (!args->read)
+					sps_flags = SPS_IOVEC_FLAG_EOT;
+				if (curr_cw == (args->cwperpage - n))
+					sps_flags |= SPS_IOVEC_FLAG_INT;
+				iovec->addr = args->data_dma_addr_curr;
+				iovec->size = sectordatasize;
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				args->data_dma_addr_curr += sectordatasize;
+			}
+		} else if (ops->mode == MTD_OPS_AUTO_OOB) {
+			if (ops->datbuf) {
+				if (ops->len <= ONE_CODEWORD_SIZE)
+					sectordatasize = ONE_CODEWORD_SIZE;
+				else
+					sectordatasize =
+						(curr_cw < (args->cwperpage - 1))
+						? 516 :
+						(512 - ((args->cwperpage - 1) << 2));
+
+				if (!args->read) {
+					sps_flags = SPS_IOVEC_FLAG_EOT;
+					if (curr_cw == (args->cwperpage - 1) &&
+							ops->oobbuf)
+						sps_flags = 0;
+				}
+				if ((curr_cw == (args->cwperpage - n)) && !ops->oobbuf)
+					sps_flags |= SPS_IOVEC_FLAG_INT;
+				iovec->addr = args->data_dma_addr_curr;
+				iovec->size = sectordatasize;
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				args->data_dma_addr_curr += sectordatasize;
+			}
+			if (ops->oobbuf && (curr_cw == (args->cwperpage - n))) {
+				sectoroobsize = args->cwperpage << 2;
+				if (sectoroobsize > args->oob_len_data)
+					sectoroobsize = args->oob_len_data;
+
+				if (!args->read)
+					sps_flags |= SPS_IOVEC_FLAG_EOT;
+				sps_flags |= SPS_IOVEC_FLAG_INT;
+
+				iovec->addr = args->oob_dma_addr_curr;
+				iovec->size = sectoroobsize;
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				args->oob_dma_addr_curr += sectoroobsize;
+				args->oob_len_data -= sectoroobsize;
+			}
+		}
+	}
+}
+
+/*
+ * Function to prepare read status descriptors for page scope
+ * read operation.
+ */
+static void msm_nand_prepare_read_status_desc(struct mtd_oob_ops *ops,
+				struct msm_nand_rw_params *args,
+				struct msm_nand_info *info,
+				struct sps_iovec *iovec,
+				uint32_t *des_count,
+				struct msm_nand_read_status_desc *status_desc)
+{
+	struct msm_nand_chip *chip = &info->nand_chip;
+	uint32_t sps_flags = 0, curr_cw;
+
+	for (curr_cw = args->start_sector; curr_cw < args->cwperpage; curr_cw++) {
+		/*
+		 * As per QPIC2.0 HPG, Data Producer Status Pipe is used
+		 * only to submit status descriptors for read page operations.
+		 */
+		if (ops->mode == MTD_OPS_AUTO_OOB) {
+			if (ops->datbuf) {
+				if ((curr_cw == (args->cwperpage - 1)) && !ops->oobbuf)
+					sps_flags |= SPS_IOVEC_FLAG_INT;
+				iovec->addr = msm_virt_to_dma(chip, status_desc);
+				iovec->size = sizeof(*status_desc);
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				status_desc++;
+			}
+			if (ops->oobbuf && (curr_cw == (args->cwperpage - 1))) {
+				sps_flags |= SPS_IOVEC_FLAG_INT;
+				iovec->addr = msm_virt_to_dma(chip, status_desc);
+				iovec->size = sizeof(*status_desc);
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+			}
+		} else if (ops->mode == MTD_OPS_RAW) {
+			if (args->read) {
+				if (curr_cw == (args->cwperpage - 1))
+					sps_flags |= SPS_IOVEC_FLAG_INT;
+				iovec->addr = msm_virt_to_dma(chip, status_desc);
+				iovec->size = sizeof(*status_desc);
+				iovec->flags = sps_flags;
+				iovec++;
+				(*des_count)++;
+				status_desc++;
+			}
+		}
+	}
+}
+
+/*
  *
  * Function to prepare series of SPS command descriptors required for a page
  * read operation with enhanced read pagescope feature.
@@ -2063,7 +2207,8 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 	struct msm_nand_chip *chip = &info->nand_chip;
 	struct flash_identification *flash_dev = &info->flash_dev;
 	uint32_t cwperpage = (mtd->writesize >> 9);
-	int err = 0, pageerr = 0, rawerr = 0, submitted_num_desc = 0;
+	int err = 0, pageerr = 0, rawerr = 0;
+	uint32_t submitted_num_desc = 0;
 	uint32_t n = 0, pages_read = 0, flash_cmd = 0x0;
 	uint32_t ecc_errors = 0, total_ecc_errors = 0, ecc_capability;
 	struct msm_nand_rw_params rw_params;
@@ -2082,7 +2227,11 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 	 */
 	struct {
 		struct sps_transfer xfer;
+		struct sps_transfer xfer_data;
+		struct sps_transfer xfer_status;
 		struct sps_iovec cmd_iovec[MAX_DESC];
+		struct sps_iovec data_iovec[MAX_CW_PER_PAGE + 1];
+		struct sps_iovec status_iovec[MAX_CW_PER_PAGE + 1];
 		struct {
 			uint32_t count;
 			struct msm_nand_cmd_setup_desc setup_desc;
@@ -2171,42 +2320,46 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 			iovec->flags = cmd_list->cw_desc[n].flags;
 			iovec++;
 		}
+		submitted_num_desc = 0;
+
+		/* Prepare Data Descriptors */
+		msm_nand_prepare_rw_data_desc(ops, &rw_params, info,
+				dma_buffer->data_iovec, &submitted_num_desc, 0);
+		dma_buffer->xfer_data.iovec = dma_buffer->data_iovec;
+		dma_buffer->xfer_data.iovec_count = submitted_num_desc;
+		dma_buffer->xfer_data.iovec_phys = msm_virt_to_dma(chip,
+				&dma_buffer->data_iovec);
+		submitted_num_desc = 0;
+
+		/* Prepare Data Status Descriptors */
+		msm_nand_prepare_read_status_desc(ops, &rw_params, info, dma_buffer->status_iovec,
+				&submitted_num_desc, status_desc);
+		dma_buffer->xfer_status.iovec = dma_buffer->status_iovec;
+		dma_buffer->xfer_status.iovec_count = submitted_num_desc;
+		dma_buffer->xfer_status.iovec_phys = msm_virt_to_dma(chip,
+				&dma_buffer->status_iovec);
+
 		mutex_lock(&info->lock);
 		err = msm_nand_get_device(chip->dev);
 		if (err)
 			goto unlock_mutex;
-		/* Submit data descriptors */
-		for (n = rw_params.start_sector; n < cwperpage; n++) {
-			err = msm_nand_submit_rw_data_desc(ops,
-						&rw_params, info, n, 0);
-			if (err) {
-				pr_err("Failed to submit data descs %d\n", err);
-				panic("error in nand driver\n");
-				goto put_dev;
-			}
+
+		/* Submit Data Descriptors */
+		err =  sps_transfer(info->sps.data_prod.handle,
+				&dma_buffer->xfer_data);
+		if (err) {
+			pr_err("Failed to submit data descs %d\n", err);
+			goto put_dev;
 		}
-		if (ops->mode == MTD_OPS_RAW) {
-			submitted_num_desc = cwperpage - rw_params.start_sector;
-		} else if (ops->mode == MTD_OPS_AUTO_OOB) {
-			if (ops->datbuf)
-				submitted_num_desc = cwperpage -
-							rw_params.start_sector;
-			if (ops->oobbuf)
-				submitted_num_desc++;
-		}
+
 		/* Submit Data Status Descriptors */
-		for (n = rw_params.start_sector; n < cwperpage; n++) {
-			err = msm_nand_submit_read_status_desc(ops,
-							&rw_params, info,
-							n, status_desc);
-			if (err) {
-				pr_err("Failed to submit data status descs %d\n",
-					err);
-				panic("error in nand driver\n");
-				goto put_dev;
-			}
-			status_desc++;
+		err =  sps_transfer(info->sps.data_prod_stat.handle,
+				&dma_buffer->xfer_status);
+		if (err) {
+			pr_err("Failed to submit data status descs %d\n", err);
+			goto put_dev;
 		}
+
 		/* Submit command descriptors */
 		err =  sps_transfer(info->sps.cmd_pipe.handle,
 				&dma_buffer->xfer);
@@ -2215,10 +2368,10 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 			goto put_dev;
 		}
 
-		/* Poll for command and data and status descriptors completion */
+		/* Poll for command, data and status descriptors completion */
 		err = msm_nand_sps_get_iovec(info, dma_buffer->xfer.iovec_count,
-					submitted_num_desc, submitted_num_desc,
-								0, &iovec_temp);
+				dma_buffer->xfer_data.iovec_count,
+				dma_buffer->xfer_status.iovec_count, 0, &iovec_temp);
 		if (err)
 			goto put_dev;
 
