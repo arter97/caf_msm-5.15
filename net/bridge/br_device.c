@@ -37,6 +37,8 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct net_bridge_vlan *vlan;
 	const unsigned char *dest;
 	u16 vid = 0;
+	struct net_bridge_port *pdst;
+	br_get_dst_hook_t *get_dst_hook;
 
 	memset(skb->cb, 0, sizeof(struct br_input_skb_cb));
 
@@ -78,6 +80,8 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 				br_do_suppress_nd(skb, br, vid, NULL, msg);
 	}
 
+	get_dst_hook = rcu_dereference(br_get_dst_hook);
+
 	dest = eth_hdr(skb)->h_dest;
 	if (is_broadcast_ether_addr(dest)) {
 		br_flood(br, skb, BR_PKT_BROADCAST, false, true);
@@ -104,11 +108,21 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 			br_multicast_flood(mdst, skb, brmctx, false, true);
 		else
 			br_flood(br, skb, BR_PKT_MULTICAST, false, true);
-	} else if ((dst = br_fdb_find_rcu(br, dest, vid)) != NULL) {
-		br_forward(dst->dst, skb, false, true);
 	} else {
-		br_flood(br, skb, BR_PKT_UNICAST, false, true);
+		pdst = __br_get(get_dst_hook, NULL, NULL, &skb);
+		if (pdst) {
+			if (!skb)
+				goto out;
+			br_forward(pdst, skb, false, true);
+		} else {
+			dst = br_fdb_find_rcu(br, dest, vid);
+			if (dst)
+				br_forward(dst->dst, skb, false, true);
+			else
+				br_flood(br, skb, BR_PKT_UNICAST, false, true);
+		}
 	}
+
 out:
 	rcu_read_unlock();
 	return NETDEV_TX_OK;
