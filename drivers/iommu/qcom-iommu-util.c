@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-mapping-fast.h>
@@ -11,6 +11,8 @@
 #include <linux/qcom-io-pgtable.h>
 #include "qcom-dma-iommu-generic.h"
 #include "qcom-io-pgtable-alloc.h"
+
+#define MAX_ADDRESS	((~0ULL << CONFIG_IOMMU_IO_PGTABLE_FAST_MAXSZ) - 1)
 
 struct qcom_iommu_range_prop_cb_data {
 	int (*range_prop_entry_cb_fn)(const __be32 *p, int naddr, int nsize, void *arg);
@@ -248,11 +250,6 @@ static int get_addr_range(const __be32 *p, int naddr, int nsize, void *arg)
 	u64 end = start + of_read_number(p + naddr, nsize) - 1;
 	struct iova_range *range = arg;
 
-	if (start >= SZ_4G || end >= SZ_4G) {
-		pr_err("fastmap does not support IOVAs >= 4 GB\n");
-		return -EINVAL;
-	}
-
 	range->base = min_not_zero(range->base, start);
 	range->end = max(range->end, end);
 
@@ -294,6 +291,16 @@ int qcom_iommu_get_fast_iova_range(struct device *dev, dma_addr_t *ret_iova_base
 
 	*ret_iova_base = min(geometry_range.base, dma_range.base);
 	*ret_iova_end =  max(geometry_range.end, dma_range.end);
+	if (*ret_iova_base > MAX_ADDRESS || *ret_iova_end > MAX_ADDRESS) {
+
+		/*
+		 * Use valid iova range, or configure the limits
+		 * through CONFIG_IOMMU_IO_PGTABLE_FAST_MAXSZ
+		 */
+		dev_err(dev, "IOVA range exceeding set limit.\n");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 EXPORT_SYMBOL(qcom_iommu_get_fast_iova_range);

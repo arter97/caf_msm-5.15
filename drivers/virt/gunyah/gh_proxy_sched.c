@@ -132,18 +132,23 @@ static void gh_init_wait_queues(struct gh_proxy_vm *vm)
 }
 
 
-static inline struct gh_proxy_vm *gh_get_vm(gh_vmid_t vmid)
+static inline struct gh_proxy_vm *gh_get_vm(gh_vmid_t vmid, bool strict_check)
 {
 	int i;
 	struct gh_proxy_vm *vm = NULL;
 
 	for (i = 0; i < GH_MAX_VMS; i++) {
 		vm = &gh_vms[i];
-		if (vmid == vm->id || vm->id == GH_VMID_INVAL)
-			break;
+		if (strict_check) {
+			if (vmid == vm->id)
+				return vm;
+		} else {
+			if (vmid == vm->id || vm->id == GH_VMID_INVAL)
+				return vm;
+		}
 	}
 
-	return vm;
+	return NULL;
 }
 
 static inline bool is_vm_supports_proxy(gh_vmid_t gh_vmid)
@@ -156,7 +161,7 @@ static inline bool is_vm_supports_proxy(gh_vmid_t gh_vmid)
 	 * vcpu_count > 0.
 	 */
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(gh_vmid);
+	vm = gh_get_vm(gh_vmid, true);
 	if (vm && vm->id != GH_VMID_INVAL && vm->vcpu_count > 0)
 		ret = true;
 
@@ -262,7 +267,7 @@ static int gh_wdog_manage(gh_vmid_t vmid, gh_capid_t cap_id, bool populate)
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (!vm) {
 		ret = -ENODEV;
 		goto unlock;
@@ -307,7 +312,7 @@ static int gh_populate_vm_vcpu_info(gh_vmid_t vmid, gh_label_t cpu_idx,
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, false);
 	if (vm && !vm->is_vcpu_info_populated) {
 		if (vm->vcpu_count >= GH_MAX_VCPUS_PER_VM) {
 			pr_err("Exceeded max vcpus per VM %d\n", vm->vcpu_count);
@@ -319,6 +324,7 @@ static int gh_populate_vm_vcpu_info(gh_vmid_t vmid, gh_label_t cpu_idx,
 				sizeof(vm->vcpu[vm->vcpu_count].irq_name));
 		gh_get_vcpu_prop_name(vmid, vm->vcpu_count,
 				vm->vcpu[vm->vcpu_count].irq_name);
+
 		ret = request_irq(virq_num, gh_vcpu_irq_handler, 0,
 				  vm->vcpu[vm->vcpu_count].irq_name,
 				  &vm->vcpu[vm->vcpu_count]);
@@ -382,7 +388,7 @@ static int gh_unpopulate_vm_vcpu_info(gh_vmid_t vmid, gh_label_t cpu_idx,
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && vm->is_vcpu_info_populated) {
 		vcpu = gh_get_vcpu(vm, cap_id);
 		if (vcpu) {
@@ -463,7 +469,7 @@ static int gh_populate_vm_vpm_grp_info(gh_vmid_t vmid, gh_capid_t cap_id, int vi
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && !vm->is_vpm_group_info_populated) {
 		ret = request_irq(virq_num, gh_susp_res_irq_handler, 0,
 			"gh_susp_res_irq", NULL);
@@ -498,7 +504,7 @@ static int gh_unpopulate_vm_vpm_grp_info(gh_vmid_t vmid, int *irq)
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && vm->is_vpm_group_info_populated) {
 		*irq = vm->susp_res_irq;
 		free_irq(vm->susp_res_irq, NULL);
@@ -532,7 +538,7 @@ static void gh_populate_all_res_info(gh_vmid_t vmid, bool res_populated)
 	}
 
 	mutex_lock(&gh_vm_mutex);
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (!vm)
 		goto unlock;
 
@@ -558,7 +564,7 @@ int gh_get_nr_vcpus(gh_vmid_t vmid)
 {
 	struct gh_proxy_vm *vm;
 
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && vm->is_vcpu_info_populated)
 		return vm->vcpu_count;
 
@@ -571,7 +577,7 @@ void gh_wakeup_all_vcpus(gh_vmid_t vmid)
 	struct gh_proxy_vm *vm;
 	int i;
 
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && vm->is_active) {
 		vm->is_active = false;
 
@@ -584,7 +590,7 @@ bool gh_vm_supports_proxy_sched(gh_vmid_t vmid)
 {
 	struct gh_proxy_vm *vm;
 
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (vm && vm->is_vcpu_info_populated && vm->vcpu_count)
 		return true;
 
@@ -671,7 +677,7 @@ int gh_vcpu_create_wq(gh_vmid_t vmid, unsigned int vcpu_id)
 	struct gh_proxy_vm *vm;
 	struct gh_proxy_vcpu *vcpu;
 
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (!vm || !vm->is_active)
 		return -EINVAL;
 	if (vm->vcpu[vcpu_id].cap_id == GH_CAPID_INVAL)
@@ -700,7 +706,7 @@ int gh_vcpu_run(gh_vmid_t vmid, unsigned int vcpu_id, uint64_t resume_data_0,
 	int ret;
 	ktime_t start_ts, yield_ts;
 
-	vm = gh_get_vm(vmid);
+	vm = gh_get_vm(vmid, true);
 	if (!vm || !vm->is_active)
 		return -EPERM;
 

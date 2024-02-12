@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_qpic_nand.h"
@@ -4375,43 +4375,18 @@ static void msm_nand_bam_free(struct msm_nand_info *nand_info)
 /* This function enables DMA support for the NANDc in BAM mode. */
 static int msm_nand_enable_dma(struct msm_nand_info *info)
 {
-	struct msm_nand_sps_cmd *sps_cmd;
-	struct msm_nand_chip *chip = &info->nand_chip;
-	int ret, submitted_num_desc = 1;
-	struct sps_iovec iovec_temp;
+	uint32_t reg = 0;
+	int err;
 
-	wait_event(chip->dma_wait_queue,
-		   (sps_cmd = msm_nand_get_dma_buffer(chip, sizeof(*sps_cmd))));
-
-	msm_nand_prep_single_desc(sps_cmd, MSM_NAND_CTRL(info), WRITE,
-			(1 << BAM_MODE_EN), SPS_IOVEC_FLAG_INT);
-
-	mutex_lock(&info->lock);
-	ret = msm_nand_get_device(chip->dev);
-	if (ret)
-		goto out;
-	ret = sps_transfer_one(info->sps.cmd_pipe.handle,
-			msm_virt_to_dma(chip, &sps_cmd->ce),
-			sizeof(struct sps_command_element), NULL,
-			sps_cmd->flags);
-	if (ret) {
-		pr_err("Failed to submit command: %d\n", ret);
-		goto put_dev;
+	err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info), &reg, READ);
+	if (!err) {
+		if (FIELD_GET(BAM_MODE_EN_MASK, reg) == 0x1)
+			return 0;
+		reg |= FIELD_PREP(BAM_MODE_EN_MASK, 0x1);
+		err = msm_nand_flash_rd_rw_reg(info, MSM_NAND_CTRL(info),
+			&reg, WRITE);
 	}
-	ret = msm_nand_sps_get_iovec(info, &info->sps.cmd_pipe,
-				submitted_num_desc, &iovec_temp);
-	if (ret) {
-		pr_err("Failed to get iovec for pipe %d (ret: %d)\n",
-				(info->sps.cmd_pipe.index), ret);
-		goto put_dev;
-	}
-put_dev:
-	ret = msm_nand_put_device(chip->dev);
-out:
-	mutex_unlock(&info->lock);
-	msm_nand_release_dma_buffer(chip, sps_cmd, sizeof(*sps_cmd));
-	return ret;
-
+	return err;
 }
 
 /* Enable the boost mode based on flags */
@@ -4556,7 +4531,7 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 {
 	struct msm_nand_info *info = dev_get_drvdata(dev_node);
 	struct msm_nand_chip *chip = &info->nand_chip;
-	int err;
+	int err = 0;
 
 	/* We shouldn't request for a new resource during panic
 	 * as the cores and irq's were already in disabled state.
@@ -4567,22 +4542,27 @@ static int msm_nand_bam_panic_notifier(struct notifier_block *this,
 	if (pm_runtime_suspended(chip->dev))
 		return NOTIFY_DONE;
 
-	mutex_lock(&info->lock);
-	err = msm_nand_get_device(chip->dev);
-	if (err)
-		goto out;
-	pr_info("Dumping APSS bam pipes register dumps\n");
-	sps_get_bam_debug_info(info->sps.bam_handle, 93,
-			(SPS_BAM_PIPE(0) |
-			 SPS_BAM_PIPE(1) |
-			 SPS_BAM_PIPE(2) |
-			 SPS_BAM_PIPE(3)),
-			 0, 2);
-	err = msm_nand_put_device(chip->dev);
+	/*
+	 * It is sufficient to dump the BAM debug dumps on the
+	 * very first crash and ignore any subsequent/back-to-back
+	 * crashes.
+	 */
+	if (!test_and_set_bit(0, &info->panic_notifier_dump)) {
+		err = msm_nand_get_device(chip->dev);
+		if (err)
+			goto out;
+		pr_debug("Dumping APSS bam pipes register dumps\n");
+		sps_get_bam_debug_info(info->sps.bam_handle, 93,
+				(SPS_BAM_PIPE(0) |
+				SPS_BAM_PIPE(1) |
+				SPS_BAM_PIPE(2) |
+				SPS_BAM_PIPE(3)),
+				0, 2);
+		err = msm_nand_put_device(chip->dev);
+	}
 out:
-	mutex_unlock(&info->lock);
 	if (err)
-		pr_err("Failed to get/put the device.\n");
+		pr_err("Failed to get/put the device. err:%d\n", err);
 	return NOTIFY_DONE;
 }
 
