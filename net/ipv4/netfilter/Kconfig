@@ -200,6 +200,20 @@ config IP_NF_TARGET_REJECT
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 
+#  Support Port Triggering in kernel
+config IP_NF_TARGET_TRIGGER
+        tristate "TRIGGER target support"
+        depends on NF_NAT
+        default m if NETFILTER_ADVANCED=n
+        help
+          Implemenets  port trigger action which occur on any matching packet.
+	  TRIGGER is a special case of NAT: used to support Port Triggering
+	  Feature in kernel all incoming connections are allowed on
+	  forward port/port range if there is a corresponding outgoing
+	  connection on the trigger port/port range
+
+          To compile it as a module, choose M here.  If unsure, say N.
+
 config IP_NF_TARGET_SYNPROXY
 	tristate "SYNPROXY target support"
 	depends on NF_CONNTRACK && NETFILTER_ADVANCED
