@@ -1290,8 +1290,8 @@ static const struct mhi_netdev_driver_data hw1_30a_data = {
 	.chain_skb = false,
 	.is_rsc_chan = false,
 	.has_rsc_child = false,
-	.interface_name = "rmnet_mhi",
-	.ethernet_interface = false,
+	.interface_name = "mhi_eth",
+	.ethernet_interface = true,
 };
 
 static const struct mhi_device_id mhi_netdev_match_table[] = {
