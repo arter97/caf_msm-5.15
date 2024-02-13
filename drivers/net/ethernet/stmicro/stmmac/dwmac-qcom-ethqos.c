@@ -6395,62 +6395,88 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+static int emac_power_down(struct stmmac_priv *priv)
 {
-	struct qcom_ethqos *ethqos;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 	int ret = 0;
-	struct stmmac_priv *priv;
 
-	priv = netdev_priv(ndev);
-	if (!priv) {
-		ETHQOSERR("priv is NULL\n");
-		return -EINVAL;
-	}
-
-	ethqos = priv->plat->bsp_priv;
-	if (!ethqos) {
-		ETHQOSERR("ethqos is NULL\n");
-		return -EINVAL;
-	}
-
-	if (ethqos->enable_power_saving == enable) {
-		ETHQOSINFO("Ignore Power save %d\n", ethqos->enable_power_saving);
+	if (!refcount_dec_and_test(&ethqos->ps_refcount))
 		return 0;
+
+	if (priv->plat->xpcs_powersaving)
+		priv->plat->xpcs_powersaving(priv->dev, true);
+
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+
+		if (priv->plat->serdes_powersaving)
+			ret = priv->plat->serdes_powersaving(priv->dev,
+							     priv->plat->bsp_priv,
+							     false,
+							     false);
 	}
 
-	if (enable) {
+	return ret;
+}
 
-		if (priv->plat->xpcs_powersaving)
-			priv->plat->xpcs_powersaving(ndev, true);
+static int emac_power_up(struct stmmac_priv *priv)
+{
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+	int ret = 0;
 
-		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-			ethqos_disable_sgmii_usxgmii_clks(ethqos);
+	if (refcount_inc_not_zero(&ethqos->ps_refcount))
+		return 0;
 
-			if (priv->plat->serdes_powersaving)
-				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
-							       false, false);
-		}
-	} else {
-		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-			if (priv->plat->serdes_powersaving)
-				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
-							       true, true);
+	refcount_set(&ethqos->ps_refcount, 1);
 
-			ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
-
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		if (priv->plat->serdes_powersaving) {
+			ret = priv->plat->serdes_powersaving(priv->dev,
+							     priv->plat->bsp_priv,
+							     true,
+							     true);
 			if (ret < 0) {
-				ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
+				ETHQOSERR("Failed to enable serdes clocks/regulators\n");
 				goto err;
 			}
 		}
 
-		if (priv->plat->xpcs_powersaving)
-			priv->plat->xpcs_powersaving(ndev, false);
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret < 0) {
+			ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
+			goto err;
+		}
 	}
 
-	ethqos->enable_power_saving = enable;
+	if (priv->plat->xpcs_powersaving)
+		priv->plat->xpcs_powersaving(priv->dev, false);
 
 err:
+	return ret;
+}
+
+int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+{
+	int old_refcount = 0, new_refcount = 0, ret = 0;
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	mutex_lock(&ethqos->ps_lock);
+	old_refcount = refcount_read(&ethqos->ps_refcount);
+
+	if (enable)
+		ret = emac_power_down(priv);
+	else
+		ret = emac_power_up(priv);
+
+	new_refcount = refcount_read(&ethqos->ps_refcount);
+	ETHQOSINFO("emac = %d old_ref = %u  new_ref = %u, Save Power = %d",
+		   priv->plat->port_num,
+		   old_refcount,
+		   new_refcount,
+		   enable);
+	mutex_unlock(&ethqos->ps_lock);
+
 	return ret;
 }
 #endif
@@ -7132,6 +7158,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos->pdev = pdev;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	//Initialize ref count as clocks are initially turned on
+	refcount_set(&ethqos->ps_refcount, 1);
+	mutex_init(&ethqos->ps_lock);
+#endif
+
 	ethqos_init_regulators(ethqos);
 
 	ethqos_init_gpio(ethqos);
@@ -7703,6 +7735,12 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	mutex_destroy(&ethqos->ps_lock);
+	if (refcount_read(&ethqos->ps_refcount) > 0)
+		ETHQOSERR("Clocks/Regulators are not yet turned off");
+#endif
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);

@@ -4661,7 +4661,7 @@ static int stmmac_open(struct net_device *dev)
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (!priv->plat->fixed_phy_mode && priv->plat->enable_power_saving) {
+	if (priv->plat->enable_power_saving) {
 		ret = priv->plat->enable_power_saving(priv->dev, true);
 		netdev_info(priv->dev, "%s enable power saving", __func__, ret);
 	}
