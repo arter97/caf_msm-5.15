@@ -6619,3 +6619,5 @@
 	ephyaddr=	[KNL] Sets ethernet phy address at boot.
 
 	espeed=	[KNL] Sets ethernet interface speed at boot.
+
+	eqos=	[KNL] sets qos config at boot

@@ -352,5 +352,9 @@ struct plat_stmmacenet_data {
 	bool separate_wol_pin;
 	bool mka_mcbcq_filtering;
 	bool probe_invoke_if_up;
+	int rx_qos_queues_to_use;
+	int tx_qos_queues_to_use;
+	bool is_config_supp;
+	char qoscfg[4];
 };
 #endif
