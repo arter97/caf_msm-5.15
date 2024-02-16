@@ -518,6 +518,8 @@ struct dwc3_msm {
 	int			dbm_num_eps;
 	bool			dbm_is_1p4;
 
+	/* VBUS regulator for host mode */
+	struct regulator	*vbus_reg;
 	bool			resume_pending;
 	atomic_t                pm_suspended;
 	struct usb_irq		wakeup_irq[USB_MAX_IRQ];
@@ -3317,6 +3319,41 @@ static void handle_gsi_clear_db(struct dwc3 *dwc)
 }
 
 #define DWC3_DEFAULT_AUTOSUSPEND_DELAY	5000 /* ms */
+static void dwc3_handle_connect_event(struct dwc3 *dwc)
+{
+	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
+	u32 reg;
+
+	if ((dwc->speed != DWC3_DSTS_SUPERSPEED) &&
+			(dwc->speed != DWC3_DSTS_SUPERSPEED_PLUS)) {
+		reg = dwc3_msm_read_reg(mdwc->base, DWC3_GUSB3PIPECTL(0));
+		reg |= DWC3_GUSB3PIPECTL_SUSPHY;
+		dwc3_msm_write_reg(mdwc->base, DWC3_GUSB3PIPECTL(0), reg);
+	}
+
+	/*
+	 * SW WA for CV9 RESET DEVICE TEST(TD 9.23) compliance failure.
+	 * Visit eUSB2 phy driver for more details.
+	 */
+	WARN_ON(mdwc->hs_phy->flags & PHY_HOST_MODE);
+	if (mdwc->use_eusb2_phy &&
+			(dwc->gadget->speed >= USB_SPEED_SUPER)) {
+		usb_phy_notify_connect(mdwc->hs_phy, dwc->gadget->speed);
+		udelay(20);
+		/* Perform usb2 phy soft reset as given workaround */
+		mdwc3_usb2_phy_soft_reset(mdwc);
+	}
+
+	/*
+	 * Add power event if the dbm indicates coming out of L1 by
+	 * interrupt
+	 */
+	if (!mdwc->dbm_is_1p4)
+		dwc3_msm_write_reg_field(mdwc->base,
+				PWR_EVNT_IRQ_MASK_REG,
+				PWR_EVNT_LPM_OUT_L1_MASK, 1);
+}
+
 void dwc3_msm_notify_event(struct dwc3 *dwc,
 		enum dwc3_notify_event event, unsigned int value)
 {
@@ -3347,28 +3384,7 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 	case DWC3_CONTROLLER_CONNDONE_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_CONNDONE_EVENT received\n");
 
-		/*
-		 * SW WA for CV9 RESET DEVICE TEST(TD 9.23) compliance failure.
-		 * Visit eUSB2 phy driver for more details.
-		 */
-		WARN_ON(mdwc->hs_phy->flags & PHY_HOST_MODE);
-		if (mdwc->use_eusb2_phy &&
-				(dwc->gadget->speed >= USB_SPEED_SUPER)) {
-			usb_phy_notify_connect(mdwc->hs_phy, dwc->gadget->speed);
-			udelay(20);
-			/* Perform usb2 phy soft reset as given workaround */
-			mdwc3_usb2_phy_soft_reset(mdwc);
-		}
-
-		/*
-		 * Add power event if the dbm indicates coming out of L1 by
-		 * interrupt
-		 */
-		if (!mdwc->dbm_is_1p4)
-			dwc3_msm_write_reg_field(mdwc->base,
-					PWR_EVNT_IRQ_MASK_REG,
-					PWR_EVNT_LPM_OUT_L1_MASK, 1);
-
+		dwc3_handle_connect_event(dwc);
 		atomic_set(&mdwc->in_lpm, 0);
 		mdwc3_update_u1u2_value(dwc);
 		set_bit(CONN_DONE, &mdwc->inputs);
@@ -3440,6 +3456,24 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 	case DWC3_CONTROLLER_NOTIFY_CLEAR_DB:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_CLEAR_DB\n");
 		handle_gsi_clear_db(dwc);
+
+		/*
+		 * Clear the susphy bit here to ensure it is not set during
+		 * the course of controller initialisation process.
+		 */
+		reg = dwc3_msm_read_reg(mdwc->base, DWC3_GUSB3PIPECTL(0));
+		reg &= ~(DWC3_GUSB3PIPECTL_SUSPHY);
+		dwc3_msm_write_reg(mdwc->base, DWC3_GUSB3PIPECTL(0), reg);
+		udelay(1000);
+
+		if (mdwc->gsi_reg) {
+			dwc3_msm_write_reg_field(mdwc->base,
+				GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+				BLOCK_GSI_WR_GO_MASK, true);
+			dwc3_msm_write_reg_field(mdwc->base,
+				GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+				GSI_EN_MASK, 0);
+		}
 		break;
 	default:
 		dev_dbg(mdwc->dev, "unknown dwc3 event\n");
@@ -6329,6 +6363,26 @@ static int dwc3_msm_check_extcon_prop(struct platform_device *pdev)
 	return ret;
 }
 
+static void vbus_regulator_get(struct dwc3_msm *mdwc)
+{
+
+	/*
+	 * The vbus_reg pointer could have multiple values
+	 * NULL: regulator_get() hasn't been called, or was previously deferred
+	 * IS_ERR: regulator could not be obtained, so skip using it
+	 * Valid pointer otherwise
+	 */
+	mdwc->vbus_reg = devm_regulator_get_optional(mdwc->dev,
+						"vbus_dwc3");
+	if (IS_ERR(mdwc->vbus_reg)) {
+		dev_err(mdwc->dev, "Unable to get vbus regulator err: %d\n",
+							PTR_ERR(mdwc->vbus_reg));
+		mdwc->vbus_reg = NULL;
+		return;
+	}
+
+}
+
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -6545,6 +6599,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(mdwc->dev);
 	device_init_wakeup(mdwc->dev, 1);
 
+	vbus_regulator_get(mdwc);
+
 	if (of_property_read_bool(node, "qcom,disable-dev-mode-pm"))
 		pm_runtime_get_noresume(mdwc->dev);
 
@@ -6606,6 +6662,17 @@ err:
 	return ret;
 }
 
+static int vbus_regulator_toggle(struct dwc3_msm *mdwc, bool on)
+{
+	if (!mdwc->vbus_reg)
+		return 0;
+
+	if (!on)
+		return regulator_disable(mdwc->vbus_reg);
+
+	return regulator_enable(mdwc->vbus_reg);
+}
+
 static int dwc3_msm_remove(struct platform_device *pdev)
 {
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
@@ -6660,6 +6727,8 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	for (i = 0; i < ARRAY_SIZE(mdwc->icc_paths); i++)
 		icc_put(mdwc->icc_paths[i]);
+
+	vbus_regulator_toggle(mdwc, false);
 
 	if (mdwc->wakeup_irq[HS_PHY_IRQ].irq)
 		disable_irq(mdwc->wakeup_irq[HS_PHY_IRQ].irq);
@@ -6962,6 +7031,11 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 
 	if (on) {
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
+		ret = vbus_regulator_toggle(mdwc, true);
+		if (ret) {
+			dev_err(mdwc->dev, "unable to enable vbus_reg\n");
+			return ret;
+		}
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 		dbg_event(0xFF, "hs_phy_flag:", mdwc->hs_phy->flags);
 
@@ -6971,6 +7045,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		ret = pm_runtime_resume_and_get(mdwc->dev);
 		if (ret < 0) {
 			dev_err(mdwc->dev, "%s: pm_runtime_resume_and_get failed\n", __func__);
+			vbus_regulator_toggle(mdwc, false);
 			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 			pm_runtime_set_suspended(mdwc->dev);
 			return ret;
@@ -7067,6 +7142,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		msm_dwc3_perf_vote_enable(mdwc, true);
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
+		vbus_regulator_toggle(mdwc, false);
 		msm_dwc3_perf_vote_enable(mdwc, false);
 		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 
@@ -7181,6 +7257,7 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		 */
 		if (dwc->dr_mode == USB_DR_MODE_OTG)
 			flush_work(&dwc->drd_work);
+
 		dwc3_msm_notify_event(dwc, DWC3_GSI_EVT_BUF_SETUP, 0);
 
 		dwc3_override_vbus_status(mdwc, true);
