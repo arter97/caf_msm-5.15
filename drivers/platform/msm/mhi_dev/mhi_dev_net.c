@@ -702,6 +702,7 @@ static void mhi_dev_net_ether_setup(struct net_device *dev)
 	ether_setup(dev);
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = ETH_MAX_MTU;
+	dev->mtu = MHI_NET_DEFAULT_MTU;
 }
 
 static int mhi_dev_net_enable_iface(struct mhi_dev_net_client *mhi_dev_net_ptr)
