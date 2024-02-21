@@ -9,6 +9,7 @@
 
 #include <linux/inetdevice.h>
 #include <linux/inet.h>
+#include <linux/refcount.h>
 
 #include <net/addrconf.h>
 #include <net/ipv6.h>
@@ -519,7 +520,9 @@ struct qcom_ethqos {
 	bool power_state;
 	bool gdsc_off_on_suspend;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	bool enable_power_saving;
+	/* Protects clocks and reference count */
+	struct mutex ps_lock;
+	refcount_t ps_refcount;
 #endif
 };
 
