@@ -103,6 +103,9 @@
 #define M_KERNEL_PERF_LIST (PERF_KEY_MAX)
 #define M_DSP_PERF_LIST (12)
 
+#define SESSION_ID_INDEX (30)
+#define SESSION_ID_MASK (1 << SESSION_ID_INDEX)
+#define PROCESS_ID_MASK ((2^SESSION_ID_INDEX) - 1)
 #define FASTRPC_CTX_MAGIC (0xbeeddeed)
 
 /* Process status notifications from DSP will be sent with this unique context */
@@ -195,9 +198,6 @@
 /* Max no. of persistent headers pre-allocated per process */
 #define MAX_PERSISTENT_HEADERS    (25)
 
-/* Max value of the unique fastrpc tgid */
-#define MAX_FRPC_TGID 256
-
 #define PERF_CAPABILITY_SUPPORT	(1 << 1)
 #define KERNEL_ERROR_CODE_V1_SUPPORT	1
 #define USERSPACE_ALLOCATION_SUPPORT	1
@@ -223,9 +223,6 @@
 
 /* Unique index flag used for mini dump */
 static int md_unique_index_flag[MAX_UNIQUE_ID] = { 0, 0, 0, 0, 0 };
-
-/* Array to keep track unique tgid_frpc usage */
-static bool frpc_tgid_usage_array[MAX_FRPC_TGID] = {0};
 
 /* Fastrpc remote process attributes */
 enum fastrpc_proc_attr {
@@ -1875,7 +1872,6 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 	}
 	ctx->retval = -1;
 	ctx->pid = current->pid;
-	/* Store HLOS PID in context, it is not being sent to DSP */
 	ctx->tgid = fl->tgid;
 	init_completion(&ctx->work);
 	ctx->magic = FASTRPC_CTX_MAGIC;
@@ -1893,10 +1889,6 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 			goto bail;
 		}
 		memset(ctx->perf, 0, sizeof(*(ctx->perf)));
-		/*
-		 * Use HLOS PID, as perf tid is not being sent
-		 * to DSP and is used to log in traces.
-		 */
 		ctx->perf->tid = fl->tgid;
 	}
 	if (invokefd->job) {
@@ -2074,11 +2066,13 @@ static void fastrpc_notif_find_process(int domain, struct smq_notif_rspv3 *notif
 	struct fastrpc_file *fl = NULL;
 	struct hlist_node *n;
 	bool is_process_found = false;
+	int sessionid = 0;
 	unsigned long irq_flags = 0;
 
 	spin_lock_irqsave(&me->hlock, irq_flags);
 	hlist_for_each_entry_safe(fl, n, &me->drivers, hn) {
-		if (fl->tgid_frpc == notif->pid) {
+		if (fl->tgid == notif->pid ||
+				(fl->tgid == (notif->pid & PROCESS_ID_MASK))) {
 			is_process_found = true;
 			break;
 		}
@@ -2087,7 +2081,9 @@ static void fastrpc_notif_find_process(int domain, struct smq_notif_rspv3 *notif
 
 	if (!is_process_found)
 		return;
-	fastrpc_queue_pd_status(fl, domain, notif->status, fl->sessionid);
+	if (notif->pid & SESSION_ID_MASK)
+		sessionid = 1;
+	fastrpc_queue_pd_status(fl, domain, notif->status, sessionid);
 }
 
 static void context_notify_user(struct smq_invoke_ctx *ctx,
@@ -2919,9 +2915,10 @@ static int fastrpc_invoke_send(struct smq_invoke_ctx *ctx,
 
 	channel_ctx = &fl->apps->channel[cid];
 	mutex_lock(&channel_ctx->smd_mutex);
-	/* Send unique fastrpc process ID to dsp */
-	msg->pid = fl->tgid_frpc;
+	msg->pid = fl->tgid;
 	msg->tid = current->pid;
+	if (fl->sessionid)
+		msg->tid |= SESSION_ID_MASK;
 	if (kernel == KERNEL_MSG_WITH_ZERO_PID)
 		msg->pid = 0;
 	msg->invoke.header.ctx = ctx->ctxid | fl->pd;
@@ -3005,7 +3002,6 @@ static void fastrpc_init(struct fastrpc_apps *me)
 	spin_lock_init(&me->hlock);
 	me->channel = &gcinfo[0];
 	mutex_init(&me->mut_uid);
-	me->max_sess_per_proc = DEFAULT_MAX_SESS_PER_PROC;
 	for (i = 0; i < NUM_CHANNELS; i++) {
 		init_completion(&me->channel[i].work);
 		init_completion(&me->channel[i].workport);
@@ -3572,12 +3568,6 @@ static int fastrpc_set_session_info(
 	int err = 0;
 	struct fastrpc_apps *me = &gfa;
 
-	if (fl->set_session_info) {
-		ADSPRPC_ERR("Set session info invoked multiple times\n");
-		err = -EBADR;
-		goto bail;
-	}
-
 	/*
 	 * Third-party apps don't have permission to open the fastrpc device, so
 	 * it is opened on their behalf by DSP HAL. This is detected by
@@ -3610,16 +3600,6 @@ static int fastrpc_set_session_info(
 	// Processes attaching to Sensor Static PD, share context bank.
 	if (sess_info->pd_type == SENSORS_STATICPD)
 		fl->sharedcb = 1;
-	if (sess_info->session_id >= me->max_sess_per_proc) {
-		ADSPRPC_ERR(
-		"Session ID %u cannot be beyond %u\n",
-				sess_info->session_id, me->max_sess_per_proc);
-		err = -EBADR;
-		goto bail;
-	}
-	fl->sessionid = sess_info->session_id;
-	// Set multi_session_support, to disable old way of setting session_id
-	fl->multi_session_support = true;
 	VERIFY(err, 0 == (err = fastrpc_get_info(fl, &(sess_info->domain_id))));
 	if (err)
 		goto bail;
@@ -3869,7 +3849,7 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked);
 static int fastrpc_init_attach_process(struct fastrpc_file *fl,
 					struct fastrpc_ioctl_init *init)
 {
-	int err = 0, tgid = fl->tgid_frpc;
+	int err = 0, tgid = fl->tgid;
 	remote_arg_t ra[1];
 	struct fastrpc_ioctl_invoke_async ioctl;
 
@@ -3882,7 +3862,6 @@ static int fastrpc_init_attach_process(struct fastrpc_file *fl,
 	/*
 	 * Prepare remote arguments for creating thread group
 	 * in guestOS/staticPD on the remote subsystem.
-	 * Send unique fastrpc id to dsp
 	 */
 	ra[0].buf.pv = (void *)&tgid;
 	ra[0].buf.len = sizeof(tgid);
@@ -3951,7 +3930,7 @@ static int fastrpc_init_create_dynamic_process(struct fastrpc_file *fl,
 	fl->dsp_process_state = PROCESS_CREATE_IS_INPROGRESS;
 	spin_unlock(&fl->hlock);
 
-	inbuf.pgid = fl->tgid_frpc;
+	inbuf.pgid = fl->tgid;
 	inbuf.namelen = strlen(current->comm) + 1;
 	inbuf.filelen = init->filelen;
 	fl->pd = 1;
@@ -4195,7 +4174,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 	}
 
 	fl->pd = 1;
-	inbuf.pgid = fl->tgid_frpc;
+	inbuf.pgid = fl->tgid;
 	inbuf.namelen = init->filelen;
 	inbuf.pageslen = 0;
 
@@ -4612,8 +4591,7 @@ static int fastrpc_release_current_dsp_process(struct fastrpc_file *fl)
 		err = -ECONNRESET;
 		goto bail;
 	}
-	/* Send unique fastrpc process ID to dsp */
-	tgid = fl->tgid_frpc;
+	tgid = fl->tgid;
 	ra[0].buf.pv = (void *)&tgid;
 	ra[0].buf.len = sizeof(tgid);
 	ioctl.inv.handle = FASTRPC_STATIC_HANDLE_PROCESS_GROUP;
@@ -4672,8 +4650,7 @@ static int fastrpc_mem_map_to_dsp(struct fastrpc_file *fl, int fd, int offset,
 		uint64_t vaddrout;
 	} routargs;
 
-	/* Send unique fastrpc process ID to dsp */
-	inargs.pid = fl->tgid_frpc;
+	inargs.pid = fl->tgid;
 	inargs.fd = fd;
 	inargs.offset = offset;
 	inargs.vaddrin = (uintptr_t)va;
@@ -4724,8 +4701,7 @@ static int fastrpc_mem_unmap_to_dsp(struct fastrpc_file *fl, int fd,
 		uint64_t len;
 	} inargs;
 
-	/* Send unique fastrpc process ID to dsp */
-	inargs.pid = fl->tgid_frpc;
+	inargs.pid = fl->tgid;
 	inargs.fd = fd;
 	inargs.vaddrin = (uint64_t)va;
 	inargs.len = (uint64_t)size;
@@ -4761,8 +4737,7 @@ static int fastrpc_unmap_on_dsp(struct fastrpc_file *fl,
 		size_t size;
 	} inargs;
 
-	/* Send unique fastrpc process ID to dsp */
-	inargs.pid = fl->tgid_frpc;
+	inargs.pid = fl->tgid;
 	inargs.size = size;
 	inargs.vaddrout = raddr;
 	ra[0].buf.pv = (void *)&inargs;
@@ -4814,8 +4789,7 @@ static int fastrpc_mmap_on_dsp(struct fastrpc_file *fl, uint32_t flags,
 		goto bail;
 	}
 	cid = fl->cid;
-	/* Send unique fastrpc process ID to dsp */
-	inargs.pid = fl->tgid_frpc;
+	inargs.pid = fl->tgid;
 	inargs.vaddrin = (uintptr_t)va;
 	inargs.flags = flags;
 	inargs.num = fl->apps->compat ? num * sizeof(page) : num;
@@ -5584,11 +5558,7 @@ static void handle_remote_signal(uint64_t msg, int cid)
 
 	spin_lock_irqsave(&me->hlock, irq_flags);
 	hlist_for_each_entry_safe(fl, n, &me->drivers, hn) {
-		/*
-		 * Response from DSP contains unique fastrpc process id,
-		 * use unique fastrpc process ID to compare.
-		 */
-		if ((fl->tgid_frpc == pid) && (fl->cid == cid)) {
+		if ((fl->tgid == pid) && (fl->cid == cid)) {
 			unsigned long fflags = 0;
 
 			spin_lock_irqsave(&fl->dspsignals_lock, fflags);
@@ -5809,9 +5779,6 @@ skip_dump_wait:
 	fl->is_ramdump_pend = false;
 	fl->is_dma_invoke_pend = false;
 	fl->dsp_process_state = PROCESS_CREATE_DEFAULT;
-	/* Reset the tgid usage to false */
-	if (fl->tgid_frpc != -1)
-		frpc_tgid_usage_array[fl->tgid_frpc] = false;
 	is_locked = false;
 	spin_unlock_irqrestore(&fl->apps->hlock, irq_flags);
 
@@ -6261,7 +6228,6 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->apps = me;
 	fl->mode = FASTRPC_MODE_SERIAL;
 	fl->cid = -1;
-	fl->tgid_frpc = -1;
 	fl->dev_minor = dev_minor;
 	fl->init_mem = NULL;
 	fl->qos_request = 0;
@@ -6272,8 +6238,6 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->is_compat = false;
 	fl->exit_notif = false;
 	fl->exit_async = false;
-	fl->multi_session_support = false;
-	fl->set_session_info = false;
 	init_completion(&fl->work);
 	init_completion(&fl->dma_invoke);
 	fl->file_close = FASTRPC_PROCESS_DEFAULT_STATE;
@@ -6322,25 +6286,6 @@ bail:
 	return err;
 }
 
-// Generate a unique process ID to DSP process
-static int get_unique_hlos_process_id(void)
-{
-	int tgid_frpc = -1, tgid_index = 1;
-	struct fastrpc_apps *me = &gfa;
-
-	spin_lock(&me->hlock);
-	for (tgid_index = 1; tgid_index < MAX_FRPC_TGID; tgid_index++) {
-		if (!frpc_tgid_usage_array[tgid_index]) {
-			tgid_frpc = tgid_index;
-			/* Set the tgid usage to false */
-			frpc_tgid_usage_array[tgid_index] = true;
-			break;
-		}
-	}
-	spin_unlock(&me->hlock);
-	return tgid_frpc;
-}
-
 static int fastrpc_set_process_info(struct fastrpc_file *fl, uint32_t cid)
 {
 	int err = 0, buf_size = 0;
@@ -6350,13 +6295,6 @@ static int fastrpc_set_process_info(struct fastrpc_file *fl, uint32_t cid)
 	memcpy(cur_comm, current->comm, TASK_COMM_LEN);
 	cur_comm[TASK_COMM_LEN-1] = '\0';
 	fl->tgid = current->tgid;
-	fl->tgid_frpc = get_unique_hlos_process_id();
-	VERIFY(err, fl->tgid_frpc != -1);
-	if (err) {
-		ADSPRPC_ERR("too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
-		err = -EUSERS;
-		goto bail;
-	}
 
 	/*
 	 * Third-party apps don't have permission to open the fastrpc device, so
@@ -6389,12 +6327,8 @@ static int fastrpc_set_process_info(struct fastrpc_file *fl, uint32_t cid)
 			err = -ENOMEM;
 			return err;
 		}
-		/*
-		 * Use HLOS PID, unique fastrpc PID, CID in debugfs filename,
-		 * for better ability to debug.
-		 */
-		snprintf(fl->debug_buf, buf_size, "%.10s%s%d%s%d%s%d",
-			cur_comm, "_", current->pid, "_", fl->tgid_frpc, "_", cid);
+		snprintf(fl->debug_buf, buf_size, "%.10s%s%d%s%d",
+			cur_comm, "_", current->pid, "_", cid);
 		fl->debugfs_file = debugfs_create_file(fl->debug_buf, 0644,
 			debugfs_root, fl, &debugfs_fops);
 		if (IS_ERR_OR_NULL(fl->debugfs_file)) {
@@ -6418,21 +6352,6 @@ int fastrpc_get_info(struct fastrpc_file *fl, uint32_t *info)
 	VERIFY(err, fl != NULL);
 	if (err) {
 		err = -EBADF;
-		goto bail;
-	}
-	spin_lock(&fl->hlock);
-	if (fl->set_session_info) {
-		spin_unlock(&fl->hlock);
-		ADSPRPC_ERR("Set session info invoked multiple times\n");
-		err = -EBADR;
-		goto bail;
-	}
-	// Set set_session_info to true
-	fl->set_session_info = true;
-	spin_unlock(&fl->hlock);
-	VERIFY(err, VALID_FASTRPC_CID(cid));
-	if (err) {
-		err = -ECHRNG;
 		goto bail;
 	}
 
@@ -6529,6 +6448,7 @@ int fastrpc_internal_control(struct fastrpc_file *fl,
 	int err = 0;
 	unsigned int latency;
 	struct fastrpc_apps *me = &gfa;
+	int sessionid = 0;
 	unsigned int cpu;
 	unsigned long flags = 0;
 
@@ -6624,7 +6544,9 @@ int fastrpc_internal_control(struct fastrpc_file *fl,
 		break;
 	case FASTRPC_CONTROL_DSPPROCESS_CLEAN:
 		(void)fastrpc_release_current_dsp_process(fl);
-		fastrpc_queue_pd_status(fl, fl->cid, FASTRPC_USER_PD_FORCE_KILL, fl->sessionid);
+		if (fl->tgid & SESSION_ID_MASK)
+			sessionid = 1;
+		fastrpc_queue_pd_status(fl, fl->cid, FASTRPC_USER_PD_FORCE_KILL, sessionid);
 		break;
 	case FASTRPC_CONTROL_RPC_POLL:
 		err = fastrpc_manage_poll_mode(fl, cp->lp.enable, cp->lp.latency);
@@ -6701,8 +6623,8 @@ int fastrpc_setmode(unsigned long ioctl_param,
 				"multiple sessions not allowed for untrusted apps\n");
 			goto bail;
 		}
-		if (!fl->multi_session_support)
-			fl->sessionid = 1;
+		fl->sessionid = 1;
+		fl->tgid |= SESSION_ID_MASK;
 		break;
 	default:
 		err = -ENOTTY;
@@ -6773,9 +6695,8 @@ int fastrpc_dspsignal_signal(struct fastrpc_file *fl,
 	// track outgoing signals in the driver. The userspace library does a
 	// basic sanity check and any security validation needs to be done by
 	// the recipient.
-	DSPSIGNAL_VERBOSE("Send signal PID %u, unique fastrpc pid %u signal %u\n",
-			(unsigned int)fl->tgid, (unsigned int)fl->tgid_frpc,
-			(unsigned int)sig->signal_id);
+	DSPSIGNAL_VERBOSE("Send signal PID %u, signal %u\n",
+			  (unsigned int)fl->tgid, (unsigned int)sig->signal_id);
 	VERIFY(err, sig->signal_id < DSPSIGNAL_NUM_SIGNALS);
 	if (err) {
 		ADSPRPC_ERR("Sending bad signal %u for PID %u",
@@ -6799,8 +6720,7 @@ int fastrpc_dspsignal_signal(struct fastrpc_file *fl,
 		goto bail;
 	}
 
-	/* Use unique fastrpc pid, to signal DSP process */
-	msg = (((uint64_t)fl->tgid_frpc) << 32) | ((uint64_t)sig->signal_id);
+	msg = (((uint64_t)fl->tgid) << 32) | ((uint64_t)sig->signal_id);
 	err = fastrpc_transport_send(cid, (void *)&msg, sizeof(msg), fl->trusted_vm);
 	mutex_unlock(&channel_ctx->smd_mutex);
 
@@ -7883,10 +7803,10 @@ static int fastrpc_cb_probe(struct device *dev)
 	if (of_get_property(dev->of_node, "pd-type", NULL) != NULL) {
 		err = of_property_read_u32(dev->of_node, "pd-type",
 				&(sess->smmu.pd_type));
-		/* Set cb_pd_type, if the process type is set for context banks */
-		me->cb_pd_type = true;
 		if (err)
 			goto bail;
+		// Set cb_pd_type, if the process type is configured for context banks
+		me->cb_pd_type = true;
 	}
 	if (of_get_property(dev->of_node, "shared-cb", NULL) != NULL) {
 		sess->smmu.sharedcb = 1;
@@ -8220,8 +8140,6 @@ static int fastrpc_probe(struct platform_device *pdev)
 			me->lowest_capacity_core_count = 1;
 		of_property_read_u32(dev->of_node, "qcom,rpc-latency-us",
 			&me->latency);
-		of_property_read_u32(dev->of_node, "qcom,max-sessions",
-			&me->max_sess_per_proc);
 		if (of_get_property(dev->of_node,
 			"qcom,secure-domains", NULL) != NULL) {
 			VERIFY(err, !of_property_read_u32(dev->of_node,
@@ -8638,24 +8556,17 @@ static int fastrpc_device_create(struct fastrpc_file *fl)
 	frpc_dev->dev.parent = &fastrpc_bus;
 	frpc_dev->dev.bus = &fastrpc_bus_type;
 
-	/*
-	 * Use HLOS PID, unique fastrpc process ID and CID to create device file,
-	 * Else names would conflict for multiple sessions
-	 * And also for better ability to debug
-	 */
-	dev_set_name(&frpc_dev->dev, "%s-%d-%d-%d",
-			dev_name(frpc_dev->dev.parent), fl->tgid, fl->tgid_frpc, fl->cid);
+	dev_set_name(&frpc_dev->dev, "%s-%d-%d",
+			dev_name(frpc_dev->dev.parent), fl->tgid, fl->cid);
 	frpc_dev->dev.release = fastrpc_dev_release;
 	frpc_dev->fl = fl;
-	/* Use unique fastrpc tgid as handle */
-	frpc_dev->handle = fl->tgid_frpc;
+	frpc_dev->handle = fl->tgid;
 
 	err = device_register(&frpc_dev->dev);
 	if (err) {
 		put_device(&frpc_dev->dev);
-		ADSPRPC_ERR(
-		"fastrpc device register failed for process %d unique fastrpc tgid %d session %d with error %d\n",
-			fl->tgid, fl->tgid_frpc, fl->sessionid, err);
+		ADSPRPC_ERR("fastrpc device register failed for process %d with error %d\n",
+			fl->tgid, err);
 		goto bail;
 	}
 	fl->device = frpc_dev;
