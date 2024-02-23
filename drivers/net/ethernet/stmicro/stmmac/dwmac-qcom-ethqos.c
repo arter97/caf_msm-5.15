@@ -4192,7 +4192,12 @@ static ssize_t nw_loopback_handling_config(struct file *file, const char __user 
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		return -EFAULT;
@@ -4409,7 +4414,12 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		goto fail;
@@ -4511,7 +4521,11 @@ static ssize_t speed_chg_handling_config(struct file *file, const char __user *u
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		goto fail;
