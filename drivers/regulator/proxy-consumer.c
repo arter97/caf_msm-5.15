@@ -180,7 +180,7 @@ int regulator_proxy_consumer_register(struct device *dev,
 
 	return PTR_ERR_OR_ZERO(consumer);
 }
-EXPORT_SYMBOL(regulator_proxy_consumer_register);
+EXPORT_SYMBOL_GPL(regulator_proxy_consumer_register);
 
 /* proxy_consumer_list_lock must be held by caller. */
 static int regulator_proxy_consumer_remove(struct proxy_consumer *consumer)
@@ -241,7 +241,7 @@ void regulator_proxy_consumer_unregister(struct device *dev)
 	}
 	mutex_unlock(&proxy_consumer_list_lock);
 }
-EXPORT_SYMBOL(regulator_proxy_consumer_unregister);
+EXPORT_SYMBOL_GPL(regulator_proxy_consumer_unregister);
 
 /* proxy_consumer_list_lock must be held by caller. */
 static void
@@ -310,7 +310,7 @@ int devm_regulator_proxy_consumer_register(struct device *dev,
 
 	return 0;
 }
-EXPORT_SYMBOL(devm_regulator_proxy_consumer_register);
+EXPORT_SYMBOL_GPL(devm_regulator_proxy_consumer_register);
 
 static int devm_regulator_proxy_consumer_match(struct device *dev, void *res,
 					       void *data)
@@ -354,7 +354,7 @@ void devm_regulator_proxy_consumer_unregister(struct device *dev)
 	}
 	mutex_unlock(&proxy_consumer_list_lock);
 }
-EXPORT_SYMBOL(devm_regulator_proxy_consumer_unregister);
+EXPORT_SYMBOL_GPL(devm_regulator_proxy_consumer_unregister);
 
 #ifndef CONFIG_REGULATOR_PROXY_CONSUMER_LEGACY
 
@@ -362,12 +362,12 @@ void regulator_proxy_consumer_sync_state(struct device *dev)
 {
 	regulator_proxy_consumer_unregister(dev);
 }
-EXPORT_SYMBOL(regulator_proxy_consumer_sync_state);
+EXPORT_SYMBOL_GPL(regulator_proxy_consumer_sync_state);
 
 #else /* CONFIG_REGULATOR_PROXY_CONSUMER_LEGACY=y */
 
 void regulator_proxy_consumer_sync_state(struct device *dev) { }
-EXPORT_SYMBOL(regulator_proxy_consumer_sync_state);
+EXPORT_SYMBOL_GPL(regulator_proxy_consumer_sync_state);
 
 /*
  * Remove all proxy requests at late_initcall_sync.  The assumption is that all

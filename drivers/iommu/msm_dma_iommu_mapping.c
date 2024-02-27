@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-map-ops.h>
@@ -320,7 +321,7 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_dma_map_sg_attrs);
+EXPORT_SYMBOL_GPL(msm_dma_map_sg_attrs);
 
 static void msm_iommu_meta_destroy(struct kref *kref)
 {
@@ -407,7 +408,7 @@ void msm_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl,
 out:
 	return;
 }
-EXPORT_SYMBOL(msm_dma_unmap_sg_attrs);
+EXPORT_SYMBOL_GPL(msm_dma_unmap_sg_attrs);
 
 int msm_dma_unmap_all_for_dev(struct device *dev)
 {
@@ -439,7 +440,7 @@ int msm_dma_unmap_all_for_dev(struct device *dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_dma_unmap_all_for_dev);
+EXPORT_SYMBOL_GPL(msm_dma_unmap_all_for_dev);
 
 /*
  * Only to be called by ION code when a buffer is freed
@@ -475,6 +476,6 @@ void msm_dma_buf_freed(void *buffer)
 
 	msm_iommu_meta_put(meta);
 }
-EXPORT_SYMBOL(msm_dma_buf_freed);
+EXPORT_SYMBOL_GPL(msm_dma_buf_freed);
 
 MODULE_LICENSE("GPL v2");

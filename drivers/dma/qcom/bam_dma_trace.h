@@ -24,7 +24,7 @@ TRACE_EVENT(bam_dma_info,
 	    TP_fast_assign
 		(__assign_str(name, name);
 		WARN_ON_ONCE(vsnprintf(__get_dynamic_array(msg),
-			     MAX_MSG_LEN, vaf->fmt, *vaf->va) >= MAX_MSG_LEN);
+				       MAX_MSG_LEN, vaf->fmt, *vaf->va) >= MAX_MSG_LEN);
 	    ),
 	   TP_printk("%s: %s", __get_str(name),  __get_str(msg))
 );

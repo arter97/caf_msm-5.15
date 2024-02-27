@@ -8,11 +8,6 @@
 #define _TRACE_HOOK_REGMAP_H
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <../drivers/base/regmap/internal.h>
-#include <linux/regmap.h>
-#endif
-
 struct regmap;
 struct regmap_config;
 

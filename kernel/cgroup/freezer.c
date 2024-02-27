@@ -7,7 +7,6 @@
 #include "cgroup-internal.h"
 
 #include <trace/events/cgroup.h>
-#include <trace/hooks/dtask.h>
 
 /*
  * Propagate the cgroup frozen state upwards by the cgroup tree.
@@ -156,21 +155,17 @@ void cgroup_leave_frozen(bool always_leave)
 static void cgroup_freeze_task(struct task_struct *task, bool freeze)
 {
 	unsigned long flags;
-	bool wake = true;
 
 	/* If the task is about to die, don't bother with freezing it. */
 	if (!lock_task_sighand(task, &flags))
 		return;
 
-	trace_android_vh_freeze_whether_wake(task, &wake);
 	if (freeze) {
 		task->jobctl |= JOBCTL_TRAP_FREEZE;
-		if (wake)
-			signal_wake_up(task, false);
+		signal_wake_up(task, false);
 	} else {
 		task->jobctl &= ~JOBCTL_TRAP_FREEZE;
-		if (wake)
-			wake_up_process(task);
+		wake_up_process(task);
 	}
 
 	unlock_task_sighand(task, &flags);

@@ -15,6 +15,7 @@
 #include <sound/pcm_params.h>
 
 #include <trace/hooks/audio_usboffload.h>
+#include <trace/hooks/sound.h>
 
 #include "usbaudio.h"
 #include "card.h"
@@ -561,13 +562,7 @@ static int snd_usb_hw_params(struct snd_pcm_substream *substream,
 	subs->cur_audiofmt = fmt;
 	mutex_unlock(&chip->mutex);
 
-	if (subs->sync_endpoint) {
-		ret = snd_usb_endpoint_set_params(chip, subs->sync_endpoint);
-		if (ret < 0)
-			goto unlock;
-	}
-
-	ret = snd_usb_endpoint_set_params(chip, subs->data_endpoint);
+	ret = configure_endpoints(chip, subs);
 
  unlock:
 	if (ret < 0)
@@ -1137,6 +1132,7 @@ static int snd_usb_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_usb_substream *subs = &as->substream[direction];
 	int ret;
+	bool is_support = false;
 
 	runtime->hw = snd_usb_hardware;
 	/* need an explicit sync to catch applptr update in low-latency mode */
@@ -1161,6 +1157,11 @@ static int snd_usb_pcm_open(struct snd_pcm_substream *substream)
 	ret = snd_media_stream_init(subs, as->pcm, direction);
 	if (ret < 0)
 		snd_usb_autosuspend(subs->stream->chip);
+
+	trace_android_vh_sound_usb_support_cpu_suspend(subs->dev, direction, &is_support);
+	if (!ret && is_support)
+		snd_usb_autosuspend(subs->stream->chip);
+
 	return ret;
 }
 
@@ -1170,6 +1171,11 @@ static int snd_usb_pcm_close(struct snd_pcm_substream *substream)
 	struct snd_usb_stream *as = snd_pcm_substream_chip(substream);
 	struct snd_usb_substream *subs = &as->substream[direction];
 	int ret;
+	bool is_support = false;
+
+	trace_android_vh_sound_usb_support_cpu_suspend(subs->dev, direction, &is_support);
+	if (is_support)
+		snd_usb_autoresume(subs->stream->chip);
 
 	snd_media_stop_pipeline(subs);
 
@@ -1580,7 +1586,6 @@ static int snd_usb_substream_playback_trigger(struct snd_pcm_substream *substrea
 {
 	struct snd_usb_substream *subs = substream->runtime->private_data;
 	int err;
-	bool suspend = true;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -1608,10 +1613,6 @@ static int snd_usb_substream_playback_trigger(struct snd_pcm_substream *substrea
 			subs->cur_audiofmt->altsetting);
 		return 0;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		trace_android_vh_audio_usb_offload_suspend(substream, cmd, &suspend);
-		if (!suspend)
-			return 0;
-		fallthrough;
 	case SNDRV_PCM_TRIGGER_STOP:
 		stop_endpoints(subs, substream->runtime->status->state == SNDRV_PCM_STATE_DRAINING);
 		snd_usb_endpoint_set_callback(subs->data_endpoint,

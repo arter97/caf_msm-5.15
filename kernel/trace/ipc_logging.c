@@ -32,7 +32,7 @@
 #define FEATURE_MASK 0x10000
 
 static int minidump_buf_cnt;
-static struct list_head *ipc_log_context_list;
+static LIST_HEAD(ipc_log_context_list);
 static DEFINE_RWLOCK(context_list_lock_lha1);
 static void *get_deserialization_func(struct ipc_log_context *ilctxt,
 				      int type);
@@ -137,9 +137,10 @@ static void register_minidump(u64 vaddr, u64 size,
 	struct md_region md_entry;
 	int ret;
 
-	if (minidump_buf_cnt < MAX_MINIDUMP_BUFFERS) {
-		scnprintf(md_entry.name, sizeof(md_entry.name), "%d_%s",
-			  index, buf_name);
+	if (msm_minidump_enabled()
+	    && (minidump_buf_cnt < MAX_MINIDUMP_BUFFERS)) {
+		scnprintf(md_entry.name, sizeof(md_entry.name), "%s_%d",
+			  buf_name, index);
 		md_entry.virt_addr = vaddr;
 		md_entry.phys_addr = virt_to_phys((void *)vaddr);
 		md_entry.size = size;
@@ -355,7 +356,7 @@ void ipc_log_write(void *ctxt, struct encode_context *ectxt)
 	spin_unlock(&ilctxt->context_lock_lhb1);
 	read_unlock_irqrestore(&context_list_lock_lha1, flags);
 }
-EXPORT_SYMBOL(ipc_log_write);
+EXPORT_SYMBOL_GPL(ipc_log_write);
 
 /*
  * Starts a new message after which you can add serialized data and
@@ -372,7 +373,7 @@ void msg_encode_start(struct encode_context *ectxt, uint32_t type)
 	ectxt->hdr.size = 0;
 	ectxt->offset = sizeof(ectxt->hdr);
 }
-EXPORT_SYMBOL(msg_encode_start);
+EXPORT_SYMBOL_GPL(msg_encode_start);
 
 /*
  * Completes the message
@@ -388,7 +389,7 @@ void msg_encode_end(struct encode_context *ectxt)
 	ectxt->hdr.size = ectxt->offset - sizeof(ectxt->hdr);
 	memcpy(ectxt->buff, &ectxt->hdr, sizeof(ectxt->hdr));
 }
-EXPORT_SYMBOL(msg_encode_end);
+EXPORT_SYMBOL_GPL(msg_encode_end);
 
 /*
  * Helper function used to write data to a message context.
@@ -446,7 +447,7 @@ int tsv_timestamp_write(struct encode_context *ectxt)
 		return ret;
 	return tsv_write_data(ectxt, &t_now, sizeof(t_now));
 }
-EXPORT_SYMBOL(tsv_timestamp_write);
+EXPORT_SYMBOL_GPL(tsv_timestamp_write);
 
 /*
  * Writes the current QTimer timestamp count.
@@ -463,7 +464,7 @@ int tsv_qtimer_write(struct encode_context *ectxt)
 		return ret;
 	return tsv_write_data(ectxt, &t_now, sizeof(t_now));
 }
-EXPORT_SYMBOL(tsv_qtimer_write);
+EXPORT_SYMBOL_GPL(tsv_qtimer_write);
 
 /*
  * Writes a data pointer.
@@ -480,7 +481,7 @@ int tsv_pointer_write(struct encode_context *ectxt, void *pointer)
 		return ret;
 	return tsv_write_data(ectxt, &pointer, sizeof(pointer));
 }
-EXPORT_SYMBOL(tsv_pointer_write);
+EXPORT_SYMBOL_GPL(tsv_pointer_write);
 
 /*
  * Writes a 32-bit integer value.
@@ -497,7 +498,7 @@ int tsv_int32_write(struct encode_context *ectxt, int32_t n)
 		return ret;
 	return tsv_write_data(ectxt, &n, sizeof(n));
 }
-EXPORT_SYMBOL(tsv_int32_write);
+EXPORT_SYMBOL_GPL(tsv_int32_write);
 
 /*
  * Writes a byte array.
@@ -516,7 +517,7 @@ int tsv_byte_array_write(struct encode_context *ectxt,
 		return ret;
 	return tsv_write_data(ectxt, data, data_size);
 }
-EXPORT_SYMBOL(tsv_byte_array_write);
+EXPORT_SYMBOL_GPL(tsv_byte_array_write);
 
 /*
  * Helper function to log a string
@@ -547,7 +548,7 @@ int ipc_log_string(void *ilctxt, const char *fmt, ...)
 	ipc_log_write(ilctxt, &ectxt);
 	return 0;
 }
-EXPORT_SYMBOL(ipc_log_string);
+EXPORT_SYMBOL_GPL(ipc_log_string);
 
 /**
  * ipc_log_extract - Reads and deserializes log
@@ -611,7 +612,7 @@ done:
 	read_unlock_irqrestore(&context_list_lock_lha1, flags);
 	return ret;
 }
-EXPORT_SYMBOL(ipc_log_extract);
+EXPORT_SYMBOL_GPL(ipc_log_extract);
 
 /*
  * Helper function used to read data from a message context.
@@ -675,7 +676,7 @@ void tsv_timestamp_read(struct encode_context *ectxt,
 	IPC_SPRINTF_DECODE(dctxt, "[%6u.%09lu%s/",
 			(unsigned int)val, nanosec_rem, format);
 }
-EXPORT_SYMBOL(tsv_timestamp_read);
+EXPORT_SYMBOL_GPL(tsv_timestamp_read);
 
 /*
  * Reads a QTimer timestamp.
@@ -701,7 +702,7 @@ void tsv_qtimer_read(struct encode_context *ectxt,
 	 */
 	IPC_SPRINTF_DECODE(dctxt, "%#18llx]%s", val, format);
 }
-EXPORT_SYMBOL(tsv_qtimer_read);
+EXPORT_SYMBOL_GPL(tsv_qtimer_read);
 
 /*
  * Reads a data pointer.
@@ -723,7 +724,7 @@ void tsv_pointer_read(struct encode_context *ectxt,
 
 	IPC_SPRINTF_DECODE(dctxt, format, val);
 }
-EXPORT_SYMBOL(tsv_pointer_read);
+EXPORT_SYMBOL_GPL(tsv_pointer_read);
 
 /*
  * Reads a 32-bit integer value.
@@ -746,7 +747,7 @@ int32_t tsv_int32_read(struct encode_context *ectxt,
 	IPC_SPRINTF_DECODE(dctxt, format, val);
 	return val;
 }
-EXPORT_SYMBOL(tsv_int32_read);
+EXPORT_SYMBOL_GPL(tsv_int32_read);
 
 /*
  * Reads a byte array/string.
@@ -767,7 +768,7 @@ void tsv_byte_array_read(struct encode_context *ectxt,
 	dctxt->buff += hdr.size;
 	dctxt->size -= hdr.size;
 }
-EXPORT_SYMBOL(tsv_byte_array_read);
+EXPORT_SYMBOL_GPL(tsv_byte_array_read);
 
 int add_deserialization_func(void *ctxt, int type,
 			void (*dfunc)(struct encode_context *,
@@ -793,7 +794,7 @@ int add_deserialization_func(void *ctxt, int type,
 	read_unlock_irqrestore(&context_list_lock_lha1, flags);
 	return 0;
 }
-EXPORT_SYMBOL(add_deserialization_func);
+EXPORT_SYMBOL_GPL(add_deserialization_func);
 
 static void *get_deserialization_func(struct ipc_log_context *ilctxt,
 				      int type)
@@ -830,24 +831,9 @@ void *ipc_log_context_create(int max_num_pages,
 	unsigned long flags;
 	int enable_minidump;
 
-	write_lock_irqsave(&context_list_lock_lha1, flags);
-	if (!ipc_log_context_list) {
-		ipc_log_context_list = kzalloc(sizeof(struct list_head), GFP_ATOMIC);
-		if (!ipc_log_context_list) {
-			write_unlock_irqrestore(&context_list_lock_lha1, flags);
-			pr_err("Failed to allocate memory for ipc_log_context_list\n");
-			return NULL;
-		}
-		INIT_LIST_HEAD(ipc_log_context_list);
-
-		register_minidump((u64)ipc_log_context_list, sizeof(struct list_head),
-				"ipc_log_ctxt_list", minidump_buf_cnt);
-	}
-	write_unlock_irqrestore(&context_list_lock_lha1, flags);
-
 	/* check if ipc ctxt already exists */
 	read_lock_irq(&context_list_lock_lha1);
-	list_for_each_entry(tmp, ipc_log_context_list, list)
+	list_for_each_entry(tmp, &ipc_log_context_list, list)
 		if (!strcmp(tmp->name, mod_name)) {
 			ctxt = tmp;
 			break;
@@ -919,9 +905,9 @@ void *ipc_log_context_create(int max_num_pages,
 
 	write_lock_irqsave(&context_list_lock_lha1, flags);
 	if (enable_minidump  && (minidump_buf_cnt < MAX_MINIDUMP_BUFFERS))
-		list_add(&ctxt->list, ipc_log_context_list);
+		list_add(&ctxt->list, &ipc_log_context_list);
 	else
-		list_add_tail(&ctxt->list, ipc_log_context_list);
+		list_add_tail(&ctxt->list, &ipc_log_context_list);
 	write_unlock_irqrestore(&context_list_lock_lha1, flags);
 
 	return (void *)ctxt;
@@ -935,7 +921,7 @@ release_ipc_log_context:
 	kfree(ctxt);
 	return 0;
 }
-EXPORT_SYMBOL(ipc_log_context_create);
+EXPORT_SYMBOL_GPL(ipc_log_context_create);
 
 void ipc_log_context_free(struct kref *kref)
 {
@@ -985,22 +971,19 @@ int ipc_log_context_destroy(void *ctxt)
 
 	return 0;
 }
-EXPORT_SYMBOL(ipc_log_context_destroy);
+EXPORT_SYMBOL_GPL(ipc_log_context_destroy);
 
 static int __init ipc_logging_init(void)
 {
 	check_and_create_debugfs();
 
+	register_minidump((u64)&ipc_log_context_list, sizeof(struct list_head),
+			  "ipc_log_ctxt_list", minidump_buf_cnt);
+
 	return 0;
 }
 
-static void __exit ipc_logging_exit(void)
-{
-	kfree(ipc_log_context_list);
-}
-
 module_init(ipc_logging_init);
-module_exit(ipc_logging_exit);
 
 MODULE_DESCRIPTION("ipc logging");
 MODULE_LICENSE("GPL v2");

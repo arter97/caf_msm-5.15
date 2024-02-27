@@ -69,18 +69,6 @@ static const struct qcom_apcs_ipc_data sdx55_apcs_data = {
 	.offset = 0x1008, .clk_name = "qcom-sdx55-acps-clk"
 };
 
-static const struct qcom_apcs_ipc_data bengal_apcs_data = {
-	.offset = 8, .clk_name = NULL
-};
-
-static const struct qcom_apcs_ipc_data trinket_apcs_data = {
-	.offset = 8, .clk_name = NULL
-};
-
-static const struct qcom_apcs_ipc_data scuba_apcs_data = {
-	.offset = 8, .clk_name = NULL
-};
-
 static const struct qcom_apcs_ipc_data monaco_apcs_data = {
 	.offset = 8, .clk_name = NULL
 };
@@ -130,8 +118,6 @@ static int qcom_apcs_ipc_probe(struct platform_device *pdev)
 		return PTR_ERR(regmap);
 
 	apcs_data = of_device_get_match_data(&pdev->dev);
-	if (!apcs_data)
-		return -EINVAL;
 
 	apcs->regmap = regmap;
 	apcs->offset = apcs_data->offset;
@@ -195,10 +181,6 @@ static const struct of_device_id qcom_apcs_ipc_of_match[] = {
 	{ .compatible = "qcom,sm8150-apss-shared", .data = &apps_shared_apcs_data },
 	{ .compatible = "qcom,sm6115-apcs-hmss-global", .data = &sdm660_apcs_data },
 	{ .compatible = "qcom,sdx55-apcs-gcc", .data = &sdx55_apcs_data },
-	{ .compatible = "qcom,bengal-apcs-hmss-global", .data = &bengal_apcs_data },
-	{ .compatible = "qcom,scuba-apcs-hmss-global", .data = &scuba_apcs_data },
-	{ .compatible = "qcom,trinket-apcs-hmss-global", .data = &trinket_apcs_data },
-	{ .compatible = "qcom,qcs605-apcs-shared", .data = &apps_shared_apcs_data },
 	{}
 };
 MODULE_DEVICE_TABLE(of, qcom_apcs_ipc_of_match);

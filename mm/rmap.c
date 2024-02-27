@@ -541,7 +541,6 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page,
 	struct anon_vma *anon_vma = NULL;
 	struct anon_vma *root_anon_vma;
 	unsigned long anon_mapping;
-	bool success = false;
 
 	rcu_read_lock();
 	anon_mapping = (unsigned long)READ_ONCE(page->mapping);
@@ -562,11 +561,6 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page,
 			up_read(&root_anon_vma->rwsem);
 			anon_vma = NULL;
 		}
-		goto out;
-	}
-	trace_android_vh_do_page_trylock(page, NULL, NULL, &success);
-	if (success) {
-		anon_vma = NULL;
 		goto out;
 	}
 
@@ -812,26 +806,14 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		}
 
 		if (pvmw.pte) {
-			trace_android_vh_look_around(&pvmw, page, vma, &referenced);
-			if (lru_gen_enabled() && pte_young(*pvmw.pte) &&
-			    !(vma->vm_flags & (VM_SEQ_READ | VM_RAND_READ))) {
+			if (lru_gen_enabled() && pte_young(*pvmw.pte)) {
 				lru_gen_look_around(&pvmw);
 				referenced++;
 			}
 
 			if (ptep_clear_flush_young_notify(vma, address,
-						pvmw.pte)) {
-				/*
-				 * Don't treat a reference through
-				 * a sequentially read mapping as such.
-				 * If the page has been used in another mapping,
-				 * we will catch it; if this other mapping is
-				 * already gone, the unmap path will have set
-				 * PG_referenced or activated the page.
-				 */
-				if (likely(!(vma->vm_flags & VM_SEQ_READ)))
-					referenced++;
-			}
+						pvmw.pte))
+				referenced++;
 		} else if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE)) {
 			if (pmdp_clear_flush_young_notify(vma, address,
 						pvmw.pmd))
@@ -865,7 +847,20 @@ static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 	struct page_referenced_arg *pra = arg;
 	struct mem_cgroup *memcg = pra->memcg;
 
-	if (!mm_match_cgroup(vma->vm_mm, memcg))
+	/*
+	 * Ignore references from this mapping if it has no recency. If the
+	 * folio has been used in another mapping, we will catch it; if this
+	 * other mapping is already gone, the unmap path will have set the
+	 * referenced flag or activated the folio in zap_pte_range().
+	 */
+	if (!vma_has_recency(vma))
+		return true;
+
+	/*
+	 * If we are reclaiming on behalf of a cgroup, skip counting on behalf
+	 * of references from different cgroups.
+	 */
+	if (memcg && !mm_match_cgroup(vma->vm_mm, memcg))
 		return true;
 
 	return false;
@@ -898,6 +893,7 @@ int page_referenced(struct page *page,
 		.arg = (void *)&pra,
 		.anon_lock = page_lock_anon_vma_read,
 		.try_lock = true,
+		.invalid_vma = invalid_page_referenced_vma,
 	};
 
 	*vm_flags = 0;
@@ -913,15 +909,6 @@ int page_referenced(struct page *page,
 			return 1;
 	}
 
-	/*
-	 * If we are reclaiming on behalf of a cgroup, skip
-	 * counting on behalf of references from different
-	 * cgroups
-	 */
-	if (memcg) {
-		rwc.invalid_vma = invalid_page_referenced_vma;
-	}
-
 	rmap_walk(page, &rwc);
 	*vm_flags = pra.vm_flags;
 
@@ -930,7 +917,6 @@ int page_referenced(struct page *page,
 
 	return rwc.contended ? -1 : pra.referenced;
 }
-EXPORT_SYMBOL_GPL(page_referenced);
 
 static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 			    unsigned long address, void *arg)
@@ -1156,7 +1142,6 @@ void do_page_add_anon_rmap(struct page *page,
 {
 	bool compound = flags & RMAP_COMPOUND;
 	bool first;
-	bool success = false;
 
 	if (unlikely(PageKsm(page)))
 		lock_page_memcg(page);
@@ -1170,10 +1155,7 @@ void do_page_add_anon_rmap(struct page *page,
 		mapcount = compound_mapcount_ptr(page);
 		first = atomic_inc_and_test(mapcount);
 	} else {
-		trace_android_vh_update_page_mapcount(page, true, compound,
-							&first, &success);
-		if (!success)
-			first = atomic_inc_and_test(&page->_mapcount);
+		first = atomic_inc_and_test(&page->_mapcount);
 	}
 
 	if (first) {
@@ -1248,8 +1230,6 @@ void page_add_new_anon_rmap(struct page *page,
 void page_add_file_rmap(struct page *page, bool compound)
 {
 	int i, nr = 1;
-	bool first_mapping;
-	bool success = false;
 
 	VM_BUG_ON_PAGE(compound && !PageTransHuge(page), page);
 	lock_page_memcg(page);
@@ -1257,15 +1237,8 @@ void page_add_file_rmap(struct page *page, bool compound)
 		int nr_pages = thp_nr_pages(page);
 
 		for (i = 0, nr = 0; i < nr_pages; i++) {
-			trace_android_vh_update_page_mapcount(&page[i], true,
-					compound, &first_mapping, &success);
-			if ((success)) {
-				if (first_mapping)
-					nr++;
-			} else {
-				if (atomic_inc_and_test(&page[i]._mapcount))
-					nr++;
-			}
+			if (atomic_inc_and_test(&page[i]._mapcount))
+				nr++;
 		}
 		if (!atomic_inc_and_test(compound_mapcount_ptr(page)))
 			goto out;
@@ -1285,15 +1258,8 @@ void page_add_file_rmap(struct page *page, bool compound)
 			if (PageMlocked(page))
 				clear_page_mlock(head);
 		}
-		trace_android_vh_update_page_mapcount(page, true,
-					compound, &first_mapping, &success);
-		if (success) {
-			if (!first_mapping)
-				goto out;
-		} else {
-			if (!atomic_inc_and_test(&page->_mapcount))
-				goto out;
-		}
+		if (!atomic_inc_and_test(&page->_mapcount))
+			goto out;
 	}
 	__mod_lruvec_page_state(page, NR_FILE_MAPPED, nr);
 out:
@@ -1303,8 +1269,6 @@ out:
 static void page_remove_file_rmap(struct page *page, bool compound)
 {
 	int i, nr = 1;
-	bool first_mapping;
-	bool success = false;
 
 	VM_BUG_ON_PAGE(compound && !PageHead(page), page);
 
@@ -1320,15 +1284,8 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 		int nr_pages = thp_nr_pages(page);
 
 		for (i = 0, nr = 0; i < nr_pages; i++) {
-			trace_android_vh_update_page_mapcount(&page[i], false,
-						compound, &first_mapping, &success);
-			if (success) {
-				if (first_mapping)
-					nr++;
-			} else {
-				if (atomic_add_negative(-1, &page[i]._mapcount))
-					nr++;
-			}
+			if (atomic_add_negative(-1, &page[i]._mapcount))
+				nr++;
 		}
 		if (!atomic_add_negative(-1, compound_mapcount_ptr(page)))
 			return;
@@ -1339,15 +1296,8 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 			__mod_lruvec_page_state(page, NR_FILE_PMDMAPPED,
 						-nr_pages);
 	} else {
-		trace_android_vh_update_page_mapcount(page, false,
-					compound, &first_mapping, &success);
-		if (success) {
-			if (!first_mapping)
-				return;
-		} else {
-			if (!atomic_add_negative(-1, &page->_mapcount))
-				return;
-		}
+		if (!atomic_add_negative(-1, &page->_mapcount))
+			return;
 	}
 
 	/*
@@ -1364,8 +1314,6 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 static void page_remove_anon_compound_rmap(struct page *page)
 {
 	int i, nr;
-	bool first_mapping;
-	bool success = false;
 
 	if (!atomic_add_negative(-1, compound_mapcount_ptr(page)))
 		return;
@@ -1385,15 +1333,8 @@ static void page_remove_anon_compound_rmap(struct page *page)
 		 * them are still mapped.
 		 */
 		for (i = 0, nr = 0; i < thp_nr_pages(page); i++) {
-			trace_android_vh_update_page_mapcount(&page[i], false,
-					false, &first_mapping, &success);
-			if (success) {
-				if (first_mapping)
-					nr++;
-			} else {
-				if (atomic_add_negative(-1, &page[i]._mapcount))
-					nr++;
-			}
+			if (atomic_add_negative(-1, &page[i]._mapcount))
+				nr++;
 		}
 
 		/*
@@ -1423,8 +1364,6 @@ static void page_remove_anon_compound_rmap(struct page *page)
  */
 void page_remove_rmap(struct page *page, bool compound)
 {
-	bool first_mapping;
-	bool success = false;
 	lock_page_memcg(page);
 
 	if (!PageAnon(page)) {
@@ -1437,16 +1376,10 @@ void page_remove_rmap(struct page *page, bool compound)
 		goto out;
 	}
 
-	trace_android_vh_update_page_mapcount(page, false,
-					compound, &first_mapping, &success);
-	if (success) {
-		if (!first_mapping)
-			goto out;
-	} else {
-		/* page still mapped by someone else? */
-		if (!atomic_add_negative(-1, &page->_mapcount))
-			goto out;
-	}
+	/* page still mapped by someone else? */
+	if (!atomic_add_negative(-1, &page->_mapcount))
+		goto out;
+
 	/*
 	 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
 	 * these counters are not modified in interrupt context, and
@@ -2067,14 +2000,10 @@ void try_to_migrate(struct page *page, enum ttu_flags flags)
 	if (!PageKsm(page) && PageAnon(page))
 		rwc.invalid_vma = invalid_migration_vma;
 
-	trace_android_vh_set_page_migrating(page);
-
 	if (flags & TTU_RMAP_LOCKED)
 		rmap_walk_locked(page, &rwc);
 	else
 		rmap_walk(page, &rwc);
-
-	trace_android_vh_clear_page_migrating(page);
 }
 
 /*
@@ -2447,7 +2376,6 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	struct address_space *mapping = page_mapping(page);
 	pgoff_t pgoff_start, pgoff_end;
 	struct vm_area_struct *vma;
-	bool got_lock = false, success = false;
 
 	/*
 	 * The page lock not only makes sure that page->mapping cannot
@@ -2463,22 +2391,15 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	pgoff_start = page_to_pgoff(page);
 	pgoff_end = pgoff_start + thp_nr_pages(page) - 1;
 	if (!locked) {
-		trace_android_vh_do_page_trylock(page,
-					&mapping->i_mmap_rwsem, &got_lock, &success);
-		if (success) {
-			if (!got_lock)
-				return;
-		} else {
-			if (i_mmap_trylock_read(mapping))
-				goto lookup;
+		if (i_mmap_trylock_read(mapping))
+			goto lookup;
 
-			if (rwc->try_lock) {
-				rwc->contended = true;
-				return;
-			}
-
-			i_mmap_lock_read(mapping);
+		if (rwc->try_lock) {
+			rwc->contended = true;
+			return;
 		}
+
+		i_mmap_lock_read(mapping);
 	}
 lookup:
 	vma_interval_tree_foreach(vma, &mapping->i_mmap,

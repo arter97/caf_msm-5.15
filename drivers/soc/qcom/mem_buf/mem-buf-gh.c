@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/anon_inodes.h>
@@ -675,9 +675,8 @@ static int mem_buf_alloc_resp_hdlr(void *hdlr_data, void *msg_buf, size_t size, 
 	int ret;
 
 	trace_receive_alloc_resp_msg(alloc_resp);
-	if (!(mem_buf_capability & MEM_BUF_CAP_CONSUMER)) {
+	if (!(mem_buf_capability & MEM_BUF_CAP_CONSUMER))
 		return -EPERM;
-	}
 
 	ret = get_alloc_resp_retval(alloc_resp);
 	if (ret < 0) {
@@ -696,9 +695,8 @@ static void mem_buf_alloc_req_hdlr(void *hdlr_data, void *_buf, size_t size)
 	struct mem_buf_rmt_msg *rmt_msg;
 	void *buf;
 
-	if (!(mem_buf_capability & MEM_BUF_CAP_SUPPLIER)) {
+	if (!(mem_buf_capability & MEM_BUF_CAP_SUPPLIER))
 		return;
-	}
 
 	rmt_msg = kmalloc(sizeof(*rmt_msg), GFP_KERNEL);
 	if (!rmt_msg)
@@ -721,9 +719,8 @@ static void mem_buf_relinquish_hdlr(void *hdlr_data, void *_buf, size_t size)
 	struct mem_buf_rmt_msg *rmt_msg;
 	void *buf;
 
-	if (!(mem_buf_capability & MEM_BUF_CAP_SUPPLIER)) {
+	if (!(mem_buf_capability & MEM_BUF_CAP_SUPPLIER))
 		return;
-	}
 
 	rmt_msg = kmalloc(sizeof(*rmt_msg), GFP_KERNEL);
 	if (!rmt_msg)
@@ -1050,7 +1047,7 @@ void mem_buf_free(void *__membuf)
 	kfree(membuf->acl_desc);
 	kfree(membuf);
 }
-EXPORT_SYMBOL(mem_buf_free);
+EXPORT_SYMBOL_GPL(mem_buf_free);
 
 struct gh_sgl_desc *mem_buf_get_sgl(void *__membuf)
 {
@@ -1058,7 +1055,7 @@ struct gh_sgl_desc *mem_buf_get_sgl(void *__membuf)
 
 	return membuf->sgl_desc;
 }
-EXPORT_SYMBOL(mem_buf_get_sgl);
+EXPORT_SYMBOL_GPL(mem_buf_get_sgl);
 
 static void mem_buf_retrieve_release(struct qcom_sg_buffer *buffer)
 {
@@ -1149,7 +1146,7 @@ err_gh_acl:
 	kfree(buffer);
 	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(mem_buf_retrieve);
+EXPORT_SYMBOL_GPL(mem_buf_retrieve);
 
 static int mem_buf_prep_alloc_data(struct mem_buf_allocation_data *alloc_data,
 				struct mem_buf_alloc_ioctl_arg *allocation_args)

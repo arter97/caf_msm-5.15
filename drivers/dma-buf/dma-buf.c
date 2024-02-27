@@ -349,18 +349,29 @@ static __poll_t dma_buf_poll(struct file *file, poll_table *poll)
 
 static long _dma_buf_set_name(struct dma_buf *dmabuf, const char *name)
 {
+	long ret = 0;
+
+	dma_resv_lock(dmabuf->resv, NULL);
+	if (!list_empty(&dmabuf->attachments)) {
+		ret = -EBUSY;
+		goto out_unlock;
+	}
 	spin_lock(&dmabuf->name_lock);
 	kfree(dmabuf->name);
 	dmabuf->name = name;
 	spin_unlock(&dmabuf->name_lock);
 
-	return 0;
+out_unlock:
+	dma_resv_unlock(dmabuf->resv);
+	return ret;
 }
 
 /**
  * dma_buf_set_name - Set a name to a specific dma_buf to track the usage.
- * It could support changing the name of the dma-buf if the same piece of
- * memory is used for multiple purpose between different devices.
+ * The name of the dma-buf buffer can only be set when the dma-buf is not
+ * attached to any devices. It could theoritically support changing the
+ * name of the dma-buf if the same piece of memory is used for multiple
+ * purpose between different devices.
  *
  * @dmabuf: [in]     dmabuf buffer that will be renamed.
  * @buf:    [in]     A piece of userspace memory that contains the name of
@@ -1259,18 +1270,46 @@ int dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 }
 EXPORT_SYMBOL_GPL(dma_buf_begin_cpu_access);
 
+
+/**
+ * dma_buf_begin_cpu_access_partial - An alternative to dma_buf_begin_cpu_access
+ * which applies to a subset of the buffer instead of the entire buffer. This
+ * can offer better performance than dma_buf_begin_cpu_access if implemented
+ * by an exporter. If an exporter does not implement partial buffer access then
+ * this function will return -EOPNOTSUPP and it is the responsibility of the
+ * caller to fallback to dma_buf_begin_cpu_access or fail entirely.
+ *
+ * @dmabuf:	[in]	buffer to prepare cpu access for.
+ * @direction:	[in]	direction for access.
+ * @offset:	[in]	offset in bytes from beginning of buffer for partial
+			range.
+ * @len:	[in]	length in bytes of partial range beginning at @offset.
+ *
+ * After the cpu access is complete the caller should call
+ * dma_buf_end_cpu_access_partial(). Only when cpu access is bracketed by both
+ * calls is it guaranteed to be coherent with other DMA access.
+ *
+ * This function will also wait for any DMA transactions tracked through
+ * implicit synchronization in &dma_buf.resv. For DMA transactions with explicit
+ * synchronization this function will only ensure cache coherency, callers must
+ * ensure synchronization with such DMA transactions on their own.
+ *
+ * Can return negative error values, returns 0 on success.
+ */
 int dma_buf_begin_cpu_access_partial(struct dma_buf *dmabuf,
 				     enum dma_data_direction direction,
 				     unsigned int offset, unsigned int len)
 {
-	int ret = 0;
+	int ret;
 
 	if (WARN_ON(!dmabuf))
 		return -EINVAL;
 
-	if (dmabuf->ops->begin_cpu_access_partial)
-		ret = dmabuf->ops->begin_cpu_access_partial(dmabuf, direction,
-							    offset, len);
+	if (!dmabuf->ops->begin_cpu_access_partial)
+		return -EOPNOTSUPP;
+
+	ret = dmabuf->ops->begin_cpu_access_partial(dmabuf, direction,
+						    offset, len);
 
 	/* Ensure that all fences are waited upon - but we first allow
 	 * the native handler the chance to do so more efficiently if it
@@ -1311,19 +1350,35 @@ int dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 }
 EXPORT_SYMBOL_GPL(dma_buf_end_cpu_access);
 
+/**
+ * dma_buf_end_cpu_access_partial - An alternative to dma_buf_end_cpu_access
+ * which applies to a subset of the buffer instead of the entire buffer. This
+ * can offer better performance than dma_buf_end_cpu_access if implemented
+ * by an exporter. If an exporter does not implement partial buffer access then
+ * this function will return -EOPNOTSUPP and it is the responsibility of the
+ * caller to fallback to dma_buf_end_cpu_access or fail entirely.
+ *
+ * @dmabuf:	[in]	buffer to complete cpu access for.
+ * @direction:	[in]	direction for access.
+ * @offset:	[in]	offset in bytes from beginning of buffer for partial
+			range.
+ * @len:	[in]	length in bytes of partial range beginning at @offset.
+ *
+ * This terminates CPU access started with dma_buf_begin_cpu_access_partial().
+ *
+ * Can return negative error values, returns 0 on success.
+ */
 int dma_buf_end_cpu_access_partial(struct dma_buf *dmabuf,
 				   enum dma_data_direction direction,
 				   unsigned int offset, unsigned int len)
 {
-	int ret = 0;
-
 	WARN_ON(!dmabuf);
 
-	if (dmabuf->ops->end_cpu_access_partial)
-		ret = dmabuf->ops->end_cpu_access_partial(dmabuf, direction,
-							  offset, len);
+	if (!dmabuf->ops->end_cpu_access_partial)
+		return -EOPNOTSUPP;
 
-	return ret;
+	return dmabuf->ops->end_cpu_access_partial(dmabuf, direction,
+						   offset, len);
 }
 EXPORT_SYMBOL_GPL(dma_buf_end_cpu_access_partial);
 

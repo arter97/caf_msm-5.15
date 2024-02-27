@@ -31,10 +31,10 @@ static bool md_init_done;
 static struct md_core md_core;
 
 unsigned int md_num_regions;
-EXPORT_SYMBOL(md_num_regions);
+EXPORT_SYMBOL_GPL(md_num_regions);
 
 struct md_elfhdr minidump_elfheader;
-EXPORT_SYMBOL(minidump_elfheader);
+EXPORT_SYMBOL_GPL(minidump_elfheader);
 
 /* Number of pending entries to be added in ToC regions */
 static LIST_HEAD(pending_list);
@@ -96,7 +96,7 @@ void md_add_elf_header(const struct md_region *entry)
 	phdr->p_flags = PF_R | PF_W;
 	minidump_elfheader.elf_offset += shdr->sh_size;
 }
-EXPORT_SYMBOL(md_add_elf_header);
+EXPORT_SYMBOL_GPL(md_add_elf_header);
 
 void md_update_elf_header(int entryno, const struct md_region *entry)
 {
@@ -111,7 +111,7 @@ void md_update_elf_header(int entryno, const struct md_region *entry)
 	phdr->p_vaddr = entry->virt_addr;
 	phdr->p_paddr = entry->phys_addr;
 }
-EXPORT_SYMBOL(md_update_elf_header);
+EXPORT_SYMBOL_GPL(md_update_elf_header);
 
 int msm_minidump_clear_headers(const struct md_region *entry)
 {
@@ -188,7 +188,7 @@ int msm_minidump_clear_headers(const struct md_region *entry)
 	minidump_elfheader.elf_offset -= esize;
 	return 0;
 }
-EXPORT_SYMBOL(msm_minidump_clear_headers);
+EXPORT_SYMBOL_GPL(msm_minidump_clear_headers);
 
 bool msm_minidump_enabled(void)
 {
@@ -199,7 +199,7 @@ bool msm_minidump_enabled(void)
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_minidump_enabled);
+EXPORT_SYMBOL_GPL(msm_minidump_enabled);
 
 int msm_minidump_get_available_region(void)
 {
@@ -210,7 +210,7 @@ int msm_minidump_get_available_region(void)
 
 	return res;
 }
-EXPORT_SYMBOL(msm_minidump_get_available_region);
+EXPORT_SYMBOL_GPL(msm_minidump_get_available_region);
 
 static inline int validate_region(const struct md_region *entry)
 {
@@ -244,7 +244,7 @@ int msm_minidump_update_region(int regno, const struct md_region *entry)
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_minidump_update_region);
+EXPORT_SYMBOL_GPL(msm_minidump_update_region);
 
 int msm_minidump_add_region(const struct md_region *entry)
 {
@@ -272,7 +272,7 @@ int msm_minidump_add_region(const struct md_region *entry)
 out:
 	return ret;
 }
-EXPORT_SYMBOL(msm_minidump_add_region);
+EXPORT_SYMBOL_GPL(msm_minidump_add_region);
 
 int msm_minidump_remove_region(const struct md_region *entry)
 {
@@ -294,7 +294,7 @@ int msm_minidump_remove_region(const struct md_region *entry)
 		printk_deferred("Minidump is broken..disable Minidump collection\n");
 	return ret;
 }
-EXPORT_SYMBOL(msm_minidump_remove_region);
+EXPORT_SYMBOL_GPL(msm_minidump_remove_region);
 
 static int msm_minidump_add_header(void)
 {
@@ -430,7 +430,7 @@ int msm_minidump_driver_probe(const struct md_init_data *data)
 out:
 	return ret;
 }
-EXPORT_SYMBOL(msm_minidump_driver_probe);
+EXPORT_SYMBOL_GPL(msm_minidump_driver_probe);
 
 MODULE_DESCRIPTION("MSM Mini Dump Driver");
 MODULE_LICENSE("GPL v2");

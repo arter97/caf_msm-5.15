@@ -30,7 +30,7 @@ config REGMAP_SPI
 	depends on SPI
 
 config REGMAP_SPMI
-	tristate "Regmap SPMI"
+	tristate
 	depends on SPMI
 
 config REGMAP_W1
@@ -83,3 +83,4 @@ config REGMAP_QTI_DEBUGFS_ALLOW_WRITE
 	  regmap library.  Regmap debugfs write could be risky when accessing
 	  essential hardware components, so it is not recommended to enable this
 	  option on production devices.
+

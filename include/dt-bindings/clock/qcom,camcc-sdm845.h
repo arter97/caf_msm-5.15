@@ -1,7 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DT_BINDINGS_CLK_SDM_CAM_CC_SDM845_H
@@ -88,12 +87,11 @@
 #define CAM_CC_PLL1_OUT_EVEN				77
 #define CAM_CC_PLL2					78
 #define CAM_CC_PLL2_OUT_EVEN				79
-#define CAM_CC_PLL2_OUT_ODD				80
-#define CAM_CC_PLL3					81
-#define CAM_CC_PLL3_OUT_EVEN				82
-#define CAM_CC_SLOW_AHB_CLK_SRC				83
-#define CAM_CC_SOC_AHB_CLK				84
-#define CAM_CC_SYS_TMR_CLK				85
+#define CAM_CC_PLL3					80
+#define CAM_CC_PLL3_OUT_EVEN				81
+#define CAM_CC_SLOW_AHB_CLK_SRC				82
+#define CAM_CC_SOC_AHB_CLK				83
+#define CAM_CC_SYS_TMR_CLK				84
 
 /* CAM_CC Resets */
 #define TITAN_CAM_CC_CCI_BCR				0
@@ -108,11 +106,11 @@
 #define TITAN_CAM_CC_TITAN_TOP_BCR			9
 
 /* CAM_CC GDSCRs */
-#define BPS_GDSC				0
-#define IPE_0_GDSC				1
-#define IPE_1_GDSC				2
-#define IFE_0_GDSC				3
-#define IFE_1_GDSC				4
-#define TITAN_TOP_GDSC				5
+#define BPS_GDSC					0
+#define IPE_0_GDSC					1
+#define IPE_1_GDSC					2
+#define IFE_0_GDSC					3
+#define IFE_1_GDSC					4
+#define TITAN_TOP_GDSC					5
 
 #endif

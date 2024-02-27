@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -47,13 +48,13 @@ void sysstats_register_kgsl_stats_cb(u64 (*cb)(pid_t pid))
 {
 	sysstats_kgsl_get_stats = cb;
 }
-EXPORT_SYMBOL(sysstats_register_kgsl_stats_cb);
+EXPORT_SYMBOL_GPL(sysstats_register_kgsl_stats_cb);
 
 void sysstats_unregister_kgsl_stats_cb(void)
 {
 	sysstats_kgsl_get_stats = sysstats_kgsl_stats;
 }
-EXPORT_SYMBOL(sysstats_unregister_kgsl_stats_cb);
+EXPORT_SYMBOL_GPL(sysstats_unregister_kgsl_stats_cb);
 
 static int sysstats_pre_doit(const struct genl_ops *ops, struct sk_buff *skb,
 			      struct genl_info *info)

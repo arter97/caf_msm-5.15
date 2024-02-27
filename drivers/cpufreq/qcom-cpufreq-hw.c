@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2018, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitfield.h>
@@ -169,7 +169,7 @@ u64 qcom_cpufreq_get_cpu_cycle_counter(int cpu)
 
 	return cycle_counter_ret;
 }
-EXPORT_SYMBOL(qcom_cpufreq_get_cpu_cycle_counter);
+EXPORT_SYMBOL_GPL(qcom_cpufreq_get_cpu_cycle_counter);
 
 static int qcom_cpufreq_hw_target_index(struct cpufreq_policy *policy,
 					unsigned int index)
@@ -638,9 +638,8 @@ static int qcom_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 		}
 
 		data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
-		if (!data) {
+		if (!data)
 			return -ENOMEM;
-		}
 
 		data->soc_data = of_device_get_match_data(&pdev->dev);
 		data->base = base;

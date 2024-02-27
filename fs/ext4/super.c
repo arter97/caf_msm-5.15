@@ -1569,6 +1569,7 @@ static void ext4_get_ino_and_lblk_bits(struct super_block *sb,
 }
 
 static const struct fscrypt_operations ext4_cryptops = {
+	.flags			= FS_CFLG_SUPPORTS_SUBBLOCK_DATA_UNITS,
 	.key_prefix		= "ext4:",
 	.get_context		= ext4_get_context,
 	.set_context		= ext4_set_context,
@@ -4783,11 +4784,6 @@ no_journal:
 				goto failed_mount_wq;
 			}
 		}
-	}
-
-	if (ext4_has_feature_verity(sb) && blocksize != PAGE_SIZE) {
-		ext4_msg(sb, KERN_ERR, "Unsupported blocksize for fs-verity");
-		goto failed_mount_wq;
 	}
 
 	/*

@@ -38,9 +38,7 @@
 #include <linux/uaccess.h>
 #include <linux/export.h>
 #include <trace/events/power.h>
-#undef CREATE_TRACE_POINT
 #include <trace/hooks/power.h>
-
 
 /*
  * locking rule: all changes to constraints or notifiers lists

@@ -319,7 +319,7 @@ int qcom_wdt_pet_suspend(struct device *dev)
 	wdog_data->last_pet = sched_clock();
 	return 0;
 }
-EXPORT_SYMBOL(qcom_wdt_pet_suspend);
+EXPORT_SYMBOL_GPL(qcom_wdt_pet_suspend);
 
 /**
  *  qcom_wdt_pet_resume() - Resumes qcom watchdog after a suspend.
@@ -372,7 +372,7 @@ int qcom_wdt_pet_resume(struct device *dev)
 	wdog_data->last_pet = sched_clock();
 	return 0;
 }
-EXPORT_SYMBOL(qcom_wdt_pet_resume);
+EXPORT_SYMBOL_GPL(qcom_wdt_pet_resume);
 #endif
 
 static void qcom_wdt_reset_on_oops(struct msm_watchdog_data *wdog_dd,
@@ -781,7 +781,7 @@ int qcom_wdt_remove(struct platform_device *pdev)
 	flush_work(&wdog_dd->irq_counts_work);
 	return 0;
 }
-EXPORT_SYMBOL(qcom_wdt_remove);
+EXPORT_SYMBOL_GPL(qcom_wdt_remove);
 
 /**
  * qcom_wdt_trigger_bite - Executes a watchdog bite.
@@ -810,7 +810,7 @@ void qcom_wdt_trigger_bite(void)
 		udelay(1);
 
 }
-EXPORT_SYMBOL(qcom_wdt_trigger_bite);
+EXPORT_SYMBOL_GPL(qcom_wdt_trigger_bite);
 
 static irqreturn_t qcom_wdt_bark_handler(int irq, void *dev_id)
 {
@@ -1040,7 +1040,7 @@ int qcom_wdt_register(struct platform_device *pdev,
 err:
 	return ret;
 }
-EXPORT_SYMBOL(qcom_wdt_register);
+EXPORT_SYMBOL_GPL(qcom_wdt_register);
 
 MODULE_DESCRIPTION("QCOM Watchdog Driver Core");
 MODULE_LICENSE("GPL v2");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -494,7 +495,7 @@ int sysmon_stats_query_hmx_utlization(u32 *hmx_util)
 
 	return ret;
 }
-EXPORT_SYMBOL(sysmon_stats_query_hmx_utlization);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_hmx_utlization);
 /**
  * sysmon_read_hvx_util() - Checks for CDSP power collapse
  * and resets the HVX utilization to zero if dsp is power collapsed.
@@ -554,7 +555,7 @@ int sysmon_stats_query_hvx_utlization(u32 *hvx_util)
 
 	return ret;
 }
-EXPORT_SYMBOL(sysmon_stats_query_hvx_utlization);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_hvx_utlization);
 /**
  * sysmon_stats_query_power_residency() - * API to query requested
  * DSP subsystem power residency.On success, returns power residency
@@ -609,7 +610,7 @@ int sysmon_stats_query_power_residency(enum dsp_id_t dsp_id,
 
 	return ret;
 }
-EXPORT_SYMBOL(sysmon_stats_query_power_residency);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_power_residency);
 /**
  * API to query requested DSP subsystem's Q6 clock and bandwidth.
  * On success, returns Q6 clock and bandwidth statistics in the given
@@ -664,7 +665,7 @@ int sysmon_stats_query_q6_votes(enum dsp_id_t dsp_id,
 
 	return ret;
 }
-EXPORT_SYMBOL(sysmon_stats_query_q6_votes);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_q6_votes);
 
 /*Checks for DSP power collapse and resets the q6 average
  *load to zero if dsp is power collapsed.
@@ -782,7 +783,7 @@ int sysmon_stats_query_q6_load(enum dsp_id_t dsp_id, u32 *q6load_avg)
 	return ret;
 
 }
-EXPORT_SYMBOL(sysmon_stats_query_q6_load);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_q6_load);
 /*
  * API to query requested DSP subsystem sleep stats for
  * LPM and LPI.On success, returns sleep
@@ -894,7 +895,7 @@ int sysmon_stats_query_sleep(enum dsp_id_t dsp_id,
 
 	return ret;
 }
-EXPORT_SYMBOL(sysmon_stats_query_sleep);
+EXPORT_SYMBOL_GPL(sysmon_stats_query_sleep);
 
 
 static int master_adsp_stats_show(struct seq_file *s, void *d)

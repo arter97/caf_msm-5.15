@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2012-2016 Qualcomm Atheros, Inc.
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WIL6210_TXRX_H
@@ -344,8 +343,10 @@ struct vring_rx_mac {
 	u32 d0;
 	u32 d1;
 	u16 w4;
-	u16 pn_15_0;
-	u32 pn_47_16;
+	struct_group_attr(pn, __packed,
+		u16 pn_15_0;
+		u32 pn_47_16;
+	);
 } __packed;
 
 /* Rx descriptor - DMA part
@@ -609,13 +610,6 @@ static inline u8 *wil_skb_get_sa(struct sk_buff *skb)
 	struct ethhdr *eth = (void *)skb->data;
 
 	return eth->h_source;
-}
-
-static inline __be16 wil_skb_get_protocol(struct sk_buff *skb)
-{
-	struct ethhdr *eth = (void *)skb->data;
-
-	return eth->h_proto;
 }
 
 static inline bool wil_need_txstat(struct sk_buff *skb)

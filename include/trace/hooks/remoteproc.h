@@ -9,10 +9,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <linux/remoteproc.h>
-#endif
-
 struct rproc;
 
 /* When recovery succeeds */

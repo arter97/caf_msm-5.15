@@ -2,7 +2,7 @@
 /*
  * Copyright(C) 2016 Linaro Limited. All rights reserved.
  * Author: Mathieu Poirier <mathieu.poirier@linaro.org>
- * Copyright (c) 2022, 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -49,7 +49,8 @@ struct etr_perf_buffer {
 };
 
 /* Convert the perf index to an offset within the ETR buffer */
-#define PERF_IDX2OFF(idx, buf)	((idx) % ((buf)->nr_pages << PAGE_SHIFT))
+#define PERF_IDX2OFF(idx, buf)		\
+		((idx) % ((unsigned long)(buf)->nr_pages << PAGE_SHIFT))
 
 /* Lower limit for ETR hardware buffer */
 #define TMC_ETR_PERF_MIN_BUF_SIZE	SZ_1M
@@ -1214,15 +1215,10 @@ tmc_etr_setup_sysfs_buf(struct tmc_drvdata *drvdata)
 	if (!sysfs_buf || (drvdata->out_mode == TMC_ETR_OUT_MODE_MEM &&
 			sysfs_buf->size != drvdata->size)
 			|| (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
-			sysfs_buf->size != drvdata->usb_data->buf_size)
-			|| (drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE &&
-			sysfs_buf->size != drvdata->pcie_data->buf_size)) {
+			sysfs_buf->size != drvdata->usb_data->buf_size)) {
 
-		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB)
+		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 			return tmc_alloc_etr_buf(drvdata, drvdata->usb_data->buf_size,
-					0, cpu_to_node(0), NULL);
-		else if (drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE) {
-			return tmc_alloc_etr_buf(drvdata, drvdata->pcie_data->buf_size,
 					0, cpu_to_node(0), NULL);
 		} else
 			return tmc_alloc_etr_buf(drvdata, drvdata->size,
@@ -1322,9 +1318,7 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 	 */
 	if ((drvdata->out_mode == TMC_ETR_OUT_MODE_MEM)
 		|| (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
-			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)
-		|| (drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE &&
-			drvdata->pcie_data->pcie_path == TMC_PCIE_SW_PATH)) {
+			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)) {
 
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);
 
@@ -1358,10 +1352,6 @@ static int tmc_enable_etr_sink_sysfs(struct coresight_device *csdev)
 	spin_unlock_irqrestore(&drvdata->spinlock, flags);
 	if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB)
 		ret = tmc_usb_enable(drvdata->usb_data);
-	else if (drvdata->out_mode == TMC_ETR_OUT_MODE_ETH)
-		ret = tmc_eth_enable(drvdata->eth_data);
-	else if (drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE)
-		ret = tmc_pcie_enable(drvdata->pcie_data);
 
 	if (ret) {
 		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
@@ -1415,7 +1405,7 @@ alloc_etr_buf(struct tmc_drvdata *drvdata, struct perf_event *event,
 	 * than the size requested via sysfs.
 	 */
 	if ((nr_pages << PAGE_SHIFT) > drvdata->size) {
-		etr_buf = tmc_alloc_etr_buf(drvdata, (nr_pages << PAGE_SHIFT),
+		etr_buf = tmc_alloc_etr_buf(drvdata, ((ssize_t)nr_pages << PAGE_SHIFT),
 					    0, node, NULL);
 		if (!IS_ERR(etr_buf))
 			goto done;
@@ -1861,18 +1851,11 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 
 	if (drvdata->out_mode == TMC_ETR_OUT_MODE_MEM ||
 		(drvdata->out_mode == TMC_ETR_OUT_MODE_USB &&
-			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW) ||
-			(drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE &&
-			drvdata->pcie_data->pcie_path == TMC_PCIE_SW_PATH)) {
+			drvdata->usb_data->usb_mode == TMC_ETR_USB_SW)) {
 
-		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB ||
-			drvdata->out_mode == TMC_ETR_OUT_MODE_PCIE) {
+		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 			spin_unlock_irqrestore(&drvdata->spinlock, flags);
-			if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB)
-				tmc_usb_disable(drvdata->usb_data);
-			else
-				tmc_pcie_disable(drvdata->pcie_data);
-
+			tmc_usb_disable(drvdata->usb_data);
 			spin_lock_irqsave(&drvdata->spinlock, flags);
 		}
 		tmc_etr_disable_hw(drvdata, !mode_switch);
@@ -1881,8 +1864,7 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 		spin_unlock_irqrestore(&drvdata->spinlock, flags);
 		tmc_usb_disable(drvdata->usb_data);
 		spin_lock_irqsave(&drvdata->spinlock, flags);
-	} else if (drvdata->out_mode == TMC_ETR_OUT_MODE_ETH)
-		tmc_eth_disable(drvdata->eth_data);
+	}
 
 	/* Dissociate from monitored process. */
 	drvdata->pid = -1;
@@ -1928,24 +1910,6 @@ int tmc_etr_switch_mode(struct tmc_drvdata *drvdata, const char *out_mode)
 		else {
 			dev_err(&drvdata->csdev->dev,
 					"USB mode is not supported.\n");
-			mutex_unlock(&drvdata->mem_lock);
-			return -EINVAL;
-		}
-	} else if (!strcmp(out_mode, str_tmc_etr_out_mode[TMC_ETR_OUT_MODE_ETH])) {
-		if (drvdata->mode_support & BIT(TMC_ETR_OUT_MODE_ETH))
-			new_mode = TMC_ETR_OUT_MODE_ETH;
-		else {
-			dev_err(&drvdata->csdev->dev,
-					"ETH mode is not supported.\n");
-			mutex_unlock(&drvdata->mem_lock);
-			return -EINVAL;
-		}
-	} else if (!strcmp(out_mode, str_tmc_etr_out_mode[TMC_ETR_OUT_MODE_PCIE])) {
-		if (drvdata->mode_support & BIT(TMC_ETR_OUT_MODE_PCIE))
-			new_mode = TMC_ETR_OUT_MODE_PCIE;
-		else {
-			dev_err(&drvdata->csdev->dev,
-					"PCIE mode is not supported.\n");
 			mutex_unlock(&drvdata->mem_lock);
 			return -EINVAL;
 		}

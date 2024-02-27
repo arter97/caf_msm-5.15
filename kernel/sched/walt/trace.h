@@ -986,6 +986,7 @@ TRACE_EVENT(sched_cpu_util,
 
 	TP_fast_assign(
 		struct walt_rq *wrq = (struct walt_rq *) cpu_rq(cpu)->android_vendor_data1;
+
 		__entry->cpu		= cpu;
 		__entry->nr_running	= cpu_rq(cpu)->nr_running;
 		__entry->cpu_util	= cpu_util(cpu);

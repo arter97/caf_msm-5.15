@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "qcom-dcvs-fp: " fmt
@@ -149,7 +150,7 @@ int setup_ddrllcc_fp_device(struct device *dev, struct dcvs_hw *hw,
 
 	return ret;
 }
-EXPORT_SYMBOL(setup_ddrllcc_fp_device);
+EXPORT_SYMBOL_GPL(setup_ddrllcc_fp_device);
 
 #define DDR_BCM_PROP	"qcom,ddr-bcm-name"
 #define LLCC_BCM_PROP	"qcom,llcc-bcm-name"

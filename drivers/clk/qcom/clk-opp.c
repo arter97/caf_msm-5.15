@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2020, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/clk-provider.h>
 #include <linux/kernel.h>
@@ -175,4 +176,4 @@ void clk_hw_populate_clock_opp_table(struct device_node *np, struct clk_hw *hw)
 err_derive_device_list:
 	kfree(device_list);
 }
-EXPORT_SYMBOL(clk_hw_populate_clock_opp_table);
+EXPORT_SYMBOL_GPL(clk_hw_populate_clock_opp_table);

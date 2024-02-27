@@ -9,10 +9,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <linux/timekeeper_internal.h>
-#endif
-
 struct timekeeper;
 
 DECLARE_RESTRICTED_HOOK(android_rvh_tk_based_time_sync,

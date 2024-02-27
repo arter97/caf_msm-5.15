@@ -2,6 +2,7 @@
 /*
  * Copyright 2011 Wolfson Microelectronics plc
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -534,7 +535,7 @@ int regmap_qti_debugfs_register(struct device *dev, struct regmap *regmap)
 {
 	return PTR_ERR_OR_ZERO(regmap_qti_debugfs_add(dev, regmap));
 }
-EXPORT_SYMBOL(regmap_qti_debugfs_register);
+EXPORT_SYMBOL_GPL(regmap_qti_debugfs_register);
 
 /* regmap_qti_debugfs_lock must be held by caller. */
 static void regmap_qti_debugfs_remove(struct regmap_qti_debugfs *debug_map)
@@ -584,7 +585,7 @@ void regmap_qti_debugfs_unregister(struct regmap *regmap)
 	}
 	mutex_unlock(&regmap_qti_debugfs_lock);
 }
-EXPORT_SYMBOL(regmap_qti_debugfs_unregister);
+EXPORT_SYMBOL_GPL(regmap_qti_debugfs_unregister);
 
 /* regmap_qti_debugfs_lock must be held by caller. */
 static void _devm_regmap_qti_debugfs_release(struct device *dev, void *res)
@@ -644,7 +645,7 @@ int devm_regmap_qti_debugfs_register(struct device *dev, struct regmap *regmap)
 
 	return 0;
 }
-EXPORT_SYMBOL(devm_regmap_qti_debugfs_register);
+EXPORT_SYMBOL_GPL(devm_regmap_qti_debugfs_register);
 
 static int devm_regmap_qti_debugfs_match(struct device *dev, void *res,
 					 void *data)
@@ -688,7 +689,7 @@ void devm_regmap_qti_debugfs_unregister(struct regmap *regmap)
 	}
 	mutex_unlock(&regmap_qti_debugfs_lock);
 }
-EXPORT_SYMBOL(devm_regmap_qti_debugfs_unregister);
+EXPORT_SYMBOL_GPL(devm_regmap_qti_debugfs_unregister);
 
 MODULE_DESCRIPTION("Regmap QTI debugfs library");
 MODULE_LICENSE("GPL v2");

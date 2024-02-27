@@ -35,7 +35,6 @@
 #define MAX_PMU_EVS	QCOM_PMU_MAX_EVS
 #define INVALID_ID	0xFF
 static void __iomem *pmu_base;
-static uint32_t phys_cpu[NR_CPUS];
 
 struct cpucp_pmu_ctrs {
 	u32 evctrs[MAX_CPUCP_EVT];
@@ -125,7 +124,7 @@ static inline u64 cached_count_value(struct event_data *ev, u64 event_cached_cou
 	if (amu)
 		return event_cached_count;
 
-	if (cpu_pmu->pmuver >= ID_AA64DFR0_PMUVER_8_5)
+	if (cpu_pmu->pmuver >= ID_AA64DFR0_EL1_PMUVer_V3P5)
 		event_cached_count |= (pmu_long_counter ? BIT(63) : GENMASK(63, 31));
 	else {
 		if (ev->event_id == CYCLE_COUNTER_ID)
@@ -371,7 +370,7 @@ int qcom_get_cpucp_id(u32 event_id, int cpu)
 
 	return event->cid;
 }
-EXPORT_SYMBOL(qcom_get_cpucp_id);
+EXPORT_SYMBOL_GPL(qcom_get_cpucp_id);
 
 int qcom_pmu_event_supported(u32 event_id, int cpu)
 {
@@ -381,13 +380,13 @@ int qcom_pmu_event_supported(u32 event_id, int cpu)
 
 	return PTR_ERR_OR_ZERO(event);
 }
-EXPORT_SYMBOL(qcom_pmu_event_supported);
+EXPORT_SYMBOL_GPL(qcom_pmu_event_supported);
 
 int qcom_pmu_read(int cpu, u32 event_id, u64 *pmu_data)
 {
 	return __qcom_pmu_read(cpu, event_id, pmu_data, false);
 }
-EXPORT_SYMBOL(qcom_pmu_read);
+EXPORT_SYMBOL_GPL(qcom_pmu_read);
 
 int qcom_pmu_read_local(u32 event_id, u64 *pmu_data)
 {
@@ -395,13 +394,13 @@ int qcom_pmu_read_local(u32 event_id, u64 *pmu_data)
 
 	return __qcom_pmu_read(this_cpu, event_id, pmu_data, true);
 }
-EXPORT_SYMBOL(qcom_pmu_read_local);
+EXPORT_SYMBOL_GPL(qcom_pmu_read_local);
 
 int qcom_pmu_read_all(int cpu, struct qcom_pmu_data *data)
 {
 	return __qcom_pmu_read_all(cpu, data, false);
 }
-EXPORT_SYMBOL(qcom_pmu_read_all);
+EXPORT_SYMBOL_GPL(qcom_pmu_read_all);
 
 int qcom_pmu_read_all_local(struct qcom_pmu_data *data)
 {
@@ -409,7 +408,7 @@ int qcom_pmu_read_all_local(struct qcom_pmu_data *data)
 
 	return __qcom_pmu_read_all(this_cpu, data, true);
 }
-EXPORT_SYMBOL(qcom_pmu_read_all_local);
+EXPORT_SYMBOL_GPL(qcom_pmu_read_all_local);
 
 int qcom_pmu_idle_register(struct qcom_pmu_notif_node *idle_node)
 {
@@ -427,7 +426,7 @@ out:
 	spin_unlock(&idle_list_lock);
 	return 0;
 }
-EXPORT_SYMBOL(qcom_pmu_idle_register);
+EXPORT_SYMBOL_GPL(qcom_pmu_idle_register);
 
 int qcom_pmu_idle_unregister(struct qcom_pmu_notif_node *idle_node)
 {
@@ -448,7 +447,7 @@ int qcom_pmu_idle_unregister(struct qcom_pmu_notif_node *idle_node)
 	spin_unlock(&idle_list_lock);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_pmu_idle_unregister);
+EXPORT_SYMBOL_GPL(qcom_pmu_idle_unregister);
 
 static int events_caching_enable(void)
 {
@@ -494,7 +493,7 @@ static int configure_cpucp_map(cpumask_t mask)
 			    is_amu_valid(event->amu_id) || !event->pevent ||
 			    !cpumask_test_cpu(cpu, to_cpumask(&cpucp_map[cid].cpus)))
 				continue;
-			pmu_map[phys_cpu[cpu]][cid] = event->pevent->hw.idx;
+			pmu_map[cpu][cid] = event->pevent->hw.idx;
 		}
 	}
 
@@ -875,17 +874,9 @@ static void load_pmu_counters(void)
 	pr_info("Enabled all perf counters\n");
 }
 
-static void get_mpidr_cpu(void *cpu)
-{
-	u64 mpidr = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
-
-	*((uint32_t *)cpu) = MPIDR_AFFINITY_LEVEL(mpidr, 1);
-}
-
 int rimps_pmu_init(struct scmi_device *sdev)
 {
 	int ret = 0;
-	uint32_t cpu, pcpu;
 
 	if (!sdev || !sdev->handle)
 		return -EINVAL;
@@ -897,11 +888,6 @@ int rimps_pmu_init(struct scmi_device *sdev)
 		return ret;
 	}
 
-	for_each_possible_cpu(cpu) {
-		smp_call_function_single(cpu, get_mpidr_cpu,
-							 &pcpu, true);
-		phys_cpu[cpu] = pcpu;
-	}
 	/*
 	 * If communication with cpucp doesn't succeed here the device memory
 	 * will be de-allocated. Make ops NULL to avoid further scmi calls.
@@ -918,7 +904,7 @@ int rimps_pmu_init(struct scmi_device *sdev)
 
 	return ret;
 }
-EXPORT_SYMBOL(rimps_pmu_init);
+EXPORT_SYMBOL_GPL(rimps_pmu_init);
 
 static int configure_pmu_event(u32 event_id, int amu_id, int cid, int cpu)
 {

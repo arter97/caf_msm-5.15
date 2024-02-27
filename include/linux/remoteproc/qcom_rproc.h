@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
 #ifndef __QCOM_RPROC_H__
 #define __QCOM_RPROC_H__
 
@@ -61,14 +66,6 @@ static inline int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *d
 {
 	return -EINVAL;
 }
-
-
-#endif
-
-#if IS_ENABLED(CONFIG_QCOM_Q6V5_PAS)
-void adsp_set_ops_stop(struct rproc *rproc, bool suspend);
-#else
-static inline void adsp_set_ops_stop(struct rproc *rproc, bool suspend) { }
 #endif
 
 #endif

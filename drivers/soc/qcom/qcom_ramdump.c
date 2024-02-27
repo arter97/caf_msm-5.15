@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -71,7 +71,7 @@ bool dump_enabled(void)
 {
 	return enable_dump_collection;
 }
-EXPORT_SYMBOL(dump_enabled);
+EXPORT_SYMBOL_GPL(dump_enabled);
 
 static ssize_t qcom_devcd_readv(char *buffer, loff_t offset, size_t count,
 			   void *data, size_t datalen)
@@ -142,7 +142,7 @@ int qcom_dump(struct list_head *segs, struct device *dev)
 
 	return qcom_devcd_dump(dev, data, data_size, GFP_KERNEL);
 }
-EXPORT_SYMBOL(qcom_dump);
+EXPORT_SYMBOL_GPL(qcom_dump);
 
 /* Since the elf32 and elf64 identification is identical
  * apart from the class we use elf32 by default.
@@ -227,7 +227,7 @@ int qcom_elf_dump(struct list_head *segs, struct device *dev, unsigned char clas
 
 	return qcom_devcd_dump(dev, data, data_size, GFP_KERNEL);
 }
-EXPORT_SYMBOL(qcom_elf_dump);
+EXPORT_SYMBOL_GPL(qcom_elf_dump);
 
 int qcom_fw_elf_dump(struct firmware *fw, struct device *dev)
 {
@@ -266,7 +266,7 @@ int qcom_fw_elf_dump(struct firmware *fw, struct device *dev)
 	qcom_elf_dump(&head, dev, ELFCLASS32);
 	return 0;
 }
-EXPORT_SYMBOL(qcom_fw_elf_dump);
+EXPORT_SYMBOL_GPL(qcom_fw_elf_dump);
 
 static int ramdump_devnode_init(void)
 {
@@ -351,7 +351,7 @@ fail_out_of_minors:
 	kfree(rd_dev);
 	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(qcom_create_ramdump_device);
+EXPORT_SYMBOL_GPL(qcom_create_ramdump_device);
 
 void qcom_destroy_ramdump_device(void *dev)
 {
@@ -366,7 +366,7 @@ void qcom_destroy_ramdump_device(void *dev)
 	ida_simple_remove(&rd_minor_id, minor);
 	kfree(rd_dev);
 }
-EXPORT_SYMBOL(qcom_destroy_ramdump_device);
+EXPORT_SYMBOL_GPL(qcom_destroy_ramdump_device);
 
 MODULE_DESCRIPTION("Qualcomm Technologies, Inc. Ramdump driver");
 MODULE_LICENSE("GPL v2");

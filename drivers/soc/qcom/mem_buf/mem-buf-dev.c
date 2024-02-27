@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -18,10 +18,10 @@
 #include "mem-buf-ids.h"
 
 struct device *mem_buf_dev;
-EXPORT_SYMBOL(mem_buf_dev);
+EXPORT_SYMBOL_GPL(mem_buf_dev);
 
 unsigned char mem_buf_capability;
-EXPORT_SYMBOL(mem_buf_capability);
+EXPORT_SYMBOL_GPL(mem_buf_capability);
 
 int mem_buf_hyp_assign_table(struct sg_table *sgt, u32 *src_vmid, int source_nelems,
 			     int *dest_vmids, int *dest_perms, int dest_nelems)
@@ -72,7 +72,7 @@ int mem_buf_assign_mem(u32 op, struct sg_table *sgt,
 
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_assign_mem);
+EXPORT_SYMBOL_GPL(mem_buf_assign_mem);
 
 int mem_buf_unassign_mem(struct sg_table *sgt, int *src_vmids,
 			 unsigned int nr_acl_entries,
@@ -95,7 +95,7 @@ int mem_buf_unassign_mem(struct sg_table *sgt, int *src_vmids,
 			       dst_vmid, dst_perm, ARRAY_SIZE(dst_vmid));
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_unassign_mem);
+EXPORT_SYMBOL_GPL(mem_buf_unassign_mem);
 
 static int mem_buf_probe(struct platform_device *pdev)
 {

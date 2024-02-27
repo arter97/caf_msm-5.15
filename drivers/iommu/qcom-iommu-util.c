@@ -117,7 +117,7 @@ int qcom_iommu_generate_dma_regions(struct device *dev,
 	return of_property_walk_each_entry(dev, "qcom,iommu-dma-addr-pool",
 					   &insert_range_cb_data);
 }
-EXPORT_SYMBOL(qcom_iommu_generate_dma_regions);
+EXPORT_SYMBOL_GPL(qcom_iommu_generate_dma_regions);
 
 static int invert_regions(struct list_head *head, struct list_head *inverted)
 {
@@ -221,7 +221,7 @@ void qcom_iommu_generate_resv_regions(struct device *dev,
 
 	list_splice(&resv_regions, head);
 }
-EXPORT_SYMBOL(qcom_iommu_generate_resv_regions);
+EXPORT_SYMBOL_GPL(qcom_iommu_generate_resv_regions);
 
 void qcom_iommu_get_resv_regions(struct device *dev, struct list_head *list)
 {
@@ -230,7 +230,7 @@ void qcom_iommu_get_resv_regions(struct device *dev, struct list_head *list)
 	if (ops && ops->get_resv_regions)
 		ops->get_resv_regions(dev, list);
 }
-EXPORT_SYMBOL(qcom_iommu_get_resv_regions);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_resv_regions);
 
 void qcom_iommu_put_resv_regions(struct device *dev, struct list_head *list)
 {
@@ -239,7 +239,7 @@ void qcom_iommu_put_resv_regions(struct device *dev, struct list_head *list)
 	if (ops && ops->put_resv_regions)
 		ops->put_resv_regions(dev, list);
 }
-EXPORT_SYMBOL(qcom_iommu_put_resv_regions);
+EXPORT_SYMBOL_GPL(qcom_iommu_put_resv_regions);
 
 static int get_addr_range(const __be32 *p, int naddr, int nsize, void *arg)
 {
@@ -296,7 +296,7 @@ int qcom_iommu_get_fast_iova_range(struct device *dev, dma_addr_t *ret_iova_base
 	*ret_iova_end =  max(geometry_range.end, dma_range.end);
 	return 0;
 }
-EXPORT_SYMBOL(qcom_iommu_get_fast_iova_range);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_fast_iova_range);
 
 phys_addr_t qcom_iommu_iova_to_phys_hard(struct iommu_domain *domain,
 				    struct qcom_iommu_atos_txn *txn)
@@ -308,7 +308,7 @@ phys_addr_t qcom_iommu_iova_to_phys_hard(struct iommu_domain *domain,
 
 	return ops->iova_to_phys_hard(domain, txn);
 }
-EXPORT_SYMBOL(qcom_iommu_iova_to_phys_hard);
+EXPORT_SYMBOL_GPL(qcom_iommu_iova_to_phys_hard);
 
 int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir)
 {
@@ -325,7 +325,7 @@ int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir)
 
 	return ops->sid_switch(dev, dir);
 }
-EXPORT_SYMBOL(qcom_iommu_sid_switch);
+EXPORT_SYMBOL_GPL(qcom_iommu_sid_switch);
 
 int qcom_iommu_get_fault_ids(struct iommu_domain *domain,
 			     struct qcom_iommu_fault_ids *f_ids)
@@ -337,7 +337,7 @@ int qcom_iommu_get_fault_ids(struct iommu_domain *domain,
 
 	return ops->get_fault_ids(domain, f_ids);
 }
-EXPORT_SYMBOL(qcom_iommu_get_fault_ids);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_fault_ids);
 
 int qcom_iommu_get_msi_size(struct device *dev, u32 *msi_size)
 {
@@ -358,7 +358,7 @@ int qcom_iommu_get_context_bank_nr(struct iommu_domain *domain)
 
 	return ops->get_context_bank_nr(domain);
 }
-EXPORT_SYMBOL(qcom_iommu_get_context_bank_nr);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_context_bank_nr);
 
 int qcom_iommu_get_asid_nr(struct iommu_domain *domain)
 {
@@ -369,7 +369,7 @@ int qcom_iommu_get_asid_nr(struct iommu_domain *domain)
 
 	return ops->get_asid_nr(domain);
 }
-EXPORT_SYMBOL(qcom_iommu_get_asid_nr);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_asid_nr);
 
 int qcom_iommu_set_secure_vmid(struct iommu_domain *domain, enum vmid vmid)
 {
@@ -380,7 +380,7 @@ int qcom_iommu_set_secure_vmid(struct iommu_domain *domain, enum vmid vmid)
 
 	return ops->set_secure_vmid(domain, vmid);
 }
-EXPORT_SYMBOL(qcom_iommu_set_secure_vmid);
+EXPORT_SYMBOL_GPL(qcom_iommu_set_secure_vmid);
 
 int qcom_iommu_set_fault_model(struct iommu_domain *domain, int fault_model)
 {
@@ -396,7 +396,7 @@ int qcom_iommu_set_fault_model(struct iommu_domain *domain, int fault_model)
 
 	return ops->set_fault_model(domain, fault_model);
 }
-EXPORT_SYMBOL(qcom_iommu_set_fault_model);
+EXPORT_SYMBOL_GPL(qcom_iommu_set_fault_model);
 
 int qcom_iommu_enable_s1_translation(struct iommu_domain *domain)
 {
@@ -407,7 +407,7 @@ int qcom_iommu_enable_s1_translation(struct iommu_domain *domain)
 
 	return ops->enable_s1_translation(domain);
 }
-EXPORT_SYMBOL(qcom_iommu_enable_s1_translation);
+EXPORT_SYMBOL_GPL(qcom_iommu_enable_s1_translation);
 
 int qcom_iommu_get_mappings_configuration(struct iommu_domain *domain)
 {
@@ -418,7 +418,7 @@ int qcom_iommu_get_mappings_configuration(struct iommu_domain *domain)
 
 	return ops->get_mappings_configuration(domain);
 }
-EXPORT_SYMBOL(qcom_iommu_get_mappings_configuration);
+EXPORT_SYMBOL_GPL(qcom_iommu_get_mappings_configuration);
 
 struct io_pgtable_ops *qcom_alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 				struct qcom_io_pgtable_info *pgtbl_info,
@@ -453,7 +453,7 @@ struct io_pgtable_ops *qcom_alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 
 	return &iop->ops;
 }
-EXPORT_SYMBOL(qcom_alloc_io_pgtable_ops);
+EXPORT_SYMBOL_GPL(qcom_alloc_io_pgtable_ops);
 
 void qcom_free_io_pgtable_ops(struct io_pgtable_ops *ops)
 {
@@ -484,7 +484,7 @@ void qcom_free_io_pgtable_ops(struct io_pgtable_ops *ops)
 	io_pgtable_tlb_flush_all(iop);
 	fns->free(iop);
 }
-EXPORT_SYMBOL(qcom_free_io_pgtable_ops);
+EXPORT_SYMBOL_GPL(qcom_free_io_pgtable_ops);
 
 /*
  * These tables must have the same length.

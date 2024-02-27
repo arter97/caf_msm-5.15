@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021,2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -235,7 +235,7 @@ void qcom_io_pgtable_free_page(struct page *page)
 {
 	free_page_to_pool(page);
 }
-EXPORT_SYMBOL(qcom_io_pgtable_free_page);
+EXPORT_SYMBOL_GPL(qcom_io_pgtable_free_page);
 
 static unsigned long io_pgtable_alloc_count_objects(struct shrinker *shrinker,
 						    struct shrink_control *sc)

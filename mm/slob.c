@@ -477,11 +477,9 @@ static __always_inline void *
 __do_kmalloc_node(size_t size, gfp_t gfp, int node, unsigned long caller)
 {
 	unsigned int *m;
-	unsigned int minalign;
+	int minalign = max_t(size_t, ARCH_KMALLOC_MINALIGN, ARCH_SLAB_MINALIGN);
 	void *ret;
 
-	minalign = max_t(unsigned int, ARCH_KMALLOC_MINALIGN,
-			 arch_slab_minalign());
 	gfp &= gfp_allowed_mask;
 
 	might_alloc(gfp);
@@ -494,7 +492,7 @@ __do_kmalloc_node(size_t size, gfp_t gfp, int node, unsigned long caller)
 		 * kmalloc()'d objects.
 		 */
 		if (is_power_of_2(size))
-			align = max_t(unsigned int, minalign, size);
+			align = max(minalign, (int) size);
 
 		if (!size)
 			return ZERO_SIZE_PTR;
@@ -556,11 +554,8 @@ void kfree(const void *block)
 
 	sp = virt_to_page(block);
 	if (PageSlab(sp)) {
-		unsigned int align = max_t(unsigned int,
-					   ARCH_KMALLOC_MINALIGN,
-					   arch_slab_minalign());
+		int align = max_t(size_t, ARCH_KMALLOC_MINALIGN, ARCH_SLAB_MINALIGN);
 		unsigned int *m = (unsigned int *)(block - align);
-
 		slob_free(m, *m + align);
 	} else {
 		unsigned int order = compound_order(sp);
@@ -576,7 +571,7 @@ EXPORT_SYMBOL(kfree);
 size_t __ksize(const void *block)
 {
 	struct page *sp;
-	unsigned int align;
+	int align;
 	unsigned int *m;
 
 	BUG_ON(!block);
@@ -587,8 +582,7 @@ size_t __ksize(const void *block)
 	if (unlikely(!PageSlab(sp)))
 		return page_size(sp);
 
-	align = max_t(unsigned int, ARCH_KMALLOC_MINALIGN,
-		      arch_slab_minalign());
+	align = max_t(size_t, ARCH_KMALLOC_MINALIGN, ARCH_SLAB_MINALIGN);
 	m = (unsigned int *)(block - align);
 	return SLOB_UNITS(*m) * SLOB_UNIT;
 }

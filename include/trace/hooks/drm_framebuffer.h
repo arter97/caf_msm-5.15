@@ -11,10 +11,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <drm/drm_framebuffer.h>
-#endif
-
 struct drm_framebuffer;
 
 DECLARE_HOOK(android_vh_atomic_remove_fb,

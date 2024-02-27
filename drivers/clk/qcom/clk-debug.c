@@ -325,7 +325,7 @@ const struct clk_ops clk_debug_mux_ops = {
 	.debug_init = clk_debug_measure_add,
 	.init = clk_debug_mux_init,
 };
-EXPORT_SYMBOL(clk_debug_mux_ops);
+EXPORT_SYMBOL_GPL(clk_debug_mux_ops);
 
 static int enable_debug_clks(struct clk_hw *mux)
 {
@@ -502,7 +502,7 @@ void clk_debug_measure_add(struct clk_hw *hw, struct dentry *dentry)
 {
 	debugfs_create_file("clk_measure", 0444, dentry, hw, &clk_measure_fops);
 }
-EXPORT_SYMBOL(clk_debug_measure_add);
+EXPORT_SYMBOL_GPL(clk_debug_measure_add);
 
 
 int devm_clk_register_debug_mux(struct device *pdev, struct clk_debug_mux *mux)
@@ -522,7 +522,7 @@ int devm_clk_register_debug_mux(struct device *pdev, struct clk_debug_mux *mux)
 
 	return 0;
 }
-EXPORT_SYMBOL(devm_clk_register_debug_mux);
+EXPORT_SYMBOL_GPL(devm_clk_register_debug_mux);
 
 int clk_debug_measure_register(struct clk_hw *hw)
 {
@@ -536,7 +536,7 @@ int clk_debug_measure_register(struct clk_hw *hw)
 
 	return 0;
 }
-EXPORT_SYMBOL(clk_debug_measure_register);
+EXPORT_SYMBOL_GPL(clk_debug_measure_register);
 
 /**
  * map_debug_bases - maps each debug mux based on phandle
@@ -573,7 +573,7 @@ int map_debug_bases(struct platform_device *pdev, const char *base,
 
 	return 0;
 }
-EXPORT_SYMBOL(map_debug_bases);
+EXPORT_SYMBOL_GPL(map_debug_bases);
 
 static void clock_print_rate_max_by_level(struct clk_hw *hw,
 					  struct seq_file *s, int level,
@@ -1076,7 +1076,7 @@ int clk_hw_debug_register(struct device *dev, struct clk_hw *clk_hw)
 
 	return 0;
 }
-EXPORT_SYMBOL(clk_hw_debug_register);
+EXPORT_SYMBOL_GPL(clk_hw_debug_register);
 
 int clk_debug_init(void)
 {
@@ -1160,7 +1160,7 @@ void qcom_clk_dump(struct clk *clk, struct regulator *regulator,
 	pr_info("Dumping %s Registers:\n", clk_hw_get_name(hw));
 	WARN_CLK(hw, calltrace, "");
 }
-EXPORT_SYMBOL(qcom_clk_dump);
+EXPORT_SYMBOL_GPL(qcom_clk_dump);
 
 /**
  * qcom_clk_bulk_dump - dump the HW specific registers associated with clocks
@@ -1187,4 +1187,4 @@ void qcom_clk_bulk_dump(int num_clks, struct clk_bulk_data *clks,
 	for (i = 0; i < num_clks; i++)
 		qcom_clk_dump(clks[i].clk, NULL, calltrace);
 }
-EXPORT_SYMBOL(qcom_clk_bulk_dump);
+EXPORT_SYMBOL_GPL(qcom_clk_bulk_dump);

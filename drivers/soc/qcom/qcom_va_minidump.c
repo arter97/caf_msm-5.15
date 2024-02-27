@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "va-minidump: %s: " fmt, __func__
@@ -160,7 +160,7 @@ bool qcom_va_md_enabled(void)
 	 */
 	return msm_minidump_enabled() && smp_load_acquire(&va_md_data.va_md_init);
 }
-EXPORT_SYMBOL(qcom_va_md_enabled);
+EXPORT_SYMBOL_GPL(qcom_va_md_enabled);
 
 int qcom_va_md_register(const char *name, struct notifier_block *nb)
 {
@@ -235,7 +235,7 @@ out:
 	mutex_unlock(&va_md_lock);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_va_md_register);
+EXPORT_SYMBOL_GPL(qcom_va_md_register);
 
 int qcom_va_md_unregister(const char *name, struct notifier_block *nb)
 {
@@ -285,7 +285,7 @@ int qcom_va_md_unregister(const char *name, struct notifier_block *nb)
 	mutex_unlock(&va_md_lock);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_va_md_unregister);
+EXPORT_SYMBOL_GPL(qcom_va_md_unregister);
 
 static void va_md_add_entry(struct va_md_entry *entry)
 {
@@ -462,7 +462,7 @@ int qcom_va_md_add_region(struct va_md_entry *entry)
 
 	return va_md_tree_insert(entry);
 }
-EXPORT_SYMBOL(qcom_va_md_add_region);
+EXPORT_SYMBOL_GPL(qcom_va_md_add_region);
 
 static void qcom_va_md_minidump_registration(void)
 {

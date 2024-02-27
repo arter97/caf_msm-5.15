@@ -151,8 +151,6 @@
 #include <linux/psi.h>
 #include "sched.h"
 
-#include <trace/hooks/psi.h>
-
 static int psi_bug __read_mostly;
 
 DEFINE_STATIC_KEY_FALSE(psi_disabled);
@@ -188,32 +186,10 @@ static DEFINE_PER_CPU(struct psi_group_cpu, system_group_pcpu);
 struct psi_group psi_system = {
 	.pcpu = &system_group_pcpu,
 };
-EXPORT_SYMBOL_GPL(psi_system);
+
 static void psi_avgs_work(struct work_struct *work);
 
 static void poll_timer_fn(struct timer_list *t);
-
-static inline void atomic_set_bit(int i, atomic_t *v)
-{
-	atomic_or(1 << i, v);
-}
-
-static inline void atomic_clear_bit(int i, atomic_t *v)
-{
-	atomic_and(~(1 << i), v);
-}
-
-static inline int atomic_fetch_and_set_bit(int i, atomic_t *v)
-{
-	int mask = 1 << i;
-	return atomic_fetch_or(mask, v) & mask;
-}
-
-static inline int atomic_fetch_and_clear_bit(int i, atomic_t *v)
-{
-	int mask = 1 << i;
-	return atomic_fetch_and(~mask, v) & mask;
-}
 
 static void group_init(struct psi_group *group)
 {
@@ -226,7 +202,7 @@ static void group_init(struct psi_group *group)
 	INIT_DELAYED_WORK(&group->avgs_work, psi_avgs_work);
 	mutex_init(&group->avgs_lock);
 	/* Init trigger-related members */
-	atomic_set(&group->poll_wakeup, 0);
+	atomic_set(&group->poll_scheduled, 0);
 	mutex_init(&group->trigger_lock);
 	INIT_LIST_HEAD(&group->triggers);
 	memset(group->nr_triggers, 0, sizeof(group->nr_triggers));
@@ -578,15 +554,11 @@ static u64 update_triggers(struct psi_group *group, u64 now)
 		if (now < t->last_event_time + t->win.size)
 			continue;
 
-		trace_android_vh_psi_event(t);
-
 		/* Generate an event */
 		if (cmpxchg(&t->event, 0, 1) == 0)
 			wake_up_interruptible(&t->event_wait);
 		t->last_event_time = now;
 	}
-
-	trace_android_vh_psi_group(group);
 
 	if (new_stall)
 		memcpy(group->polling_total, total,
@@ -605,8 +577,7 @@ static void psi_schedule_poll_work(struct psi_group *group, unsigned long delay,
 	 * atomic_xchg should be called even when !force to provide a
 	 * full memory barrier (see the comment inside psi_poll_work).
 	 */
-	if (atomic_fetch_and_set_bit(POLL_SCHEDULED, &group->poll_wakeup) &&
-				     !force)
+	if (atomic_xchg(&group->poll_scheduled, 1) && !force)
 		return;
 
 	rcu_read_lock();
@@ -619,7 +590,7 @@ static void psi_schedule_poll_work(struct psi_group *group, unsigned long delay,
 	if (likely(task))
 		mod_timer(&group->poll_timer, jiffies + delay);
 	else
-		atomic_clear_bit(POLL_SCHEDULED, &group->poll_wakeup);
+		atomic_set(&group->poll_scheduled, 0);
 
 	rcu_read_unlock();
 }
@@ -644,7 +615,7 @@ static void psi_poll_work(struct psi_group *group)
 		 * should be negligible and polling_next_update still keeps
 		 * updates correctly on schedule.
 		 */
-		atomic_clear_bit(POLL_SCHEDULED, &group->poll_wakeup);
+		atomic_set(&group->poll_scheduled, 0);
 		/*
 		 * A task change can race with the poll worker that is supposed to
 		 * report on it. To avoid missing events, ensure ordering between
@@ -711,7 +682,7 @@ static int psi_poll_worker(void *data)
 
 	while (true) {
 		wait_event_interruptible(group->poll_wait,
-				atomic_fetch_and_clear_bit(POLL_WAKEUP, &group->poll_wakeup) ||
+				atomic_cmpxchg(&group->poll_wakeup, 1, 0) ||
 				kthread_should_stop());
 		if (kthread_should_stop())
 			break;
@@ -725,7 +696,7 @@ static void poll_timer_fn(struct timer_list *t)
 {
 	struct psi_group *group = from_timer(group, t, poll_timer);
 
-	atomic_set_bit(POLL_WAKEUP, &group->poll_wakeup);
+	atomic_set(&group->poll_wakeup, 1);
 	wake_up_interruptible(&group->poll_wait);
 }
 
@@ -1209,7 +1180,7 @@ struct psi_trigger *psi_trigger_create(struct psi_group *group,
 			mutex_unlock(&group->trigger_lock);
 			return ERR_CAST(task);
 		}
-		atomic_clear_bit(POLL_WAKEUP, &group->poll_wakeup);
+		atomic_set(&group->poll_wakeup, 0);
 		wake_up_process(task);
 		rcu_assign_pointer(group->poll_task, task);
 	}
@@ -1289,7 +1260,7 @@ void psi_trigger_destroy(struct psi_trigger *t)
 		 * can no longer be found through group->poll_task.
 		 */
 		kthread_stop(task_to_destroy);
-		atomic_clear_bit(POLL_SCHEDULED, &group->poll_wakeup);
+		atomic_set(&group->poll_scheduled, 0);
 	}
 	kfree(t);
 }

@@ -135,19 +135,14 @@
  * the owner value concurrently without lock. Read from owner, however,
  * may not need READ_ONCE() as long as the pointer value is only used
  * for comparison and isn't being dereferenced.
- *
- * Both rwsem_{set,clear}_owner() functions should be in the same
- * preempt disable section as the atomic op that changes sem->count.
  */
 static inline void rwsem_set_owner(struct rw_semaphore *sem)
 {
-	lockdep_assert_preemption_disabled();
 	atomic_long_set(&sem->owner, (long)current);
 }
 
 static inline void rwsem_clear_owner(struct rw_semaphore *sem)
 {
-	lockdep_assert_preemption_disabled();
 	atomic_long_set(&sem->owner, 0);
 }
 
@@ -259,17 +254,14 @@ static inline bool rwsem_read_trylock(struct rw_semaphore *sem, long *cntp)
 static inline bool rwsem_write_trylock(struct rw_semaphore *sem)
 {
 	long tmp = RWSEM_UNLOCKED_VALUE;
-	bool ret = false;
 
-	preempt_disable();
 	if (atomic_long_try_cmpxchg_acquire(&sem->count, &tmp, RWSEM_WRITER_LOCKED)) {
 		trace_android_vh_record_rwsem_lock_starttime(current, jiffies);
 		rwsem_set_owner(sem);
-		ret = true;
+		return true;
 	}
 
-	preempt_enable();
-	return ret;
+	return false;
 }
 
 /*
@@ -1018,8 +1010,6 @@ queue:
 			raw_spin_unlock_irq(&sem->wait_lock);
 			rwsem_set_reader_owned(sem);
 			lockevent_inc(rwsem_rlock_fast);
-			trace_android_vh_record_rwsem_lock_starttime(
-							current, jiffies);
 			return sem;
 		}
 		adjustment += RWSEM_FLAG_WAITERS;
@@ -1095,7 +1085,6 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
 {
 	long count;
 	struct rwsem_waiter waiter;
-	int null_owner_retries;
 	DEFINE_WAKE_Q(wake_q);
 	bool already_on_list = false;
 
@@ -1161,7 +1150,7 @@ wait:
 	/* wait until we successfully acquire the lock */
 	trace_android_vh_rwsem_write_wait_start(sem);
 	set_current_state(state);
-	for (null_owner_retries = 0;;) {
+	for (;;) {
 		if (rwsem_try_write_lock(sem, &waiter)) {
 			/* rwsem_try_write_lock() implies ACQUIRE on success */
 			break;
@@ -1187,21 +1176,8 @@ wait:
 			owner_state = rwsem_spin_on_owner(sem);
 			preempt_enable();
 
-			/*
-			 * owner is NULL doesn't guarantee the lock is free.
-			 * An incoming reader will temporarily increment the
-			 * reader count without changing owner and the
-			 * rwsem_try_write_lock() will fails if the reader
-			 * is not able to decrement it in time. Allow 8
-			 * trylock attempts when hitting a NULL owner before
-			 * going to sleep.
-			 */
-			if ((owner_state == OWNER_NULL) &&
-			    (null_owner_retries < 8)) {
-				null_owner_retries++;
+			if (owner_state == OWNER_NULL)
 				goto trylock_again;
-			}
-			null_owner_retries = 0;
 		}
 
 		schedule();
@@ -1321,8 +1297,8 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 		if (atomic_long_try_cmpxchg_acquire(&sem->count, &tmp,
 						    tmp + RWSEM_READER_BIAS)) {
 			rwsem_set_reader_owned(sem);
-			trace_android_vh_record_rwsem_lock_starttime(current, jiffies);
 			ret = 1;
+			trace_android_vh_record_rwsem_lock_starttime(current, jiffies);
 			break;
 		}
 	}
@@ -1370,6 +1346,7 @@ static inline void __up_read(struct rw_semaphore *sem)
 	DEBUG_RWSEMS_WARN_ON(!is_rwsem_reader_owned(sem), sem);
 
 	preempt_disable();
+	trace_android_vh_record_rwsem_lock_starttime(current, 0);
 	rwsem_clear_reader_owned(sem);
 	tmp = atomic_long_add_return_release(-RWSEM_READER_BIAS, &sem->count);
 	DEBUG_RWSEMS_WARN_ON(tmp < 0, sem);
@@ -1378,7 +1355,6 @@ static inline void __up_read(struct rw_semaphore *sem)
 		clear_nonspinnable(sem);
 		rwsem_wake(sem);
 	}
-	trace_android_vh_record_rwsem_lock_starttime(current, 0);
 	preempt_enable();
 }
 
@@ -1397,13 +1373,11 @@ static inline void __up_write(struct rw_semaphore *sem)
 	DEBUG_RWSEMS_WARN_ON((rwsem_owner(sem) != current) &&
 			    !rwsem_test_oflags(sem, RWSEM_NONSPINNABLE), sem);
 
-	preempt_disable();
+	trace_android_vh_record_rwsem_lock_starttime(current, 0);
 	rwsem_clear_owner(sem);
 	tmp = atomic_long_fetch_add_release(-RWSEM_WRITER_LOCKED, &sem->count);
-	preempt_enable();
 	if (unlikely(tmp & RWSEM_FLAG_WAITERS))
 		rwsem_wake(sem);
-	trace_android_vh_record_rwsem_lock_starttime(current, 0);
 }
 
 /*

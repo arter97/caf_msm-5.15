@@ -854,9 +854,6 @@ struct fuse_conn {
 	/* Propagate syncfs() to server */
 	unsigned int sync_fs:1;
 
-	/* Initialize security xattrs when creating a new inode */
-	unsigned int init_security:1;
-
 	/** BPF Only, no Daemon running */
 	unsigned int no_daemon:1;
 

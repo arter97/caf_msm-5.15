@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/clk-provider.h>
 #include <linux/kernel.h>
@@ -132,7 +133,7 @@ int clk_get_vdd_voltage(struct clk_vdd_class_data *vdd_data, int vdd_level)
 	return corner;
 
 }
-EXPORT_SYMBOL(clk_get_vdd_voltage);
+EXPORT_SYMBOL_GPL(clk_get_vdd_voltage);
 
 /**
  * clk_vote_vdd_level - Add a vote for a given voltage level
@@ -171,7 +172,7 @@ vote_fail:
 	return ret;
 
 }
-EXPORT_SYMBOL(clk_vote_vdd_level);
+EXPORT_SYMBOL_GPL(clk_vote_vdd_level);
 
 /**
  * clk_unvote_vdd_level - Remove a vote for a given voltage level
@@ -208,7 +209,7 @@ unvote_fail:
 
 	return ret;
 }
-EXPORT_SYMBOL(clk_unvote_vdd_level);
+EXPORT_SYMBOL_GPL(clk_unvote_vdd_level);
 
 /**
  * clk_find_vdd_level - Find the voltage level required for a given clock rate.
@@ -251,7 +252,7 @@ int clk_find_vdd_level(struct clk_hw *hw,
 
 	return level;
 }
-EXPORT_SYMBOL(clk_find_vdd_level);
+EXPORT_SYMBOL_GPL(clk_find_vdd_level);
 
 int clk_regulator_init(struct device *dev, const struct qcom_cc_desc *desc)
 {

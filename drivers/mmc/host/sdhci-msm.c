@@ -417,15 +417,15 @@ static void msm_set_clock_rate_for_bus_mode(struct sdhci_host *host,
 	}
 
 	/*
-         * Qualcomm Technologies, Inc. clock drivers by default round
-         * clock _up_ if they can't make the requested rate.  This is not
-         * good for SD.  Yell if we encounter it.
-         */
-        achieved_rate = clk_get_rate(core_clk);
-        if (achieved_rate > desired_rate)
-                pr_debug("%s: Card appears overclocked; req %u Hz, actual %lu Hz\n",
-                        mmc_hostname(host->mmc), desired_rate, achieved_rate);
-        host->mmc->actual_clock = achieved_rate / mult;
+	 * Qualcomm Technologies, Inc. clock drivers by default round
+	 * clock _up_ if they can't make the requested rate.  This is not
+	 * good for SD.  Yell if we encounter it.
+	 */
+	achieved_rate = clk_get_rate(core_clk);
+	if (achieved_rate > desired_rate)
+		pr_debug("%s: Card appears overclocked; req %u Hz, actual %lu Hz\n",
+			mmc_hostname(host->mmc), desired_rate, achieved_rate);
+	host->mmc->actual_clock = achieved_rate / mult;
 	msm_host->clk_rate = desired_rate;
 
 	pr_debug("%s: Setting clock at rate %lu at timing %d\n",
@@ -2544,7 +2544,7 @@ static void sdhci_msm_handle_pwr_irq(struct sdhci_host *host, int irq)
 
 	/*
 	 * The driver has to acknowledge the interrupt, switch voltages and
-	 * report back if it succeded or not to this register. The voltage
+	 * report back if it succeeded or not to this register. The voltage
 	 * switches are handled by the sdhci core, so just report success.
 	 */
 	msm_host_writel(msm_host, irq_ack, host,
@@ -2608,7 +2608,7 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	sdhci_msm_handle_pwr_irq(host, irq);
-	msm_host->pwr_irq_flag = 1;
+	msm_host->pwr_irq_flag = true;
 	sdhci_msm_complete_pwr_irq_wait(msm_host);
 
 	return IRQ_HANDLED;
@@ -2958,7 +2958,6 @@ sdhci_msm_ice_resume(struct sdhci_msm_host *msm_host)
 
 void sdhci_msm_ice_disable(struct sdhci_msm_host *msm_host)
 {
-	return;
 }
 #endif /* !CONFIG_MMC_CRYPTO */
 
@@ -3364,7 +3363,7 @@ static int __sdhci_msm_check_write(struct sdhci_host *host, u16 val, int reg)
 	}
 
 	if (req_type) {
-		msm_host->pwr_irq_flag = 0;
+		msm_host->pwr_irq_flag = false;
 		/*
 		 * Since this register write may trigger a power irq, ensure
 		 * all previous register writes are complete by this point.
@@ -3957,7 +3956,6 @@ static const struct sdhci_msm_variant_info sdm845_sdhci_var = {
 static const struct of_device_id sdhci_msm_dt_match[] = {
 	{.compatible = "qcom,sdhci-msm-v4", .data = &sdhci_msm_mci_var},
 	{.compatible = "qcom,sdhci-msm-v5", .data = &sdhci_msm_v5_var},
-	{.compatible = "qcom,sdm670-sdhci", .data = &sdm845_sdhci_var},
 	{.compatible = "qcom,sdm845-sdhci", .data = &sdm845_sdhci_var},
 	{},
 };
@@ -4024,7 +4022,6 @@ static void sdhci_msm_hw_reset(struct sdhci_host *host)
 	if (host->mmc->card && !pm_suspend_via_firmware())
 		mmc_power_cycle(host->mmc, host->mmc->card->ocr);
 #endif
-	return;
 }
 
 static const struct sdhci_ops sdhci_msm_ops = {

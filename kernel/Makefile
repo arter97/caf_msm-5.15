@@ -10,7 +10,7 @@ obj-y     = fork.o exec_domain.o panic.o \
 	    extable.o params.o \
 	    kthread.o sys_ni.o nsproxy.o \
 	    notifier.o ksysfs.o cred.o reboot.o \
-	    async.o range.o smpboot.o ucount.o regset.o
+	    async.o range.o smpboot.o ucount.o regset.o delayacct.o
 
 obj-$(CONFIG_USERMODE_DRIVER) += usermode_driver.o
 obj-$(CONFIG_MODULES) += kmod.o
@@ -97,10 +97,9 @@ obj-$(CONFIG_HARDLOCKUP_DETECTOR_PERF) += watchdog_hld.o
 obj-$(CONFIG_SECCOMP) += seccomp.o
 obj-$(CONFIG_RELAY) += relay.o
 obj-$(CONFIG_SYSCTL) += utsname_sysctl.o
-obj-$(CONFIG_TASK_DELAY_ACCT) += delayacct.o
 obj-$(CONFIG_TASKSTATS) += taskstats.o tsacct.o
-obj-$(CONFIG_MSM_SYSSTATS) += msm_sysstats.o
 obj-$(CONFIG_TRACEPOINTS) += tracepoint.o
+obj-$(CONFIG_MSM_SYSSTATS) += msm_sysstats.o
 obj-$(CONFIG_LATENCYTOP) += latencytop.o
 obj-$(CONFIG_FUNCTION_TRACER) += trace/
 obj-$(CONFIG_TRACING) += trace/
@@ -164,14 +163,31 @@ clean-files := kheaders_data.tar.xz kheaders.md5
 # ANDROID: GKI: Generate headerfiles required for gki_module.o
 #
 # Dependencies on generated files need to be listed explicitly
-$(obj)/gki_module.o: $(obj)/gki_module_protected.h $(obj)/gki_module_exported.h
+$(obj)/gki_module.o: include/generated/gki_module_protected_exports.h \
+			include/generated/gki_module_unprotected.h
 
-$(obj)/gki_module_protected.h: $(srctree)/android/abi_gki_modules_protected \
+ALL_KMI_SYMBOLS := include/config/abi_gki_kmi_symbols
+
+include/generated/gki_module_unprotected.h: $(ALL_KMI_SYMBOLS) \
 				$(srctree)/scripts/gen_gki_modules_headers.sh
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/gen_gki_modules_headers.sh $@ \
-	"$(srctree)"
+	"$(srctree)" \
+	$(ALL_KMI_SYMBOLS)
 
-$(obj)/gki_module_exported.h: $(srctree)/android/abi_gki_modules_exports \
+# Generate symbol list with union of all symbol list for arm64; empty for others
+$(ALL_KMI_SYMBOLS): $(if $(filter arm64,$(ARCH)),$(wildcard $(srctree)/android/abi_gki_aarch64_*),)
+	$(if $(strip $^),cat $^ > $(ALL_KMI_SYMBOLS), echo "" > $(ALL_KMI_SYMBOLS))
+
+# ABI protected exports list file specific to ARCH if exists else empty
+ABI_PROTECTED_EXPORTS_FILE :=
+ifeq ($(ARCH),arm64)
+	ABI_PROTECTED_EXPORTS_FILE := $(wildcard $(srctree)/android/abi_gki_protected_exports_aarch64)
+else
+	ABI_PROTECTED_EXPORTS_FILE := $(wildcard $(srctree)/android/abi_gki_protected_exports_$(ARCH))
+endif
+
+include/generated/gki_module_protected_exports.h: $(ABI_PROTECTED_EXPORTS_FILE) \
 				$(srctree)/scripts/gen_gki_modules_headers.sh
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/gen_gki_modules_headers.sh $@ \
-	"$(srctree)"
+	"$(srctree)" \
+	$(ABI_PROTECTED_EXPORTS_FILE)

@@ -14,6 +14,7 @@
  * https://lore.kernel.org/lkml/20201017013255.43568-2-john.stultz@linaro.org/
  *
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -549,4 +550,4 @@ struct mem_buf_dma_buf_ops qcom_sg_buf_ops = {
 		.release = qcom_sg_release,
 	}
 };
-EXPORT_SYMBOL(qcom_sg_buf_ops);
+EXPORT_SYMBOL_GPL(qcom_sg_buf_ops);

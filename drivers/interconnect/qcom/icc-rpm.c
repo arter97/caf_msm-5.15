@@ -12,7 +12,7 @@
 #include <dt-bindings/interconnect/qcom,icc.h>
 
 #include "icc-rpm.h"
-#include "qnoc-qos.h"
+#include "qnoc-qos-rpm.h"
 
 static int qcom_icc_rpm_smd_send_msg(int ctx, int rsc_type, int rpm_id, u64 val)
 {
@@ -41,7 +41,7 @@ int qcom_icc_get_bw_stub(struct icc_node *node, u32 *avg, u32 *peak)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_icc_get_bw_stub);
+EXPORT_SYMBOL_GPL(qcom_icc_get_bw_stub);
 
 /**
  * qcom_icc_rpm_pre_aggregate - cleans up stale values from prior icc_set
@@ -59,7 +59,7 @@ void qcom_icc_rpm_pre_aggregate(struct icc_node *node)
 		qn->max_peak[i] = 0;
 	}
 }
-EXPORT_SYMBOL(qcom_icc_rpm_pre_aggregate);
+EXPORT_SYMBOL_GPL(qcom_icc_rpm_pre_aggregate);
 
 /**
  * qcom_icc_rpm_aggregate - aggregate bw for buckets indicated by tag
@@ -97,7 +97,7 @@ int qcom_icc_rpm_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_icc_rpm_aggregate);
+EXPORT_SYMBOL_GPL(qcom_icc_rpm_aggregate);
 
 /**
  * qcom_icc_rpm_set - set the constraints based on path
@@ -246,6 +246,6 @@ int qcom_icc_rpm_set(struct icc_node *src, struct icc_node *dst)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_icc_rpm_set);
+EXPORT_SYMBOL_GPL(qcom_icc_rpm_set);
 
 MODULE_LICENSE("GPL v2");

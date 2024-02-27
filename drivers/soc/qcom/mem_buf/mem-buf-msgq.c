@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/completion.h>
@@ -132,7 +132,7 @@ void *mem_buf_construct_alloc_req(void *mem_buf_txn, size_t alloc_size,
 	trace_send_alloc_req(req);
 	return req_buf;
 }
-EXPORT_SYMBOL(mem_buf_construct_alloc_req);
+EXPORT_SYMBOL_GPL(mem_buf_construct_alloc_req);
 
 /*
  * mem_buf_construct_alloc_resp: Construct a response message to an allocation request.
@@ -160,7 +160,7 @@ void *mem_buf_construct_alloc_resp(void *req_msg, s32 alloc_ret,
 
 	return resp_msg;
 }
-EXPORT_SYMBOL(mem_buf_construct_alloc_resp);
+EXPORT_SYMBOL_GPL(mem_buf_construct_alloc_resp);
 
 /*
  * mem_buf_construct_relinquish_msg: Construct a relinquish message.
@@ -186,7 +186,7 @@ void *mem_buf_construct_relinquish_msg(void *mem_buf_txn, u32 obj_id,
 
 	return relinquish_msg;
 }
-EXPORT_SYMBOL(mem_buf_construct_relinquish_msg);
+EXPORT_SYMBOL_GPL(mem_buf_construct_relinquish_msg);
 
 /*
  * mem_buf_construct_relinquish_resp: Construct a relinquish resp message.
@@ -207,7 +207,7 @@ void *mem_buf_construct_relinquish_resp(void *_msg)
 
 	return resp;
 }
-EXPORT_SYMBOL(mem_buf_construct_relinquish_resp);
+EXPORT_SYMBOL_GPL(mem_buf_construct_relinquish_resp);
 
 int mem_buf_retrieve_txn_id(void *mem_buf_txn)
 {
@@ -215,7 +215,7 @@ int mem_buf_retrieve_txn_id(void *mem_buf_txn)
 
 	return txn->txn_id;
 }
-EXPORT_SYMBOL(mem_buf_retrieve_txn_id);
+EXPORT_SYMBOL_GPL(mem_buf_retrieve_txn_id);
 
 /*
  * mem_buf_init_txn: Allocates a mem-buf transaction that is used in request-response
@@ -250,7 +250,7 @@ void *mem_buf_init_txn(void *mem_buf_msgq_hdl, void *resp_buf)
 
 	return txn;
 }
-EXPORT_SYMBOL(mem_buf_init_txn);
+EXPORT_SYMBOL_GPL(mem_buf_init_txn);
 
 /*
  * mem_buf_msgq_send: Send a mem-buf message over a particular message queue.
@@ -277,7 +277,7 @@ int mem_buf_msgq_send(void *mem_buf_msgq_hdl, void *msg)
 
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_msgq_send);
+EXPORT_SYMBOL_GPL(mem_buf_msgq_send);
 
 /*
  * mem_buf_txn_wait: Wait for a response for a particular request.
@@ -317,7 +317,7 @@ int mem_buf_txn_wait(void *mem_buf_msgq_hdl, void *mem_buf_txn)
 
 	return ret ? ret : txn->txn_ret;
 }
-EXPORT_SYMBOL(mem_buf_txn_wait);
+EXPORT_SYMBOL_GPL(mem_buf_txn_wait);
 
 /*
  * mem_buf_destroy_txn: Releases all resources associated with a mem-buf transaction.
@@ -330,7 +330,7 @@ void mem_buf_destroy_txn(void *mem_buf_msgq_hdl, void *mem_buf_txn)
 
 	kfree(txn);
 }
-EXPORT_SYMBOL(mem_buf_destroy_txn);
+EXPORT_SYMBOL_GPL(mem_buf_destroy_txn);
 
 static void mem_buf_process_alloc_resp(struct mem_buf_msgq_desc *desc, void *buf, size_t size)
 {
@@ -437,11 +437,10 @@ static int mem_buf_msgq_recv_fn(void *data)
 
 	while (!kthread_should_stop()) {
 		ret = gh_msgq_recv(desc->msgq_hdl, buf, GH_MSGQ_MAX_MSG_SIZE_BYTES, &size, 0);
-		if (ret < 0) {
+		if (ret < 0)
 			pr_err_ratelimited("%s failed to receive message rc: %d\n", __func__, ret);
-		} else {
+		else
 			mem_buf_process_msg(desc, buf, size);
-		}
 	}
 
 	kfree(buf);
@@ -498,7 +497,7 @@ err_msgq_register:
 	kfree(desc);
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_msgq_register);
+EXPORT_SYMBOL_GPL(mem_buf_msgq_register);
 
 void mem_buf_msgq_unregister(void *mem_buf_msgq_hdl)
 {
@@ -513,6 +512,6 @@ void mem_buf_msgq_unregister(void *mem_buf_msgq_hdl)
 	mutex_destroy(&desc->idr_mutex);
 	kfree(desc);
 }
-EXPORT_SYMBOL(mem_buf_msgq_unregister);
+EXPORT_SYMBOL_GPL(mem_buf_msgq_unregister);
 
 MODULE_LICENSE("GPL v2");

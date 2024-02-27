@@ -106,7 +106,7 @@
 # define SLAB_ACCOUNT		0
 #endif
 
-#ifdef CONFIG_KASAN
+#ifdef CONFIG_KASAN_GENERIC
 #define SLAB_KASAN		((slab_flags_t __force)0x08000000U)
 #else
 #define SLAB_KASAN		0
@@ -219,18 +219,6 @@ static inline void __check_heap_object(const void *ptr, unsigned long n,
  */
 #ifndef ARCH_SLAB_MINALIGN
 #define ARCH_SLAB_MINALIGN __alignof__(unsigned long long)
-#endif
-
-/*
- * Arches can define this function if they want to decide the minimum slab
- * alignment at runtime. The value returned by the function must be a power
- * of two and >= ARCH_SLAB_MINALIGN.
- */
-#ifndef arch_slab_minalign
-static inline unsigned int arch_slab_minalign(void)
-{
-	return ARCH_SLAB_MINALIGN;
-}
 #endif
 
 /*

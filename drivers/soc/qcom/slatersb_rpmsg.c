@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -19,7 +19,7 @@ void slatersb_channel_init(void (*fn1)(bool), void (*fn2)(void *data, int len))
 	rsb_ops.glink_channel_state = fn1;
 	rsb_ops.rx_msg = fn2;
 }
-EXPORT_SYMBOL(slatersb_channel_init);
+EXPORT_SYMBOL_GPL(slatersb_channel_init);
 
 int slatersb_rpmsg_tx_msg(void  *msg, size_t len)
 {
@@ -41,7 +41,7 @@ int slatersb_rpmsg_tx_msg(void  *msg, size_t len)
 	}
 	return ret;
 }
-EXPORT_SYMBOL(slatersb_rpmsg_tx_msg);
+EXPORT_SYMBOL_GPL(slatersb_rpmsg_tx_msg);
 
 static int slatersb_rpmsg_probe(struct rpmsg_device  *rpdev)
 {

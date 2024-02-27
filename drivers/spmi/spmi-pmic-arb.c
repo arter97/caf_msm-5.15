@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
-/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2012-2015, 2017, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
 
 #include <linux/bitmap.h>
 #include <linux/debugfs.h>
@@ -308,6 +309,7 @@ static int pmic_arb_wait_for_done(struct spmi_controller *ctrl,
 			if (status & PMIC_ARB_STATUS_FAILURE) {
 				dev_err(&ctrl->dev, "%s: %#x %#x: transaction failed (%#x)\n",
 					__func__, sid, addr, status);
+				WARN_ON(1);
 				return -EIO;
 			}
 
@@ -1487,7 +1489,7 @@ int spmi_pmic_arb_map_address(const struct device *dev, u32 spmi_address,
 
 	return _spmi_pmic_arb_map_address(pmic_arb, spmi_address, res_out);
 }
-EXPORT_SYMBOL(spmi_pmic_arb_map_address);
+EXPORT_SYMBOL_GPL(spmi_pmic_arb_map_address);
 
 #ifdef CONFIG_DEBUG_FS
 static int debug_spmi_addr_get(void *data, u64 *val)
@@ -1634,7 +1636,7 @@ static int spmi_pmic_arb_probe(struct platform_device *pdev)
 	}
 
 	core = devm_ioremap(&ctrl->dev, res->start, resource_size(res));
-	if (IS_ERR_OR_NULL(core)) {
+	if (IS_ERR(core)) {
 		err = PTR_ERR(core);
 		goto err_put_ctrl;
 	}

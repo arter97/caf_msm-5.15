@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  */
 
@@ -132,10 +132,8 @@ static int mhi_alloc_aligned_ring(struct mhi_controller *mhi_cntrl,
 				  u64 len)
 {
 	ring->alloc_size = len + (len - 1);
-	ring->pre_aligned = dma_alloc_coherent(mhi_cntrl->cntrl_dev,
-					       ring->alloc_size,
-					       &ring->dma_handle,
-					       GFP_KERNEL);
+	ring->pre_aligned = dma_alloc_coherent(mhi_cntrl->cntrl_dev, ring->alloc_size,
+					       &ring->dma_handle, GFP_KERNEL);
 	if (!ring->pre_aligned)
 		return -ENOMEM;
 
@@ -176,18 +174,15 @@ int mhi_init_irq_setup(struct mhi_controller *mhi_cntrl)
 				   mhi_intvec_threaded_handler,
 				   irq_flags,
 				   "bhi", mhi_cntrl);
-	if (ret) {
-		MHI_ERR(dev, "error requesting to irq:%d, ret=%d\n",
-			mhi_cntrl->irq[0], ret);
+	if (ret)
 		return ret;
-	}
 
 	for (i = 0; i < mhi_cntrl->total_ev_rings; i++, mhi_event++) {
 		if (mhi_event->offload_ev)
 			continue;
 
 		if (mhi_event->irq >= mhi_cntrl->nr_irqs) {
-			MHI_ERR(dev, "irq %d not available for event ring\n",
+			dev_err(dev, "irq %d not available for event ring\n",
 				mhi_event->irq);
 			ret = -EINVAL;
 			goto error_request;
@@ -198,7 +193,7 @@ int mhi_init_irq_setup(struct mhi_controller *mhi_cntrl)
 				  irq_flags,
 				  "mhi", mhi_event);
 		if (ret) {
-			MHI_ERR(dev, "Error requesting irq:%d for ev:%d\n",
+			dev_err(dev, "Error requesting irq:%d for ev:%d\n",
 				mhi_cntrl->irq[mhi_event->irq], i);
 			goto error_request;
 		}
@@ -512,13 +507,13 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 		{ 0, 0, 0 }
 	};
 
-	MHI_VERB(dev, "Initializing MHI registers\n");
+	dev_dbg(dev, "Initializing MHI registers\n");
 
 	/* Read channel db offset */
 	ret = mhi_read_reg_field(mhi_cntrl, base, CHDBOFF, CHDBOFF_CHDBOFF_MASK,
 				 CHDBOFF_CHDBOFF_SHIFT, &val);
 	if (ret) {
-		MHI_ERR(dev, "Unable to read CHDBOFF register\n");
+		dev_err(dev, "Unable to read CHDBOFF register\n");
 		return -EIO;
 	}
 
@@ -541,7 +536,7 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 	ret = mhi_read_reg_field(mhi_cntrl, base, ERDBOFF, ERDBOFF_ERDBOFF_MASK,
 				 ERDBOFF_ERDBOFF_SHIFT, &val);
 	if (ret) {
-		MHI_ERR(dev, "Unable to read ERDBOFF register\n");
+		dev_err(dev, "Unable to read ERDBOFF register\n");
 		return -EIO;
 	}
 
@@ -568,8 +563,6 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 		mhi_write_reg_field(mhi_cntrl, base, reg_info[i].offset,
 				    reg_info[i].mask, reg_info[i].shift,
 				    reg_info[i].val);
-
-	mhi_misc_init_mmio(mhi_cntrl);
 
 	return 0;
 }
@@ -649,7 +642,7 @@ int mhi_init_chan_ctxt(struct mhi_controller *mhi_cntrl,
 
 	tre_ring->rp = tre_ring->wp = tre_ring->base;
 	buf_ring->rp = buf_ring->wp = buf_ring->base;
-	mhi_chan->db_cfg.db_mode = true;
+	mhi_chan->db_cfg.db_mode = 1;
 
 	/* Update to all cores */
 	smp_wmb();
@@ -686,7 +679,7 @@ static int parse_ev_cfg(struct mhi_controller *mhi_cntrl,
 			/* This event ring has a dedicated channel */
 			mhi_event->chan = event_cfg->channel;
 			if (mhi_event->chan >= mhi_cntrl->max_chan) {
-				MHI_ERR(dev,
+				dev_err(dev,
 					"Event Ring channel not available\n");
 				goto error_ev_cfg;
 			}
@@ -695,7 +688,8 @@ static int parse_ev_cfg(struct mhi_controller *mhi_cntrl,
 				&mhi_cntrl->mhi_chan[mhi_event->chan];
 		}
 
-		mhi_event->priority = event_cfg->priority;
+		/* Priority is fixed to 1 for now */
+		mhi_event->priority = 1;
 
 		mhi_event->db_cfg.brstmode = event_cfg->mode;
 		if (MHI_INVALID_BRSTMODE(mhi_event->db_cfg.brstmode))
@@ -715,15 +709,8 @@ static int parse_ev_cfg(struct mhi_controller *mhi_cntrl,
 		case MHI_ER_CTRL:
 			mhi_event->process_event = mhi_process_ctrl_ev_ring;
 			break;
-		case MHI_ER_BW_SCALE:
-			mhi_event->process_event = mhi_process_misc_bw_ev_ring;
-			break;
-		case MHI_ER_TIMESYNC:
-			mhi_event->process_event =
-						mhi_process_misc_tsync_ev_ring;
-			break;
 		default:
-			MHI_ERR(dev, "Event Ring type not supported\n");
+			dev_err(dev, "Event Ring type not supported\n");
 			goto error_ev_cfg;
 		}
 
@@ -776,7 +763,7 @@ static int parse_ch_cfg(struct mhi_controller *mhi_cntrl,
 
 		chan = ch_cfg->num;
 		if (chan >= mhi_cntrl->max_chan) {
-			MHI_ERR(dev, "Channel %d not available\n", chan);
+			dev_err(dev, "Channel %d not available\n", chan);
 			goto error_chan_cfg;
 		}
 
@@ -823,7 +810,7 @@ static int parse_ch_cfg(struct mhi_controller *mhi_cntrl,
 		 * should be DMA_FROM_DEVICE
 		 */
 		if (mhi_chan->pre_alloc && mhi_chan->dir != DMA_FROM_DEVICE) {
-			MHI_ERR(dev, "Invalid channel configuration\n");
+			dev_err(dev, "Invalid channel configuration\n");
 			goto error_chan_cfg;
 		}
 
@@ -833,14 +820,14 @@ static int parse_ch_cfg(struct mhi_controller *mhi_cntrl,
 		 */
 		if ((mhi_chan->dir == DMA_BIDIRECTIONAL ||
 		     mhi_chan->dir == DMA_NONE) && !mhi_chan->offload_ch) {
-			MHI_ERR(dev, "Invalid channel configuration\n");
+			dev_err(dev, "Invalid channel configuration\n");
 			goto error_chan_cfg;
 		}
 
 		if (!mhi_chan->offload_ch) {
 			mhi_chan->db_cfg.brstmode = ch_cfg->doorbell;
 			if (MHI_INVALID_BRSTMODE(mhi_chan->db_cfg.brstmode)) {
-				MHI_ERR(dev, "Invalid Door bell mode\n");
+				dev_err(dev, "Invalid Door bell mode\n");
 				goto error_chan_cfg;
 			}
 		}
@@ -883,14 +870,6 @@ static int parse_config(struct mhi_controller *mhi_cntrl,
 	if (!mhi_cntrl->timeout_ms)
 		mhi_cntrl->timeout_ms = MHI_TIMEOUT_MS;
 
-	mhi_cntrl->rddm_timeout_us = RDDM_TIMEOUT_US;
-	if (config->rddm_timeout_us &&
-		       config->rddm_timeout_us <= RDDM_MAX_TIMEOUT_US)
-		mhi_cntrl->rddm_timeout_us = config->rddm_timeout_us;
-
-	if (config->bhie_offset)
-		mhi_cntrl->bhie = mhi_cntrl->regs + config->bhie_offset;
-
 	mhi_cntrl->bounce_buf = config->use_bounce_buf;
 	mhi_cntrl->buffer_len = config->buf_len;
 	if (!mhi_cntrl->buffer_len)
@@ -916,7 +895,6 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 	struct mhi_chan *mhi_chan;
 	struct mhi_cmd *mhi_cmd;
 	struct mhi_device *mhi_dev;
-	struct device *dev;
 	u32 soc_info;
 	int ret, i;
 
@@ -926,10 +904,6 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 	    !mhi_cntrl->write_reg || !mhi_cntrl->nr_irqs ||
 	    !mhi_cntrl->irq || !mhi_cntrl->reg_len)
 		return -EINVAL;
-
-	/* Initialise BHI and BHIe Offsets*/
-	mhi_cntrl->bhi = NULL;
-	mhi_cntrl->bhie = NULL;
 
 	ret = parse_config(mhi_cntrl, config);
 	if (ret)
@@ -969,13 +943,11 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 
 		mhi_event->mhi_cntrl = mhi_cntrl;
 		spin_lock_init(&mhi_event->lock);
-
-		if (mhi_event->priority == MHI_ER_PRIORITY_HI_SLEEP)
-			INIT_WORK(&mhi_event->work, mhi_process_ev_work);
+		if (mhi_event->data_type == MHI_ER_CTRL)
+			tasklet_init(&mhi_event->task, mhi_ctrl_ev_task,
+				     (ulong)mhi_event);
 		else
-			tasklet_init(&mhi_event->task,
-				     (mhi_event->data_type == MHI_ER_CTRL) ?
-				     mhi_ctrl_ev_task : mhi_ev_task,
+			tasklet_init(&mhi_event->task, mhi_ev_task,
 				     (ulong)mhi_event);
 	}
 
@@ -1035,37 +1007,18 @@ int mhi_register_controller(struct mhi_controller *mhi_cntrl,
 	/* Init wakeup source */
 	device_init_wakeup(&mhi_dev->dev, true);
 
-	mhi_cntrl->mhi_dev = mhi_dev;
-
-	dev = &mhi_cntrl->mhi_dev->dev;
-
-	ret = mhi_misc_register_controller(mhi_cntrl);
-	if (ret) {
-		dev_err(mhi_cntrl->cntrl_dev,
-			"Could not enable miscellaneous features\n");
-		mhi_cntrl->mhi_dev = NULL;
-		goto err_ida_free;
-	}
-
 	ret = device_add(&mhi_dev->dev);
-	if (ret)
-		goto err_misc_release;
-
-	ret = mhi_misc_sysfs_create(mhi_cntrl);
 	if (ret)
 		goto err_release_dev;
 
-	mhi_create_debugfs(mhi_cntrl);
+	mhi_cntrl->mhi_dev = mhi_dev;
 
-	MHI_VERB(dev, "RDDM timeout value, rddm_timeout_us = %x\n",
-					mhi_cntrl->rddm_timeout_us);
+	mhi_create_debugfs(mhi_cntrl);
 
 	return 0;
 
 err_release_dev:
 	put_device(&mhi_dev->dev);
-err_misc_release:
-	mhi_misc_unregister_controller(mhi_cntrl);
 err_ida_free:
 	ida_free(&mhi_controller_ida, mhi_cntrl->index);
 err_destroy_wq:
@@ -1085,18 +1038,6 @@ void mhi_unregister_controller(struct mhi_controller *mhi_cntrl)
 	struct mhi_device *mhi_dev = mhi_cntrl->mhi_dev;
 	struct mhi_chan *mhi_chan = mhi_cntrl->mhi_chan;
 	unsigned int i;
-
-	mhi_misc_unregister_controller(mhi_cntrl);
-	mhi_misc_sysfs_destroy(mhi_cntrl);
-
-	/* Free the memory controller wanted to preserve for BHIe images */
-	if (mhi_cntrl->img_pre_alloc) {
-		mhi_cntrl->img_pre_alloc = false;
-		if (mhi_cntrl->fbc_image)
-			mhi_free_bhie_table(mhi_cntrl, &mhi_cntrl->fbc_image);
-		if (mhi_cntrl->rddm_image)
-			mhi_free_bhie_table(mhi_cntrl, &mhi_cntrl->rddm_image);
-	}
 
 	mhi_destroy_debugfs(mhi_cntrl);
 
@@ -1150,28 +1091,28 @@ int mhi_prepare_for_power_up(struct mhi_controller *mhi_cntrl)
 
 	ret = mhi_read_reg(mhi_cntrl, mhi_cntrl->regs, BHIOFF, &bhi_off);
 	if (ret) {
-		MHI_ERR(dev, "Error getting BHI offset\n");
+		dev_err(dev, "Error getting BHI offset\n");
 		goto error_reg_offset;
 	}
 
 	if (bhi_off >= mhi_cntrl->reg_len) {
-		MHI_ERR(dev, "BHI offset: 0x%x is out of range: 0x%zx\n",
+		dev_err(dev, "BHI offset: 0x%x is out of range: 0x%zx\n",
 			bhi_off, mhi_cntrl->reg_len);
 		ret = -EINVAL;
 		goto error_reg_offset;
 	}
 	mhi_cntrl->bhi = mhi_cntrl->regs + bhi_off;
 
-	if (!mhi_cntrl->bhie && (mhi_cntrl->fbc_download || mhi_cntrl->rddm_size)) {
+	if (mhi_cntrl->fbc_download || mhi_cntrl->rddm_size) {
 		ret = mhi_read_reg(mhi_cntrl, mhi_cntrl->regs, BHIEOFF,
 				   &bhie_off);
 		if (ret) {
-			MHI_ERR(dev, "Error getting BHIE offset\n");
+			dev_err(dev, "Error getting BHIE offset\n");
 			goto error_reg_offset;
 		}
 
 		if (bhie_off >= mhi_cntrl->reg_len) {
-			MHI_ERR(dev,
+			dev_err(dev,
 				"BHIe offset: 0x%x is out of range: 0x%zx\n",
 				bhie_off, mhi_cntrl->reg_len);
 			ret = -EINVAL;
@@ -1213,8 +1154,18 @@ EXPORT_SYMBOL_GPL(mhi_prepare_for_power_up);
 
 void mhi_unprepare_after_power_down(struct mhi_controller *mhi_cntrl)
 {
-	if (mhi_cntrl->rddm_image)
-		mhi_free_bhie_table(mhi_cntrl, &mhi_cntrl->rddm_image);
+	if (mhi_cntrl->fbc_image) {
+		mhi_free_bhie_table(mhi_cntrl, mhi_cntrl->fbc_image);
+		mhi_cntrl->fbc_image = NULL;
+	}
+
+	if (mhi_cntrl->rddm_image) {
+		mhi_free_bhie_table(mhi_cntrl, mhi_cntrl->rddm_image);
+		mhi_cntrl->rddm_image = NULL;
+	}
+
+	mhi_cntrl->bhi = NULL;
+	mhi_cntrl->bhie = NULL;
 
 	mhi_deinit_dev_ctxt(mhi_cntrl);
 }
@@ -1399,7 +1350,6 @@ static int mhi_driver_remove(struct device *dev)
 
 		if ((ch_state[dir] == MHI_CH_STATE_ENABLED ||
 		     ch_state[dir] == MHI_CH_STATE_STOP) &&
-		    mhi_chan->ch_state != MHI_CH_STATE_DISABLED &&
 		    !mhi_chan->offload_ch)
 			mhi_deinit_chan_ctxt(mhi_cntrl, mhi_chan);
 
@@ -1476,14 +1426,12 @@ struct bus_type mhi_bus_type = {
 
 static int __init mhi_init(void)
 {
-	mhi_misc_init();
 	mhi_debugfs_init();
 	return bus_register(&mhi_bus_type);
 }
 
 static void __exit mhi_exit(void)
 {
-	mhi_misc_exit();
 	mhi_debugfs_exit();
 	bus_unregister(&mhi_bus_type);
 }

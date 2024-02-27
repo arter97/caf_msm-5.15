@@ -43,17 +43,17 @@ static u32 get_cpu_asid_bits(void)
 {
 	u32 asid;
 	int fld = cpuid_feature_extract_unsigned_field(read_cpuid(ID_AA64MMFR0_EL1),
-						ID_AA64MMFR0_ASID_SHIFT);
+						ID_AA64MMFR0_EL1_ASIDBITS_SHIFT);
 
 	switch (fld) {
 	default:
 		pr_warn("CPU%d: Unknown ASID size (%d); assuming 8-bit\n",
 					smp_processor_id(),  fld);
 		fallthrough;
-	case 0:
+	case ID_AA64MMFR0_EL1_ASIDBITS_8:
 		asid = 8;
 		break;
-	case 2:
+	case ID_AA64MMFR0_EL1_ASIDBITS_16:
 		asid = 16;
 	}
 
@@ -338,7 +338,12 @@ EXPORT_SYMBOL_GPL(arm64_mm_context_put);
 /* Errata workaround post TTBRx_EL1 update. */
 asmlinkage void post_ttbr_update_workaround(void)
 {
-	return;
+	if (!IS_ENABLED(CONFIG_CAVIUM_ERRATUM_27456))
+		return;
+
+	asm(ALTERNATIVE("nop; nop; nop",
+			"ic iallu; dsb nsh; isb",
+			ARM64_WORKAROUND_CAVIUM_27456));
 }
 
 void cpu_do_switch_mm(phys_addr_t pgd_phys, struct mm_struct *mm)

@@ -41,6 +41,7 @@
  *	Andrew F. Davis <afd@ti.com>
  *
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -318,14 +319,14 @@ int qcom_secure_system_heap_prefetch(struct dma_buf_heap_prefetch_region *region
 {
 	return __qcom_secure_system_heap_resize(regions, nr_regions, false);
 }
-EXPORT_SYMBOL(qcom_secure_system_heap_prefetch);
+EXPORT_SYMBOL_GPL(qcom_secure_system_heap_prefetch);
 
 int qcom_secure_system_heap_drain(struct dma_buf_heap_prefetch_region *regions,
 				  size_t nr_regions)
 {
 	return __qcom_secure_system_heap_resize(regions, nr_regions, true);
 }
-EXPORT_SYMBOL(qcom_secure_system_heap_drain);
+EXPORT_SYMBOL_GPL(qcom_secure_system_heap_drain);
 
 static enum dynamic_pool_callback_ret free_secure_pages(struct dynamic_page_pool *pool,
 							struct list_head *pages,

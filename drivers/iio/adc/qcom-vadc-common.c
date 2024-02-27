@@ -1367,7 +1367,7 @@ void adc_tm_scale_therm_voltage_100k_gen3(struct adc_tm_config *param)
 	if (temp > param->low_thr_temp)
 		param->high_thr_voltage++;
 }
-EXPORT_SYMBOL(adc_tm_scale_therm_voltage_100k_gen3);
+EXPORT_SYMBOL_GPL(adc_tm_scale_therm_voltage_100k_gen3);
 
 int32_t adc_tm_absolute_rthr_gen3(struct adc_tm_config *tm_config)
 {
@@ -1387,7 +1387,7 @@ int32_t adc_tm_absolute_rthr_gen3(struct adc_tm_config *tm_config)
 
 	return 0;
 }
-EXPORT_SYMBOL(adc_tm_absolute_rthr_gen3);
+EXPORT_SYMBOL_GPL(adc_tm_absolute_rthr_gen3);
 
 int qcom_vadc_scale(enum vadc_scale_fn_type scaletype,
 		    const struct vadc_linear_graph *calib_graph,

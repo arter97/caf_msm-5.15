@@ -14,7 +14,6 @@ config ARM64
 	select ARCH_BINFMT_ELF_STATE
 	select ARCH_ENABLE_HUGEPAGE_MIGRATION if HUGETLB_PAGE && MIGRATION
 	select ARCH_ENABLE_MEMORY_HOTPLUG
-	select ARCH_MEMORY_PROBE
 	select ARCH_ENABLE_MEMORY_HOTREMOVE
 	select ARCH_ENABLE_SPLIT_PMD_PTLOCK if PGTABLE_LEVELS > 2
 	select ARCH_ENABLE_THP_MIGRATION if TRANSPARENT_HUGEPAGE
@@ -32,6 +31,7 @@ config ARM64
 	select ARCH_HAS_KEEPINITRD
 	select ARCH_HAS_MEMBARRIER_SYNC_CORE
 	select ARCH_HAS_MEM_ENCRYPT
+	select ARCH_HAS_MEM_RELINQUISH
 	select ARCH_HAS_NON_OVERLAPPING_ADDRESS_SPACE
 	select ARCH_HAS_PTE_DEVMAP
 	select ARCH_HAS_PTE_SPECIAL
@@ -141,6 +141,7 @@ config ARM64
 	select GENERIC_VDSO_TIME_NS
 	select HANDLE_DOMAIN_IRQ
 	select HARDIRQS_SW_RESEND
+	select HAVE_MOD_ARCH_SPECIFIC if (ARM64_MODULE_PLTS || KVM)
 	select HAVE_MOVE_PMD
 	select HAVE_MOVE_PUD
 	select HAVE_PCI
@@ -156,6 +157,8 @@ config ARM64
 	select HAVE_ARCH_KASAN_VMALLOC if HAVE_ARCH_KASAN
 	select HAVE_ARCH_KASAN_SW_TAGS if HAVE_ARCH_KASAN
 	select HAVE_ARCH_KASAN_HW_TAGS if (HAVE_ARCH_KASAN && ARM64_MTE)
+	# Some instrumentation may be unsound, hence EXPERT
+	select HAVE_ARCH_KCSAN if EXPERT
 	select HAVE_ARCH_KFENCE
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_MMAP_RND_BITS
@@ -358,6 +361,9 @@ config KASAN_SHADOW_OFFSET
 	default 0xeffffff800000000 if ARM64_VA_BITS_36 && KASAN_SW_TAGS
 	default 0xffffffffffffffff
 
+config UNWIND_TABLES
+	bool
+
 source "arch/arm64/Kconfig.platforms"
 
 menu "Kernel Features"
@@ -495,6 +501,22 @@ config ARM64_ERRATUM_834220
 
 	  If unsure, say Y.
 
+config ARM64_ERRATUM_1742098
+	bool "Cortex-A57/A72: 1742098: ELR recorded incorrectly on interrupt taken between cryptographic instructions in a sequence"
+	depends on COMPAT
+	default y
+	help
+	  This option removes the AES hwcap for aarch32 user-space to
+	  workaround erratum 1742098 on Cortex-A57 and Cortex-A72.
+
+	  Affected parts may corrupt the AES state if an interrupt is
+	  taken between a pair of AES instructions. These instructions
+	  are only present if the cryptography extensions are present.
+	  All software should have a fallback implementation for CPUs
+	  that don't implement the cryptography extensions.
+
+	  If unsure, say Y.
+
 config ARM64_ERRATUM_845719
 	bool "Cortex-A53: 845719: a load might read incorrect data"
 	depends on COMPAT
@@ -606,7 +628,6 @@ config ARM64_WORKAROUND_REPEAT_TLBI
 
 config ARM64_ERRATUM_2441007
 	bool "Cortex-A55: Completion of affected memory accesses might not be guaranteed by completion of a TLBI"
-	default y
 	select ARM64_WORKAROUND_REPEAT_TLBI
 	help
 	  This option adds a workaround for ARM Cortex-A55 erratum #2441007.
@@ -658,7 +679,6 @@ config ARM64_ERRATUM_1463225
 config ARM64_ERRATUM_1542419
 	bool "Neoverse-N1: workaround mis-ordering of instruction fetches"
 	default y
-	depends on BROKEN # CPU cap re-allocated by Android
 	help
 	  This option adds a workaround for ARM Neoverse-N1 erratum
 	  1542419.
@@ -692,8 +712,18 @@ config ARM64_ERRATUM_1508412
 
 	  If unsure, say Y.
 
-config ARM64_WORKAROUND_TRBE_OVERWRITE_FILL_MODE
-	bool
+config ARM64_ERRATUM_2658417
+	bool "Cortex-A510: 2658417: remove BF16 support due to incorrect result"
+	default y
+	help
+	  This option adds the workaround for ARM Cortex-A510 erratum 2658417.
+	  Affected Cortex-A510 (r0p0 to r1p1) may produce the wrong result for
+	  BFMMLA or VMMLA instructions in rare circumstances when a pair of
+	  A510 CPUs are using shared neon hardware. As the sharing is not
+	  discoverable by the kernel, hide the BF16 HWCAP to indicate that
+	  user-space should not be using these instructions.
+
+	  If unsure, say Y.
 
 config ARM64_ERRATUM_2119858
 	bool "Cortex-A710: 2119858: workaround TRBE overwriting trace data in FILL mode"
@@ -805,7 +835,6 @@ config ARM64_ERRATUM_2224489
 
 config ARM64_ERRATUM_2441009
 	bool "Cortex-A510: Completion of affected memory accesses might not be guaranteed by completion of a TLBI"
-	default y
 	select ARM64_WORKAROUND_REPEAT_TLBI
 	help
 	  This option adds a workaround for ARM Cortex-A510 erratum #2441009.
@@ -836,6 +865,9 @@ config ARM64_ERRATUM_2457168
 	  is the same to firmware disabling affected counters.
 
 	  If unsure, say Y.
+
+config ARM64_WORKAROUND_TRBE_OVERWRITE_FILL_MODE
+	bool
 
 config CAVIUM_ERRATUM_22375
 	bool "Cavium erratum 22375, 24313"
@@ -876,7 +908,6 @@ config CAVIUM_ERRATUM_23154
 config CAVIUM_ERRATUM_27456
 	bool "Cavium erratum 27456: Broadcast TLBI instructions may cause icache corruption"
 	default y
-	depends on BROKEN # CPU cap re-allocated by Android
 	help
 	  On ThunderX T88 pass 1.x through 2.1 parts, broadcast TLBI
 	  instructions may cause the icache to become corrupted if it
@@ -888,7 +919,6 @@ config CAVIUM_ERRATUM_27456
 config CAVIUM_ERRATUM_30115
 	bool "Cavium erratum 30115: Guest may disable interrupts in host"
 	default y
-	depends on BROKEN # CPU cap re-allocated by Android
 	help
 	  On ThunderX T88 pass 1.x through 2.2, T81 pass 1.0 through
 	  1.2, and T83 Pass 1.0, KVM guest execution may disable
@@ -900,7 +930,6 @@ config CAVIUM_ERRATUM_30115
 config CAVIUM_TX2_ERRATUM_219
 	bool "Cavium ThunderX2 erratum 219: PRFM between TTBR change and ISB fails"
 	default y
-	depends on BROKEN # CPU caps re-allocated by Android
 	help
 	  On Cavium ThunderX2, a load, store or prefetch instruction between a
 	  TTBR update and the corresponding context synchronizing operation can
@@ -1002,6 +1031,23 @@ config SOCIONEXT_SYNQUACER_PREITS
 	help
 	  Socionext Synquacer SoCs implement a separate h/w block to generate
 	  MSI doorbell writes with non-zero values for the device ID.
+
+	  If unsure, say Y.
+
+config ANDROID_ARM64_WORKAROUND_DMA_BEYOND_POC
+	bool "Remove cacheable aliases of non-cacheable DMA buffers at stage-2"
+	default y
+	depends on KVM
+	help
+	  Some SoCs integrate non-coherent DMA-capable peripherals beyond
+	  the Point of Coherency (PoC), resulting in loss of coherency
+	  with non-cacheable mappings on the CPU in the presence of a
+	  cacheable alias.
+
+	  This workaround provides a mechanism (controlled by the kernel
+	  command-line) to remap pages as non-cacheable in pKVM's stage-2
+	  mapping for the host, thereby removing any cacheable aliases
+	  that may be present in the stage-1 mapping.
 
 	  If unsure, say Y.
 
@@ -1134,18 +1180,6 @@ config ARM64_PA_BITS
 	default 48 if ARM64_PA_BITS_48
 	default 52 if ARM64_PA_BITS_52
 
-config ARM64_MEMMAP_ON_MEMORY
-	bool "Support memmap_on_memory"
-	default n
-	depends on MHP_MEMMAP_ON_MEMORY
-	depends on !HUGETLB_PAGE
-	help
-	  Adjust the ARM64 section size such that the size of the
-	  struct page array (the memmap) for a memory block is aligned to
-	  pageblock_nr_pages. When hotplugging memory, this allows the
-	  memmap to be allocated from within the new memory block thus
-	  reducing pressure on existing memory blocks.
-
 choice
 	prompt "Endianness"
 	default CPU_LITTLE_ENDIAN
@@ -1167,14 +1201,6 @@ config CPU_LITTLE_ENDIAN
 	  This is usually the case for distributions targeting arm64.
 
 endchoice
-
-config ARM64_KMALLOC64
-	bool "Use kmalloc-64"
-	help
-	  Some ARM64 cpus may use a 64 byte cacheline instead of 128 byte.
-	  This allows the smallest kmalloc cache to be 64 bytes, which
-	  can save memory for allocations smaller than 64 bytes.
-	  Say N if unsure.
 
 config SCHED_MC
 	bool "Multi-core scheduler support"
@@ -1246,17 +1272,6 @@ config ARCH_SPARSEMEM_ENABLE
 config HW_PERF_EVENTS
 	def_bool y
 	depends on ARM_PMU
-
-config ARCH_MEMORY_PROBE
-	bool "Enable sysfs memory/probe interface"
-	depends on MEMORY_HOTPLUG
-	help
-	  This option enables a sysfs memory/probe interface for testing.
-	  See Documentation/admin-guide/mm/memory-hotplug.rst for more information.
-	  If you are unsure how to answer this question, answer N.
-
-	  Add userspace sysfs memory probe interface /sys/device/system/memory/probe.
-	  Write physical address to this interface to probe memory.
 
 # Supported by clang >= 7.0
 config CC_HAVE_SHADOW_CALL_STACK
@@ -1880,6 +1895,7 @@ config ARM64_MTE
 	depends on AS_HAS_LSE_ATOMICS
 	# Required for tag checking in the uaccess routines
 	depends on ARM64_PAN
+	select ARCH_HAS_SUBPAGE_FAULTS
 	select ARCH_USES_HIGH_VMA_FLAGS
 	help
 	  Memory Tagging (part of the ARMv8.5 Extensions) provides
@@ -1951,7 +1967,6 @@ config ARM64_SVE
 config ARM64_MODULE_PLTS
 	bool "Use PLTs to allow module memory to spill over into vmalloc area"
 	depends on MODULES
-	select HAVE_MOD_ARCH_SPECIFIC
 	help
 	  Allocate PLTs when loading modules so that jumps and calls whose
 	  targets are too far away for their relative offsets to be encoded
@@ -2049,6 +2064,15 @@ config CC_HAVE_STACKPROTECTOR_SYSREG
 config STACKPROTECTOR_PER_TASK
 	def_bool y
 	depends on STACKPROTECTOR && CC_HAVE_STACKPROTECTOR_SYSREG
+
+config UNWIND_PATCH_PAC_INTO_SCS
+	bool "Enable shadow call stack dynamically using code patching"
+	# needs Clang with https://reviews.llvm.org/D111780 incorporated
+	depends on CC_IS_CLANG && CLANG_VERSION >= 150000
+	depends on ARM64_PTR_AUTH_KERNEL && CC_HAS_BRANCH_PROT_PAC_RET
+	depends on SHADOW_CALL_STACK
+	select UNWIND_TABLES
+	select DYNAMIC_SCS
 
 endmenu
 
@@ -2169,8 +2193,6 @@ endmenu
 source "drivers/acpi/Kconfig"
 
 source "arch/arm64/kvm/Kconfig"
-
-source "arch/arm64/gunyah/Kconfig"
 
 if CRYPTO
 source "arch/arm64/crypto/Kconfig"

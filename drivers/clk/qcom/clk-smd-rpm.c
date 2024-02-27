@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk-provider.h>
@@ -833,16 +833,11 @@ static const struct rpm_smd_clk_desc rpm_clk_msm8996 = {
 	.num_clks = ARRAY_SIZE(msm8996_clks),
 };
 
-/* QCS404 */
-DEFINE_CLK_SMD_RPM_BRANCH(qcs404, bi_tcxo, bi_tcxo_ao,
-					QCOM_SMD_RPM_MISC_CLK, 0, 19200000);
 DEFINE_CLK_SMD_RPM(qcs404, bimc_gpu_clk, bimc_gpu_a_clk, QCOM_SMD_RPM_MEM_CLK, 2);
 DEFINE_CLK_SMD_RPM(qcs404, qpic_clk, qpic_a_clk, QCOM_SMD_RPM_QPIC_CLK, 0);
 DEFINE_CLK_SMD_RPM_XO_BUFFER_PINCTRL(qcs404, ln_bb_clk_pin, ln_bb_clk_a_pin, 8);
 
 static struct clk_hw *qcs404_clks[] = {
-	[RPM_SMD_XO_CLK_SRC] = &qcs404_bi_tcxo.hw,
-	[RPM_SMD_XO_A_CLK_SRC] = &qcs404_bi_tcxo_ao.hw,
 	[RPM_SMD_QDSS_CLK] = &msm8916_qdss_clk.hw,
 	[RPM_SMD_QDSS_A_CLK] = &msm8916_qdss_a_clk.hw,
 	[RPM_SMD_PNOC_CLK] = &msm8916_pcnoc_clk.hw,
@@ -1194,46 +1189,6 @@ static const struct rpm_smd_clk_desc rpm_clk_holi = {
 	.num_clks = ARRAY_SIZE(holi_clks),
 };
 
-/* Khaje */
-DEFINE_CLK_SMD_RPM_XO_BUFFER(khaje, rf_clk1, rf_clk1_a, 4);
-DEFINE_CLK_SMD_RPM_XO_BUFFER(khaje, rf_clk2, rf_clk2_a, 5);
-
-static struct clk_hw *khaje_clks[] = {
-	[RPM_SMD_XO_CLK_SRC] = &holi_bi_tcxo.hw,
-	[RPM_SMD_XO_A_CLK_SRC] = &holi_bi_tcxo_ao.hw,
-	[RPM_SMD_SNOC_CLK] = &holi_snoc_clk.hw,
-	[RPM_SMD_SNOC_A_CLK] = &holi_snoc_a_clk.hw,
-	[RPM_SMD_BIMC_CLK] = &holi_bimc_clk.hw,
-	[RPM_SMD_BIMC_A_CLK] = &holi_bimc_a_clk.hw,
-	[RPM_SMD_QDSS_CLK] = &holi_qdss_clk.hw,
-	[RPM_SMD_QDSS_A_CLK] = &holi_qdss_a_clk.hw,
-	[RPM_SMD_RF_CLK1] = &khaje_rf_clk1.hw,
-	[RPM_SMD_RF_CLK1_A] = &khaje_rf_clk1_a.hw,
-	[RPM_SMD_RF_CLK2] = &khaje_rf_clk2.hw,
-	[RPM_SMD_RF_CLK2_A] = &khaje_rf_clk2_a.hw,
-	[RPM_SMD_CNOC_CLK] = &holi_cnoc_clk.hw,
-	[RPM_SMD_CNOC_A_CLK] = &holi_cnoc_a_clk.hw,
-	[RPM_SMD_IPA_CLK] = &holi_ipa_clk.hw,
-	[RPM_SMD_IPA_A_CLK] = &holi_ipa_a_clk.hw,
-	[RPM_SMD_QUP_CLK] = &holi_qup_clk.hw,
-	[RPM_SMD_QUP_A_CLK] = &holi_qup_a_clk.hw,
-	[RPM_SMD_MMRT_CLK] = &holi_mmrt_clk.hw,
-	[RPM_SMD_MMRT_A_CLK] = &holi_mmrt_a_clk.hw,
-	[RPM_SMD_MMNRT_CLK] = &holi_mmnrt_clk.hw,
-	[RPM_SMD_MMNRT_A_CLK] = &holi_mmnrt_a_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_CLK] = &holi_snoc_periph_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_A_CLK] = &holi_snoc_periph_a_clk.hw,
-	[RPM_SMD_SNOC_LPASS_CLK] = &holi_snoc_lpass_clk.hw,
-	[RPM_SMD_SNOC_LPASS_A_CLK] = &holi_snoc_lpass_a_clk.hw,
-	[RPM_SMD_CE1_CLK] = &holi_ce1_clk.hw,
-	[RPM_SMD_CE1_A_CLK] = &holi_ce1_a_clk.hw,
-};
-
-static const struct rpm_smd_clk_desc rpm_clk_khaje = {
-	.clks = khaje_clks,
-	.num_clks = ARRAY_SIZE(khaje_clks),
-};
-
 /* Monaco */
 DEFINE_CLK_SMD_RPM(monaco, cpuss_gnoc_clk, cpuss_gnoc_a_clk,
 						QCOM_SMD_RPM_MEM_CLK, 1);
@@ -1293,100 +1248,6 @@ static const struct rpm_smd_clk_desc rpm_clk_monaco = {
 	.num_clks = ARRAY_SIZE(monaco_clks),
 };
 
-/* Scuba */
-static struct clk_hw *scuba_clks[] = {
-	[RPM_SMD_XO_CLK_SRC] = &holi_bi_tcxo.hw,
-	[RPM_SMD_XO_A_CLK_SRC] = &holi_bi_tcxo_ao.hw,
-	[RPM_SMD_SNOC_CLK] = &holi_snoc_clk.hw,
-	[RPM_SMD_SNOC_A_CLK] = &holi_snoc_a_clk.hw,
-	[RPM_SMD_BIMC_CLK] = &holi_bimc_clk.hw,
-	[RPM_SMD_BIMC_A_CLK] = &holi_bimc_a_clk.hw,
-	[RPM_SMD_QDSS_CLK] = &holi_qdss_clk.hw,
-	[RPM_SMD_QDSS_A_CLK] = &holi_qdss_a_clk.hw,
-	[RPM_SMD_LN_BB_CLK2] = &monaco_ln_bb_clk2.hw,
-	[RPM_SMD_LN_BB_CLK2_A] = &monaco_ln_bb_clk2_a.hw,
-	[RPM_SMD_RF_CLK3] = &monaco_rf_clk3.hw,
-	[RPM_SMD_RF_CLK3_A] = &monaco_rf_clk3_a.hw,
-	[RPM_SMD_CNOC_CLK] = &holi_cnoc_clk.hw,
-	[RPM_SMD_CNOC_A_CLK] = &holi_cnoc_a_clk.hw,
-	[RPM_SMD_IPA_CLK] = &holi_ipa_clk.hw,
-	[RPM_SMD_IPA_A_CLK] = &holi_ipa_a_clk.hw,
-	[RPM_SMD_QUP_CLK] = &holi_qup_clk.hw,
-	[RPM_SMD_QUP_A_CLK] = &holi_qup_a_clk.hw,
-	[RPM_SMD_MMRT_CLK] = &holi_mmrt_clk.hw,
-	[RPM_SMD_MMRT_A_CLK] = &holi_mmrt_a_clk.hw,
-	[RPM_SMD_MMNRT_CLK] = &holi_mmnrt_clk.hw,
-	[RPM_SMD_MMNRT_A_CLK] = &holi_mmnrt_a_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_CLK] = &holi_snoc_periph_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_A_CLK] = &holi_snoc_periph_a_clk.hw,
-	[RPM_SMD_SNOC_LPASS_CLK] = &holi_snoc_lpass_clk.hw,
-	[RPM_SMD_SNOC_LPASS_A_CLK] = &holi_snoc_lpass_a_clk.hw,
-	[RPM_SMD_CE1_CLK] = &holi_ce1_clk.hw,
-	[RPM_SMD_CE1_A_CLK] = &holi_ce1_a_clk.hw,
-	[RPM_SMD_QPIC_CLK] = &qcs404_qpic_clk.hw,
-	[RPM_SMD_QPIC_CLK_A] = &qcs404_qpic_a_clk.hw,
-	[RPM_SMD_HWKM_CLK] = &holi_hwkm_clk.hw,
-	[RPM_SMD_HWKM_A_CLK] = &holi_hwkm_a_clk.hw,
-	[RPM_SMD_PKA_CLK] = &holi_pka_clk.hw,
-	[RPM_SMD_PKA_A_CLK] = &holi_pka_a_clk.hw,
-	[RPM_SMD_BIMC_GPU_CLK] = &monaco_bimc_gpu_clk.hw,
-	[RPM_SMD_BIMC_GPU_A_CLK] = &monaco_bimc_gpu_a_clk.hw,
-	[RPM_SMD_CPUSS_GNOC_CLK] = &monaco_cpuss_gnoc_clk.hw,
-	[RPM_SMD_CPUSS_GNOC_A_CLK] = &monaco_cpuss_gnoc_a_clk.hw,
-};
-
-static const struct rpm_smd_clk_desc rpm_clk_scuba = {
-	.clks = scuba_clks,
-	.num_clks = ARRAY_SIZE(scuba_clks),
-};
-
-/* Trinket */
-
-DEFINE_CLK_SMD_RPM_XO_BUFFER(trinket, ln_bb_clk1, ln_bb_clk1_a, 1);
-DEFINE_CLK_SMD_RPM_XO_BUFFER(trinket, ln_bb_clk2, ln_bb_clk2_a, 2);
-
-static struct clk_hw *trinket_clks[] = {
-	[RPM_SMD_XO_CLK_SRC] = &holi_bi_tcxo.hw,
-	[RPM_SMD_XO_A_CLK_SRC] = &holi_bi_tcxo_ao.hw,
-	[RPM_SMD_SNOC_CLK] = &holi_snoc_clk.hw,
-	[RPM_SMD_SNOC_A_CLK] = &holi_snoc_a_clk.hw,
-	[RPM_SMD_BIMC_CLK] = &holi_bimc_clk.hw,
-	[RPM_SMD_BIMC_A_CLK] = &holi_bimc_a_clk.hw,
-	[RPM_SMD_QDSS_CLK] = &holi_qdss_clk.hw,
-	[RPM_SMD_QDSS_A_CLK] = &holi_qdss_a_clk.hw,
-	[RPM_SMD_RF_CLK1] = &msm8916_rf_clk1.hw,
-	[RPM_SMD_RF_CLK1_A] = &msm8916_rf_clk1_a.hw,
-	[RPM_SMD_RF_CLK2] = &msm8916_rf_clk2.hw,
-	[RPM_SMD_RF_CLK2_A] = &msm8916_rf_clk2_a.hw,
-	[RPM_SMD_LN_BB_CLK1] = &trinket_ln_bb_clk1.hw,
-	[RPM_SMD_LN_BB_CLK1_A] = &trinket_ln_bb_clk1_a.hw,
-	[RPM_SMD_LN_BB_CLK2] = &trinket_ln_bb_clk2.hw,
-	[RPM_SMD_LN_BB_CLK2_A] = &trinket_ln_bb_clk2_a.hw,
-	[RPM_SMD_LN_BB_CLK3] = &sdm660_ln_bb_clk3.hw,
-	[RPM_SMD_LN_BB_CLK3_A] = &sdm660_ln_bb_clk3_a.hw,
-	[RPM_SMD_CNOC_CLK] = &holi_cnoc_clk.hw,
-	[RPM_SMD_CNOC_A_CLK] = &holi_cnoc_a_clk.hw,
-	[RPM_SMD_CE1_CLK] = &holi_ce1_clk.hw,
-	[RPM_SMD_CE1_A_CLK] = &holi_ce1_a_clk.hw,
-	[RPM_SMD_IPA_CLK] = &holi_ipa_clk.hw,
-	[RPM_SMD_IPA_A_CLK] = &holi_ipa_a_clk.hw,
-	[RPM_SMD_QUP_CLK] = &holi_qup_clk.hw,
-	[RPM_SMD_QUP_A_CLK] = &holi_qup_a_clk.hw,
-	[RPM_SMD_MMRT_CLK] = &holi_mmrt_clk.hw,
-	[RPM_SMD_MMRT_A_CLK] = &holi_mmrt_a_clk.hw,
-	[RPM_SMD_MMNRT_CLK] = &holi_mmnrt_clk.hw,
-	[RPM_SMD_MMNRT_A_CLK] = &holi_mmnrt_a_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_CLK] = &holi_snoc_periph_clk.hw,
-	[RPM_SMD_SNOC_PERIPH_A_CLK] = &holi_snoc_periph_a_clk.hw,
-	[RPM_SMD_SNOC_LPASS_CLK] = &holi_snoc_lpass_clk.hw,
-	[RPM_SMD_SNOC_LPASS_A_CLK] = &holi_snoc_lpass_a_clk.hw,
-};
-
-static const struct rpm_smd_clk_desc rpm_clk_trinket = {
-	.clks = trinket_clks,
-	.num_clks = ARRAY_SIZE(trinket_clks),
-};
-
 static const struct of_device_id rpm_smd_clk_match_table[] = {
 	{ .compatible = "qcom,rpmcc-mdm9607", .data = &rpm_clk_mdm9607 },
 	{ .compatible = "qcom,rpmcc-msm8226", .data = &rpm_clk_msm8974 },
@@ -1404,10 +1265,7 @@ static const struct of_device_id rpm_smd_clk_match_table[] = {
 	{ .compatible = "qcom,rpmcc-sm6115",  .data = &rpm_clk_sm6115  },
 	{ .compatible = "qcom,rpmcc-sm6125",  .data = &rpm_clk_sm6125  },
 	{ .compatible = "qcom,rpmcc-holi", .data = &rpm_clk_holi},
-	{ .compatible = "qcom,rpmcc-khaje", .data = &rpm_clk_khaje},
 	{ .compatible = "qcom,rpmcc-monaco", .data = &rpm_clk_monaco },
-	{ .compatible = "qcom,rpmcc-scuba", .data = &rpm_clk_scuba },
-	{ .compatible = "qcom,rpmcc-trinket", .data = &rpm_clk_trinket },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, rpm_smd_clk_match_table);
@@ -1533,8 +1391,7 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 {
 	struct clk_hw **hw_clks;
 	const struct rpm_smd_clk_desc *desc;
-	int ret, i, is_holi, is_khaje, hw_clk_handoff = false, is_monaco, is_scuba;
-	int is_qcs404, is_trinket;
+	int ret, i, is_holi, hw_clk_handoff = false, is_monaco;
 
 	desc = of_device_get_match_data(&pdev->dev);
 	if (!desc)
@@ -1543,22 +1400,10 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	is_holi = of_device_is_compatible(pdev->dev.of_node,
 						"qcom,rpmcc-holi");
 
-	is_khaje = of_device_is_compatible(pdev->dev.of_node,
-						"qcom,rpmcc-khaje");
-
 	is_monaco = of_device_is_compatible(pdev->dev.of_node,
 						"qcom,rpmcc-monaco");
 
-	is_qcs404 = of_device_is_compatible(pdev->dev.of_node,
-						"qcom,rpmcc-qcs404");
-
-	is_scuba = of_device_is_compatible(pdev->dev.of_node,
-						"qcom,rpmcc-scuba");
-
-	is_trinket = of_device_is_compatible(pdev->dev.of_node,
-						"qcom,rpmcc-trinket");
-
-	if (is_holi || is_khaje || is_monaco || is_scuba || is_qcs404 || is_trinket) {
+	if (is_holi || is_monaco) {
 		ret = clk_vote_bimc(&holi_bimc_clk.hw, INT_MAX);
 		if (ret < 0)
 			return ret;
@@ -1602,7 +1447,7 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	if (is_holi || is_khaje || is_monaco || is_scuba || is_trinket) {
+	if (is_holi || is_monaco) {
 		/*
 		 * Keep an active vote on CXO in case no other driver
 		 * votes for it.
@@ -1620,22 +1465,6 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 		/* Hold an active set vote for qup clock */
 		clk_prepare_enable(holi_qup_a_clk.hw.clk);
 		clk_set_rate(holi_qup_a_clk.hw.clk, 19200000);
-	}
-
-	if (is_qcs404) {
-		/*
-		 * Keep an active vote on CXO in case no other driver
-		 * votes for it.
-		 */
-		clk_prepare_enable(qcs404_bi_tcxo_ao.hw.clk);
-
-		/* Hold an active set vote for the pnoc_keepalive_a_clk */
-		clk_prepare_enable(msm8916_pcnoc_a_clk.hw.clk);
-		clk_set_rate(msm8916_pcnoc_a_clk.hw.clk, 19200000);
-
-		/* Hold an active set vote for the snoc_keepalive_a_clk */
-		clk_prepare_enable(msm8916_snoc_a_clk.hw.clk);
-		clk_set_rate(msm8916_snoc_a_clk.hw.clk, 19200000);
 	}
 
 	if (is_monaco) {

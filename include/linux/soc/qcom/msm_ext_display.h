@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  *  Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_EXT_DISPLAY_H_
@@ -51,15 +52,6 @@ struct msm_ext_disp_audio_setup_params {
 	u32 level_shift;
 	bool down_mix;
 	u32 sample_present;
-	u32 bit_width;
-	u16 data_format;
-};
-
-enum {
-	LINEAR_PCM_DATA = 0,
-	NON_LINEAR_DATA,
-	LINEAR_PCM_DATA_PACKED_60958,
-	NON_LINEAR_DATA_PACKED_60958,
 };
 
 /*

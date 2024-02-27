@@ -42,15 +42,6 @@ struct usb_conn_info {
 
 	struct power_supply_desc desc;
 	struct power_supply *charger;
-};
-
-/**
- * struct usb_conn_info_vendor - contains parameters without modifying the format of usb_conn_info
- * @info: contains usb_conn_info structure reference
- * initial_detection: bool to check if it's initial detection after probe
- */
-struct usb_conn_info_vendor {
-	struct usb_conn_info info;
 	bool initial_detection;
 };
 
@@ -74,14 +65,11 @@ struct usb_conn_info_vendor {
 static void usb_conn_detect_cable(struct work_struct *work)
 {
 	struct usb_conn_info *info;
-	struct usb_conn_info_vendor *v_info;
 	enum usb_role role;
 	int id, vbus, ret;
 
 	info = container_of(to_delayed_work(work),
 			    struct usb_conn_info, dw_det);
-
-	v_info = container_of(info, struct usb_conn_info_vendor, info);
 
 	/* check ID and VBUS */
 	id = info->id_gpiod ?
@@ -99,12 +87,12 @@ static void usb_conn_detect_cable(struct work_struct *work)
 	dev_dbg(info->dev, "role %s -> %s, gpios: id %d, vbus %d\n",
 		usb_role_string(info->last_role), usb_role_string(role), id, vbus);
 
-	if (!v_info->initial_detection && info->last_role == role) {
+	if (!info->initial_detection && info->last_role == role) {
 		dev_warn(info->dev, "repeated role: %s\n", usb_role_string(role));
 		return;
 	}
 
-	v_info->initial_detection = false;
+	info->initial_detection = false;
 
 	if (info->last_role == USB_ROLE_HOST && info->vbus)
 		regulator_disable(info->vbus);
@@ -190,15 +178,13 @@ static int usb_conn_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct usb_conn_info *info;
-	struct usb_conn_info_vendor *v_info;
 	bool need_vbus = true;
 	int ret = 0;
 
-	v_info = devm_kzalloc(dev, sizeof(*v_info), GFP_KERNEL);
-	if (!v_info)
+	info = devm_kzalloc(dev, sizeof(*info), GFP_KERNEL);
+	if (!info)
 		return -ENOMEM;
 
-	info = &v_info->info;
 	info->dev = dev;
 	info->id_gpiod = devm_gpiod_get_optional(dev, "id", GPIOD_IN);
 	if (IS_ERR(info->id_gpiod))
@@ -288,10 +274,9 @@ static int usb_conn_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, info);
-	device_set_wakeup_capable(&pdev->dev, true);
 
 	/* Perform initial detection */
-	v_info->initial_detection = true;
+	info->initial_detection = true;
 	usb_conn_queue_dwork(info, 0);
 
 	return 0;
@@ -319,14 +304,6 @@ static int __maybe_unused usb_conn_suspend(struct device *dev)
 {
 	struct usb_conn_info *info = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev)) {
-		if (info->id_gpiod)
-			enable_irq_wake(info->id_irq);
-		if (info->vbus_gpiod)
-			enable_irq_wake(info->vbus_irq);
-		return 0;
-	}
-
 	if (info->id_gpiod)
 		disable_irq(info->id_irq);
 	if (info->vbus_gpiod)
@@ -340,14 +317,6 @@ static int __maybe_unused usb_conn_suspend(struct device *dev)
 static int __maybe_unused usb_conn_resume(struct device *dev)
 {
 	struct usb_conn_info *info = dev_get_drvdata(dev);
-
-	if (device_may_wakeup(dev)) {
-		if (info->id_gpiod)
-			disable_irq_wake(info->id_irq);
-		if (info->vbus_gpiod)
-			disable_irq_wake(info->vbus_irq);
-		return 0;
-	}
 
 	pinctrl_pm_select_default_state(dev);
 

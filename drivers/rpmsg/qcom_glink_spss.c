@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -334,7 +335,7 @@ err_put_dev:
 
 	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(qcom_glink_spss_register);
+EXPORT_SYMBOL_GPL(qcom_glink_spss_register);
 
 void qcom_glink_spss_unregister(struct qcom_glink *glink)
 {
@@ -344,7 +345,7 @@ void qcom_glink_spss_unregister(struct qcom_glink *glink)
 	qcom_glink_native_remove(glink);
 	qcom_glink_native_unregister(glink);
 }
-EXPORT_SYMBOL(qcom_glink_spss_unregister);
+EXPORT_SYMBOL_GPL(qcom_glink_spss_unregister);
 
 MODULE_DESCRIPTION("QTI GLINK SPSS driver");
 MODULE_LICENSE("GPL v2");

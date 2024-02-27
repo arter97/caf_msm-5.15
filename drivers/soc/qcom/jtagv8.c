@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -878,7 +878,7 @@ void msm_jtag_save_state(bool is_hotcpu_cb)
 	if (dbg.save_restore_enabled)
 		dbg_save_state(cpu);
 }
-EXPORT_SYMBOL(msm_jtag_save_state);
+EXPORT_SYMBOL_GPL(msm_jtag_save_state);
 
 void msm_jtag_restore_state(bool is_hotcpu_cb)
 {
@@ -909,7 +909,7 @@ void msm_jtag_restore_state(bool is_hotcpu_cb)
 	if (!is_hotcpu_cb)
 		msm_jtag_etm_restore_state();
 }
-EXPORT_SYMBOL(msm_jtag_restore_state);
+EXPORT_SYMBOL_GPL(msm_jtag_restore_state);
 
 static inline bool dbg_arch_supported(uint8_t arch)
 {

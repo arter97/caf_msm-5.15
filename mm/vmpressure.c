@@ -21,8 +21,6 @@
 #include <linux/printk.h>
 #include <linux/vmpressure.h>
 
-#include <trace/hooks/mm.h>
-
 /*
  * The window size (vmpressure_win) is the number of scanned pages before
  * we try to analyze scanned/reclaimed ratio. So the window is used as a
@@ -242,13 +240,16 @@ void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
 		unsigned long scanned, unsigned long reclaimed)
 {
 	struct vmpressure *vmpr;
-	bool bypass = false;
 
 	if (mem_cgroup_disabled())
 		return;
 
-	trace_android_vh_vmpressure(memcg, &bypass);
-	if (bypass)
+	/*
+	 * The in-kernel users only care about the reclaim efficiency
+	 * for this @memcg rather than the whole subtree, and there
+	 * isn't and won't be any in-kernel user in a legacy cgroup.
+	 */
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && !tree)
 		return;
 
 	vmpr = memcg_to_vmpressure(memcg);

@@ -280,7 +280,7 @@ static int crypto_qti_program_key_v1(const struct ice_mmio_data *mmio_data,
 
 int crypto_qti_program_key(const struct ice_mmio_data *mmio_data,
 			   const struct blk_crypto_key *key, unsigned int slot,
-			   unsigned int data_unit_mask, int capid, int storage_type)
+			   unsigned int data_unit_mask, int capid)
 {
 	int err = 0;
 	union crypto_cfg cfg;
@@ -334,10 +334,10 @@ int crypto_qti_program_key(const struct ice_mmio_data *mmio_data,
 exit:
 	return err;
 }
-EXPORT_SYMBOL(crypto_qti_program_key);
+EXPORT_SYMBOL_GPL(crypto_qti_program_key);
 
 int crypto_qti_invalidate_key(const struct ice_mmio_data *mmio_data,
-			      unsigned int slot, int storage_type)
+			      unsigned int slot)
 {
 	int err = 0;
 
@@ -366,13 +366,13 @@ int crypto_qti_invalidate_key(const struct ice_mmio_data *mmio_data,
 #endif
 	return err;
 }
-EXPORT_SYMBOL(crypto_qti_invalidate_key);
+EXPORT_SYMBOL_GPL(crypto_qti_invalidate_key);
 
 void crypto_qti_disable_platform(void)
 {
 	qti_hwkm_init_done = false;
 }
-EXPORT_SYMBOL(crypto_qti_disable_platform);
+EXPORT_SYMBOL_GPL(crypto_qti_disable_platform);
 
 #if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
 static int crypto_qti_derive_raw_secret_platform_v1(
@@ -516,7 +516,7 @@ int crypto_qti_derive_raw_secret_platform(
 
 	return err;
 }
-EXPORT_SYMBOL(crypto_qti_derive_raw_secret_platform);
+EXPORT_SYMBOL_GPL(crypto_qti_derive_raw_secret_platform);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Crypto HWKM library for storage encryption");

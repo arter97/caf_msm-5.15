@@ -206,26 +206,6 @@ extern int subsystem_stop_notify(const char *subsystem)
 	return 0;
 }
 
-/*static int subsystem_ds_entry(const char *subsystem)
-{
-	return 0;
-}
-
-static int subsystem_ds_exit(const char *name)
-{
-	return 0;
-}
-
-static int subsystem_s2d_exit(const char *name)
-{
-	return 0;
-}
-
-static int subsystem_s2d_entry(const char *name)
-{
-	return 0;
-}*/
-
 static inline void *subsystem_get(const char *name)
 {
 	return NULL;

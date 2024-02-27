@@ -11,11 +11,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <drm/drm_atomic.h>
-#include <drm/drm_crtc.h>
-#endif
-
 struct drm_atomic_state;
 struct drm_crtc;
 

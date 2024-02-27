@@ -737,7 +737,7 @@ void gdsc_debug_print_regs(struct regulator *regulator)
 	pr_info("GDSCR: 0x%.8x CFG: 0x%.8x CFG2: 0x%.8x\n",
 		regvals[0], regvals[1], regvals[2]);
 }
-EXPORT_SYMBOL(gdsc_debug_print_regs);
+EXPORT_SYMBOL_GPL(gdsc_debug_print_regs);
 
 static int gdsc_parse_dt_data(struct gdsc *sc, struct device *dev,
 				struct regulator_init_data **init_data)
@@ -1004,15 +1004,6 @@ static int restore_hw_trig_clk_dis(struct device *dev)
 {
 	struct gdsc *sc = dev_get_drvdata(dev);
 	uint32_t regval;
-	int ret;
-
-	if (sc->rdev->supply) {
-		ret = regulator_enable(sc->rdev->supply);
-		if (ret) {
-			dev_err(&sc->rdev->dev, "reg enable failed\n");
-			return ret;
-		}
-	}
 
 	regmap_read(sc->regmap, REG_OFFSET, &regval);
 	if (sc->is_gdsc_hw_ctrl_mode)
@@ -1023,12 +1014,7 @@ static int restore_hw_trig_clk_dis(struct device *dev)
 		regval |= sc->clk_dis_wait_val;
 	}
 
-	ret = regmap_write(sc->regmap, REG_OFFSET, regval);
-
-	if (sc->rdev->supply)
-		regulator_disable(sc->rdev->supply);
-
-	return ret;
+	return regmap_write(sc->regmap, REG_OFFSET, regval);
 }
 
 static int gdsc_pm_resume_early(struct device *dev)

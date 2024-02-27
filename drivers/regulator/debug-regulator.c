@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitops.h>
@@ -447,7 +448,7 @@ int regulator_debug_register(struct device *dev, struct regulator_dev *rdev)
 {
 	return PTR_ERR_OR_ZERO(regulator_debug_add(dev, rdev));
 }
-EXPORT_SYMBOL(regulator_debug_register);
+EXPORT_SYMBOL_GPL(regulator_debug_register);
 
 /* debug_reg_list_lock must be held by caller. */
 static void regulator_debug_remove(struct debug_regulator *dreg)
@@ -481,7 +482,7 @@ void regulator_debug_unregister(struct regulator_dev *rdev)
 	}
 	mutex_unlock(&debug_reg_list_lock);
 }
-EXPORT_SYMBOL(regulator_debug_unregister);
+EXPORT_SYMBOL_GPL(regulator_debug_unregister);
 
 /* debug_reg_list_lock must be held by caller. */
 static void _devm_regulator_debug_release(struct device *dev, void *res)
@@ -548,7 +549,7 @@ int devm_regulator_debug_register(struct device *dev,
 
 	return 0;
 }
-EXPORT_SYMBOL(devm_regulator_debug_register);
+EXPORT_SYMBOL_GPL(devm_regulator_debug_register);
 
 static int devm_regulator_debug_match(struct device *dev, void *res, void *data)
 {
@@ -589,7 +590,7 @@ void devm_regulator_debug_unregister(struct regulator_dev *rdev)
 	}
 	mutex_unlock(&debug_reg_list_lock);
 }
-EXPORT_SYMBOL(devm_regulator_debug_unregister);
+EXPORT_SYMBOL_GPL(devm_regulator_debug_unregister);
 
 static int _regulator_is_enabled(struct regulator_dev *rdev)
 {

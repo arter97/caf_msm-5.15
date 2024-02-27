@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-iommu.h>
@@ -16,7 +17,7 @@
 #include <linux/pci.h>
 #include <linux/iova.h>
 #include <linux/io-pgtable.h>
-#include <linux/spinlock.h>
+#include <linux/rwlock.h>
 #include <linux/qcom-iommu-util.h>
 #include <trace/hooks/iommu.h>
 #include "qcom-dma-iommu-generic.h"
@@ -1012,7 +1013,7 @@ void fast_smmu_put_dma_cookie(struct iommu_domain *domain)
 
 	kfree(fast);
 }
-EXPORT_SYMBOL(fast_smmu_put_dma_cookie);
+EXPORT_SYMBOL_GPL(fast_smmu_put_dma_cookie);
 
 /**
  * fast_smmu_init_mapping
@@ -1061,7 +1062,7 @@ int fast_smmu_init_mapping(struct device *dev, struct iommu_domain *domain,
 
 	return 0;
 }
-EXPORT_SYMBOL(fast_smmu_init_mapping);
+EXPORT_SYMBOL_GPL(fast_smmu_init_mapping);
 
 static void __fast_smmu_setup_dma_ops(void *data, struct device *dev,
 					u64 dma_base, u64 dma_limit)
@@ -1096,7 +1097,7 @@ void fast_smmu_setup_dma_ops(struct device *dev, u64 dma_base, u64 dma_limit)
 {
 	__fast_smmu_setup_dma_ops(NULL, dev, dma_base, dma_limit);
 }
-EXPORT_SYMBOL(fast_smmu_setup_dma_ops);
+EXPORT_SYMBOL_GPL(fast_smmu_setup_dma_ops);
 
 int __init dma_mapping_fast_init(void)
 {

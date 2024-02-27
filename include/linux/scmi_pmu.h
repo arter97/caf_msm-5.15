@@ -3,6 +3,7 @@
  * SCMI PMU Protocols header
  *
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SCMI_PMU_H

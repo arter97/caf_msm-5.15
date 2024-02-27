@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2011-2017, 2021, The Linux Foundation
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -322,7 +322,7 @@ int slim_vote_for_suspend(struct slim_device *sbdev)
 
 	return ctrl->suspend_slimbus(ctrl);
 }
-EXPORT_SYMBOL(slim_vote_for_suspend);
+EXPORT_SYMBOL_GPL(slim_vote_for_suspend);
 
 /**
  * slim_report_absent() - Controller calls this function when a device

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "qcom-memlat: " fmt
@@ -1705,7 +1706,7 @@ memlat_unlock:
 	mutex_unlock(&memlat_lock);
 	return ret;
 }
-EXPORT_SYMBOL(cpucp_memlat_init);
+EXPORT_SYMBOL_GPL(cpucp_memlat_init);
 
 #define INST_EV		0x08
 #define CYC_EV		0x11
@@ -2070,6 +2071,7 @@ unlock_out_init:
 unlock_out:
 	mutex_unlock(&memlat_grp->mons_lock);
 	return ret;
+
 }
 
 static int qcom_memlat_probe(struct platform_device *pdev)

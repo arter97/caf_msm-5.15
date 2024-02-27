@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: ISC */
 /*
- * Copyright (c) 2012-2016,2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016,2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WIL6210_TXRX_EDMA_H
@@ -333,8 +334,10 @@ struct wil_rx_status_extension {
 	u32 d0;
 	u32 d1;
 	__le16 seq_num; /* only lower 12 bits */
-	u16 pn_15_0;
-	u32 pn_47_16;
+	struct_group_attr(pn, __packed,
+		u16 pn_15_0;
+		u32 pn_47_16;
+	);
 } __packed;
 
 struct wil_rx_status_extended {

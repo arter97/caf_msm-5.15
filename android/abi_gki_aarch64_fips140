@@ -4,12 +4,10 @@
   __put_task_struct
 
 # required by fips140.ko
-  add_random_ready_callback
   aead_register_instance
   ahash_register_instance
   arch_timer_read_counter
   bcmp
-  cancel_work_sync
   __cfi_slowpath_diag
   complete_all
   completion_done
@@ -79,7 +77,6 @@
   crypto_unregister_skciphers
   crypto_unregister_template
   crypto_unregister_templates
-  del_random_ready_callback
   down_write
   fpsimd_context_busy
   get_random_bytes
@@ -106,7 +103,6 @@
   preempt_schedule
   preempt_schedule_notrace
   _printk
-  queue_work_on
   ___ratelimit
   _raw_spin_lock
   _raw_spin_unlock
@@ -132,7 +128,7 @@
   strlcpy
   strlen
   strncmp
-  system_wq
+  strscpy
   __traceiter_android_vh_aes_decrypt
   __traceiter_android_vh_aes_encrypt
   __traceiter_android_vh_aes_expandkey

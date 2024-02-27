@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk-provider.h>
@@ -52,7 +53,7 @@ const struct clk_ops clk_dummy_ops = {
 	.recalc_rate = dummy_clk_recalc_rate,
 	.debug_init = clk_debug_measure_add,
 };
-EXPORT_SYMBOL(clk_dummy_ops);
+EXPORT_SYMBOL_GPL(clk_dummy_ops);
 
 static int dummy_reset_assert(struct reset_controller_dev *rcdev,
 			       unsigned long id)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2017, 2019-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -784,7 +785,7 @@ uint32_t msm_dump_table_version(void)
 {
 	return MSM_DUMP_TABLE_VERSION;
 }
-EXPORT_SYMBOL(msm_dump_table_version);
+EXPORT_SYMBOL_GPL(msm_dump_table_version);
 
 static int msm_dump_table_register(struct msm_dump_entry *entry)
 {
@@ -897,7 +898,7 @@ int msm_dump_data_register(enum msm_dump_table_ids id,
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_dump_data_register);
+EXPORT_SYMBOL_GPL(msm_dump_data_register);
 
 /**
  * msm_dump_data_register_nominidump - register to dump data framework
@@ -910,7 +911,7 @@ int msm_dump_data_register_nominidump(enum msm_dump_table_ids id,
 {
 	return register_dump_table_entry(id, entry);
 }
-EXPORT_SYMBOL(msm_dump_data_register_nominidump);
+EXPORT_SYMBOL_GPL(msm_dump_data_register_nominidump);
 
 #define MSM_DUMP_TOTAL_SIZE_OFFSET	0x724
 static int init_memdump_imem_area(size_t size)

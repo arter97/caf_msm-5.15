@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "qcom-dcvs: " fmt
@@ -29,7 +30,6 @@ static const char * const dcvs_hw_names[NUM_DCVS_HW_TYPES] = {
 	[DCVS_LLCC]		= "LLCC",
 	[DCVS_L3]		= "L3",
 	[DCVS_DDRQOS]		= "DDRQOS",
-	[DCVS_L3_1]		= "L3_1",
 };
 
 enum dcvs_type {
@@ -444,7 +444,7 @@ int qcom_dcvs_update_votes(const char *name, struct dcvs_freq *votes,
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(qcom_dcvs_update_votes);
+EXPORT_SYMBOL_GPL(qcom_dcvs_update_votes);
 
 int qcom_dcvs_register_voter(const char *name, enum dcvs_hw_type hw_type,
 				enum dcvs_path_type path_type)
@@ -487,7 +487,7 @@ unlock_out:
 	mutex_unlock(&path->voter_lock);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_dcvs_register_voter);
+EXPORT_SYMBOL_GPL(qcom_dcvs_register_voter);
 
 int qcom_dcvs_unregister_voter(const char *name, enum dcvs_hw_type hw_type,
 				enum dcvs_path_type path_type)
@@ -524,7 +524,7 @@ unlock_out:
 	mutex_unlock(&path->voter_lock);
 	return ret;
 }
-EXPORT_SYMBOL(qcom_dcvs_unregister_voter);
+EXPORT_SYMBOL_GPL(qcom_dcvs_unregister_voter);
 
 struct kobject *qcom_dcvs_kobject_get(enum dcvs_hw_type type)
 {
@@ -548,7 +548,7 @@ struct kobject *qcom_dcvs_kobject_get(enum dcvs_hw_type type)
 
 	return kobj;
 }
-EXPORT_SYMBOL(qcom_dcvs_kobject_get);
+EXPORT_SYMBOL_GPL(qcom_dcvs_kobject_get);
 
 int qcom_dcvs_hw_minmax_get(enum dcvs_hw_type hw_type, u32 *min, u32 *max)
 {
@@ -569,7 +569,7 @@ int qcom_dcvs_hw_minmax_get(enum dcvs_hw_type hw_type, u32 *min, u32 *max)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_dcvs_hw_minmax_get);
+EXPORT_SYMBOL_GPL(qcom_dcvs_hw_minmax_get);
 
 struct device_node *qcom_dcvs_get_ddr_child_node(
 				struct device_node *of_parent)
@@ -588,7 +588,7 @@ struct device_node *qcom_dcvs_get_ddr_child_node(
 
 	return NULL;
 }
-EXPORT_SYMBOL(qcom_dcvs_get_ddr_child_node);
+EXPORT_SYMBOL_GPL(qcom_dcvs_get_ddr_child_node);
 
 static bool qcom_dcvs_hw_and_paths_inited(void)
 {
@@ -700,7 +700,7 @@ static int qcom_dcvs_hw_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	if (hw_type == DCVS_L3 || hw_type == DCVS_L3_1)
+	if (hw_type == DCVS_L3)
 		ret = populate_l3_table(dev, &hw->freq_table);
 	else
 		ret = populate_freq_table(dev, &hw->freq_table);
@@ -770,7 +770,7 @@ static int qcom_dcvs_path_probe(struct platform_device *pdev)
 		if (hw->type == DCVS_DDR || hw->type == DCVS_LLCC
 					|| hw->type == DCVS_DDRQOS)
 			ret = setup_icc_sp_device(dev, hw, path);
-		else if (hw->type == DCVS_L3 || hw->type == DCVS_L3_1)
+		else if (hw->type == DCVS_L3)
 			ret = setup_epss_l3_sp_device(dev, hw, path);
 		if (ret < 0) {
 			dev_err(dev, "Error setting up sp dev: %d\n", ret);
@@ -789,7 +789,7 @@ static int qcom_dcvs_path_probe(struct platform_device *pdev)
 		}
 		break;
 	case DCVS_PERCPU_PATH:
-		if (hw->type != DCVS_L3 && hw->type != DCVS_L3_1) {
+		if (hw->type != DCVS_L3) {
 			dev_err(dev, "Unsupported HW for path: %d\n", ret);
 			return -EINVAL;
 		}

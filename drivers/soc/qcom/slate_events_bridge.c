@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -126,7 +126,6 @@ void seb_send_input(struct event *evnt)
 	struct seb_priv *dev =
 			container_of(seb_drv, struct seb_priv, lhndl);
 
-	pr_debug("%s: Called\n", __func__);
 	if (!evnt) {
 		pr_err("%s: No event received\n", __func__);
 		return;
@@ -168,7 +167,6 @@ void seb_send_input(struct event *evnt)
 						evnt->sub_id, evnt->evnt_data);
 		}
 	}
-	pr_debug("%s: Ended\n", __func__);
 }
 
 static void seb_slateup_work(struct work_struct *work)
@@ -398,7 +396,7 @@ error_ret:
 	mutex_unlock(&seb_api_mutex);
 	return rc;
 }
-EXPORT_SYMBOL(seb_send_event_to_slate);
+EXPORT_SYMBOL_GPL(seb_send_event_to_slate);
 
 int seb_send_event(enum event_group_type event,
 						void *event_buf, uint32_t buf_size)
@@ -439,7 +437,7 @@ error_ret:
 	mutex_unlock(&seb_api_mutex);
 	return rc;
 }
-EXPORT_SYMBOL(seb_send_event);
+EXPORT_SYMBOL_GPL(seb_send_event);
 
 void seb_notify_glink_channel_state(bool state)
 {
@@ -515,7 +513,7 @@ void *seb_register_for_slate_event(
 
 	return seb_notif;
 }
-EXPORT_SYMBOL(seb_register_for_slate_event);
+EXPORT_SYMBOL_GPL(seb_register_for_slate_event);
 
 int seb_unregister_for_slate_event(void *seb_notif_handle,
 				struct notifier_block *nb)
@@ -532,7 +530,7 @@ int seb_unregister_for_slate_event(void *seb_notif_handle,
 
 	return ret;
 }
-EXPORT_SYMBOL(seb_unregister_for_slate_event);
+EXPORT_SYMBOL_GPL(seb_unregister_for_slate_event);
 
 void handle_rx_event(struct seb_priv *dev, void *rx_event_buf, int len)
 {

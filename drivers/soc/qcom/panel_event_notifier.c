@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/list.h>
@@ -86,7 +86,7 @@ void *panel_event_notifier_register(enum panel_event_notifier_tag tag,
 	pr_debug("client %d registered successfully\n", client_handle);
 	return entry;
 }
-EXPORT_SYMBOL(panel_event_notifier_register);
+EXPORT_SYMBOL_GPL(panel_event_notifier_register);
 
 /**
  * panel_event_notifier_unregister: responsible for unregistering clients.
@@ -107,7 +107,7 @@ void panel_event_notifier_unregister(void *cookie)
 	entry->tag = PANEL_EVENT_NOTIFICATION_NONE;
 	mutex_unlock(&panel_event_notifier_entries_lock);
 }
-EXPORT_SYMBOL(panel_event_notifier_unregister);
+EXPORT_SYMBOL_GPL(panel_event_notifier_unregister);
 
 /**
  * panel_event_notifion_trigger: responsible for triggering notifications.
@@ -165,7 +165,7 @@ void panel_event_notification_trigger(enum panel_event_notifier_tag tag,
 
 	}
 }
-EXPORT_SYMBOL(panel_event_notification_trigger);
+EXPORT_SYMBOL_GPL(panel_event_notification_trigger);
 
 static int __init panel_event_notifier_init(void)
 {

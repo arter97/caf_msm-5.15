@@ -10,10 +10,6 @@
  * mechanism for vendor modules to hook and extend functionality
  */
 
-#ifdef __GENKSYMS__
-#include <linux/rwsem.h>
-#endif
-
 struct rw_semaphore;
 struct rwsem_waiter;
 
@@ -34,7 +30,6 @@ DECLARE_HOOK(android_vh_alter_rwsem_list_add,
 DECLARE_HOOK(android_vh_rwsem_wake_finish,
 	TP_PROTO(struct rw_semaphore *sem),
 	TP_ARGS(sem));
-
 #endif /* _TRACE_HOOK_RWSEM_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

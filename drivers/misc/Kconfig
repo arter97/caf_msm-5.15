@@ -492,16 +492,6 @@ config QSEECOM_PROXY
 	 required ops via call back functions with a minimal framework.
 	 These callback functions can be used to start, shutdown and
 	 send commands to the trusted apps.
-
-config QPNP_MISC
-	tristate "QPNP Misc Peripheral"
-	depends on MFD_SPMI_PMIC
-	help
-	  Say 'y' here to include support for the QTI QPNP MISC
-	  peripheral. The MISC peripheral holds the USB ID interrupt
-	  and the driver provides an API to check if this interrupt
-	  is available on the current PMIC chip.
-
 config OPEN_DICE
 	tristate "Open Profile for DICE driver"
 	depends on OF_RESERVED_MEM
@@ -514,13 +504,18 @@ config OPEN_DICE
 
 	  If unsure, say N.
 
-config PROFILER
-	tristate "Qualcomm Technologies, Inc. trustzone Communicator driver"
+config VCPU_STALL_DETECTOR
+	tristate "Guest vCPU stall detector"
+	depends on OF && HAS_IOMEM
 	help
-	  Provides a communication interface between userspace and
-	  trustzone using Secure Channel Manager (SCM) interface.
-	  It exposes APIs for userspace to get system profiling
-	  information.
+	  When this driver is bound inside a KVM guest, it will
+	  periodically "pet" an MMIO stall detector device from each vCPU
+	  and allow the host to detect vCPU stalls.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called vcpu_stall_detector.
+
+	  If you do not intend to run this kernel as a guest, say N.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
@@ -539,5 +534,4 @@ source "drivers/misc/cardreader/Kconfig"
 source "drivers/misc/habanalabs/Kconfig"
 source "drivers/misc/uacce/Kconfig"
 source "drivers/misc/pvpanic/Kconfig"
-source "drivers/misc/qrc/Kconfig"
 endmenu

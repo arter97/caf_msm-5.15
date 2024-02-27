@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -449,7 +449,7 @@ int qpnp_pon_set_restart_reason(enum pon_restart_reason reason)
 
 	return rc;
 }
-EXPORT_SYMBOL(qpnp_pon_set_restart_reason);
+EXPORT_SYMBOL_GPL(qpnp_pon_set_restart_reason);
 
 /*
  * qpnp_pon_check_hard_reset_stored() - Checks if the PMIC need to
@@ -467,7 +467,7 @@ bool qpnp_pon_check_hard_reset_stored(void)
 
 	return pon->store_hard_reset_reason;
 }
-EXPORT_SYMBOL(qpnp_pon_check_hard_reset_stored);
+EXPORT_SYMBOL_GPL(qpnp_pon_check_hard_reset_stored);
 
 static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 {
@@ -760,7 +760,7 @@ out:
 
 	return rc;
 }
-EXPORT_SYMBOL(qpnp_pon_system_pwr_off);
+EXPORT_SYMBOL_GPL(qpnp_pon_system_pwr_off);
 
 /**
  * qpnp_pon_modem_pwr_off() - shutdown or reset the modem PMIC
@@ -807,7 +807,7 @@ int qpnp_pon_modem_pwr_off(enum pon_power_off_type type)
 
 	return 0;
 }
-EXPORT_SYMBOL(qpnp_pon_modem_pwr_off);
+EXPORT_SYMBOL_GPL(qpnp_pon_modem_pwr_off);
 
 static int _qpnp_pon_is_warm_reset(struct qpnp_pon *pon)
 {
@@ -839,7 +839,7 @@ int qpnp_pon_is_warm_reset(void)
 
 	return _qpnp_pon_is_warm_reset(sys_reset_dev);
 }
-EXPORT_SYMBOL(qpnp_pon_is_warm_reset);
+EXPORT_SYMBOL_GPL(qpnp_pon_is_warm_reset);
 
 /**
  * qpnp_pon_wd_config() - configure the watch dog behavior for warm reset
@@ -859,7 +859,7 @@ int qpnp_pon_wd_config(bool enable)
 				QPNP_PON_WD_RST_S2_CTL2(sys_reset_dev),
 				QPNP_PON_WD_EN, enable ? QPNP_PON_WD_EN : 0);
 }
-EXPORT_SYMBOL(qpnp_pon_wd_config);
+EXPORT_SYMBOL_GPL(qpnp_pon_wd_config);
 
 static int qpnp_pon_get_trigger_config(enum pon_trigger_source pon_src,
 							bool *enabled)
@@ -928,7 +928,7 @@ int qpnp_pon_trigger_config(enum pon_trigger_source pon_src, bool enable)
 
 	return rc;
 }
-EXPORT_SYMBOL(qpnp_pon_trigger_config);
+EXPORT_SYMBOL_GPL(qpnp_pon_trigger_config);
 
 /*
  * This function stores the PMIC warm reset reason register values. It also

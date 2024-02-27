@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitfield.h>
@@ -154,7 +154,7 @@ int iommu_logger_register(struct iommu_debug_attachment **logger_out,
 	*logger_out = logger;
 	return 0;
 }
-EXPORT_SYMBOL(iommu_logger_register);
+EXPORT_SYMBOL_GPL(iommu_logger_register);
 
 void iommu_logger_unregister(struct iommu_debug_attachment *logger)
 {
@@ -167,7 +167,7 @@ void iommu_logger_unregister(struct iommu_debug_attachment *logger)
 	kfree(logger->client_name);
 	kfree(logger);
 }
-EXPORT_SYMBOL(iommu_logger_unregister);
+EXPORT_SYMBOL_GPL(iommu_logger_unregister);
 
 MODULE_DESCRIPTION("QTI IOMMU SUPPORT");
 MODULE_LICENSE("GPL v2");

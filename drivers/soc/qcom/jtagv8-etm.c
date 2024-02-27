@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -249,25 +249,25 @@ int msm_jtag_save_register(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&etm_save_notifier_list, nb);
 }
-EXPORT_SYMBOL(msm_jtag_save_register);
+EXPORT_SYMBOL_GPL(msm_jtag_save_register);
 
 int msm_jtag_save_unregister(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(&etm_save_notifier_list, nb);
 }
-EXPORT_SYMBOL(msm_jtag_save_unregister);
+EXPORT_SYMBOL_GPL(msm_jtag_save_unregister);
 
 int msm_jtag_restore_register(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&etm_restore_notifier_list, nb);
 }
-EXPORT_SYMBOL(msm_jtag_restore_register);
+EXPORT_SYMBOL_GPL(msm_jtag_restore_register);
 
 int msm_jtag_restore_unregister(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(&etm_restore_notifier_list, nb);
 }
-EXPORT_SYMBOL(msm_jtag_restore_unregister);
+EXPORT_SYMBOL_GPL(msm_jtag_restore_unregister);
 
 static void etm_os_lock(struct etm_ctx *etmdata)
 {
@@ -1443,7 +1443,7 @@ void msm_jtag_etm_save_state(void)
 			etm_mm_save_state(etm[cpu]);
 	}
 }
-EXPORT_SYMBOL(msm_jtag_etm_save_state);
+EXPORT_SYMBOL_GPL(msm_jtag_etm_save_state);
 
 void msm_jtag_etm_restore_state(void)
 {
@@ -1465,7 +1465,7 @@ void msm_jtag_etm_restore_state(void)
 			etm_mm_restore_state(etm[cpu]);
 	}
 }
-EXPORT_SYMBOL(msm_jtag_etm_restore_state);
+EXPORT_SYMBOL_GPL(msm_jtag_etm_restore_state);
 
 static inline bool etm_arch_supported(uint8_t arch)
 {

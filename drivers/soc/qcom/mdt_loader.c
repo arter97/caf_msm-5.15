@@ -198,8 +198,7 @@ free_metadata:
 			dma_free_coherent(scm_dev, ehdr_size + hash_size, data, *metadata_phys);
 		else
 			dma_free_coherent(dev, ehdr_size + hash_size, data, *metadata_phys);
-	}
-	else
+	} else
 		kfree(data);
 	return ERR_PTR(ret);
 }

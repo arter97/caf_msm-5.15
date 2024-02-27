@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2011-2013, 2015, 2017-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 /* BAM-DMA Manager. */
 
@@ -593,7 +594,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_alloc_dma_chan);
+EXPORT_SYMBOL_GPL(sps_alloc_dma_chan);
 
 /**
  * Free a BAM DMA channel
@@ -654,7 +655,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_free_dma_chan);
+EXPORT_SYMBOL_GPL(sps_free_dma_chan);
 
 /**
  * Activate a BAM DMA pipe
@@ -906,7 +907,7 @@ unsigned long sps_dma_get_bam_handle(void)
 {
 	return (unsigned long)bam_dma_dev[0].bam;
 }
-EXPORT_SYMBOL(sps_dma_get_bam_handle);
+EXPORT_SYMBOL_GPL(sps_dma_get_bam_handle);
 
 /**
  * Free the BAM handle for BAM-DMA.
@@ -915,6 +916,6 @@ EXPORT_SYMBOL(sps_dma_get_bam_handle);
 void sps_dma_free_bam_handle(unsigned long h)
 {
 }
-EXPORT_SYMBOL(sps_dma_free_bam_handle);
+EXPORT_SYMBOL_GPL(sps_dma_free_bam_handle);
 
 #endif /* CONFIG_SPS_SUPPORT_BAMDMA */

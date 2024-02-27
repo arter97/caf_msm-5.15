@@ -411,4 +411,4 @@ const struct clk_ops clk_pll_hf_ops = {
 	.debug_init = clk_common_debug_init,
 	.init = clk_pll_hf_init,
 };
-EXPORT_SYMBOL(clk_pll_hf_ops);
+EXPORT_SYMBOL_GPL(clk_pll_hf_ops);

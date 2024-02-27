@@ -2,7 +2,7 @@
 /*
  * Copyright(C) 2015 Linaro Limited. All rights reserved.
  * Author: Mathieu Poirier <mathieu.poirier@linaro.org>
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CORESIGHT_TMC_H
@@ -15,9 +15,7 @@
 #include <linux/refcount.h>
 #include "coresight-priv.h"
 #include "coresight-byte-cntr.h"
-#include "coresight-tmc-eth.h"
 #include "coresight-tmc-usb.h"
-#include "coresight-tmc-pcie.h"
 
 #define TMC_RSZ			0x004
 #define TMC_STS			0x00c
@@ -154,16 +152,12 @@ enum tmc_etr_out_mode {
 	TMC_ETR_OUT_MODE_NONE,
 	TMC_ETR_OUT_MODE_MEM,
 	TMC_ETR_OUT_MODE_USB,
-	TMC_ETR_OUT_MODE_PCIE,
-	TMC_ETR_OUT_MODE_ETH,
 };
 
 static const char * const str_tmc_etr_out_mode[] = {
 	[TMC_ETR_OUT_MODE_NONE]		= "none",
 	[TMC_ETR_OUT_MODE_MEM]		= "mem",
 	[TMC_ETR_OUT_MODE_USB]		= "usb",
-	[TMC_ETR_OUT_MODE_ETH]		= "eth",
-	[TMC_ETR_OUT_MODE_PCIE]		= "pcie",
 };
 
 /**
@@ -254,9 +248,7 @@ struct tmc_drvdata {
 	u8			mode_support;
 	enum tmc_etr_out_mode	out_mode;
 	struct tmc_usb_data	*usb_data;
-	struct tmc_eth_data	*eth_data;
 	bool			stop_on_flush;
-	struct tmc_pcie_data	*pcie_data;
 };
 
 struct tmc_usb_bam_data {
@@ -396,7 +388,7 @@ ssize_t tmc_sg_table_get_data(struct tmc_sg_table *sg_table,
 static inline unsigned long
 tmc_sg_table_buf_size(struct tmc_sg_table *sg_table)
 {
-	return sg_table->data_pages.nr_pages << PAGE_SHIFT;
+	return (unsigned long)sg_table->data_pages.nr_pages << PAGE_SHIFT;
 }
 
 struct coresight_device *tmc_etr_get_catu_device(struct tmc_drvdata *drvdata);

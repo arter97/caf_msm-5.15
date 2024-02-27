@@ -21,7 +21,6 @@
 #include <linux/thermal.h>
 #include <linux/thermal_minidump.h>
 #include <linux/slab.h>
-#include <linux/suspend.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/adc/qcom-vadc-common.h>
 
@@ -972,7 +971,7 @@ struct adc5_chip *get_adc_tm_gen3(struct device *dev, const char *name)
 	of_node_put(node);
 	return ERR_PTR(-EPROBE_DEFER);
 }
-EXPORT_SYMBOL(get_adc_tm_gen3);
+EXPORT_SYMBOL_GPL(get_adc_tm_gen3);
 
 static int32_t adc_tm_add_to_list(struct adc5_chip *chip,
 				uint32_t dt_index,
@@ -1233,7 +1232,7 @@ fail_unlock:
 	mutex_unlock(&chip->lock);
 	return ret;
 }
-EXPORT_SYMBOL(adc_tm_channel_measure_gen3);
+EXPORT_SYMBOL_GPL(adc_tm_channel_measure_gen3);
 
 /* Used by non-thermal clients to release an ADC_TM channel */
 int32_t adc_tm_disable_chan_meas_gen3(struct adc5_chip *chip,
@@ -1284,7 +1283,7 @@ fail:
 	mutex_unlock(&chip->lock);
 	return ret;
 }
-EXPORT_SYMBOL(adc_tm_disable_chan_meas_gen3);
+EXPORT_SYMBOL_GPL(adc_tm_disable_chan_meas_gen3);
 
 static struct thermal_zone_of_device_ops adc_tm_ops = {
 	.get_temp = adc_tm_gen3_get_temp,
@@ -1683,9 +1682,9 @@ static int adc5_gen3_probe(struct platform_device *pdev)
 
 	adc->num_sdams = ret;
 
-	adc->num_interrupts = of_property_count_strings(node, "interrupt-names");
-	if (adc->num_interrupts < 0)
-		adc->num_interrupts = 0;
+	ret = of_property_count_strings(node, "interrupt-names");
+	if (ret > 0)
+		adc->num_interrupts = ret;
 
 	adc->base = devm_kcalloc(adc->dev, adc->num_sdams, sizeof(*adc->base), GFP_KERNEL);
 	if (!adc->base)
@@ -1863,27 +1862,9 @@ static void adc5_gen3_shutdown(struct platform_device *pdev)
 	}
 }
 
-static int adc5_gen3_suspend(struct device *dev)
-{
-	if (pm_suspend_via_firmware())
-		return adc5_gen3_freeze(dev);
-
-	return 0;
-}
-
-static int adc5_gen3_resume(struct device *dev)
-{
-	if (pm_suspend_via_firmware())
-		return adc5_gen3_restore(dev);
-
-	return 0;
-}
-
 static const struct dev_pm_ops adc5_gen3_pm_ops = {
 	.freeze = adc5_gen3_freeze,
 	.restore = adc5_gen3_restore,
-	.suspend = adc5_gen3_suspend,
-	.resume = adc5_gen3_resume,
 };
 
 static struct platform_driver adc5_gen3_driver = {

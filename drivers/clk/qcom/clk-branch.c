@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2013, 2016, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -381,7 +381,7 @@ const struct clk_ops clk_branch2_force_off_ops = {
 	.init = clk_branch2_init,
 	.debug_init = clk_branch_debug_init,
 };
-EXPORT_SYMBOL(clk_branch2_force_off_ops);
+EXPORT_SYMBOL_GPL(clk_branch2_force_off_ops);
 
 const struct clk_ops clk_branch2_mem_ops = {
 	.enable = clk_branch2_mem_enable,
@@ -390,7 +390,7 @@ const struct clk_ops clk_branch2_mem_ops = {
 	.init = clk_branch2_init,
 	.debug_init = clk_branch_debug_init,
 };
-EXPORT_SYMBOL(clk_branch2_mem_ops);
+EXPORT_SYMBOL_GPL(clk_branch2_mem_ops);
 
 static unsigned long clk_branch2_hw_ctl_recalc_rate(struct clk_hw *hw,
 		unsigned long parent_rate)
@@ -443,7 +443,7 @@ const struct clk_ops clk_branch2_hw_ctl_ops = {
 	.init = clk_branch2_init,
 	.debug_init = clk_branch_debug_init,
 };
-EXPORT_SYMBOL(clk_branch2_hw_ctl_ops);
+EXPORT_SYMBOL_GPL(clk_branch2_hw_ctl_ops);
 
 const struct clk_ops clk_branch_simple_ops = {
 	.enable = clk_enable_regmap,

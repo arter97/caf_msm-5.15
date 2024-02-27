@@ -108,14 +108,14 @@ static inline int subsys_register_early_notifier(const char *subsys_name,
 				   void (*early_notif_cb)(void *),
 				   void *data)
 {
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 
 static inline int subsys_unregister_early_notifier(const char *subsys_name,
 						   enum early_subsys_notif_type
 						   notif_type)
 {
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 
 static inline void subsys_send_early_notifications(void *early_notif_handle)

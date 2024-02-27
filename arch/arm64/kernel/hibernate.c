@@ -37,7 +37,6 @@
 #include <asm/sysreg.h>
 #include <asm/trans_pgd.h>
 #include <asm/virt.h>
-#include <trace/hooks/bl_hib.h>
 
 /*
  * Hibernate core relies on this value being 0 on resume, and marks it
@@ -88,8 +87,6 @@ static struct arch_hibernate_hdr {
 	phys_addr_t	__hyp_stub_vectors;
 
 	u64		sleep_cpu_mpidr;
-
-	ANDROID_VENDOR_DATA(1);
 } resume_hdr;
 
 static inline void arch_hdr_invariants(struct arch_hibernate_hdr_invariants *i)
@@ -126,9 +123,6 @@ int arch_hibernation_header_save(void *addr, unsigned int max_size)
 	arch_hdr_invariants(&hdr->invariants);
 	hdr->ttbr1_el1		= __pa_symbol(swapper_pg_dir);
 	hdr->reenter_kernel	= _cpu_resume;
-
-	trace_android_vh_save_cpu_resume(&hdr->android_vendor_data1,
-						__pa(cpu_resume));
 
 	/* We can't use __hyp_get_vectors() because kvm may still be loaded */
 	if (el2_reset_needed())
@@ -303,7 +297,7 @@ static int swsusp_mte_save_tags(void)
 			if (!page)
 				continue;
 
-			if (!test_bit(PG_mte_tagged, &page->flags))
+			if (!page_mte_tagged(page))
 				continue;
 
 			ret = save_tags(page, pfn);
@@ -332,11 +326,6 @@ static void swsusp_mte_restore_tags(void)
 		unsigned long pfn = xa_state.xa_index;
 		struct page *page = pfn_to_online_page(pfn);
 
-		/*
-		 * It is not required to invoke page_kasan_tag_reset(page)
-		 * at this point since the tags stored in page->flags are
-		 * already restored.
-		 */
 		mte_restore_page_tags(page_address(page), tags);
 
 		mte_free_tag_storage(tags);

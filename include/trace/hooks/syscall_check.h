@@ -10,12 +10,6 @@
  * Following tracepoints are not exported in tracefs and provide a
  * mechanism for vendor modules to hook and extend functionality
  */
-
-#ifdef __GENKSYMS__
-#include <linux/fs.h>
-#include <uapi/linux/bpf.h>
-#endif
-
 struct file;
 union bpf_attr;
 

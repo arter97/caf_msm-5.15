@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -676,7 +677,7 @@ static bool is_dcc_enabled(struct dcc_drvdata *drvdata)
 	bool dcc_enable = false;
 	int list;
 
-	for (list = 0; list < drvdata->nr_link_list; list++) {
+	for (list = 0; list < DCC_MAX_LINK_LIST; list++) {
 		if (drvdata->enable[list]) {
 			dcc_enable = true;
 			break;

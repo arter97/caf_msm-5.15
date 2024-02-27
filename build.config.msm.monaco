@@ -19,12 +19,10 @@ SYSTEM_DLKM_MODULES_LIST=${ROOT_DIR}/${KERNEL_DIR}/android/gki_system_dlkm_modul
 SUPER_IMAGE_SIZE=0x10000000
 TRIM_UNUSED_MODULES=1
 BUILD_INIT_BOOT_IMG=1
-MODULES_LIST_ORDER="1"
-
 [ -z "${DT_OVERLAY_SUPPORT}" ] && DT_OVERLAY_SUPPORT=1
 
 if [ "${KERNEL_CMDLINE_CONSOLE_AUTO}" != "0" ]; then
-	KERNEL_VENDOR_CMDLINE+=' console=ttyMSM0,115200n8 earlycon=qcom_geni,0x4a98000 qcom_geni_serial.con_enabled=1 '
+	KERNEL_VENDOR_CMDLINE+='console=ttyMSM0,115200n8 earlycon'
 fi
 
 KERNEL_VENDOR_CMDLINE+=' bootconfig '

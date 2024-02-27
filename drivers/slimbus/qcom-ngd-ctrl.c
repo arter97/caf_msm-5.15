@@ -2181,10 +2181,10 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	return 0;
 
 err_pdr_lookup:
-        pdr_handle_release(ctrl->pdr);
+	pdr_handle_release(ctrl->pdr);
 
 err_pdr_alloc:
-        qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
+	qcom_unregister_ssr_notifier(ctrl->notifier, &ctrl->nb);
 
 remove_ipc_sysfs:
 	if (ctrl->ipc_slimbus_log)

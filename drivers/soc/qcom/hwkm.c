@@ -136,7 +136,7 @@ int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp)
 
 	return 0;
 }
-EXPORT_SYMBOL(qti_hwkm_handle_cmd);
+EXPORT_SYMBOL_GPL(qti_hwkm_handle_cmd);
 
 static void qti_hwkm_configure_slot_access(const struct ice_mmio_data *mmio_data)
 {
@@ -195,7 +195,7 @@ bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
 	val = val & 0x1;
 	return (val == 1);
 }
-EXPORT_SYMBOL(qti_hwkm_init_required);
+EXPORT_SYMBOL_GPL(qti_hwkm_init_required);
 
 static int qti_hwkm_ice_init_sequence(const struct ice_mmio_data *mmio_data)
 {
@@ -321,7 +321,7 @@ int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
 	pr_debug("%s %d: HWKM init ends\n", __func__, __LINE__);
 	return ret;
 }
-EXPORT_SYMBOL(qti_hwkm_init);
+EXPORT_SYMBOL_GPL(qti_hwkm_init);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("QTI Hardware Key Manager library");

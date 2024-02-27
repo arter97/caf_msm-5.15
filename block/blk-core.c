@@ -44,8 +44,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
-#undef CREATE_TRACE_POINTS
-#include <trace/hooks/block.h>
 
 #include "blk.h"
 #include "blk-mq.h"
@@ -63,12 +61,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_split);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_unplug);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_insert);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_queue);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_getrq);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_issue);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_merge);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_requeue);
-EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_complete);
 
 DEFINE_IDA(blk_queue_ida);
 
@@ -414,8 +406,6 @@ void blk_cleanup_queue(struct request_queue *q)
 	if (q->elevator)
 		blk_mq_sched_free_requests(q);
 	mutex_unlock(&q->sysfs_lock);
-
-	percpu_ref_exit(&q->q_usage_counter);
 
 	/* @q is and will stay empty, shutdown and put */
 	blk_put_queue(q);
@@ -779,7 +769,7 @@ static inline blk_status_t blk_check_zone_append(struct request_queue *q,
 		return BLK_STS_NOTSUPP;
 
 	/* The bio sector must point to the start of a sequential zone */
-	if (pos & (blk_queue_zone_sectors(q) - 1) ||
+	if (!bdev_is_zone_start(bio->bi_bdev, pos) ||
 	    !blk_queue_zone_is_seq(q, pos))
 		return BLK_STS_IOERR;
 
@@ -1268,7 +1258,6 @@ void blk_account_io_done(struct request *req, u64 now)
 	 * normal IO on queueing nor completion.  Accounting the
 	 * containing request is enough.
 	 */
-	trace_android_vh_blk_account_io_done(req);
 	if (req->part && blk_do_io_stat(req) &&
 	    !(req->rq_flags & RQF_FLUSH_SEQ)) {
 		const int sgrp = op_stat_group(req_op(req));
@@ -1798,7 +1787,7 @@ int __init blk_dev_init(void)
 		panic("Failed to create kblockd\n");
 
 	blk_requestq_cachep = kmem_cache_create("request_queue",
-			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
+		sizeof(struct internal_request_queue), 0, SLAB_PANIC, NULL);
 
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 

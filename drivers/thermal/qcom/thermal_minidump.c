@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -47,7 +47,7 @@ int thermal_minidump_update_data(struct minidump_data *md,
 
 	return ret;
 }
-EXPORT_SYMBOL(thermal_minidump_update_data);
+EXPORT_SYMBOL_GPL(thermal_minidump_update_data);
 
 /**
  * thermal_minidump_register - function to register thermal data region
@@ -87,7 +87,7 @@ struct minidump_data *thermal_minidump_register(const char *name)
 exit:
 	return md;
 }
-EXPORT_SYMBOL(thermal_minidump_register);
+EXPORT_SYMBOL_GPL(thermal_minidump_register);
 
 /**
  * thermal_minidump_unregister - function to unregister thermal data region
@@ -105,7 +105,7 @@ void thermal_minidump_unregister(struct minidump_data *md)
 		kfree(md);
 	}
 }
-EXPORT_SYMBOL(thermal_minidump_unregister);
+EXPORT_SYMBOL_GPL(thermal_minidump_unregister);
 
 MODULE_DESCRIPTION("Qualcomm Technologies Inc. Thermal minidump driver");
 MODULE_LICENSE("GPL");

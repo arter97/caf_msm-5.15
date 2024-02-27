@@ -327,14 +327,10 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 	spinlock_t *ptl;
 	struct page *page = NULL;
 	LIST_HEAD(page_list);
-	bool allow_shared = false;
-	bool abort_madvise = false;
 
-	trace_android_vh_madvise_cold_or_pageout_abort(vma, &abort_madvise);
-	if (fatal_signal_pending(current) || abort_madvise)
+	if (fatal_signal_pending(current))
 		return -EINTR;
 
-	trace_android_vh_madvise_cold_or_pageout(vma, &allow_shared);
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	if (pmd_trans_huge(*pmd)) {
 		pmd_t orig_pmd;
@@ -458,7 +454,7 @@ regular_page:
 		 * Do not interfere with other mappings of this page and
 		 * non-LRU page.
 		 */
-		if (!allow_shared && (!PageLRU(page) || page_mapcount(page) != 1))
+		if (!PageLRU(page) || page_mapcount(page) != 1)
 			continue;
 
 		if (pageout_anon_only && !PageAnon(page))
@@ -1349,6 +1345,7 @@ int do_madvise(struct mm_struct *mm, unsigned long start, size_t len_in, int beh
 	int write;
 	size_t len;
 	struct blk_plug plug;
+	bool do_plug = true;
 
 	start = untagged_addr(start);
 
@@ -1383,10 +1380,13 @@ int do_madvise(struct mm_struct *mm, unsigned long start, size_t len_in, int beh
 		mmap_read_lock(mm);
 	}
 
-	blk_start_plug(&plug);
+	trace_android_vh_do_madvise_blk_plug(behavior, &do_plug);
+	if (do_plug)
+		blk_start_plug(&plug);
 	error = madvise_walk_vmas(mm, start, end, behavior,
 			madvise_vma_behavior);
-	blk_finish_plug(&plug);
+	if (do_plug)
+		blk_finish_plug(&plug);
 	if (write)
 		mmap_write_unlock(mm);
 	else

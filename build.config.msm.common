@@ -11,17 +11,17 @@
 
 CONFIG_DIR=arch/${ARCH}/configs
 
-BRANCH=msm-kernel
 CONFIG_TARGET=msm.${MSM_ARCH}
-
-
-GKI_KLEAF_SUPPRESS_BUILD_SH_DEPRECATION_WARNING=1
-KLEAF_SUPPRESS_BUILD_SH_DEPRECATION_WARNING=1
 
 ################################################################################
 ##
 function compile_external_dtc() {
   (
+    # Bazel builds dtc with its own rule, so skip if building with Bazel
+    if [ -n "$BUILDING_WITH_BAZEL" ]; then
+        return
+    fi
+
     OUT_DIR=${COMMON_OUT_DIR}/external/dtc
     [ "${SKIP_MRPROPER}" != "1" ] && rm -rf ${OUT_DIR}
     cd ${ROOT_DIR}/external/dtc
@@ -71,14 +71,6 @@ if [ -z "${VARIANT}" ] || [ "${VARIANT}" == "default" ]; then
   VARIANT="${VARIANTS[0]}"
 fi
 
-if [ ! -z $MSM_ARCH ]; then
-  BRANCH+=-${MSM_ARCH}
-fi
-
-if [ ! -z $VARIANT ]; then
-  BRANCH+=-${VARIANT}
-fi
-
 if ( for v in "${VARIANTS[@]}"; do if [ "${v}" = "${VARIANT}" ]; then exit 1; fi; done; exit 0 ) ; then
   echo "Unsupported variant '${VARIANT}'"
   exit 1
@@ -97,7 +89,8 @@ function merge_defconfig_fragments() {
     return
   fi
   local output=$(mktemp)
-  KCONFIG_CONFIG=${KERNEL_DIR}/arch/${ARCH}/configs/${DEFCONFIG} \
+  mkdir -p $(dirname ${OUT_DIR}/arch/${ARCH}/configs/${DEFCONFIG})
+  KCONFIG_CONFIG=${OUT_DIR}/arch/${ARCH}/configs/${DEFCONFIG} \
     ${KERNEL_DIR}/scripts/kconfig/merge_config.sh \
     -m -r -y ${DEFCONFIG_FRAGMENTS} | tee $output
   set +x
@@ -129,7 +122,7 @@ function check_merged_defconfig() {
     return
   fi
   local output=$(mktemp)
-  ${KERNEL_DIR}/scripts/diffconfig "${KERNEL_DIR}/arch/${ARCH}/configs/${DEFCONFIG}" ${OUT_DIR}/.config > $output
+  ${KERNEL_DIR}/scripts/diffconfig "${OUT_DIR}/arch/${ARCH}/configs/${DEFCONFIG}" ${OUT_DIR}/.config > $output
   set +x
   # Allow CONFIG_CMDLINE changes
   if grep -q -v -E -e "^\+" -e "^CMDLINE " $output; then
@@ -173,7 +166,7 @@ if [[ "${PREPARE_SYSTEM_DLKM}" == "1"  && ! -z "${SYSTEM_DLKM_MODULES_LIST}" ]];
   {
     awk -F'/' '{print $NF}' ${SYSTEM_DLKM_MODULES_LIST}
     [ -f "${MODULES_LIST}" ] && cat "${MODULES_LIST}"
-  } > ${COMBINED_MODULE_LIST}
+  } | sed -e '/^$/d' > ${COMBINED_MODULE_LIST}
 fi
 
 function prepare_vendor_dlkm() {
@@ -187,9 +180,13 @@ function prepare_vendor_dlkm() {
       module_list_flag="-e ''"
     fi
     (cd "${MODULES_STAGING_DIR}/lib/modules/" && find -type f -name "*.ko" -printf "%f\n") | \
-      grep -x -v ${module_list_flag} - > ${MODULES_STAGING_DIR}/vendor_dlkm.modules.load
+      grep -w -v ${module_list_flag} - > ${MODULES_STAGING_DIR}/vendor_dlkm.modules.load
 
     VENDOR_DLKM_MODULES_LIST="${MODULES_STAGING_DIR}/vendor_dlkm.modules.load"
+    if [[ ! -s ${VENDOR_DLKM_MODULES_LIST} ]]; then
+      echo "========================================================"
+      echo "WARNING: ${VENDOR_DLKM_MODULES_LIST} is empty file!"
+    fi
   fi
 
   SUPER_IMAGE_CONTENTS+=("${DIST_DIR}/vendor_dlkm.img")
@@ -225,16 +222,14 @@ function prepare_system_dlkm() {
 }
 append_cmd DIST_CMDS 'prepare_system_dlkm'
 
-if [ -z "${KERNEL_BINARY}" ]; then
-  KERNEL_BINARY=Image
-fi
+KERNEL_BINARY=Image
 
 ################################################################################
 ## DT Overlay
 LIBUFDT_PREBUILTS_BIN=tools/libufdt/utils/src
 function make_dtbo_img() {
   mkdir -p ${DIST_DIR}/
-  mkdtboimg.py create ${DIST_DIR}/dtbo.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*.dtbo
+  mkdtboimg create ${DIST_DIR}/dtbo.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*.dtbo
 }
 if [ ! -z $DT_OVERLAY_SUPPORT ] && [ ! $DT_OVERLAY_SUPPORT -eq "0" ]; then
   append_cmd DIST_CMDS 'make_dtbo_img'
@@ -244,9 +239,9 @@ fi
 ## Cating all the DTBs and create a dtb.img
 function make_dtb_img() {
   mkdir -p ${DIST_DIR}/
-  mkdtboimg.py create ${DIST_DIR}/${MSM_ARCH}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*.dtb
+  mkdtboimg create ${DIST_DIR}/${MSM_ARCH}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*.dtb
 }
-if [ ! -z "$DTB_IMG_CREATE" ] && [ ! "$DTB_IMG_CREATE" -eq "0" ]; then
+if [ ! -z $DTB_IMG_CREATE ] && [ ! $DTB_IMG_CREATE -eq "0" ]; then
   append_cmd DIST_CMDS 'make_dtb_img'
 fi
 
@@ -255,13 +250,7 @@ fi
 function make_vm_dtb_img() {
   mkdir -p ${DIST_DIR}/
   for i in "${!MKDTIMGDTBS[@]}"; do
-    if [[ ${MKDTIMGDTBS[$i]} == *"-vm"* ]]; then
-      mkdtboimg.py create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*-vm*.dtb
-    fi
-
-    if [[ ${MKDTIMGDTBS[$i]} == *"oemvm"* ]]; then
-      mkdtboimg.py create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/*-oemvm*.dtb
-    fi
+    mkdtboimg create ${DIST_DIR}/${i}-dtb.img --page_size=${PAGE_SIZE} ${DIST_DIR}/${MKDTIMGDTBS[$i]}*.dtb
   done
 }
 if [ -n "$VM_DTB_IMG_CREATE" ] && [ ! "$VM_DTB_IMG_CREATE" -eq "0" ]; then
@@ -275,14 +264,6 @@ if [ -n "${EXTRA_CONFIGS}" ]; then
   do
     . ${extra_config}
   done
-fi
-
-## Generate extra_cmdline for vendor
-function generate_extra_cmdline() {
-  echo "$VENDOR_EXTRA_CMDLINE" > "${DIST_DIR}/extra_cmdline"
-}
-if [ -n "${VENDOR_EXTRA_CMDLINE}" ]; then
-  append_cmd DIST_CMDS 'generate_extra_cmdline'
 fi
 
 ################################################################################

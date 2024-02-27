@@ -490,7 +490,7 @@ out_free_source:
 	kfree(source_vm_copy);
 	return ret;
 }
-EXPORT_SYMBOL(hyp_assign_table);
+EXPORT_SYMBOL_GPL(hyp_assign_table);
 
 int hyp_assign_phys(phys_addr_t addr, u64 size, u32 *source_vm_list,
 			int source_nelems, int *dest_vmids,
@@ -514,7 +514,7 @@ int hyp_assign_phys(phys_addr_t addr, u64 size, u32 *source_vm_list,
 	sg_free_table(&table);
 	return ret;
 }
-EXPORT_SYMBOL(hyp_assign_phys);
+EXPORT_SYMBOL_GPL(hyp_assign_phys);
 
 const char *msm_secure_vmid_to_string(int secure_vmid)
 {
@@ -571,7 +571,7 @@ const char *msm_secure_vmid_to_string(int secure_vmid)
 		return "Unknown VMID";
 	}
 }
-EXPORT_SYMBOL(msm_secure_vmid_to_string);
+EXPORT_SYMBOL_GPL(msm_secure_vmid_to_string);
 
 u32 msm_secure_get_vmid_perms(u32 vmid)
 {
@@ -583,7 +583,7 @@ u32 msm_secure_get_vmid_perms(u32 vmid)
 	else
 		return PERM_READ | PERM_WRITE;
 }
-EXPORT_SYMBOL(msm_secure_get_vmid_perms);
+EXPORT_SYMBOL_GPL(msm_secure_get_vmid_perms);
 
 static int qcom_secure_buffer_probe(struct platform_device *pdev)
 {

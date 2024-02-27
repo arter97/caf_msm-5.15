@@ -18,6 +18,8 @@ config GKI_HIDDEN_REGMAP_CONFIGS
 	bool "Hidden Regmap configs needed for GKI"
 	select REGMAP_IRQ
 	select REGMAP_MMIO
+	select REGMAP_SPMI
+	select SPMI
 	help
 	  Dummy config option used to enable hidden regmap configs.
 	  These are normally selected implicitly when a module
@@ -191,7 +193,6 @@ config GKI_HIDDEN_NET_CONFIGS
 	bool "Hidden networking configuration needed for GKI"
 	select PAGE_POOL
 	select NET_PTP_CLASSIFY
-	select NET_DEVLINK
 	help
 	  Dummy config option used to enable the networking hidden
 	  config, required by various SoC platforms.

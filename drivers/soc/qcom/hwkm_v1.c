@@ -88,7 +88,7 @@ bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
 	val = (val >> ICE_LEGACY_MODE_EN_OTP) & 0x1;
 	return (val == 1);
 }
-EXPORT_SYMBOL(qti_hwkm_init_required);
+EXPORT_SYMBOL_GPL(qti_hwkm_init_required);
 
 static inline unsigned int qti_hwkm_get_reg_data(struct ice_mmio_data *mmio_data,
 						 u32 reg, u32 offset, u32 mask,
@@ -1008,7 +1008,7 @@ int qti_hwkm_clocks(bool on)
 
 	return ret;
 }
-EXPORT_SYMBOL(qti_hwkm_clocks);
+EXPORT_SYMBOL_GPL(qti_hwkm_clocks);
 
 static int qti_hwkm_get_device_tree_data(struct platform_device *pdev,
 					 struct ice_mmio_data *hwkm_dev)
@@ -1070,7 +1070,7 @@ int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp)
 
 	return 0;
 }
-EXPORT_SYMBOL(qti_hwkm_handle_cmd);
+EXPORT_SYMBOL_GPL(qti_hwkm_handle_cmd);
 
 static void qti_hwkm_configure_slot_access(struct ice_mmio_data *mmio_data)
 {
@@ -1242,7 +1242,7 @@ int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
 	pr_debug("%s %d: HWKM init ends\n", __func__, __LINE__);
 	return ret;
 }
-EXPORT_SYMBOL(qti_hwkm_init);
+EXPORT_SYMBOL_GPL(qti_hwkm_init);
 
 static int qti_hwkm_probe(struct platform_device *pdev)
 {

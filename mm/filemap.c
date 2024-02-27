@@ -49,6 +49,9 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
+#undef CREATE_TRACE_POINTS
+#include <trace/hooks/mm.h>
+
 /*
  * FIXME: remove all knowledge of the buffer layer from the core VM
  */
@@ -1897,6 +1900,9 @@ repeat:
 			return page;
 		page = NULL;
 	}
+
+	trace_android_vh_pagecache_get_page(mapping, index, fgp_flags,
+					gfp_mask, page);
 	if (!page)
 		goto no_page;
 
@@ -2984,8 +2990,6 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	ra->start = max_t(long, 0, vmf->pgoff - ra->ra_pages / 2);
 	ra->size = ra->ra_pages;
 	ra->async_size = ra->ra_pages / 4;
-	trace_android_vh_tune_mmap_readaround(ra->ra_pages, vmf->pgoff,
-			&ra->start, &ra->size, &ra->async_size);
 	ractl._index = ra->start;
 	do_page_cache_ra(&ractl, ra->size, ra->async_size);
 	return fpin;

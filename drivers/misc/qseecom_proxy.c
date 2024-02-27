@@ -23,7 +23,7 @@ int provide_qseecom_kernel_fun_ops(const struct qseecom_drv_ops *ops)
 	pr_debug("QSEECOM proxy Ready to be served\n");
 	return 0;
 }
-EXPORT_SYMBOL(provide_qseecom_kernel_fun_ops);
+EXPORT_SYMBOL_GPL(provide_qseecom_kernel_fun_ops);
 
 int qseecom_start_app(struct qseecom_handle **handle,
 					char *app_name, uint32_t size)
@@ -41,7 +41,7 @@ int qseecom_start_app(struct qseecom_handle **handle,
 	}
 	return ret;
 }
-EXPORT_SYMBOL(qseecom_start_app);
+EXPORT_SYMBOL_GPL(qseecom_start_app);
 
 
 int qseecom_shutdown_app(struct qseecom_handle **handle)
@@ -59,7 +59,7 @@ int qseecom_shutdown_app(struct qseecom_handle **handle)
 	}
 	return ret;
 }
-EXPORT_SYMBOL(qseecom_shutdown_app);
+EXPORT_SYMBOL_GPL(qseecom_shutdown_app);
 
 
 int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
@@ -79,7 +79,7 @@ int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
 	}
 	return ret;
 }
-EXPORT_SYMBOL(qseecom_send_command);
+EXPORT_SYMBOL_GPL(qseecom_send_command);
 
 #if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 int qseecom_create_key_in_slot(uint8_t usage_code, uint8_t key_slot,
@@ -101,7 +101,7 @@ int qseecom_create_key_in_slot(uint8_t usage_code, uint8_t key_slot,
 
 	return ret;
 }
-EXPORT_SYMBOL(qseecom_create_key_in_slot);
+EXPORT_SYMBOL_GPL(qseecom_create_key_in_slot);
 #endif
 
 MODULE_LICENSE("GPL v2");

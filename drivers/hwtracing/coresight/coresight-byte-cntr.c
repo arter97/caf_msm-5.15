@@ -41,7 +41,6 @@ static irqreturn_t etr_handler(int irq, void *data)
 {
 	struct byte_cntr *byte_cntr_data = data;
 	struct tmc_drvdata *tmcdrvdata = byte_cntr_data->tmcdrvdata;
-	struct tmc_pcie_data *pcie_data = byte_cntr_data->pcie_data;
 
 	if (tmcdrvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 		atomic_inc(&byte_cntr_data->irq_cnt);
@@ -49,10 +48,6 @@ static irqreturn_t etr_handler(int irq, void *data)
 	} else if (tmcdrvdata->out_mode == TMC_ETR_OUT_MODE_MEM) {
 		atomic_inc(&byte_cntr_data->irq_cnt);
 		wake_up(&byte_cntr_data->wq);
-	} else if (tmcdrvdata->out_mode == TMC_ETR_OUT_MODE_PCIE) {
-		atomic_inc(&pcie_data->irq_cnt);
-		wake_up(&pcie_data->pcie_wait_wq);
-		pcie_data->total_irq++;
 	}
 
 	byte_cntr_data->total_irq++;
@@ -199,7 +194,7 @@ void tmc_etr_byte_cntr_start(struct byte_cntr *byte_cntr_data)
 	byte_cntr_data->enable = true;
 	mutex_unlock(&byte_cntr_data->byte_cntr_lock);
 }
-EXPORT_SYMBOL(tmc_etr_byte_cntr_start);
+EXPORT_SYMBOL_GPL(tmc_etr_byte_cntr_start);
 
 void tmc_etr_byte_cntr_stop(struct byte_cntr *byte_cntr_data)
 {
@@ -216,7 +211,7 @@ void tmc_etr_byte_cntr_stop(struct byte_cntr *byte_cntr_data)
 	mutex_unlock(&byte_cntr_data->byte_cntr_lock);
 
 }
-EXPORT_SYMBOL(tmc_etr_byte_cntr_stop);
+EXPORT_SYMBOL_GPL(tmc_etr_byte_cntr_stop);
 
 
 static int tmc_etr_byte_cntr_release(struct inode *in, struct file *fp)

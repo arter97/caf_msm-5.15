@@ -37,10 +37,6 @@ struct user_struct {
 
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
-};
-
-struct ext_user_struct {
-	struct user_struct user;
 	ANDROID_OEM_DATA_ARRAY(1, 2);
 };
 
@@ -48,9 +44,9 @@ extern int uids_sysfs_init(void);
 
 extern struct user_struct *find_user(kuid_t);
 
-extern struct ext_user_struct ext_root_user;
-extern struct user_struct *root_user;
-#define INIT_USER (&ext_root_user.user)
+extern struct user_struct root_user;
+#define INIT_USER (&root_user)
+
 
 /* per-UID process charging. */
 extern struct user_struct * alloc_uid(kuid_t);

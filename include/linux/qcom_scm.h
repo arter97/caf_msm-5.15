@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2010-2015, 2018-2019, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
  */
 #ifndef __QCOM_SCM_H
@@ -261,21 +262,8 @@ extern int qcom_scm_smmu_notify_secure_lut(u64 dev_id, bool secure);
 
 extern int qcom_scm_qdss_invoke(phys_addr_t addr, size_t size, u64 *out);
 
-extern int qcom_scm_camera_tz_get_status(uint32_t status_mask,
-			uint32_t *result);
-extern int qcom_scm_camera_tz_reg_read(uint32_t region, uint32_t offset,
-			uint32_t *data);
-extern int qcom_scm_camera_tz_reg_write(uint32_t region, uint32_t offset,
-			uint32_t data);
-extern int qcom_scm_camera_tz_reg_write_bulk(uint32_t region,
-			uint32_t num_registers, void *offsets,
-			void *data, uint32_t size);
-extern int qcom_scm_camera_tz_reset_hw_block(uint32_t status_mask,
-			uint32_t region, uint32_t *status);
 extern int qcom_scm_camera_protect_all(uint32_t protect, uint32_t param);
 extern int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask);
-extern int qcom_scm_camera_send_topology(uint32_t phy_sel, uint32_t topology);
-extern int qcom_scm_camera_reset_pipeLine(uint32_t phy_sel, uint32_t stream);
 
 extern int qcom_scm_tsens_reinit(int *tsens_ret);
 
@@ -302,6 +290,20 @@ extern int qcom_scm_invoke_callback_response(phys_addr_t out_buf,
 extern int qcom_scm_ddrbw_profiler(phys_addr_t in_buf, size_t in_buf_size,
 		phys_addr_t out_buf, size_t out_buf_size);
 
+extern int qcom_scm_get_tz_log_feat_id(u64 *version);
+extern int qcom_scm_query_encrypted_log_feature(u64 *enabled);
+extern int qcom_scm_request_encrypted_log(phys_addr_t buf, size_t len,
+		uint32_t log_id, bool is_full_encrypted_tz_logs_supported,
+		bool is_full_encrypted_tz_logs_enabled);
+extern int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size,
+		phys_addr_t out_buf, size_t out_buf_size, int32_t *result,
+		u64 *response_type, unsigned int *data);
+extern int qcom_scm_invoke_smc_legacy(phys_addr_t in_buf, size_t in_buf_size,
+		phys_addr_t out_buf, size_t out_buf_size, int32_t *result,
+		u64 *response_type, unsigned int *data);
+extern int qcom_scm_invoke_callback_response(phys_addr_t out_buf,
+		size_t out_buf_size, int32_t *result, u64 *response_type,
+		unsigned int *data);
 extern int qcom_scm_lmh_dcvsh(u32 payload_fn, u32 payload_reg, u32 payload_val,
 			      u64 limit_node, u32 node_id, u64 version);
 extern int qcom_scm_lmh_profile_change(u32 profile_id);

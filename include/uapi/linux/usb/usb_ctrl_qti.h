@@ -1,4 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
+/*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
 #ifndef __UAPI_LINUX_USB_CTRL_QTI_H
 #define __UAPI_LINUX_USB_CTRL_QTI_H
 

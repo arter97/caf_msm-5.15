@@ -9,10 +9,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <asm/ptrace.h>
-#endif
-
 struct pt_regs;
 
 DECLARE_HOOK(android_vh_ipi_stop,

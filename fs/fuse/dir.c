@@ -19,9 +19,6 @@
 #include <linux/xattr.h>
 #include <linux/iversion.h>
 #include <linux/posix_acl.h>
-#include <linux/security.h>
-#include <linux/types.h>
-#include <linux/kernel.h>
 
 #include "../internal.h"
 
@@ -408,7 +405,7 @@ static struct vfsmount *fuse_dentry_automount(struct path *path)
  * look up paths on its own. Instead, we handle the lookup as a special case
  * inside of the write request.
  */
-static void fuse_dentry_canonical_path(const struct path *path,
+static int fuse_dentry_canonical_path(const struct path *path,
 				       struct path *canonical_path)
 {
 	struct inode *inode = d_inode(path->dentry);
@@ -426,18 +423,13 @@ static void fuse_dentry_canonical_path(const struct path *path,
 			       fuse_canonical_path_backing,
 			       fuse_canonical_path_finalize, path,
 			       canonical_path);
-	if (fer.ret) {
-		if (IS_ERR(fer.result))
-			canonical_path->dentry = fer.result;
-		return;
-	}
+	if (fer.ret)
+		return PTR_ERR(fer.result);
 #endif
 
 	path_name = (char *)get_zeroed_page(GFP_KERNEL);
-	if (!path_name) {
-		canonical_path->dentry = ERR_PTR(-ENOMEM);
-		return;
-	}
+	if (!path_name)
+		return -ENOMEM;
 
 	args.opcode = FUSE_CANONICAL_PATH;
 	args.nodeid = get_node_id(inode);
@@ -451,16 +443,14 @@ static void fuse_dentry_canonical_path(const struct path *path,
 	err = fuse_simple_request(fm, &args);
 	free_page((unsigned long)path_name);
 	if (err > 0)
-		return;
-	if (err < 0) {
-		canonical_path->dentry = ERR_PTR(err);
-		return;
-	}
+		return 0;
+	if (err < 0)
+		return err;
 
 	canonical_path->dentry = path->dentry;
 	canonical_path->mnt = path->mnt;
 	path_get(canonical_path);
-	return;
+	return 0;
 }
 
 const struct dentry_operations fuse_dentry_operations = {
@@ -649,62 +639,6 @@ static struct dentry *fuse_lookup(struct inode *dir, struct dentry *entry,
 	return ERR_PTR(err);
 }
 
-static int get_security_context(struct dentry *entry, umode_t mode,
-				void **security_ctx, u32 *security_ctxlen)
-{
-	struct fuse_secctx *fctx;
-	struct fuse_secctx_header *header;
-	void *ctx = NULL, *ptr;
-	u32 ctxlen, total_len = sizeof(*header);
-	int err, nr_ctx = 0;
-	const char *name;
-	size_t namelen;
-
-	err = security_dentry_init_security(entry, mode, &entry->d_name,
-					    &name, &ctx, &ctxlen);
-	if (err) {
-		if (err != -EOPNOTSUPP)
-			goto out_err;
-		/* No LSM is supporting this security hook. Ignore error */
-		ctxlen = 0;
-		ctx = NULL;
-	}
-
-	if (ctxlen) {
-		nr_ctx = 1;
-		namelen = strlen(name) + 1;
-		err = -EIO;
-		if (WARN_ON(namelen > XATTR_NAME_MAX + 1 || ctxlen > S32_MAX))
-			goto out_err;
-		total_len += FUSE_REC_ALIGN(sizeof(*fctx) + namelen + ctxlen);
-	}
-
-	err = -ENOMEM;
-	header = ptr = kzalloc(total_len, GFP_KERNEL);
-	if (!ptr)
-		goto out_err;
-
-	header->nr_secctx = nr_ctx;
-	header->size = total_len;
-	ptr += sizeof(*header);
-	if (nr_ctx) {
-		fctx = ptr;
-		fctx->size = ctxlen;
-		ptr += sizeof(*fctx);
-
-		strcpy(ptr, name);
-		ptr += namelen;
-
-		memcpy(ptr, ctx, ctxlen);
-	}
-	*security_ctxlen = total_len;
-	*security_ctx = header;
-	err = 0;
-out_err:
-	kfree(ctx);
-	return err;
-}
-
 /*
  * Atomic create+open operation
  *
@@ -726,8 +660,6 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	struct fuse_entry_out outentry;
 	struct fuse_inode *fi;
 	struct fuse_file *ff;
-	void *security_ctx = NULL;
-	u32 security_ctxlen;
 	bool trunc = flags & O_TRUNC;
 
 	/* Userspace expects S_IFREG in create mode */
@@ -784,20 +716,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	args.out_args[0].value = &outentry;
 	args.out_args[1].size = sizeof(outopen);
 	args.out_args[1].value = &outopen;
-
-	if (fm->fc->init_security) {
-		err = get_security_context(entry, mode, &security_ctx,
-					   &security_ctxlen);
-		if (err)
-			goto out_put_forget_req;
-
-		args.in_numargs = 3;
-		args.in_args[2].size = security_ctxlen;
-		args.in_args[2].value = security_ctx;
-	}
-
 	err = fuse_simple_request(fm, &args);
-	kfree(security_ctx);
 	if (err)
 		goto out_free_ff;
 
@@ -905,8 +824,6 @@ static int create_new_entry(struct fuse_mount *fm, struct fuse_args *args,
 	struct dentry *d;
 	int err;
 	struct fuse_forget_link *forget;
-	void *security_ctx = NULL;
-	u32 security_ctxlen;
 
 	if (fuse_is_bad(dir))
 		return -EIO;
@@ -920,22 +837,7 @@ static int create_new_entry(struct fuse_mount *fm, struct fuse_args *args,
 	args->out_numargs = 1;
 	args->out_args[0].size = sizeof(outarg);
 	args->out_args[0].value = &outarg;
-
-	if (fm->fc->init_security && args->opcode != FUSE_LINK) {
-		err = get_security_context(entry, mode, &security_ctx,
-					   &security_ctxlen);
-		if (err)
-			goto out_put_forget_req;
-
-		BUG_ON(args->in_numargs != 2);
-
-		args->in_numargs = 3;
-		args->in_args[2].size = security_ctxlen;
-		args->in_args[2].value = security_ctx;
-	}
-
 	err = fuse_simple_request(fm, args);
-	kfree(security_ctx);
 	if (err)
 		goto out_put_forget_req;
 

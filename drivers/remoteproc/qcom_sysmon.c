@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2017, Linaro Ltd.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/firmware.h>
 #include <linux/module.h>
@@ -75,7 +76,7 @@ uint32_t qcom_sysmon_get_txn_id(struct qcom_sysmon *sysmon)
 {
 	return sysmon->transaction_id;
 }
-EXPORT_SYMBOL(qcom_sysmon_get_txn_id);
+EXPORT_SYMBOL_GPL(qcom_sysmon_get_txn_id);
 
 /**
  * sysmon_send_event() - send notification of other remote's SSR event
@@ -775,51 +776,6 @@ static void sysmon_stop(struct rproc_subdev *subdev, bool crashed)
 	del_timer_sync(&sysmon->timeout_data.timer);
 }
 
-static void sysmon_shutdown(struct rproc_subdev *subdev, bool crashed)
-{
-	unsigned long timeout;
-	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
-
-	trace_rproc_qcom_event(dev_name(sysmon->rproc->dev.parent), SYSMON_SUBDEV_NAME,
-			       crashed ? "crash stop" : "stop");
-
-	sysmon->shutdown_acked = false;
-
-	mutex_lock(&sysmon->state_lock);
-	sysmon->state = QCOM_SSR_BEFORE_SHUTDOWN;
-
-	sysmon->transaction_id++;
-	dev_info(sysmon->dev, "Incrementing tid for %s to %d\n", sysmon->name,
-		 sysmon->transaction_id);
-
-	blocking_notifier_call_chain(&sysmon_notifiers, 0, (void *)sysmon);
-	mutex_unlock(&sysmon->state_lock);
-
-	/* Don't request graceful shutdown if we've crashed */
-	if (crashed)
-		return;
-
-	sysmon->timeout_data.timer.function = sysmon_shutdown_notif_timeout_handler;
-	timeout = jiffies + msecs_to_jiffies(SYSMON_NOTIF_TIMEOUT);
-	mod_timer(&sysmon->timeout_data.timer, timeout);
-
-	if (sysmon->ssctl_instance) {
-		if (!wait_for_completion_timeout(&sysmon->ssctl_comp, HZ / 2))
-			dev_err(sysmon->dev, "timeout waiting for ssctl service\n");
-	}
-
-	del_timer_sync(&sysmon->timeout_data.timer);
-}
-
-void qcom_sysmon_set_ops_stop(struct qcom_sysmon *sysmon, bool suspend)
-{
-	if (suspend)
-		sysmon->subdev.stop = sysmon_shutdown;
-	else
-		sysmon->subdev.stop = sysmon_stop;
-}
-EXPORT_SYMBOL_GPL(qcom_sysmon_set_ops_stop);
-
 static void sysmon_unprepare(struct rproc_subdev *subdev)
 {
 	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon,
@@ -999,7 +955,7 @@ int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len)
 out:
 	return ret;
 }
-EXPORT_SYMBOL(qcom_sysmon_get_reason);
+EXPORT_SYMBOL_GPL(qcom_sysmon_get_reason);
 
 /**
  * qcom_add_sysmon_subdev() - create a sysmon subdev for the given remoteproc

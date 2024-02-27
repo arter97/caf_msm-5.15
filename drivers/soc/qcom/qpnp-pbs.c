@@ -183,7 +183,7 @@ int qpnp_pbs_trigger_single_event(struct device_node *dev_node)
 
 	return rc;
 }
-EXPORT_SYMBOL(qpnp_pbs_trigger_single_event);
+EXPORT_SYMBOL_GPL(qpnp_pbs_trigger_single_event);
 
 /**
  * qpnp_pbs_trigger_event - Trigger the PBS RAM sequence
@@ -325,7 +325,7 @@ out:
 
 	return rc;
 }
-EXPORT_SYMBOL(qpnp_pbs_trigger_event);
+EXPORT_SYMBOL_GPL(qpnp_pbs_trigger_event);
 
 static int qpnp_pbs_probe(struct platform_device *pdev)
 {

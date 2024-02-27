@@ -171,6 +171,7 @@ static int cfg80211_conn_do_work(struct wireless_dev *wdev,
 		auth_req.key = params->key;
 		auth_req.key_len = params->key_len;
 		auth_req.key_idx = params->key_idx;
+		auth_req.auth_type = params->auth_type;
 		auth_req.bss = cfg80211_get_bss(&rdev->wiphy, params->channel,
 						params->bssid,
 						params->ssid, params->ssid_len,
@@ -805,10 +806,6 @@ void __cfg80211_connect_result(struct net_device *dev,
 		}
 
 		for_each_valid_link(cr, link) {
-			/* don't do extra lookups for failures */
-			if (cr->links[link].status != WLAN_STATUS_SUCCESS)
-				continue;
-
 			if (cr->links[link].bss)
 				continue;
 
@@ -845,16 +842,6 @@ void __cfg80211_connect_result(struct net_device *dev,
 	}
 
 	memset(wdev->links, 0, sizeof(wdev->links));
-	for_each_valid_link(cr, link) {
-		if (cr->links[link].status == WLAN_STATUS_SUCCESS)
-			continue;
-		cr->valid_links &= ~BIT(link);
-		/* don't require bss pointer for failed links */
-		if (!cr->links[link].bss)
-			continue;
-		cfg80211_unhold_bss(bss_from_pub(cr->links[link].bss));
-		cfg80211_put_bss(wdev->wiphy, cr->links[link].bss);
-	}
 	wdev->valid_links = cr->valid_links;
 	for_each_valid_link(cr, link)
 		wdev->links[link].client.current_bss =
@@ -1285,7 +1272,7 @@ void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *bssid,
 	ASSERT_WDEV_LOCK(wdev);
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
-                    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
+		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
 		return;
 
 	if (WARN_ON(!wdev->connected) ||

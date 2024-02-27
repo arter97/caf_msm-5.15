@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021,2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "VendorHooks: " fmt
@@ -83,7 +83,7 @@ static void dump_instr(const char *rname, u64 instr)
 		}
 	}
 
-	printk(KERN_EMERG "%s Code: %s\n", rname, str);
+	pr_emerg("%s Code: %s\n", rname, str);
 }
 
 /* In line with __show_regs from arch/arm64/kernel/process.c */
@@ -91,12 +91,12 @@ void show_regs_min(struct pt_regs *regs)
 {
 	int i = 29;
 
-	printk(KERN_EMERG "pc : %016llx\n", regs->pc);
-	printk(KERN_EMERG "lr : %016llx\n", regs->regs[30]);
-	printk(KERN_EMERG "sp : %016llx\n", regs->sp);
+	pr_emerg("pc : %016llx\n", regs->pc);
+	pr_emerg("lr : %016llx\n", regs->regs[30]);
+	pr_emerg("sp : %016llx\n", regs->sp);
 
 	while (i >= 0) {
-		printk(KERN_EMERG "x%-2d: %016llx ", i, regs->regs[i]);
+		pr_emerg("x%-2d: %016llx ", i, regs->regs[i]);
 		i--;
 
 		if (i % 2 == 0) {
@@ -123,13 +123,14 @@ static void print_ptrauth_fault(void *unused, struct pt_regs *regs,
 	if (!user_mode(regs)) {
 		dump_instr("PC", regs->pc);
 		dump_instr("LR", ptrauth_strip_insn_pac(regs->regs[30]));
-		printk(KERN_EMERG "ESR value: 0x%08x", esr);
+		pr_emerg("ESR value: 0x%08x", esr);
 		show_regs_min(regs);
 	}
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_SPINLOCK) && \
-	(IS_ENABLED(CONFIG_DEBUG_SPINLOCK_BITE_ON_BUG) || IS_ENABLED(CONFIG_DEBUG_SPINLOCK_PANIC_ON_BUG))
+	(IS_ENABLED(CONFIG_DEBUG_SPINLOCK_BITE_ON_BUG) ||\
+	IS_ENABLED(CONFIG_DEBUG_SPINLOCK_PANIC_ON_BUG))
 static int entry_spin_bug(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	raw_spinlock_t *lock = (raw_spinlock_t *)regs->regs[0];
@@ -142,10 +143,10 @@ static int entry_spin_bug(struct kretprobe_instance *ri, struct pt_regs *regs)
 	/* Dup of spin_bug in kernel/locking/spinlock_debug.c */
 	if (owner == SPINLOCK_OWNER_INIT)
 		owner = NULL;
-	printk(KERN_EMERG "BUG: spinlock %s on CPU#%d, %s/%d\n",
+	pr_emerg("BUG: spinlock %s on CPU#%d, %s/%d\n",
 		msg, raw_smp_processor_id(),
 		current->comm, task_pid_nr(current));
-	printk(KERN_EMERG " lock: %pS, .magic: %08x, .owner: %s/%d, "
+	pr_emerg(" lock: %pS, .magic: %08x, .owner: %s/%d, "
 			".owner_cpu: %d\n",
 		lock, READ_ONCE(lock->magic),
 		owner ? owner->comm : "<none>",

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef _DT_BINDINGS_PHY_QCOM_4NM_QMP_COMBO_USB_H
 #define _DT_BINDINGS_PHY_QCOM_4NM_QMP_COMBO_USB_H

@@ -77,7 +77,7 @@ void sdhci_msm_scale_parse_dt(struct device *dev, struct sdhci_msm_host *msm_hos
 				MMC_SCALING_LOWER_DDR52_MODE;
 	}
 }
-EXPORT_SYMBOL(sdhci_msm_scale_parse_dt);
+EXPORT_SYMBOL_GPL(sdhci_msm_scale_parse_dt);
 
 void sdhci_msm_dec_active_req(struct mmc_host *mhost)
 {
@@ -122,7 +122,7 @@ void sdhci_msm_mmc_cqe_clk_scaling_stop_busy(struct mmc_host *mhost, struct mmc_
 	is_dcmd = (mmc_issue_type(mq, req) == MMC_ISSUE_DCMD);
 	_sdhci_msm_mmc_cqe_clk_scaling_stop_busy(host, true, is_dcmd);
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_cqe_clk_scaling_stop_busy);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_cqe_clk_scaling_stop_busy);
 
 void sdhci_msm_mmc_cqe_clk_scaling_start_busy(struct mmc_host *mhost, struct mmc_request *mrq)
 {
@@ -147,7 +147,7 @@ void sdhci_msm_mmc_cqe_clk_scaling_start_busy(struct mmc_host *mhost, struct mmc
 	sdhci_msm_mmc_deferred_scaling(host);
 	_sdhci_msm_mmc_cqe_clk_scaling_start_busy(mq, host, true);
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_cqe_clk_scaling_start_busy);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_cqe_clk_scaling_start_busy);
 
 void sdhci_msm_cqe_scaling_resume(struct mmc_host *mhost)
 {
@@ -160,7 +160,7 @@ void sdhci_msm_cqe_scaling_resume(struct mmc_host *mhost)
 		host->scaling_suspended = 0;
 	}
 }
-EXPORT_SYMBOL(sdhci_msm_cqe_scaling_resume);
+EXPORT_SYMBOL_GPL(sdhci_msm_cqe_scaling_resume);
 
 void sdhci_msm_mmc_clk_scaling_stop_busy(struct mmc_host *mhost, bool data)
 {
@@ -245,7 +245,7 @@ void sdhci_msm_mmc_suspend_clk_scaling(struct mmc_host *mhost)
 	_sdhci_msm_mmc_suspend_clk_scaling(host);
 
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_suspend_clk_scaling);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_suspend_clk_scaling);
 
 void sdhci_msm_mmc_resume_clk_scaling(struct mmc_host *mhost)
 {
@@ -255,7 +255,7 @@ void sdhci_msm_mmc_resume_clk_scaling(struct mmc_host *mhost)
 
 	_sdhci_msm_mmc_resume_clk_scaling(host);
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_resume_clk_scaling);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_resume_clk_scaling);
 
 void sdhci_msm_mmc_init_clk_scaling(struct mmc_host *mhost)
 {
@@ -272,7 +272,7 @@ void sdhci_msm_mmc_init_clk_scaling(struct mmc_host *mhost)
 	_sdhci_msm_mmc_init_clk_scaling(host);
 	host->clk_scale_init_done = 1;
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_init_clk_scaling);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_init_clk_scaling);
 
 /**
  * mmc_sd_change_bus_speed() - Change SD card bus frequency at runtime
@@ -595,7 +595,7 @@ void _sdhci_msm_mmc_cqe_clk_scaling_start_busy(struct mmc_queue *mq,
 	if (lock_needed)
 		spin_unlock_irqrestore(&host->clk_scaling.lock, flags);
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_cqe_clk_scaling_start_busy);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_cqe_clk_scaling_start_busy);
 
 /**
  * mmc_cqe_clk_scaling_stop_busy() - stop busy timer for last data requests
@@ -635,7 +635,7 @@ void _sdhci_msm_mmc_cqe_clk_scaling_stop_busy(struct sdhci_msm_host *host,
 		spin_unlock_irqrestore(&host->clk_scaling.lock, flags);
 
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_cqe_clk_scaling_stop_busy);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_cqe_clk_scaling_stop_busy);
 
 /**
  * mmc_can_scale_clk() - Check clock scaling capability
@@ -653,7 +653,7 @@ bool sdhci_msm_mmc_can_scale_clk(struct sdhci_msm_host *msm_host)
 
 	return msm_host->scale_caps & MMC_CAP2_CLK_SCALE;
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_can_scale_clk);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_can_scale_clk);
 
 static int sdhci_msm_mmc_devfreq_get_dev_status(struct device *dev,
 		struct devfreq_dev_status *status)
@@ -829,7 +829,7 @@ int sdhci_msm_mmc_clk_update_freq(struct sdhci_msm_host *host,
 out:
 	return err;
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_clk_update_freq);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_clk_update_freq);
 
 static int sdhci_msm_mmc_devfreq_set_target(struct device *dev,
 				unsigned long *freq, u32 devfreq_flags)
@@ -954,7 +954,7 @@ void sdhci_msm_mmc_deferred_scaling(struct sdhci_msm_host *host)
 			target_freq, current->comm);
 	atomic_dec(&host->clk_scaling.devfreq_abort);
 }
-EXPORT_SYMBOL(sdhci_msm_mmc_deferred_scaling);
+EXPORT_SYMBOL_GPL(sdhci_msm_mmc_deferred_scaling);
 
 static int sdhci_msm_mmc_devfreq_create_freq_table(struct sdhci_msm_host *host)
 {
@@ -1332,7 +1332,7 @@ int _sdhci_msm_mmc_init_clk_scaling(struct sdhci_msm_host *host)
 
 	return err;
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_init_clk_scaling);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_init_clk_scaling);
 
 /**
  * mmc_suspend_clk_scaling() - suspend clock scaling
@@ -1379,7 +1379,7 @@ int _sdhci_msm_mmc_suspend_clk_scaling(struct sdhci_msm_host *host)
 
 	return 0;
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_suspend_clk_scaling);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_suspend_clk_scaling);
 
 /**
  * mmc_resume_clk_scaling() - resume clock scaling
@@ -1438,7 +1438,7 @@ int _sdhci_msm_mmc_resume_clk_scaling(struct sdhci_msm_host *host)
 
 	return err;
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_resume_clk_scaling);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_resume_clk_scaling);
 
 /**
  * mmc_exit_devfreq_clk_scaling() - Disable clock scaling
@@ -1497,7 +1497,7 @@ int _sdhci_msm_mmc_exit_clk_scaling(struct sdhci_msm_host *host)
 
 	return 0;
 }
-EXPORT_SYMBOL(_sdhci_msm_mmc_exit_clk_scaling);
+EXPORT_SYMBOL_GPL(_sdhci_msm_mmc_exit_clk_scaling);
 
 MODULE_DESCRIPTION("Qualcomm Technologies, Inc. SDHCI Controller Support");
 MODULE_LICENSE("GPL v2");

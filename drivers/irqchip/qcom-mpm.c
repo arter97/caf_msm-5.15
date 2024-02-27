@@ -13,7 +13,6 @@
 #include <linux/irqdomain.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/msm_rtb.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -439,10 +438,10 @@ static inline void msm_mpm_timer_write(void)
 	if (system_state == SYSTEM_SUSPEND)
 		goto exit;
 
-	ctrl = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTV_CTL);
+	ctrl = readl_relaxed(msm_mpm_dev_data.timer_frame_reg + MPM_CNTV_CTL);
 	if (ctrl & MPM_ARCH_TIMER_CTRL_ENABLE) {
-		lo = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_LO);
-		hi = readl_relaxed_no_log(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_HI);
+		lo = readl_relaxed(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_LO);
+		hi = readl_relaxed(msm_mpm_dev_data.timer_frame_reg + MPM_CNTCVAL_HI);
 	}
 
 exit:
@@ -476,7 +475,7 @@ int msm_mpm_enter_sleep(struct cpumask *cpumask)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_mpm_enter_sleep);
+EXPORT_SYMBOL_GPL(msm_mpm_enter_sleep);
 
 /*
  * Triggered by RPM when system resumes from deep sleep
@@ -649,38 +648,6 @@ reg_base_err:
 	return ret;
 }
 
-const struct mpm_pin mpm_khaje_gic_chip_data[] = {
-	{2, 190},
-	{5, 296},  /* lpass_irq_out_sdc */
-	{12, 422}, /* usb3_lfps_rxterm_irq */
-	{24, 79},  /* bi_px_lpi_1_aoss_mx */
-	{86, 183}, /* mpm_wake,spmi_m */
-	{90, 188}, /* eud_p0_dmse_int_mx */
-	{91, 184}, /* eud_p0_dpse_int_mx */
-	{-1},
-};
-
-const struct mpm_pin mpm_qcs405_gic_chip_data[] = {
-	{2, 184}, /*tsens0_tsens_upper_lower_int */
-	{35, 318}, /* dmse_hv, usb20 -> hs_phy_irq */
-	{36, 318}, /* dpse_hv, usb20 -> hs_phy_irq */
-	{38, 319}, /* dmse_hv, usb30 -> hs_phy_irq */
-	{39, 319}, /* dpse_hv, usb30 -> hs_phy_irq */
-	{62, 190}, /* mpm_wake,spmi_m */
-	{-1},
-};
-
-const struct mpm_pin mpm_sa410m_gic_chip_data[] = {
-	{2, 275}, /*tsens0_tsens_upper_lower_int */
-	{5, 296}, /* lpass_irq_out_sdc */
-	{12, 422}, /* b3_lfps_rxterm_irq */
-	{24, 79}, /* bi_px_lpi_1_aoss_mx */
-	{86, 183}, /* mpm_wake,spmi_m */
-	{90, 260}, /* eud_p0_dpse_int_mx */
-	{91, 260}, /* eud_p0_dmse_int_mx */
-	{-1},
-};
-
 const struct mpm_pin mpm_monaco_gic_chip_data[] = {
 	{5, 296}, /* lpass_irq_out_sdc */
 	{8, 260}, /* eud_p0_dpse_int_mx */
@@ -690,35 +657,10 @@ const struct mpm_pin mpm_monaco_gic_chip_data[] = {
 	{-1},
 };
 
-const struct mpm_pin mpm_trinket_gic_chip_data[] = {
-	{2, 275},
-	{12, 422}, /* b3_lfps_rxterm_irq */
-	{86, 183}, /* mpm_wake,spmi_m */
-	{90, 260}, /* eud_p0_dpse_int_mx */
-	{91, 260}, /* eud_p0_dmse_int_mx */
-	{-1},
-};
-
 static const struct of_device_id mpm_gic_chip_data_table[] = {
-	{
-		.compatible = "qcom,mpm-khaje",
-		.data = mpm_khaje_gic_chip_data,
-	},
 	{
 		.compatible = "qcom,mpm-monaco",
 		.data = mpm_monaco_gic_chip_data,
-	},
-	{
-		.compatible = "qcom,mpm-qcs405",
-		.data = mpm_qcs405_gic_chip_data,
-	},
-	{
-		.compatible = "qcom,mpm-sa410m",
-		.data = mpm_sa410m_gic_chip_data,
-	},
-	{
-		.compatible = "qcom,mpm-trinket",
-		.data = mpm_trinket_gic_chip_data,
 	},
 	{}
 };

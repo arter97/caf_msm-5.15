@@ -13,12 +13,23 @@
 	*(__kvm_ex_table)					\
 	__stop___kvm_ex_table = .;
 
+#ifdef CONFIG_TRACING
+#define HYPERVISOR_EVENT_IDS 					\
+	. = ALIGN(PAGE_SIZE);					\
+	__hyp_event_ids_start = .;				\
+	*(HYP_SECTION_NAME(.event_ids))				\
+	__hyp_event_ids_end = .;
+#else
+#define HYPERVISOR_EVENT_IDS
+#endif
+
 #define HYPERVISOR_RODATA_SECTIONS				\
 	HYP_SECTION_NAME(.rodata) : {				\
 		. = ALIGN(PAGE_SIZE);				\
 		__hyp_rodata_start = .;				\
 		*(HYP_SECTION_NAME(.data..ro_after_init))	\
 		*(HYP_SECTION_NAME(.rodata))			\
+		HYPERVISOR_EVENT_IDS				\
 		. = ALIGN(PAGE_SIZE);				\
 		__hyp_rodata_end = .;				\
 	}
@@ -64,6 +75,7 @@
 #define HYPERVISOR_DATA_SECTION
 #define HYPERVISOR_PERCPU_SECTION
 #define HYPERVISOR_RELOC_SECTION
+#define HYPERVISOR_EVENTS
 #define SBSS_ALIGN			0
 #endif
 
@@ -119,6 +131,17 @@ jiffies = jiffies_64;
 	__entry_tramp_text_end = .;
 #else
 #define TRAMP_TEXT
+#endif
+
+#ifdef CONFIG_UNWIND_TABLES
+#define UNWIND_DATA_SECTIONS				\
+	.eh_frame : {					\
+		__eh_frame_start = .;			\
+		*(.eh_frame)				\
+		__eh_frame_end = .;			\
+	}
+#else
+#define UNWIND_DATA_SECTIONS
 #endif
 
 /*
@@ -193,6 +216,15 @@ SECTIONS
 
 	HYPERVISOR_RODATA_SECTIONS
 
+#ifdef CONFIG_TRACING
+	.rodata.hyp_events : {
+		__hyp_events_start = .;
+		*(_hyp_events)
+		__hyp_events_end = .;
+		. = ALIGN(PAGE_SIZE);
+	}
+#endif
+
 	idmap_pg_dir = .;
 	. += IDMAP_DIR_SIZE;
 	idmap_pg_end = .;
@@ -226,6 +258,8 @@ SECTIONS
 		*(.altinstructions)
 		__alt_instructions_end = .;
 	}
+
+	UNWIND_DATA_SECTIONS
 
 	. = ALIGN(SEGMENT_ALIGN);
 	__inittext_end = .;

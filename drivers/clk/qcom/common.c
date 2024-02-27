@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2013-2014, 2017-2021, The Linux Foundation.
- * All rights reserved.
+ * Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
@@ -443,7 +442,7 @@ void qcom_cc_sync_state(struct device *dev, const struct qcom_cc_desc *desc)
 
 	clk_vdd_proxy_unvote(dev, desc);
 }
-EXPORT_SYMBOL(qcom_cc_sync_state);
+EXPORT_SYMBOL_GPL(qcom_cc_sync_state);
 
 int qcom_clk_get_voltage(struct clk *clk, unsigned long rate)
 {
@@ -461,7 +460,7 @@ int qcom_clk_get_voltage(struct clk *clk, unsigned long rate)
 
 	return clk_get_vdd_voltage(&rclk->vdd_data, vdd_level);
 }
-EXPORT_SYMBOL(qcom_clk_get_voltage);
+EXPORT_SYMBOL_GPL(qcom_clk_get_voltage);
 
 int qcom_clk_set_flags(struct clk *clk, unsigned long flags)
 {
@@ -484,7 +483,7 @@ int qcom_clk_set_flags(struct clk *clk, unsigned long flags)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_clk_set_flags);
+EXPORT_SYMBOL_GPL(qcom_clk_set_flags);
 
 int qcom_cc_runtime_init(struct platform_device *pdev,
 			 struct qcom_cc_desc *desc)
@@ -539,7 +538,7 @@ deinit_clk_regulator:
 
 	return ret;
 }
-EXPORT_SYMBOL(qcom_cc_runtime_init);
+EXPORT_SYMBOL_GPL(qcom_cc_runtime_init);
 
 int qcom_cc_runtime_resume(struct device *dev)
 {
@@ -574,7 +573,7 @@ int qcom_cc_runtime_resume(struct device *dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(qcom_cc_runtime_resume);
+EXPORT_SYMBOL_GPL(qcom_cc_runtime_resume);
 
 int qcom_cc_runtime_suspend(struct device *dev)
 {
@@ -606,7 +605,7 @@ int qcom_cc_runtime_suspend(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_cc_runtime_suspend);
+EXPORT_SYMBOL_GPL(qcom_cc_runtime_suspend);
 
 static void __exit qcom_clk_exit(void)
 {

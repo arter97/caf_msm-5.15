@@ -9,10 +9,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <linux/cpumask.h>
-#endif
-
 struct cpumask;
 
 DECLARE_HOOK(android_vh_arch_set_freq_scale,
@@ -23,6 +19,10 @@ DECLARE_HOOK(android_vh_arch_set_freq_scale,
 DECLARE_HOOK(android_vh_update_topology_flags_workfn,
 	TP_PROTO(void *unused),
 	TP_ARGS(unused));
+
+DECLARE_HOOK(android_vh_use_amu_fie,
+	TP_PROTO(bool *use_amu_fie),
+	TP_ARGS(use_amu_fie));
 
 DECLARE_RESTRICTED_HOOK(android_rvh_update_thermal_stats,
 	TP_PROTO(int cpu),

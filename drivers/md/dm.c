@@ -29,8 +29,8 @@
 #include <linux/refcount.h>
 #include <linux/part_stat.h>
 #include <linux/blk-crypto.h>
-#include <linux/keyslot-manager.h>
-#include <trace/hooks/dm.h>
+#include <linux/blk-crypto-profile.h>
+
 #define DM_MSG_PREFIX "core"
 
 /*
@@ -920,9 +920,6 @@ static void clone_endio(struct bio *bio)
 			disable_write_zeroes(md);
 	}
 
-	if (blk_queue_is_zoned(q))
-		dm_zone_endio(io, bio);
-
 	if (endio) {
 		int r = endio(tio->ti, bio, &error);
 		switch (r) {
@@ -947,6 +944,9 @@ static void clone_endio(struct bio *bio)
 			BUG();
 		}
 	}
+
+	if (blk_queue_is_zoned(q))
+		dm_zone_endio(io, bio);
 
 	if (unlikely(swap_bios_limit(tio->ti, bio))) {
 		struct mapped_device *md = io->md;
@@ -1291,7 +1291,7 @@ static int clone_bio(struct dm_target_io *tio, struct bio *bio,
 	int r;
 
 	__bio_clone_fast(clone, bio);
-	trace_android_vh_dm_update_clone_bio(clone, bio);
+
 	r = bio_crypt_clone(clone, bio, GFP_NOIO);
 	if (r < 0)
 		return r;
@@ -1675,14 +1675,14 @@ static const struct dax_operations dm_dax_ops;
 static void dm_wq_work(struct work_struct *work);
 
 #ifdef CONFIG_BLK_INLINE_ENCRYPTION
-static void dm_queue_destroy_keyslot_manager(struct request_queue *q)
+static void dm_queue_destroy_crypto_profile(struct request_queue *q)
 {
-	dm_destroy_keyslot_manager(q->ksm);
+	dm_destroy_crypto_profile(q->crypto_profile);
 }
 
 #else /* CONFIG_BLK_INLINE_ENCRYPTION */
 
-static inline void dm_queue_destroy_keyslot_manager(struct request_queue *q)
+static inline void dm_queue_destroy_crypto_profile(struct request_queue *q)
 {
 }
 #endif /* !CONFIG_BLK_INLINE_ENCRYPTION */
@@ -1709,7 +1709,7 @@ static void cleanup_mapped_device(struct mapped_device *md)
 			dm_sysfs_exit(md);
 			del_gendisk(md->disk);
 		}
-		dm_queue_destroy_keyslot_manager(md->queue);
+		dm_queue_destroy_crypto_profile(md->queue);
 		blk_cleanup_disk(md->disk);
 	}
 

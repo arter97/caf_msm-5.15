@@ -45,7 +45,7 @@ struct gh_acl_desc *mem_buf_vmid_perm_list_to_gh_acl(int *vmids, int *perms,
 
 	return gh_acl;
 }
-EXPORT_SYMBOL(mem_buf_vmid_perm_list_to_gh_acl);
+EXPORT_SYMBOL_GPL(mem_buf_vmid_perm_list_to_gh_acl);
 
 struct gh_sgl_desc *mem_buf_sgt_to_gh_sgl_desc(struct sg_table *sgt)
 {
@@ -67,7 +67,7 @@ struct gh_sgl_desc *mem_buf_sgt_to_gh_sgl_desc(struct sg_table *sgt)
 
 	return gh_sgl;
 }
-EXPORT_SYMBOL(mem_buf_sgt_to_gh_sgl_desc);
+EXPORT_SYMBOL_GPL(mem_buf_sgt_to_gh_sgl_desc);
 
 int mem_buf_gh_acl_desc_to_vmid_perm_list(struct gh_acl_desc *acl_desc,
 				       int **vmids, int **perms)
@@ -101,7 +101,7 @@ int mem_buf_gh_acl_desc_to_vmid_perm_list(struct gh_acl_desc *acl_desc,
 
 	return 0;
 }
-EXPORT_SYMBOL(mem_buf_gh_acl_desc_to_vmid_perm_list);
+EXPORT_SYMBOL_GPL(mem_buf_gh_acl_desc_to_vmid_perm_list);
 
 struct sg_table *dup_gh_sgl_desc_to_sgt(struct gh_sgl_desc *sgl_desc)
 {
@@ -131,7 +131,7 @@ struct sg_table *dup_gh_sgl_desc_to_sgt(struct gh_sgl_desc *sgl_desc)
 
 	return new_table;
 }
-EXPORT_SYMBOL(dup_gh_sgl_desc_to_sgt);
+EXPORT_SYMBOL_GPL(dup_gh_sgl_desc_to_sgt);
 
 struct gh_sgl_desc *dup_gh_sgl_desc(struct gh_sgl_desc *sgl_desc)
 {
@@ -149,7 +149,7 @@ struct gh_sgl_desc *dup_gh_sgl_desc(struct gh_sgl_desc *sgl_desc)
 	memcpy(copy, sgl_desc, size);
 	return copy;
 }
-EXPORT_SYMBOL(dup_gh_sgl_desc);
+EXPORT_SYMBOL_GPL(dup_gh_sgl_desc);
 
 size_t mem_buf_get_sgl_buf_size(struct gh_sgl_desc *sgl_desc)
 {
@@ -161,7 +161,7 @@ size_t mem_buf_get_sgl_buf_size(struct gh_sgl_desc *sgl_desc)
 
 	return size;
 }
-EXPORT_SYMBOL(mem_buf_get_sgl_buf_size);
+EXPORT_SYMBOL_GPL(mem_buf_get_sgl_buf_size);
 
 static int __mem_buf_map_mem_s2_cleanup_donate(struct gh_sgl_desc *sgl_desc,
 			int src_vmid, gh_memparcel_handle_t *handle)
@@ -264,7 +264,7 @@ err_relinquish:
 	}
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_map_mem_s2);
+EXPORT_SYMBOL_GPL(mem_buf_map_mem_s2);
 
 int mem_buf_unmap_mem_s2(gh_memparcel_handle_t memparcel_hdl)
 {
@@ -281,7 +281,7 @@ int mem_buf_unmap_mem_s2(gh_memparcel_handle_t memparcel_hdl)
 
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_unmap_mem_s2);
+EXPORT_SYMBOL_GPL(mem_buf_unmap_mem_s2);
 
 int mem_buf_map_mem_s1(struct gh_sgl_desc *sgl_desc)
 {
@@ -311,7 +311,7 @@ out:
 
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_map_mem_s1);
+EXPORT_SYMBOL_GPL(mem_buf_map_mem_s1);
 
 int mem_buf_unmap_mem_s1(struct gh_sgl_desc *sgl_desc)
 {
@@ -330,7 +330,7 @@ int mem_buf_unmap_mem_s1(struct gh_sgl_desc *sgl_desc)
 
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_unmap_mem_s1);
+EXPORT_SYMBOL_GPL(mem_buf_unmap_mem_s1);
 
 static int mem_buf_hyp_assign_table_gh(struct gh_sgl_desc *sgl_desc, int src_vmid,
 			struct gh_acl_desc *acl_desc)

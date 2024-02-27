@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -371,14 +371,10 @@ struct smem_image_version {
 		int num_parts = 0; \
 		int str_pos = 0, i = 0, ret = 0; \
 		num_parts = socinfo_get_part_count(part_enum); \
-		if (num_parts <= 0) \
-			return -EINVAL;  \
 		part_info = kmalloc_array(num_parts, sizeof(*part_info), GFP_KERNEL); \
 		ret = socinfo_get_subpart_info(part_enum, part_info, num_parts); \
-		if (ret < 0) { \
-			kfree(part_info); \
+		if (ret < 0) \
 			return -EINVAL;  \
-		} \
 		for (i = 0; i < num_parts; i++) { \
 			str_pos += scnprintf(buf+str_pos, PAGE_SIZE-str_pos, "0x%x", \
 					part_info[i]); \
@@ -830,7 +826,7 @@ socinfo_get_cluster_info(enum subset_cluster_type cluster)
 
 	return sub_cluster;
 }
-EXPORT_SYMBOL(socinfo_get_cluster_info);
+EXPORT_SYMBOL_GPL(socinfo_get_cluster_info);
 
 static ssize_t
 msm_get_subset_cores(struct device *dev,
@@ -890,9 +886,8 @@ bool
 socinfo_get_part_info(enum subset_part_type part)
 {
 	uint32_t partinfo;
-	uint32_t num_parts = socinfo_get_num_subset_parts();
 
-	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
+	if (part >= NUM_PARTS_MAX) {
 		pr_err("Bad part number\n");
 		return false;
 	}
@@ -905,7 +900,7 @@ socinfo_get_part_info(enum subset_part_type part)
 
 	return (partinfo & BIT(part));
 }
-EXPORT_SYMBOL(socinfo_get_part_info);
+EXPORT_SYMBOL_GPL(socinfo_get_part_info);
 
 static ssize_t
 msm_get_subset_parts(struct device *dev,
@@ -930,18 +925,17 @@ int
 socinfo_get_part_count(enum subset_part_type part)
 {
 	int part_count = 1;
-	uint32_t num_parts = socinfo_get_num_subset_parts();
 
 	/* TODO: part_count to be read from SMEM after firmware adds support */
 
-	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
+	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX)) {
 		pr_err("Bad part number\n");
 		return -EINVAL;
 	}
 
 	return part_count;
 }
-EXPORT_SYMBOL(socinfo_get_part_count);
+EXPORT_SYMBOL_GPL(socinfo_get_part_count);
 
 /**
  * socinfo_get_subpart_info - Get subpart information
@@ -990,7 +984,7 @@ socinfo_get_subpart_info(enum subset_part_type part,
 
 	return 0;
 }
-EXPORT_SYMBOL(socinfo_get_subpart_info);
+EXPORT_SYMBOL_GPL(socinfo_get_subpart_info);
 
 CREATE_PART_FUNCTION(gpu, PART_GPU);
 CREATE_PART_FUNCTION(video, PART_VIDEO);
@@ -1255,7 +1249,6 @@ static const struct soc_id soc_id[] = {
 	{ 606, "MONACOAU_IVI"},
 	{ 607, "MONACOAU_SRV1L"},
 	{ 608, "CROW" },
-	{ 644, "CROW_LTE" },
 };
 
 static struct qcom_socinfo *qsocinfo;
@@ -1959,7 +1952,7 @@ uint32_t socinfo_get_id(void)
 {
 	return (socinfo) ? le32_to_cpu(socinfo->id) : 0;
 }
-EXPORT_SYMBOL(socinfo_get_id);
+EXPORT_SYMBOL_GPL(socinfo_get_id);
 
 const char *socinfo_get_id_string(void)
 {
@@ -1967,13 +1960,13 @@ const char *socinfo_get_id_string(void)
 
 	return socinfo_machine(NULL, id);
 }
-EXPORT_SYMBOL(socinfo_get_id_string);
+EXPORT_SYMBOL_GPL(socinfo_get_id_string);
 
 uint32_t socinfo_get_serial_number(void)
 {
 	return (socinfo) ? le32_to_cpu(socinfo->serial_num) : 0;
 }
-EXPORT_SYMBOL(socinfo_get_serial_number);
+EXPORT_SYMBOL_GPL(socinfo_get_serial_number);
 
 int socinfo_get_feature_code(void)
 {
@@ -1984,7 +1977,7 @@ int socinfo_get_feature_code(void)
 
 	return socinfo_get_feature_code_id();
 }
-EXPORT_SYMBOL(socinfo_get_feature_code);
+EXPORT_SYMBOL_GPL(socinfo_get_feature_code);
 
 int socinfo_get_pcode(void)
 {
@@ -1995,7 +1988,7 @@ int socinfo_get_pcode(void)
 
 	return socinfo_get_pcode_id();
 }
-EXPORT_SYMBOL(socinfo_get_pcode);
+EXPORT_SYMBOL_GPL(socinfo_get_pcode);
 
 char *socinfo_get_partinfo_part_name(unsigned int part_id)
 {
@@ -2011,7 +2004,7 @@ char *socinfo_get_partinfo_part_name(unsigned int part_id)
 
 	return NULL;
 }
-EXPORT_SYMBOL(socinfo_get_partinfo_part_name);
+EXPORT_SYMBOL_GPL(socinfo_get_partinfo_part_name);
 
 uint32_t socinfo_get_partinfo_chip_id(unsigned int part_id)
 {
@@ -2031,7 +2024,7 @@ uint32_t socinfo_get_partinfo_chip_id(unsigned int part_id)
 
 	return chip_id;
 }
-EXPORT_SYMBOL(socinfo_get_partinfo_chip_id);
+EXPORT_SYMBOL_GPL(socinfo_get_partinfo_chip_id);
 
 uint32_t socinfo_get_partinfo_vulkan_id(unsigned int part_id)
 {
@@ -2040,7 +2033,7 @@ uint32_t socinfo_get_partinfo_vulkan_id(unsigned int part_id)
 
 	return partinfo[part_id].gpu_info.vulkan_id;
 }
-EXPORT_SYMBOL(socinfo_get_partinfo_vulkan_id);
+EXPORT_SYMBOL_GPL(socinfo_get_partinfo_vulkan_id);
 
 int socinfo_get_oem_variant_id(void)
 {
@@ -2051,7 +2044,7 @@ int socinfo_get_oem_variant_id(void)
 
 	return socinfo_get_platform_oem_variant();
 }
-EXPORT_SYMBOL(socinfo_get_oem_variant_id);
+EXPORT_SYMBOL_GPL(socinfo_get_oem_variant_id);
 
 void socinfo_enumerate_partinfo_details(void)
 {

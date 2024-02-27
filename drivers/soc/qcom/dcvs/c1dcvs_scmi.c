@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/scmi_protocol.h>
@@ -123,7 +124,7 @@ int c1dcvs_enable(bool enable)
 
 	return ret;
 }
-EXPORT_SYMBOL(c1dcvs_enable);
+EXPORT_SYMBOL_GPL(c1dcvs_enable);
 
 store_c1dcvs_attr(enable_trace);
 show_c1dcvs_attr(enable_trace);
@@ -143,25 +144,32 @@ static ssize_t store_##name(struct kobject *kobj,			\
 				   size_t count)			\
 {									\
 	int ret, i = 0;							\
-	char *s = kstrdup(buf, GFP_KERNEL);				\
-	unsigned int msg[2] = {0};					\
-	char *str, *s_orig = s;						\
+	char *s;						\
+	unsigned int msg[2] = {0};						\
+	char *str;							\
+										\
+	s = kstrdup(buf, GFP_KERNEL);					\
+	if (!s)		\
+		return -ENOMEM;		\
+	if (!ops) {						\
+		ret = -ENODEV;		\
+		goto out;						\
+	}		\
 									\
-	if (!s)								\
-		return -ENOMEM;						\
 	while (((str = strsep(&s, " ")) != NULL) && i < 2) {		\
 		ret = kstrtouint(str, 10, &msg[i]);			\
 		if (ret < 0) {						\
 			pr_err("Invalid value :%d\n", ret);		\
-			goto out;					\
+			ret =  -EINVAL;					\
+			goto out;		\
 		}							\
 		i++;							\
 	}								\
 									\
 	pr_info("Input threshold :%lu for cluster :%lu\n", msg[1], msg[0]);\
-	ret = ops->set_##name(ph, msg);					\
-out:									\
-	kfree(s_orig);							\
+	ret = ops->set_##name(ph, msg);				\
+out:		\
+	kfree(s);		\
 	return ((ret < 0) ? ret : count);				\
 }									\
 

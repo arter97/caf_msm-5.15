@@ -163,7 +163,8 @@ static unsigned int calculate_alignment(slab_flags_t flags,
 		align = max(align, ralign);
 	}
 
-	align = max(align, arch_slab_minalign());
+	if (align < ARCH_SLAB_MINALIGN)
+		align = ARCH_SLAB_MINALIGN;
 
 	return ALIGN(align, sizeof(void *));
 }
@@ -698,10 +699,6 @@ kmalloc_caches[NR_KMALLOC_TYPES][KMALLOC_SHIFT_HIGH + 1] __ro_after_init =
 { /* initialization for https://bugs.llvm.org/show_bug.cgi?id=42570 */ };
 EXPORT_SYMBOL(kmalloc_caches);
 
-/* This variable is intentionally unused. Preserved for KMI stability. */
-bool android_kmalloc_64_create __ro_after_init;
-EXPORT_SYMBOL(android_kmalloc_64_create);
-
 /*
  * Conversion table for small slabs sizes / 8 to the index in the
  * kmalloc array. This is necessary for slabs < 192 since we have non power
@@ -747,7 +744,6 @@ static inline unsigned int size_index_elem(unsigned int bytes)
 struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 {
 	unsigned int index;
-	struct kmem_cache *s = NULL;
 
 	if (size <= 192) {
 		if (!size)
@@ -759,10 +755,6 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 			return NULL;
 		index = fls(size - 1);
 	}
-
-	trace_android_vh_kmalloc_slab(index, flags, &s);
-	if (s)
-		return s;
 
 	return kmalloc_caches[kmalloc_type(flags)][index];
 }
@@ -978,9 +970,6 @@ void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
 		mod_lruvec_page_state(page, NR_SLAB_UNRECLAIMABLE_B,
 				      PAGE_SIZE << order);
 	}
-
-	trace_android_vh_kmalloc_order_alloced(page, size, flags);
-
 	ret = kasan_kmalloc_large(ret, size, flags);
 	/* As ret might get tagged, call kmemleak hook after KASAN. */
 	kmemleak_alloc(ret, size, 1, flags);

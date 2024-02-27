@@ -156,7 +156,7 @@ unsigned long long msm_timer_get_sclk_ticks(void)
 	}
 	return t1;
 }
-EXPORT_SYMBOL(msm_timer_get_sclk_ticks);
+EXPORT_SYMBOL_GPL(msm_timer_get_sclk_ticks);
 
 unsigned long long msm_hr_timer_get_sclk_ticks(void)
 {
@@ -175,7 +175,7 @@ unsigned long long msm_hr_timer_get_sclk_ticks(void)
 
 	return (th << 32) | tl;
 }
-EXPORT_SYMBOL(msm_hr_timer_get_sclk_ticks);
+EXPORT_SYMBOL_GPL(msm_hr_timer_get_sclk_ticks);
 
 static void _destroy_boot_marker(const char *name)
 {
@@ -286,13 +286,13 @@ void place_marker(const char *name)
 {
 	_create_boot_marker((char *)name, msm_timer_get_sclk_ticks());
 }
-EXPORT_SYMBOL(place_marker);
+EXPORT_SYMBOL_GPL(place_marker);
 
 void destroy_marker(const char *name)
 {
 	_destroy_boot_marker((char *) name);
 }
-EXPORT_SYMBOL(destroy_marker);
+EXPORT_SYMBOL_GPL(destroy_marker);
 
 static void set_bootloader_stats(void)
 {

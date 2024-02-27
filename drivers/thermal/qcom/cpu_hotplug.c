@@ -295,4 +295,4 @@ static struct platform_driver cpu_hot_driver = {
 };
 module_platform_driver(cpu_hot_driver);
 MODULE_DESCRIPTION("CPU Hotplug cooling device driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

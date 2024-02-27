@@ -8,12 +8,6 @@
 #define _TRACE_HOOK_NET_VH_H
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <linux/netdevice.h>
-#include <linux/skbuff.h>
-#include <linux/types.h>
-#endif
-
 struct packet_type;
 struct sk_buff;
 struct list_head;

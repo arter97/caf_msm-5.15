@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2021 Google LLC
+ * Copyright 2022 Google LLC
  * Author: ramjiyani@google.com (Ramji Jiyani)
  */
 
@@ -13,13 +13,13 @@
 /*
  * Build time generated header files
  *
- * gki_module_exported.h -- Symbols protected from _export_ by unsigned modules
- * gki_module_protected.h -- Symbols protected from _access_ by unsigned modules
+ * gki_module_protected_exports.h -- Symbols protected from _export_ by unsigned modules
+ * gki_module_unprotected.h -- Symbols allowed to _access_ by unsigned modules
  */
-#include "gki_module_protected.h"
-#include "gki_module_exported.h"
+#include <generated/gki_module_protected_exports.h>
+#include <generated/gki_module_unprotected.h>
 
-#define MAX_STRCMP_LEN (max(MAX_PROTECTED_NAME_LEN, MAX_EXPORTED_NAME_LEN))
+#define MAX_STRCMP_LEN (max(MAX_UNPROTECTED_NAME_LEN, MAX_PROTECTED_EXPORTS_NAME_LEN))
 
 /* bsearch() comparision callback */
 static int cmp_name(const void *sym, const void *protected_sym)
@@ -28,23 +28,41 @@ static int cmp_name(const void *sym, const void *protected_sym)
 }
 
 /**
- * gki_is_module_protected_symbol - Is a symbol protected from unsigned module?
+ * gki_is_module_protected_export - Is a symbol exported from a protected GKI module?
  *
- * @name:	Symbol being checked against protection from unsigned module
+ * @name:	Symbol being checked against exported symbols from protected GKI modules
  */
-bool gki_is_module_protected_symbol(const char *name)
+bool gki_is_module_protected_export(const char *name)
 {
-	return bsearch(name, gki_protected_symbols, NO_OF_PROTECTED_SYMBOLS,
-		       MAX_PROTECTED_NAME_LEN, cmp_name) != NULL;
+	if (NR_UNPROTECTED_SYMBOLS) {
+		return bsearch(name, gki_protected_exports_symbols, NR_PROTECTED_EXPORTS_SYMBOLS,
+		       MAX_PROTECTED_EXPORTS_NAME_LEN, cmp_name) != NULL;
+	} else {
+		/*
+		 * If there are no symbols in unprotected list; We don't need to
+		 * protect exports as there is no KMI enforcement.
+		 * Treat everything exportable in this case.
+		 */
+		return false;
+	}
 }
 
 /**
- * gki_is_module_exported_symbol - Is a symbol exported from a GKI module?
+ * gki_is_module_unprotected_symbol - Is a symbol unprotected for unsigned module?
  *
- * @name:	Symbol being checked against exported symbols from GKI modules
+ * @name:	Symbol being checked in list of unprotected symbols
  */
-bool gki_is_module_exported_symbol(const char *name)
+bool gki_is_module_unprotected_symbol(const char *name)
 {
-	return bsearch(name, gki_exported_symbols, NO_OF_EXPORTED_SYMBOLS,
-		       MAX_EXPORTED_NAME_LEN, cmp_name) != NULL;
+	if (NR_UNPROTECTED_SYMBOLS) {
+		return bsearch(name, gki_unprotected_symbols, NR_UNPROTECTED_SYMBOLS,
+				MAX_UNPROTECTED_NAME_LEN, cmp_name) != NULL;
+	} else {
+		/*
+		 * If there are no symbols in unprotected list;
+		 * there isn't a KMI enforcement for the kernel.
+		 * Treat everything accessible in this case.
+		 */
+		return true;
+	}
 }

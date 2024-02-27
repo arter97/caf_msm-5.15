@@ -198,8 +198,8 @@ static int cpufreq_cdev_probe(struct platform_device *pdev)
 		while (of_phandle_iterator_next(&it) == 0) {
 			cpu_phandle = it.node;
 			for_each_possible_cpu(cpu) {
-			cpu_dev = get_cpu_device(cpu);
-			if (cpu_dev && cpu_dev->of_node == cpu_phandle) {
+				cpu_dev = get_cpu_device(cpu);
+				if (cpu_dev && cpu_dev->of_node == cpu_phandle) {
 					cpu_count++;
 					break;
 				}

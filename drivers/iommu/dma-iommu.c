@@ -52,11 +52,6 @@ struct iommu_dma_cookie {
 	struct iommu_domain		*fq_domain;
 };
 
-struct iommu_dma_cookie_ext {
-	struct iommu_dma_cookie		cookie;
-	struct mutex			mutex;
-};
-
 static DEFINE_STATIC_KEY_FALSE(iommu_deferred_attach_enabled);
 bool iommu_dma_forcedac __read_mostly;
 
@@ -91,15 +86,14 @@ static inline size_t cookie_msi_granule(struct iommu_dma_cookie *cookie)
 
 static struct iommu_dma_cookie *cookie_alloc(enum iommu_dma_cookie_type type)
 {
-	struct iommu_dma_cookie_ext *cookie;
+	struct iommu_dma_cookie *cookie;
 
 	cookie = kzalloc(sizeof(*cookie), GFP_KERNEL);
 	if (cookie) {
-		INIT_LIST_HEAD(&cookie->cookie.msi_page_list);
-		cookie->cookie.type = type;
-		mutex_init(&cookie->mutex);
+		INIT_LIST_HEAD(&cookie->msi_page_list);
+		cookie->type = type;
 	}
-	return &cookie->cookie;
+	return cookie;
 }
 
 /**
@@ -369,10 +363,8 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 				 dma_addr_t limit, struct device *dev)
 {
 	struct iommu_dma_cookie *cookie = domain->iova_cookie;
-	struct iommu_dma_cookie_ext *cookie_ext;
 	unsigned long order, base_pfn;
 	struct iova_domain *iovad;
-	int ret;
 
 	if (!cookie || cookie->type != IOMMU_DMA_IOVA_COOKIE)
 		return -EINVAL;
@@ -396,18 +388,14 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	}
 
 	/* start_pfn is always nonzero for an already-initialised domain */
-	cookie_ext = container_of(cookie, struct iommu_dma_cookie_ext, cookie);
-	mutex_lock(&cookie_ext->mutex);
 	if (iovad->start_pfn) {
 		if (1UL << order != iovad->granule ||
 		    base_pfn != iovad->start_pfn) {
 			pr_warn("Incompatible range for DMA domain\n");
-			ret = -EFAULT;
-			goto done_unlock;
+			return -EFAULT;
 		}
 
-		ret = 0;
-		goto done_unlock;
+		return 0;
 	}
 
 	init_iova_domain(iovad, 1UL << order, base_pfn);
@@ -416,11 +404,7 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	if (domain->type == IOMMU_DOMAIN_DMA_FQ && iommu_dma_init_fq(domain))
 		domain->type = IOMMU_DOMAIN_DMA;
 
-	ret = iova_reserve_iommu_regions(dev, domain);
-
-done_unlock:
-	mutex_unlock(&cookie_ext->mutex);
-	return ret;
+	return iova_reserve_iommu_regions(dev, domain);
 }
 
 /*
@@ -628,7 +612,6 @@ static struct page **__iommu_dma_alloc_pages(struct device *dev,
 			order_size = 1U << order;
 			if (order_mask > order_size)
 				alloc_flags |= __GFP_NORETRY;
-			trace_android_vh_adjust_alloc_flags(order, &alloc_flags);
 			page = alloc_pages_node(nid, alloc_flags, order);
 			if (!page)
 				continue;

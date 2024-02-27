@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012, 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -157,7 +158,7 @@ struct sched_avg_stats *sched_get_nr_running_avg(void)
 done:
 	return &stats[0];
 }
-EXPORT_SYMBOL(sched_get_nr_running_avg);
+EXPORT_SYMBOL_GPL(sched_get_nr_running_avg);
 
 void sched_update_hyst_times(void)
 {
@@ -335,4 +336,4 @@ int sched_lpm_disallowed_time(int cpu, u64 *timeout)
 
 	return INT_MAX; /* don't care */
 }
-EXPORT_SYMBOL(sched_lpm_disallowed_time);
+EXPORT_SYMBOL_GPL(sched_lpm_disallowed_time);

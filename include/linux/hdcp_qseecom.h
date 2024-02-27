@@ -80,8 +80,7 @@ int hdcp2_open_stream(void *ctx, uint8_t vc_payload_id,
 		uint8_t stream_number, uint32_t *stream_id);
 int hdcp2_close_stream(void *ctx, uint32_t stream_id);
 int hdcp2_force_encryption(void *ctx, uint32_t enable);
-void hdcp1_set_hdcp_key_verify_retries(void *ctx, u32 max_hdcp_key_verify_retries);
-void hdcp2_set_hdcp_key_verify_retries(void *ctx, u32 max_hdcp_key_verify_retries);
+int set_hdcp_key_verify_retries(int value);
 #else
 static inline void *hdcp1_init(void)
 {
@@ -151,11 +150,9 @@ static inline int hdcp2_force_encryption(void *ctx, uint32_t enable)
 {
 	return 0;
 }
-static inline void hdcp1_set_hdcp_key_verify_retries(void *ctx, u32 max_hdcp_key_verify_retries)
+static inline int set_hdcp_key_verify_retries(int value)
 {
-}
-static inline void hdcp2_set_hdcp_key_verify_retries(void *ctx, u32 max_hdcp_key_verify_retries)
-{
+	return 0;
 }
 #endif /* CONFIG_HDCP_QSEECOM */
 

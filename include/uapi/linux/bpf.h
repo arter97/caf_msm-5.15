@@ -950,7 +950,6 @@ enum bpf_prog_type {
 	BPF_PROG_TYPE_SK_LOOKUP,
 	BPF_PROG_TYPE_SYSCALL, /* a program that can execute syscalls */
 
-#ifndef __GENKSYMS__
 	/*
 	 * Until fuse-bpf is upstreamed, this value must be at the end to allow for
 	 * other recently-added upstreamed values to be correct.
@@ -960,7 +959,6 @@ enum bpf_prog_type {
 	 * upstreamed.
 	 */
 	BPF_PROG_TYPE_FUSE,
-#endif
 };
 
 enum bpf_attach_type {
@@ -1774,7 +1772,9 @@ union bpf_attr {
  * 		performed again, if the helper is used in combination with
  * 		direct packet access.
  * 	Return
- * 		0 on success, or a negative error in case of failure.
+ * 		0 on success, or a negative error in case of failure. Positive
+ * 		error indicates a potential drop or congestion in the target
+ * 		device. The particular positive error codes are not defined.
  *
  * u64 bpf_get_current_pid_tgid(void)
  * 	Return

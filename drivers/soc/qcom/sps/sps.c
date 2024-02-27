@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2011-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 /* Smart-Peripheral-Switch (SPS) Module. */
 
@@ -801,7 +802,7 @@ int sps_get_bam_debug_info(unsigned long dev, u32 option, u32 para,
 
 	return res;
 }
-EXPORT_SYMBOL(sps_get_bam_debug_info);
+EXPORT_SYMBOL_GPL(sps_get_bam_debug_info);
 
 /**
  * Initialize SPS device
@@ -1056,7 +1057,7 @@ int sps_phy2h(phys_addr_t phys_addr, unsigned long *handle)
 
 	return -ENODEV;
 }
-EXPORT_SYMBOL(sps_phy2h);
+EXPORT_SYMBOL_GPL(sps_phy2h);
 
 /**
  * Setup desc/data FIFO for bam-to-bam connection
@@ -1114,7 +1115,7 @@ int sps_setup_bam2bam_fifo(struct sps_mem_buffer *mem_buffer,
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_setup_bam2bam_fifo);
+EXPORT_SYMBOL_GPL(sps_setup_bam2bam_fifo);
 
 /**
  * Find the BAM device from the handle
@@ -1278,7 +1279,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_connect);
+EXPORT_SYMBOL_GPL(sps_connect);
 
 /**
  * Disconnect an SPS connection end point
@@ -1350,7 +1351,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_disconnect);
+EXPORT_SYMBOL_GPL(sps_disconnect);
 
 /**
  * Register an event object for an SPS connection end point
@@ -1393,7 +1394,7 @@ int sps_register_event(struct sps_pipe *h, struct sps_register_event *reg)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_register_event);
+EXPORT_SYMBOL_GPL(sps_register_event);
 
 /**
  * Enable an SPS connection end point
@@ -1420,7 +1421,7 @@ int sps_flow_on(struct sps_pipe *h)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_flow_on);
+EXPORT_SYMBOL_GPL(sps_flow_on);
 
 /**
  * Disable an SPS connection end point
@@ -1447,7 +1448,7 @@ int sps_flow_off(struct sps_pipe *h, enum sps_flow_off mode)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_flow_off);
+EXPORT_SYMBOL_GPL(sps_flow_off);
 
 /**
  * Check if the flags on a descriptor/iovec are valid
@@ -1551,7 +1552,7 @@ int sps_transfer(struct sps_pipe *h, struct sps_transfer *transfer)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_transfer);
+EXPORT_SYMBOL_GPL(sps_transfer);
 
 /**
  * Perform a single DMA transfer on an SPS connection end point
@@ -1584,7 +1585,7 @@ int sps_transfer_one(struct sps_pipe *h, phys_addr_t addr, u32 size,
 
 	return result;
 }
-EXPORT_SYMBOL(sps_transfer_one);
+EXPORT_SYMBOL_GPL(sps_transfer_one);
 
 /**
  * Read event queue for an SPS connection end point
@@ -1613,7 +1614,7 @@ int sps_get_event(struct sps_pipe *h, struct sps_event_notify *notify)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_get_event);
+EXPORT_SYMBOL_GPL(sps_get_event);
 
 /**
  * Determine whether an SPS connection end point FIFO is empty
@@ -1642,7 +1643,7 @@ int sps_is_pipe_empty(struct sps_pipe *h, u32 *empty)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_is_pipe_empty);
+EXPORT_SYMBOL_GPL(sps_is_pipe_empty);
 
 /**
  * Get number of free transfer entries for an SPS connection end point
@@ -1671,7 +1672,7 @@ int sps_get_free_count(struct sps_pipe *h, u32 *count)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_get_free_count);
+EXPORT_SYMBOL_GPL(sps_get_free_count);
 
 /**
  * Reset an SPS BAM device
@@ -1717,7 +1718,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_device_reset);
+EXPORT_SYMBOL_GPL(sps_device_reset);
 
 /**
  * Get the configuration parameters for an SPS connection end point
@@ -1748,7 +1749,7 @@ int sps_get_config(struct sps_pipe *h, struct sps_connect *config)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_get_config);
+EXPORT_SYMBOL_GPL(sps_get_config);
 
 /**
  * Set the configuration parameters for an SPS connection end point
@@ -1785,7 +1786,7 @@ int sps_set_config(struct sps_pipe *h, struct sps_connect *config)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_set_config);
+EXPORT_SYMBOL_GPL(sps_set_config);
 
 /**
  * Set ownership of an SPS connection end point
@@ -1841,7 +1842,7 @@ exit_err:
 
 	return result;
 }
-EXPORT_SYMBOL(sps_set_owner);
+EXPORT_SYMBOL_GPL(sps_set_owner);
 
 /**
  * Allocate memory from the SPS Pipe-Memory.
@@ -1881,7 +1882,7 @@ int sps_alloc_mem(struct sps_pipe *h, enum sps_mem mem,
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_alloc_mem);
+EXPORT_SYMBOL_GPL(sps_alloc_mem);
 
 /**
  * Free memory from the SPS Pipe-Memory.
@@ -1906,7 +1907,7 @@ int sps_free_mem(struct sps_pipe *h, struct sps_mem_buffer *mem_buffer)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_free_mem);
+EXPORT_SYMBOL_GPL(sps_free_mem);
 
 /**
  * Get the number of unused descriptors in the descriptor FIFO
@@ -1941,7 +1942,7 @@ int sps_get_unused_desc_num(struct sps_pipe *h, u32 *desc_num)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_get_unused_desc_num);
+EXPORT_SYMBOL_GPL(sps_get_unused_desc_num);
 
 /**
  * Vote for or relinquish BAM DMA clock
@@ -1971,7 +1972,7 @@ int sps_ctrl_bam_dma_clk(bool clk_on)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_ctrl_bam_dma_clk);
+EXPORT_SYMBOL_GPL(sps_ctrl_bam_dma_clk);
 
 /**
  * Register a BAM device
@@ -2161,7 +2162,7 @@ exit_err:
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_register_bam_device);
+EXPORT_SYMBOL_GPL(sps_register_bam_device);
 
 /**
  * Deregister a BAM device
@@ -2222,7 +2223,7 @@ int sps_deregister_bam_device(unsigned long dev_handle)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_deregister_bam_device);
+EXPORT_SYMBOL_GPL(sps_deregister_bam_device);
 
 /**
  * Get processed I/O vector (completed transfers)
@@ -2257,7 +2258,7 @@ int sps_get_iovec(struct sps_pipe *h, struct sps_iovec *iovec)
 
 	return result;
 }
-EXPORT_SYMBOL(sps_get_iovec);
+EXPORT_SYMBOL_GPL(sps_get_iovec);
 
 /**
  * Perform timer control
@@ -2297,7 +2298,7 @@ int sps_timer_ctrl(struct sps_pipe *h,
 
 	return result;
 }
-EXPORT_SYMBOL(sps_timer_ctrl);
+EXPORT_SYMBOL_GPL(sps_timer_ctrl);
 
 /*
  * Reset a BAM pipe
@@ -2328,7 +2329,7 @@ int sps_pipe_reset(unsigned long dev, u32 pipe)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_pipe_reset);
+EXPORT_SYMBOL_GPL(sps_pipe_reset);
 
 /*
  * Disable a BAM pipe
@@ -2359,7 +2360,7 @@ int sps_pipe_disable(unsigned long dev, u32 pipe)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_pipe_disable);
+EXPORT_SYMBOL_GPL(sps_pipe_disable);
 
 /*
  * Check pending descriptors in the descriptor FIFO
@@ -2397,7 +2398,7 @@ int sps_pipe_pending_desc(unsigned long dev, u32 pipe, bool *pending)
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_pipe_pending_desc);
+EXPORT_SYMBOL_GPL(sps_pipe_pending_desc);
 
 /*
  * Process any pending IRQ of a BAM
@@ -2424,7 +2425,7 @@ int sps_bam_process_irq(unsigned long dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(sps_bam_process_irq);
+EXPORT_SYMBOL_GPL(sps_bam_process_irq);
 
 /*
  * Enable all IRQs of a BAM
@@ -2451,7 +2452,7 @@ int sps_bam_enable_irqs(unsigned long dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(sps_bam_enable_irqs);
+EXPORT_SYMBOL_GPL(sps_bam_enable_irqs);
 
 /*
  * Disable all IRQs of a BAM
@@ -2478,7 +2479,7 @@ int sps_bam_disable_irqs(unsigned long dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(sps_bam_disable_irqs);
+EXPORT_SYMBOL_GPL(sps_bam_disable_irqs);
 
 /*
  * Get address info of a BAM
@@ -2507,7 +2508,7 @@ int sps_get_bam_addr(unsigned long dev, phys_addr_t *base,
 
 	return 0;
 }
-EXPORT_SYMBOL(sps_get_bam_addr);
+EXPORT_SYMBOL_GPL(sps_get_bam_addr);
 
 /*
  * Inject a ZLT with EOT for a BAM pipe
@@ -2541,7 +2542,7 @@ int sps_pipe_inject_zlt(unsigned long dev, u32 pipe_index)
 
 	return rc;
 }
-EXPORT_SYMBOL(sps_pipe_inject_zlt);
+EXPORT_SYMBOL_GPL(sps_pipe_inject_zlt);
 
 /**
  * Allocate client state context
@@ -2561,7 +2562,7 @@ struct sps_pipe *sps_alloc_endpoint(void)
 
 	return ctx;
 }
-EXPORT_SYMBOL(sps_alloc_endpoint);
+EXPORT_SYMBOL_GPL(sps_alloc_endpoint);
 
 /**
  * Free client state context
@@ -2585,7 +2586,7 @@ int sps_free_endpoint(struct sps_pipe *ctx)
 
 	return res;
 }
-EXPORT_SYMBOL(sps_free_endpoint);
+EXPORT_SYMBOL_GPL(sps_free_endpoint);
 
 /**
  * Platform Driver.

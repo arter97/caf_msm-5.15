@@ -27,20 +27,8 @@ static int clock_pm_resume_early(struct device *dev)
 {
 #ifdef CONFIG_DEEPSLEEP
 	if (pm_suspend_via_firmware()) {
-		if (pm_runtime_enabled(dev)) {
-			int ret;
-
-			ret = pm_runtime_get_sync(dev);
-			if (ret < 0)
-				return ret;
-
-			clk_restore_context();
-		}
-
+		clk_restore_context();
 		clk_restore_critical_clocks(dev);
-
-		if (pm_runtime_enabled(dev))
-			pm_runtime_put_sync(dev);
 	}
 #endif
 	return 0;
@@ -85,4 +73,4 @@ int register_qcom_clks_pm(struct platform_device *pdev, bool runtime,
 
 	return 0;
 }
-EXPORT_SYMBOL(register_qcom_clks_pm);
+EXPORT_SYMBOL_GPL(register_qcom_clks_pm);

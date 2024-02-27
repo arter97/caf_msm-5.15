@@ -2409,6 +2409,7 @@ static int fdp1_remove(struct platform_device *pdev)
 	v4l2_device_unregister(&fdp1->v4l2_dev);
 	pm_runtime_disable(&pdev->dev);
 	rcar_fcp_put(fdp1->fcp);
+
 	return 0;
 }
 

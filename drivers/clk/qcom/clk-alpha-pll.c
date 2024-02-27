@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2015, 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
@@ -977,7 +977,7 @@ void clk_huayra_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 	regmap_update_bits(regmap, PLL_MODE(pll),
 			 PLL_OUTCTRL, PLL_OUTCTRL);
 }
-EXPORT_SYMBOL(clk_huayra_pll_configure);
+EXPORT_SYMBOL_GPL(clk_huayra_pll_configure);
 
 static unsigned long
 alpha_huayra_pll_calc_rate(u64 prate, u32 l, u32 a)
@@ -2662,7 +2662,7 @@ const struct clk_ops clk_alpha_pll_lucid_5lpe_ops = {
 	.init = clk_lucid_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_lucid_5lpe_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_lucid_5lpe_ops);
 
 const struct clk_ops clk_alpha_pll_fixed_lucid_5lpe_ops = {
 	.prepare = clk_prepare_regmap,
@@ -2678,14 +2678,14 @@ const struct clk_ops clk_alpha_pll_fixed_lucid_5lpe_ops = {
 	.init = clk_lucid_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_fixed_lucid_5lpe_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_fixed_lucid_5lpe_ops);
 
 const struct clk_ops clk_alpha_pll_postdiv_lucid_5lpe_ops = {
 	.recalc_rate = clk_alpha_pll_postdiv_fabia_recalc_rate,
 	.round_rate = clk_alpha_pll_postdiv_fabia_round_rate,
 	.set_rate = clk_lucid_5lpe_pll_postdiv_set_rate,
 };
-EXPORT_SYMBOL(clk_alpha_pll_postdiv_lucid_5lpe_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_postdiv_lucid_5lpe_ops);
 
 void clk_zonda_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 			     const struct alpha_pll_config *config)
@@ -2713,7 +2713,7 @@ void clk_zonda_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 	/* Place the PLL in STANDBY mode */
 	regmap_update_bits(regmap, PLL_MODE(pll), PLL_RESET_N, PLL_RESET_N);
 }
-EXPORT_SYMBOL(clk_zonda_pll_configure);
+EXPORT_SYMBOL_GPL(clk_zonda_pll_configure);
 
 static int clk_zonda_pll_enable(struct clk_hw *hw)
 {
@@ -2939,7 +2939,7 @@ const struct clk_ops clk_alpha_pll_zonda_ops = {
 	.init = clk_alpha_pll_zonda_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_zonda_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_zonda_ops);
 
 static int clk_zonda_5lpe_pll_enable(struct clk_hw *hw)
 {
@@ -3061,7 +3061,7 @@ const struct clk_ops clk_alpha_pll_zonda_5lpe_ops = {
 	.init = clk_alpha_pll_zonda_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_zonda_5lpe_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_zonda_5lpe_ops);
 
 int clk_regera_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 				const struct alpha_pll_config *config)
@@ -3120,7 +3120,7 @@ int clk_regera_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 
 	return 0;
 }
-EXPORT_SYMBOL(clk_regera_pll_configure);
+EXPORT_SYMBOL_GPL(clk_regera_pll_configure);
 
 static int clk_regera_pll_enable(struct clk_hw *hw)
 {
@@ -3378,7 +3378,7 @@ const struct clk_ops clk_regera_pll_ops = {
 	.init = clk_regera_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_regera_pll_ops);
+EXPORT_SYMBOL_GPL(clk_regera_pll_ops);
 
 int clk_lucid_evo_pll_configure(struct clk_alpha_pll *pll,
 		struct regmap *regmap, const struct alpha_pll_config *config)
@@ -3465,7 +3465,7 @@ int clk_lucid_evo_pll_configure(struct clk_alpha_pll *pll,
 
 	return ret ? -EIO : 0;
 }
-EXPORT_SYMBOL(clk_lucid_evo_pll_configure);
+EXPORT_SYMBOL_GPL(clk_lucid_evo_pll_configure);
 
 static int alpha_pll_lucid_evo_enable(struct clk_hw *hw)
 {
@@ -3803,14 +3803,14 @@ const struct clk_ops clk_alpha_pll_fixed_lucid_evo_ops = {
 	.init = clk_lucid_evo_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_fixed_lucid_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_fixed_lucid_evo_ops);
 
 const struct clk_ops clk_alpha_pll_postdiv_lucid_evo_ops = {
 	.recalc_rate = clk_alpha_pll_postdiv_fabia_recalc_rate,
 	.round_rate = clk_alpha_pll_postdiv_fabia_round_rate,
 	.set_rate = clk_lucid_evo_pll_postdiv_set_rate,
 };
-EXPORT_SYMBOL(clk_alpha_pll_postdiv_lucid_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_postdiv_lucid_evo_ops);
 
 const struct clk_ops clk_alpha_pll_lucid_evo_ops = {
 	.prepare = alpha_pll_lucid_evo_prepare,
@@ -3827,7 +3827,7 @@ const struct clk_ops clk_alpha_pll_lucid_evo_ops = {
 	.init = clk_lucid_evo_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_lucid_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_lucid_evo_ops);
 
 static int __zonda_pll_is_enabled(struct clk_alpha_pll *pll,
 					struct regmap *regmap)
@@ -4096,7 +4096,7 @@ int clk_zonda_evo_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap
 
 	return ret ? -EIO : 0;
 }
-EXPORT_SYMBOL(clk_zonda_evo_pll_configure);
+EXPORT_SYMBOL_GPL(clk_zonda_evo_pll_configure);
 
 const struct clk_ops clk_alpha_pll_fixed_zonda_evo_ops = {
 	.prepare = clk_prepare_regmap,
@@ -4114,14 +4114,14 @@ const struct clk_ops clk_alpha_pll_fixed_zonda_evo_ops = {
 	.list_rate_vdd_level = clk_list_rate_vdd_level,
 #endif
 };
-EXPORT_SYMBOL(clk_alpha_pll_fixed_zonda_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_fixed_zonda_evo_ops);
 
 const struct clk_ops clk_alpha_pll_postdiv_zonda_evo_ops = {
 	.recalc_rate = clk_alpha_pll_postdiv_fabia_recalc_rate,
 	.round_rate = clk_alpha_pll_postdiv_fabia_round_rate,
 	.set_rate = clk_alpha_pll_postdiv_fabia_set_rate,
 };
-EXPORT_SYMBOL(clk_alpha_pll_postdiv_zonda_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_postdiv_zonda_evo_ops);
 
 int clk_rivian_evo_pll_configure(struct clk_alpha_pll *pll,
 		struct regmap *regmap, const struct alpha_pll_config *config)
@@ -4172,7 +4172,7 @@ int clk_rivian_evo_pll_configure(struct clk_alpha_pll *pll,
 
 	return ret ? -EIO : 0;
 }
-EXPORT_SYMBOL(clk_rivian_evo_pll_configure);
+EXPORT_SYMBOL_GPL(clk_rivian_evo_pll_configure);
 
 static unsigned long
 clk_rivian_evo_pll_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
@@ -4259,7 +4259,7 @@ const struct clk_ops clk_alpha_pll_rivian_evo_ops = {
 	.init = clk_rivian_evo_pll_init,
 	.restore_context = clk_pll_restore_context,
 };
-EXPORT_SYMBOL(clk_alpha_pll_rivian_evo_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_rivian_evo_ops);
 
 static int clk_alpha_pll_slew_update(struct clk_alpha_pll *pll)
 {
@@ -4457,4 +4457,4 @@ const struct clk_ops clk_alpha_pll_slew_ops = {
 	.list_rate_vdd_level = clk_list_rate_vdd_level,
 #endif
 };
-EXPORT_SYMBOL(clk_alpha_pll_slew_ops);
+EXPORT_SYMBOL_GPL(clk_alpha_pll_slew_ops);

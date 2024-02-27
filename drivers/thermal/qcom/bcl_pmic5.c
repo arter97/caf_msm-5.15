@@ -1002,7 +1002,7 @@ static int bcl_freeze(struct device *dev)
 			disable_irq(bcl_data->irq_num);
 			bcl_data->irq_enabled = false;
 		}
-		devm_free_irq(dev, bcl_data->irq_num, bcl_data);
+		free_irq(bcl_data->irq_num, bcl_data);
 		bcl_data->irq_freed = true;
 		mutex_unlock(&bcl_data->state_trans_lock);
 	}

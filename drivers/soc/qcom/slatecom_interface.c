@@ -613,11 +613,6 @@ static int send_slate_boot_status(enum boot_status event)
 	char *event_buf;
 	unsigned int event_buf_size;
 
-	if (event == SLATE_UPDATE_START)
-		set_slate_bt_state(false);
-	else if (event == SLATE_UPDATE_DONE)
-		set_slate_bt_state(true);
-
 	event_buf_size = sizeof(enum boot_status);
 
 	event_buf = kmemdup((char *)&event, event_buf_size, GFP_KERNEL);
@@ -757,7 +752,7 @@ int slate_soft_reset(void)
 			__func__);
 	return ret;
 }
-EXPORT_SYMBOL(slate_soft_reset);
+EXPORT_SYMBOL_GPL(slate_soft_reset);
 
 int send_wlan_state(enum WMSlateCtrlChnlOpcode type)
 {
@@ -790,7 +785,7 @@ int send_wlan_state(enum WMSlateCtrlChnlOpcode type)
 		pr_err("WLAN State transtion event cmd failed with = %d\n", ret);
 	return ret;
 }
-EXPORT_SYMBOL(send_wlan_state);
+EXPORT_SYMBOL_GPL(send_wlan_state);
 
 static int modem_down2_slate(void)
 {
@@ -867,7 +862,7 @@ int set_slate_boot_mode(uint32_t mode)
 		return RESULT_SUCCESS;
 	return RESULT_FAILURE;
 }
-EXPORT_SYMBOL(set_slate_boot_mode);
+EXPORT_SYMBOL_GPL(set_slate_boot_mode);
 
 int get_slate_boot_mode(void)
 {
@@ -879,7 +874,7 @@ int get_slate_boot_mode(void)
 
 	return mode;
 }
-EXPORT_SYMBOL(get_slate_boot_mode);
+EXPORT_SYMBOL_GPL(get_slate_boot_mode);
 
 bool is_slate_unload_only(void)
 {
@@ -888,7 +883,7 @@ bool is_slate_unload_only(void)
 
 	return dev->slate_unload;
 }
-EXPORT_SYMBOL(is_slate_unload_only);
+EXPORT_SYMBOL_GPL(is_slate_unload_only);
 
 static int send_get_fw_version(struct slate_ui_data *ui_obj_msg)
 {
@@ -1101,6 +1096,12 @@ static ssize_t slatecom_char_write(struct file *f, const char __user *buf,
 		if (ret < 0)
 			pr_err("MSM RTC Disable cmd failed\n");
 		break;
+	case 'c':
+		opcode = GMI_MGR_FORCE_CRASH;
+		ret = slatecom_tx_msg(dev, &opcode, sizeof(opcode));
+		if (ret < 0)
+			pr_err("AON force crash cmd failed\n");
+		break;
 
 	default:
 		pr_err("MSM QCLI Invalid Option\n");
@@ -1274,6 +1275,7 @@ static int ssr_slate_cb(struct notifier_block *this,
 		break;
 	case QCOM_SSR_AFTER_POWERUP:
 		pr_debug("Slate after powerup\n");
+		twm_exit = false;
 		slatee.e_type = SLATE_AFTER_POWER_UP;
 		slatecom_set_spi_state(SLATECOM_SPI_FREE);
 		send_uevent(&slatee);
@@ -1387,12 +1389,11 @@ static int ssr_adsp_cb(struct notifier_block *this,
 bool is_twm_exit(void)
 {
 	if (twm_exit) {
-		twm_exit = false;
 		return true;
 	}
 	return false;
 }
-EXPORT_SYMBOL(is_twm_exit);
+EXPORT_SYMBOL_GPL(is_twm_exit);
 
 bool is_slate_running(void)
 {
@@ -1402,7 +1403,7 @@ bool is_slate_running(void)
 	}
 	return false;
 }
-EXPORT_SYMBOL(is_slate_running);
+EXPORT_SYMBOL_GPL(is_slate_running);
 
 void set_slate_dsp_state(bool status)
 {
@@ -1452,13 +1453,13 @@ void *slatecom_register_notifier(struct notifier_block *nb)
 
 	return &slatecom_notifier_chain;
 }
-EXPORT_SYMBOL(slatecom_register_notifier);
+EXPORT_SYMBOL_GPL(slatecom_register_notifier);
 
 int slatecom_unregister_notifier(void *notify, struct notifier_block *nb)
 {
 	return srcu_notifier_chain_unregister(notify, nb);
 }
-EXPORT_SYMBOL(slatecom_unregister_notifier);
+EXPORT_SYMBOL_GPL(slatecom_unregister_notifier);
 
 static struct notifier_block ssr_modem_nb = {
 	.notifier_call = ssr_modem_cb,

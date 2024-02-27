@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "mem_buf_vm: " fmt
@@ -86,7 +86,7 @@ int mem_buf_current_vmid(void)
 {
 	return current_vmid;
 }
-EXPORT_SYMBOL(mem_buf_current_vmid);
+EXPORT_SYMBOL_GPL(mem_buf_current_vmid);
 
 /*
  * Opening this file acquires a refcount on vm->dev's kobject - see
@@ -110,7 +110,7 @@ bool mem_buf_vm_uses_hyp_assign(void)
 {
 	return current_vmid == VMID_HLOS;
 }
-EXPORT_SYMBOL(mem_buf_vm_uses_hyp_assign);
+EXPORT_SYMBOL_GPL(mem_buf_vm_uses_hyp_assign);
 
 /*
  * Use Gunyah API if any vm in the source or destination requires it.
@@ -142,7 +142,7 @@ int mem_buf_vm_uses_gunyah(int *vmids, unsigned int nr_acl_entries)
 
 	return false;
 }
-EXPORT_SYMBOL(mem_buf_vm_uses_gunyah);
+EXPORT_SYMBOL_GPL(mem_buf_vm_uses_gunyah);
 
 int mem_buf_fd_to_vmid(int fd)
 {
@@ -165,7 +165,7 @@ int mem_buf_fd_to_vmid(int fd)
 	fput(file);
 	return ret;
 }
-EXPORT_SYMBOL(mem_buf_fd_to_vmid);
+EXPORT_SYMBOL_GPL(mem_buf_fd_to_vmid);
 
 static void mem_buf_vm_device_release(struct device *dev)
 {

@@ -386,7 +386,7 @@ void qrtr_print_wakeup_reason(const void *data)
 		(unsigned int)preview, (unsigned int)(preview >> 32),
 		service_id);
 }
-EXPORT_SYMBOL(qrtr_print_wakeup_reason);
+EXPORT_SYMBOL_GPL(qrtr_print_wakeup_reason);
 
 static bool refcount_dec_and_rwsem_lock(refcount_t *r,
 					struct rw_semaphore *sem)
@@ -919,7 +919,7 @@ int qrtr_peek_pkt_size(const void *data)
 
 	return ALIGN(size, 4) + hdrlen;
 }
-EXPORT_SYMBOL(qrtr_peek_pkt_size);
+EXPORT_SYMBOL_GPL(qrtr_peek_pkt_size);
 
 static void qrtr_alloc_backup(struct work_struct *work)
 {
@@ -1504,13 +1504,13 @@ void qrtr_endpoint_unregister(struct qrtr_endpoint *ep)
 		if (*slot != node)
 			continue;
 		src.sq_node = iter.index;
-		spin_unlock_irqrestore(&qrtr_nodes_lock, flags);
-		skb = qrtr_alloc_ctrl_packet(&pkt, GFP_KERNEL);
+		skb = qrtr_alloc_ctrl_packet(&pkt, GFP_ATOMIC);
 		if (skb) {
 			pkt->cmd = cpu_to_le32(QRTR_TYPE_BYE);
 			qrtr_local_enqueue(NULL, skb, QRTR_TYPE_BYE, &src, &dst, 0);
 		}
 
+		spin_unlock_irqrestore(&qrtr_nodes_lock, flags);
 		qrtr_fwd_del_proc(node, iter.index);
 		spin_lock_irqsave(&qrtr_nodes_lock, flags);
 	}

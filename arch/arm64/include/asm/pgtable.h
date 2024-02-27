@@ -312,6 +312,8 @@ static inline void __check_racy_pte_update(struct mm_struct *mm, pte_t *ptep,
 		     __func__, pte_val(old_pte), pte_val(pte));
 }
 
+#include <asm/android_erratum_pgtable.h>
+
 static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 			      pte_t *ptep, pte_t pte)
 {
@@ -340,6 +342,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 
 	__check_racy_pte_update(mm, ptep, pte);
 
+	arm64_update_cacheable_aliases(ptep, pte);
 	set_pte(ptep, pte);
 }
 
@@ -485,8 +488,13 @@ static inline pmd_t pmd_mkdevmap(pmd_t pmd)
 #define pud_pfn(pud)		((__pud_to_phys(pud) & PUD_MASK) >> PAGE_SHIFT)
 #define pfn_pud(pfn,prot)	__pud(__phys_to_pud_val((phys_addr_t)(pfn) << PAGE_SHIFT) | pgprot_val(prot))
 
+#ifndef set_pmd_at
 #define set_pmd_at(mm, addr, pmdp, pmd)	set_pte_at(mm, addr, (pte_t *)pmdp, pmd_pte(pmd))
+#endif
+
+#ifndef set_pud_at
 #define set_pud_at(mm, addr, pudp, pud)	set_pte_at(mm, addr, (pte_t *)pudp, pud_pte(pud))
+#endif
 
 #define __p4d_to_phys(p4d)	__pte_to_phys(p4d_pte(p4d))
 #define __phys_to_p4d_val(phys)	__phys_to_pte_val(phys)
@@ -835,12 +843,14 @@ static inline int ptep_test_and_clear_young(struct vm_area_struct *vma,
 }
 
 #define __HAVE_ARCH_PTEP_CLEAR_YOUNG_FLUSH
+extern bool should_flush_tlb_when_young(void);
+
 static inline int ptep_clear_flush_young(struct vm_area_struct *vma,
 					 unsigned long address, pte_t *ptep)
 {
 	int young = ptep_test_and_clear_young(vma, address, ptep);
 
-	if (young) {
+	if (young && should_flush_tlb_when_young()) {
 		/*
 		 * We can elide the trailing DSB here since the worst that can
 		 * happen is that a CPU continues to use the young entry in its
@@ -869,6 +879,7 @@ static inline int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 static inline pte_t ptep_get_and_clear(struct mm_struct *mm,
 				       unsigned long address, pte_t *ptep)
 {
+	arm64_update_cacheable_aliases(ptep, __pte(0));
 	return __pte(xchg_relaxed(&pte_val(*ptep), 0));
 }
 
@@ -976,7 +987,7 @@ static inline void arch_swap_invalidate_area(int type)
 static inline void arch_swap_restore(swp_entry_t entry, struct page *page)
 {
 	if (system_supports_mte() && mte_restore_tags(entry, page))
-		set_bit(PG_mte_tagged, &page->flags);
+		set_page_mte_tagged(page);
 }
 
 #endif /* CONFIG_ARM64_MTE */

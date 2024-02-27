@@ -368,7 +368,7 @@ void walt_rt_init(void)
 	unsigned int i;
 
 	for_each_possible_cpu(i) {
-		if(!(zalloc_cpumask_var_node(&per_cpu(walt_local_cpu_mask, i),
+		if (!(zalloc_cpumask_var_node(&per_cpu(walt_local_cpu_mask, i),
 					GFP_KERNEL, cpu_to_node(i)))) {
 			pr_err("walt_local_cpu_mask alloc failed for cpu%d\n", i);
 			return;

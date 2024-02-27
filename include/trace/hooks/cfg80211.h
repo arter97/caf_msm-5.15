@@ -9,10 +9,6 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <net/cfg80211.h>
-#endif
-
 struct wiphy;
 struct wireless_dev;
 

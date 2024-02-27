@@ -59,7 +59,7 @@ void qcom_q6v5_register_ssr_subdev(struct qcom_q6v5 *q6v5, struct rproc_subdev *
 {
 	q6v5->ssr_subdev = ssr_subdev;
 }
-EXPORT_SYMBOL(qcom_q6v5_register_ssr_subdev);
+EXPORT_SYMBOL_GPL(qcom_q6v5_register_ssr_subdev);
 
 static void qcom_q6v5_crash_handler_work(struct work_struct *work)
 {

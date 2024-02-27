@@ -27,19 +27,6 @@
 #include <sound/soc-link.h>
 #include <sound/initval.h>
 
-static inline void snd_soc_dpcm_mutex_lock(struct snd_soc_pcm_runtime *rtd)
-{
-	mutex_lock_nested(&rtd->card->pcm_mutex, rtd->card->pcm_subclass);
-}
-
-static inline void snd_soc_dpcm_mutex_unlock(struct snd_soc_pcm_runtime *rtd)
-{
-	mutex_unlock(&rtd->card->pcm_mutex);
-}
-
-#define snd_soc_dpcm_mutex_assert_held(rtd) \
-	lockdep_assert_held(&(rtd)->card->pcm_mutex)
-
 static inline void snd_soc_dpcm_stream_lock_irq(struct snd_soc_pcm_runtime *rtd,
 						int stream)
 {
@@ -1639,7 +1626,7 @@ int dpcm_be_dai_startup(struct snd_soc_pcm_runtime *fe, int stream)
 			be->dpcm[stream].state = SND_SOC_DPCM_STATE_CLOSE;
 			goto unwind;
 		}
-		be->dpcm_be_start[stream] = 0;
+		be->dpcm[stream].be_start = 0;
 		be->dpcm[stream].state = SND_SOC_DPCM_STATE_OPEN;
 		count++;
 	}
@@ -2129,19 +2116,19 @@ int dpcm_be_dai_trigger(struct snd_soc_pcm_runtime *fe, int stream,
 
 		switch (cmd) {
 		case SNDRV_PCM_TRIGGER_START:
-			if (!be->dpcm_be_start[stream] &&
+			if (!be->dpcm[stream].be_start &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PREPARE) &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP) &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED))
 				goto next;
 
-			be->dpcm_be_start[stream]++;
-			if (be->dpcm_be_start[stream] != 1)
+			be->dpcm[stream].be_start++;
+			if (be->dpcm[stream].be_start != 1)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
-				be->dpcm_be_start[stream]--;
+				be->dpcm[stream].be_start--;
 				goto next;
 			}
 
@@ -2151,32 +2138,32 @@ int dpcm_be_dai_trigger(struct snd_soc_pcm_runtime *fe, int stream,
 			if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_SUSPEND))
 				goto next;
 
-			be->dpcm_be_start[stream]++;
-			if (be->dpcm_be_start[stream]!= 1)
+			be->dpcm[stream].be_start++;
+			if (be->dpcm[stream].be_start != 1)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
-				be->dpcm_be_start[stream]--;
+				be->dpcm[stream].be_start--;
 				goto next;
 			}
 
 			be->dpcm[stream].state = SND_SOC_DPCM_STATE_START;
 			break;
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-			if (!be->dpcm_be_start[stream] &&
+			if (!be->dpcm[stream].be_start &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_START) &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP) &&
 			    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED))
 				goto next;
 
-			be->dpcm_be_start[stream]++;
-			if (be->dpcm_be_start[stream] != 1)
+			be->dpcm[stream].be_start++;
+			if (be->dpcm[stream].be_start != 1)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
-				be->dpcm_be_start[stream]--;
+				be->dpcm[stream].be_start--;
 				goto next;
 			}
 
@@ -2188,15 +2175,15 @@ int dpcm_be_dai_trigger(struct snd_soc_pcm_runtime *fe, int stream,
 				goto next;
 
 			if (be->dpcm[stream].state == SND_SOC_DPCM_STATE_START)
-				be->dpcm_be_start[stream]--;
+				be->dpcm[stream].be_start--;
 
-			if (be->dpcm_be_start[stream] != 0)
+			if (be->dpcm[stream].be_start != 0)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
 				if (be->dpcm[stream].state == SND_SOC_DPCM_STATE_START)
-					be->dpcm_be_start[stream]++;
+					be->dpcm[stream].be_start++;
 				goto next;
 			}
 
@@ -2206,13 +2193,13 @@ int dpcm_be_dai_trigger(struct snd_soc_pcm_runtime *fe, int stream,
 			if (be->dpcm[stream].state != SND_SOC_DPCM_STATE_START)
 				goto next;
 
-			be->dpcm_be_start[stream]--;
-			if (be->dpcm_be_start[stream] != 0)
+			be->dpcm[stream].be_start--;
+			if (be->dpcm[stream].be_start != 0)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
-				be->dpcm_be_start[stream]++;
+				be->dpcm[stream].be_start++;
 				goto next;
 			}
 
@@ -2222,13 +2209,13 @@ int dpcm_be_dai_trigger(struct snd_soc_pcm_runtime *fe, int stream,
 			if (be->dpcm[stream].state != SND_SOC_DPCM_STATE_START)
 				goto next;
 
-			be->dpcm_be_start[stream]--;
-			if (be->dpcm_be_start[stream] != 0)
+			be->dpcm[stream].be_start--;
+			if (be->dpcm[stream].be_start != 0)
 				goto next;
 
 			ret = soc_pcm_trigger(be_substream, cmd);
 			if (ret) {
-				be->dpcm_be_start[stream]++;
+				be->dpcm[stream].be_start++;
 				goto next;
 			}
 
@@ -2659,7 +2646,7 @@ int snd_soc_dpcm_runtime_update(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *fe;
 	int ret = 0;
 
-	mutex_lock_nested(&card->pcm_mutex, card->pcm_subclass);
+	snd_soc_dpcm_mutex_lock(card);
 	/* shutdown all old paths first */
 	for_each_card_rtds(card, fe) {
 		ret = soc_dpcm_fe_runtime_update(fe, 0);
@@ -2675,7 +2662,7 @@ int snd_soc_dpcm_runtime_update(struct snd_soc_card *card)
 	}
 
 out:
-	mutex_unlock(&card->pcm_mutex);
+	snd_soc_dpcm_mutex_unlock(card);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_runtime_update);

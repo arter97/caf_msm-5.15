@@ -1000,10 +1000,10 @@ static int handle_sector0(struct bow_context *bc, struct bio *bio)
 	int ret = DM_MAPIO_REMAPPED;
 
 	if (bio->bi_iter.bi_size > bc->block_size) {
-		struct bio *split = bio_split(bio,
-					      bc->block_size >> SECTOR_SHIFT,
-					      GFP_NOIO,
-					      &fs_bio_set);
+		struct bio * split = bio_split(bio,
+					       bc->block_size >> SECTOR_SHIFT,
+					       GFP_NOIO,
+					       &fs_bio_set);
 		if (!split) {
 			DMERR("Failed to split bio");
 			bio->bi_status = BLK_STS_RESOURCE;

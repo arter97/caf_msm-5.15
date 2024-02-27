@@ -93,7 +93,7 @@ static struct qrtr_node *node_get(unsigned int node_id)
 	node->id = node_id;
 	xa_init(&node->servers);
 
-	if(xa_is_err(xa_store(&nodes, node_id, node, GFP_ATOMIC))){
+	if (xa_is_err(xa_store(&nodes, node_id, node, GFP_ATOMIC))) {
 		kfree(node);
 		return NULL;
 	}
@@ -118,7 +118,7 @@ int qrtr_get_service_id(unsigned int node_id, unsigned int port_id)
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(qrtr_get_service_id);
+EXPORT_SYMBOL_GPL(qrtr_get_service_id);
 
 static int server_match(const struct qrtr_server *srv,
 			const struct qrtr_server_filter *f)

@@ -136,6 +136,7 @@ static inline int pmd_dirty(pmd_t pmd)
 	return pmd_flags(pmd) & _PAGE_DIRTY;
 }
 
+#define pmd_young pmd_young
 static inline int pmd_young(pmd_t pmd)
 {
 	return pmd_flags(pmd) & _PAGE_ACCESSED;
@@ -1147,11 +1148,6 @@ static inline pmd_t pmdp_establish(struct vm_area_struct *vma,
 	}
 }
 #endif
-
-#define __HAVE_ARCH_PMDP_INVALIDATE_AD
-extern pmd_t pmdp_invalidate_ad(struct vm_area_struct *vma,
-				unsigned long address, pmd_t *pmdp);
-
 /*
  * Page table pages are page-aligned.  The lower half of the top
  * level is used for userspace and the top half for the kernel.
@@ -1408,6 +1404,14 @@ static inline bool arch_has_hw_pte_young(void)
 {
 	return true;
 }
+
+#ifdef CONFIG_XEN_PV
+#define arch_has_hw_nonleaf_pmd_young arch_has_hw_nonleaf_pmd_young
+static inline bool arch_has_hw_nonleaf_pmd_young(void)
+{
+	return !cpu_feature_enabled(X86_FEATURE_XENPV);
+}
+#endif
 
 #endif	/* __ASSEMBLY__ */
 

@@ -7,6 +7,7 @@
  *	Marek Szyprowski <m.szyprowski@samsung.com>
  *	Michal Nazarewicz <mina86@mina86.com>
  * Copyright (C) 2012, 2014-2015 ARM Ltd.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -779,7 +780,7 @@ bool qcom_dma_iommu_is_ready(void)
 		return false;
 	return true;
 }
-EXPORT_SYMBOL(qcom_dma_iommu_is_ready);
+EXPORT_SYMBOL_GPL(qcom_dma_iommu_is_ready);
 
 static int qcom_dma_iommu_remove(struct platform_device *pdev)
 {

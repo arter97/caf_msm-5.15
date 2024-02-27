@@ -524,7 +524,7 @@ static void bam_chan_init_hw(struct bam_chan *bchan,
 	writel_relaxed(ALIGN(bchan->fifo_phys, sizeof(struct bam_desc_hw)),
 			bam_addr(bdev, bchan->id, BAM_P_DESC_FIFO_ADDR));
 	writel_relaxed(BAM_DESC_FIFO_SIZE,
-			bam_addr(bdev, bchan->id, BAM_P_FIFO_SIZES));
+		       bam_addr(bdev, bchan->id, BAM_P_FIFO_SIZES));
 
 	/* enable the per pipe interrupts, enable EOT, ERR, and INT irqs */
 	writel_relaxed(P_DEFAULT_IRQS_EN,
@@ -575,7 +575,7 @@ static int bam_alloc_chan(struct dma_chan *chan)
 	} else {
 		/* allocate FIFO descriptor space, but only if necessary */
 		bchan->fifo_virt = dma_alloc_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
-					&bchan->fifo_phys, GFP_KERNEL);
+						&bchan->fifo_phys, GFP_KERNEL);
 	}
 
 	if (bdev->r_mem.is_r_mem) {
@@ -633,7 +633,7 @@ static void bam_free_chan(struct dma_chan *chan)
 
 	if (!bdev->r_mem.is_r_mem) {
 		dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE, bchan->fifo_virt,
-		    bchan->fifo_phys);
+			    bchan->fifo_phys);
 	} else {
 		bdev->r_mem.r_vbase = bdev->r_mem.r_vsbase;
 		bdev->r_mem.r_res->start = bdev->r_mem.r_pbase;
@@ -1347,7 +1347,7 @@ static int bam_dma_probe(struct platform_device *pdev)
 	bdev->layout = match->data;
 
 	bdev->ipc_log_dma = ipc_log_context_create(DMA_IPC_LOGPAGES,
-							"dma_bam_log", 0);
+						   "dma_bam_log", 0);
 	if (!bdev->ipc_log_dma)
 		dev_err(bdev->dev, "Failed to create dma bam log\n");
 
@@ -1360,12 +1360,13 @@ static int bam_dma_probe(struct platform_device *pdev)
 
 	bdev->r_mem.is_r_mem = false;
 	remote_res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						"bam_remote_mem");
+						  "bam_remote_mem");
 	if (remote_res) {
 		bdev->r_mem.is_r_mem = true;
 		bdev->r_mem.r_pbase = (unsigned long long)remote_res->start;
 		bdev->r_mem.r_vbase = devm_ioremap(&pdev->dev,
-			remote_res->start, resource_size(remote_res));
+						   remote_res->start,
+						   resource_size(remote_res));
 
 		if (!bdev->r_mem.r_vbase) {
 			dev_err(&pdev->dev, "Remote mem ioremap failed\n");

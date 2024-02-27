@@ -5,14 +5,8 @@
 #define TRACE_INCLUDE_PATH trace/hooks
 #if !defined(_TRACE_HOOK_MMC_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_MMC_H
-#include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <linux/blk-mq.h>
-#include <linux/mmc/host.h>
-#include <linux/mmc/card.h>
-#include "../../drivers/mmc/host/sdhci.h"
-#endif
+#include <trace/hooks/vendor_hooks.h>
 
 struct blk_mq_queue_data;
 struct mmc_host;
@@ -48,9 +42,6 @@ DECLARE_HOOK(android_vh_sdhci_get_cd,
 DECLARE_HOOK(android_vh_mmc_gpio_cd_irqt,
 	TP_PROTO(struct mmc_host *host, bool *allow),
 	TP_ARGS(host, allow));
-DECLARE_HOOK(android_vh_mmc_ffu_update_cid,
-	TP_PROTO(struct mmc_host *host, struct mmc_card *card, u32 *cid),
-	TP_ARGS(host, card, cid));
 
 DECLARE_RESTRICTED_HOOK(android_rvh_mmc_cache_card_properties,
 	TP_PROTO(struct mmc_host *host),
@@ -59,30 +50,6 @@ DECLARE_RESTRICTED_HOOK(android_rvh_mmc_cache_card_properties,
 DECLARE_RESTRICTED_HOOK(android_rvh_partial_init,
 	TP_PROTO(struct mmc_host *host, bool *partial_init),
 	TP_ARGS(host, partial_init), 1);
-
-DECLARE_HOOK(android_vh_mmc_update_partition_status,
-	TP_PROTO(struct mmc_card *card),
-	TP_ARGS(card));
-
-DECLARE_HOOK(android_vh_mmc_sd_update_cmdline_timing,
-	TP_PROTO(struct mmc_card *card, int *err),
-	TP_ARGS(card, err));
-
-DECLARE_HOOK(android_vh_mmc_sd_update_dataline_timing,
-	TP_PROTO(struct mmc_card *card, int *err),
-	TP_ARGS(card, err));
-
-DECLARE_RESTRICTED_HOOK(android_rvh_mmc_partition_status,
-	TP_PROTO(struct mmc_card *card),
-	TP_ARGS(card), 1);
-
-DECLARE_RESTRICTED_HOOK(android_rvh_mmc_sd_cmdline_timing,
-	TP_PROTO(struct mmc_card *card, int *err),
-	TP_ARGS(card, err), 1);
-
-DECLARE_RESTRICTED_HOOK(android_rvh_mmc_sd_dataline_timing,
-	TP_PROTO(struct mmc_card *card, int *err),
-	TP_ARGS(card, err), 1);
 
 #endif /* _TRACE_HOOK_MMC_H */
 /* This part must be outside protection */

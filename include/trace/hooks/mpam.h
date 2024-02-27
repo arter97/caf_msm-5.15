@@ -10,10 +10,6 @@
  * Following tracepoints are not exported in tracefs and provide a
  * mechanism for vendor modules to hook and extend functionality
  */
-#ifdef __GENKSYMS__
-#include <linux/sched.h>
-#endif
-
 struct task_struct;
 
 DECLARE_HOOK(android_vh_mpam_set,

@@ -9,13 +9,6 @@
  * Following tracepoints are not exported in tracefs and provide a
  * mechanism for vendor modules to hook and extend functionality
  */
-
-#ifdef __GENKSYMS__
-#include <linux/cpumask.h>
-#include <linux/irq.h>
-#include <linux/irqchip/arm-gic-v3.h>
-#endif
-
 struct cpumask;
 struct irq_data;
 struct gic_chip_data;
@@ -29,10 +22,7 @@ DECLARE_RESTRICTED_HOOK(android_rvh_gic_v3_set_affinity,
 		 void __iomem *rbase, u64 redist_stride),
 	TP_ARGS(d, mask_val, affinity, force, base, rbase, redist_stride),
 	1);
-DECLARE_HOOK(android_vh_gic_resume,
-	TP_PROTO(struct gic_chip_data *gd),
-	TP_ARGS(gd));
-DECLARE_HOOK(android_vh_gic_suspend,
+DECLARE_HOOK(android_vh_gic_v3_suspend,
 	TP_PROTO(struct gic_chip_data *gd),
 	TP_ARGS(gd));
 

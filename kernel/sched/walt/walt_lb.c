@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <trace/hooks/sched.h>
@@ -380,6 +380,7 @@ static int walt_lb_pull_tasks(int dst_cpu, int src_cpu)
 			if (cpumask_test_cpu(dst_cpu, p->cpus_ptr)
 				&& need_active_lb(p, dst_cpu, src_cpu)) {
 				bool success;
+
 				active_balance = true;
 				src_rq->active_balance = 1;
 				src_rq->push_cpu = dst_cpu;
@@ -496,6 +497,7 @@ static int walt_lb_find_busiest_from_higher_cap_cpu(int dst_cpu, const cpumask_t
 	int total_cpus = 0;
 	struct walt_rq *wrq;
 	bool asymcap_boost = ASYMCAP_BOOST(dst_cpu);
+
 	for_each_cpu(i, src_mask) {
 
 		if (!cpu_active(i))
@@ -911,11 +913,10 @@ static void walt_newidle_balance(struct rq *this_rq,
 		if (busy_cpu != -1) {
 			first_idle =
 				find_first_idle_if_others_are_busy(&cpu_array[order_index][1]);
-			if (first_idle != -1) {
+			if (first_idle != -1)
 				walt_kick_cpu(first_idle);
-			} else if (walt_rotation_enabled) {
+			else if (walt_rotation_enabled)
 				goto found_busy_cpu;
-			}
 		}
 	} else if (order_index == 2) {
 		busy_cpu = walt_lb_find_busiest_cpu(this_cpu, &cpu_array[order_index][0],
@@ -936,11 +937,10 @@ static void walt_newidle_balance(struct rq *this_rq,
 		if (busy_cpu != -1) {
 			first_idle =
 				find_first_idle_if_others_are_busy(&cpu_array[order_index][1]);
-			if (first_idle != -1) {
+			if (first_idle != -1)
 				walt_kick_cpu(first_idle);
-			} else if (walt_rotation_enabled) {
+			else if (walt_rotation_enabled)
 				goto found_busy_cpu;
-			}
 		}
 	} else {
 		busy_cpu =

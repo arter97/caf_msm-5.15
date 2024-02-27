@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"io-pgtable-fast: " fmt
@@ -180,7 +180,7 @@ void av8l_register_notify(struct notifier_block *nb)
 {
 	atomic_notifier_chain_register(&av8l_notifier_list, nb);
 }
-EXPORT_SYMBOL(av8l_register_notify);
+EXPORT_SYMBOL_GPL(av8l_register_notify);
 
 static void __av8l_check_for_stale_tlb(av8l_fast_iopte *ptep)
 {

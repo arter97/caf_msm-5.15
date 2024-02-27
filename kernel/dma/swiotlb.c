@@ -69,21 +69,6 @@
 #define INVALID_PHYS_ADDR (~(phys_addr_t)0)
 
 enum swiotlb_force swiotlb_force;
-phys_addr_t io_tlb_start, io_tlb_end;
-
-#ifdef CONFIG_SWIOTLB_NONLINEAR
-EXPORT_SYMBOL(swiotlb_force);
-EXPORT_SYMBOL(io_tlb_start);
-EXPORT_SYMBOL(io_tlb_end);
-
-static char *io_tlb_vstart;
-
-static inline unsigned char *swiotlb_phys_to_virt(phys_addr_t tlb_addr);
-#else
-#define swiotlb_phys_to_virt phys_to_virt
-#endif
-
-static unsigned long io_tlb_nslabs;
 
 struct io_tlb_mem io_tlb_default_mem;
 
@@ -193,7 +178,7 @@ void __init swiotlb_update_mem_attributes(void)
 static void swiotlb_init_io_tlb_mem(struct io_tlb_mem *mem, phys_addr_t start,
 				    unsigned long nslabs, bool late_alloc)
 {
-	void *vaddr = swiotlb_phys_to_virt(start);
+	void *vaddr = phys_to_virt(start);
 	unsigned long bytes = nslabs << IO_TLB_SHIFT, i;
 
 	mem->nslabs = nslabs;
@@ -315,16 +300,14 @@ swiotlb_late_init_with_default_size(size_t default_size)
 	return rc;
 }
 
-static int
-_swiotlb_late_init_with_tbl(char *tlb, unsigned long nslabs)
+int
+swiotlb_late_init_with_tbl(char *tlb, unsigned long nslabs)
 {
 	struct io_tlb_mem *mem = &io_tlb_default_mem;
 	unsigned long bytes = nslabs << IO_TLB_SHIFT;
 
-#ifndef CONFIG_SWIOTLB_NONLINEAR
 	if (swiotlb_force == SWIOTLB_NO_FORCE)
 		return 0;
-#endif
 
 	/* protect against double initialization */
 	if (WARN_ON_ONCE(mem->nslabs))
@@ -336,45 +319,12 @@ _swiotlb_late_init_with_tbl(char *tlb, unsigned long nslabs)
 		return -ENOMEM;
 
 	set_memory_decrypted((unsigned long)tlb, bytes >> PAGE_SHIFT);
-	swiotlb_init_io_tlb_mem(mem, io_tlb_start, nslabs, true);
+	swiotlb_init_io_tlb_mem(mem, virt_to_phys(tlb), nslabs, true);
 
 	swiotlb_print_info();
 	swiotlb_set_max_segment(mem->nslabs << IO_TLB_SHIFT);
 	return 0;
 }
-
-int
-swiotlb_late_init_with_tbl(char *tlb, unsigned long nslabs)
-{
-	unsigned long bytes;
-
-	bytes = nslabs << IO_TLB_SHIFT;
-	io_tlb_nslabs = nslabs;
-	io_tlb_start = virt_to_phys(tlb);
-	io_tlb_end = io_tlb_start + bytes;
-
-	return _swiotlb_late_init_with_tbl(tlb, nslabs);
-}
-
-#ifdef CONFIG_SWIOTLB_NONLINEAR
-int swiotlb_late_init_with_tblpaddr(char *tlb,
-			phys_addr_t tlb_paddr, unsigned long nslabs)
-{
-	unsigned long bytes;
-
-	if (io_tlb_start)
-		return -EBUSY;
-
-	bytes = nslabs << IO_TLB_SHIFT;
-	io_tlb_nslabs = nslabs;
-	io_tlb_start = tlb_paddr;
-	io_tlb_vstart = tlb;
-	io_tlb_end = io_tlb_start + bytes;
-
-	return _swiotlb_late_init_with_tbl(tlb, nslabs);
-}
-EXPORT_SYMBOL(swiotlb_late_init_with_tblpaddr);
-#endif	/* CONFIG_SWIOTLB_NONLINEAR */
 
 void __init swiotlb_exit(void)
 {
@@ -410,14 +360,6 @@ static unsigned int swiotlb_align_offset(struct device *dev, u64 addr)
 	return addr & dma_get_min_align_mask(dev) & (IO_TLB_SIZE - 1);
 }
 
-#ifdef CONFIG_SWIOTLB_NONLINEAR
-static inline unsigned char *
-swiotlb_phys_to_virt(phys_addr_t tlb_addr)
-{
-	return (unsigned char *)(io_tlb_vstart + (tlb_addr - io_tlb_start));
-}
-#endif
-
 /*
  * Bounce: copy the swiotlb buffer from or back to the original dma location
  */
@@ -429,7 +371,7 @@ static void swiotlb_bounce(struct device *dev, phys_addr_t tlb_addr, size_t size
 	phys_addr_t orig_addr = mem->slots[index].orig_addr;
 	size_t alloc_size = mem->slots[index].alloc_size;
 	unsigned long pfn = PFN_DOWN(orig_addr);
-	unsigned char *vaddr = swiotlb_phys_to_virt(tlb_addr);
+	unsigned char *vaddr = phys_to_virt(tlb_addr);
 	unsigned int tlb_offset, orig_addr_offset;
 
 	if (orig_addr == INVALID_PHYS_ADDR)
@@ -652,9 +594,6 @@ phys_addr_t swiotlb_tbl_map_single(struct device *dev, phys_addr_t orig_addr,
 	swiotlb_bounce(dev, tlb_addr, mapping_size, DMA_TO_DEVICE);
 	return tlb_addr;
 }
-#ifdef CONFIG_SWIOTLB_NONLINEAR
-EXPORT_SYMBOL(swiotlb_tbl_unmap_single);
-#endif
 
 static void swiotlb_release_slots(struct device *dev, phys_addr_t tlb_addr)
 {
@@ -767,14 +706,6 @@ dma_addr_t swiotlb_map(struct device *dev, phys_addr_t paddr, size_t size,
 		arch_sync_dma_for_device(swiotlb_addr, size, dir);
 	return dma_addr;
 }
-#ifdef CONFIG_SWIOTLB_NONLINEAR
-EXPORT_SYMBOL(swiotlb_map);
-
-size_t swiotlb_max_mapping_size(struct device *dev)
-{
-	return 4096;
-}
-#else
 
 size_t swiotlb_max_mapping_size(struct device *dev)
 {
@@ -791,7 +722,6 @@ size_t swiotlb_max_mapping_size(struct device *dev)
 
 	return ((size_t)IO_TLB_SIZE) * IO_TLB_SEGSIZE - min_align;
 }
-#endif
 
 bool is_swiotlb_active(struct device *dev)
 {
@@ -841,6 +771,7 @@ static void rmem_swiotlb_debugfs_init(struct reserved_mem *rmem)
 {
 }
 #endif
+
 struct page *swiotlb_alloc(struct device *dev, size_t size)
 {
 	struct io_tlb_mem *mem = dev->dma_io_tlb_mem;
@@ -876,11 +807,6 @@ static int rmem_swiotlb_device_init(struct reserved_mem *rmem,
 {
 	struct io_tlb_mem *mem = rmem->priv;
 	unsigned long nslabs = rmem->size >> IO_TLB_SHIFT;
-
-	if (PageHighMem(pfn_to_page(PHYS_PFN(rmem->base)))) {
-		dev_err(dev, "Restricted DMA pool must be accessible within the linear mapping.");
-		return -EINVAL;
-	}
 
 	/*
 	 * Since multiple devices can share the same pool, the private data,
@@ -935,6 +861,11 @@ static int __init rmem_swiotlb_setup(struct reserved_mem *rmem)
 	    of_get_flat_dt_prop(node, "linux,dma-default", NULL) ||
 	    of_get_flat_dt_prop(node, "no-map", NULL))
 		return -EINVAL;
+
+	if (PageHighMem(pfn_to_page(PHYS_PFN(rmem->base)))) {
+		pr_err("Restricted DMA pool must be accessible within the linear mapping.");
+		return -EINVAL;
+	}
 
 	rmem->ops = &rmem_swiotlb_ops;
 	pr_info("Reserved memory: created restricted DMA pool at %pa, size %ld MiB\n",

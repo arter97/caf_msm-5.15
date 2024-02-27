@@ -182,6 +182,14 @@ static inline void clear_highpage(struct page *page)
 	kunmap_atomic(kaddr);
 }
 
+static inline void clear_highpage_kasan_tagged(struct page *page)
+{
+	void *kaddr = kmap_local_page(page);
+
+	clear_page(kasan_reset_tag(kaddr));
+	kunmap_local(kaddr);
+}
+
 #ifndef __HAVE_ARCH_TAG_CLEAR_HIGHPAGE
 
 static inline void tag_clear_highpage(struct page *page)

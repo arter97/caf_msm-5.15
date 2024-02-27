@@ -30,6 +30,7 @@
 #include <linux/efi.h>
 #include <linux/psci.h>
 #include <linux/sched/task.h>
+#include <linux/scs.h>
 #include <linux/mm.h>
 
 #include <asm/acpi.h>
@@ -43,6 +44,7 @@
 #include <asm/hypervisor.h>
 #include <asm/kasan.h>
 #include <asm/numa.h>
+#include <asm/scs.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/smp_plat.h>
@@ -318,6 +320,8 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
 	jump_label_init();
 	parse_early_param();
 
+	dynamic_scs_init();
+
 	/*
 	 * Unmask asynchronous aborts and fiq after bringing up possible
 	 * earlycon. (Report possible System Errors once we can report this
@@ -452,4 +456,5 @@ void kvm_arm_init_hyp_services(void)
 {
 	kvm_init_ioremap_services();
 	kvm_init_memshare_services();
+	kvm_init_memrelinquish_services();
 }

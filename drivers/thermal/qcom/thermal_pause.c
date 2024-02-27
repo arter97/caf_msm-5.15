@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:%s " fmt, KBUILD_MODNAME, __func__
@@ -55,24 +56,23 @@ void thermal_pause_notifier_register(struct notifier_block *n)
 {
 	blocking_notifier_chain_register(&thermal_pause_notifier, n);
 }
-EXPORT_SYMBOL(thermal_pause_notifier_register);
+EXPORT_SYMBOL_GPL(thermal_pause_notifier_register);
 
 void thermal_pause_notifier_unregister(struct notifier_block *n)
 {
 	blocking_notifier_chain_unregister(&thermal_pause_notifier, n);
 }
-EXPORT_SYMBOL(thermal_pause_notifier_unregister);
+EXPORT_SYMBOL_GPL(thermal_pause_notifier_unregister);
 
 const struct cpumask *thermal_paused_cpumask(void)
 {
 	return &cpus_in_max_cooling_level;
 }
-EXPORT_SYMBOL(thermal_paused_cpumask);
+EXPORT_SYMBOL_GPL(thermal_paused_cpumask);
 
 static int thermal_pause_hp_online(unsigned int online_cpu)
 {
 	struct thermal_pause_cdev *thermal_pause_cdev;
-	int ret = 0;
 
 	pr_debug("online entry CPU:%d\n", online_cpu);
 
@@ -85,7 +85,7 @@ static int thermal_pause_hp_online(unsigned int online_cpu)
 	}
 	mutex_unlock(&cpus_pause_lock);
 	pr_debug("online exit CPU:%d\n", online_cpu);
-	return ret;
+	return 0;
 }
 
 /**
@@ -463,7 +463,6 @@ static int thermal_pause_probe(struct platform_device *pdev)
 static int thermal_pause_remove(struct platform_device *pdev)
 {
 	struct thermal_pause_cdev *thermal_pause_cdev = NULL, *next = NULL;
-	int ret = 0;
 
 	thermal_vendor_hooks_exit();
 
@@ -494,7 +493,7 @@ static int thermal_pause_remove(struct platform_device *pdev)
 	/* if the resume failed, thermal still controls the CPUs.
 	 * ensure that the error is passed to the caller.
 	 */
-	return ret;
+	return 0;
 }
 
 static const struct of_device_id thermal_pause_match[] = {

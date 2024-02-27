@@ -102,12 +102,13 @@ static inline int fsnotify_file(struct file *file, __u32 mask)
 	if (mask & FS_OPEN) {
 		if (path->dentry->d_op &&
 		    path->dentry->d_op->d_canonical_path) {
-			struct path lower_path = {};
+			struct path lower_path;
 			int ret;
 
-			path->dentry->d_op->d_canonical_path(path, &lower_path);
-			if (IS_ERR(lower_path.dentry))
-				return PTR_ERR(lower_path.dentry);
+			ret = path->dentry->d_op->d_canonical_path(path,
+								   &lower_path);
+			if (ret)
+				return ret;
 
 			ret = fsnotify_parent(lower_path.dentry, mask,
 					      &lower_path, FSNOTIFY_EVENT_PATH);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2013, 2015-2017, 2019-2021 The Linux Foundation. All rights reserved.
  */
 
@@ -168,7 +169,7 @@ void msm_qdss_csr_enable_bam_to_usb(struct coresight_csr *csr)
 	CSR_LOCK(drvdata);
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_enable_bam_to_usb);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_enable_bam_to_usb);
 
 void msm_qdss_csr_enable_flush(struct coresight_csr *csr)
 {
@@ -199,7 +200,7 @@ void msm_qdss_csr_enable_flush(struct coresight_csr *csr)
 	drvdata->enable_flush = true;
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_enable_flush);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_enable_flush);
 
 
 void msm_qdss_csr_disable_bam_to_usb(struct coresight_csr *csr)
@@ -225,7 +226,7 @@ void msm_qdss_csr_disable_bam_to_usb(struct coresight_csr *csr)
 	CSR_LOCK(drvdata);
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_disable_bam_to_usb);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_disable_bam_to_usb);
 
 void msm_qdss_csr_disable_flush(struct coresight_csr *csr)
 {
@@ -253,7 +254,7 @@ void msm_qdss_csr_disable_flush(struct coresight_csr *csr)
 	drvdata->enable_flush = false;
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_disable_flush);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_disable_flush);
 
 void msm_qdss_csr_enable_eth(struct coresight_csr *csr)
 {
@@ -274,7 +275,7 @@ void msm_qdss_csr_enable_eth(struct coresight_csr *csr)
 	CSR_LOCK(drvdata);
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_enable_eth);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_enable_eth);
 
 void msm_qdss_csr_disable_eth(struct coresight_csr *csr)
 {
@@ -295,7 +296,7 @@ void msm_qdss_csr_disable_eth(struct coresight_csr *csr)
 	CSR_LOCK(drvdata);
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(msm_qdss_csr_disable_eth);
+EXPORT_SYMBOL_GPL(msm_qdss_csr_disable_eth);
 
 int coresight_csr_hwctrl_set(struct coresight_csr *csr, uint64_t addr,
 			 uint32_t val)
@@ -329,7 +330,7 @@ int coresight_csr_hwctrl_set(struct coresight_csr *csr, uint64_t addr,
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 	return ret;
 }
-EXPORT_SYMBOL(coresight_csr_hwctrl_set);
+EXPORT_SYMBOL_GPL(coresight_csr_hwctrl_set);
 
 void coresight_csr_set_byte_cntr(struct coresight_csr *csr, int irqctrl_offset, uint32_t count)
 {
@@ -354,7 +355,7 @@ void coresight_csr_set_byte_cntr(struct coresight_csr *csr, int irqctrl_offset, 
 	CSR_LOCK(drvdata);
 	spin_unlock_irqrestore(&drvdata->spin_lock, flags);
 }
-EXPORT_SYMBOL(coresight_csr_set_byte_cntr);
+EXPORT_SYMBOL_GPL(coresight_csr_set_byte_cntr);
 
 int coresight_csr_set_etr_atid(struct coresight_csr *csr,
 			uint32_t atid_offset, uint32_t atid,
@@ -400,7 +401,7 @@ int coresight_csr_set_etr_atid(struct coresight_csr *csr,
 
 	return 0;
 }
-EXPORT_SYMBOL(coresight_csr_set_etr_atid);
+EXPORT_SYMBOL_GPL(coresight_csr_set_etr_atid);
 
 struct coresight_csr *coresight_csr_get(const char *name)
 {
@@ -417,7 +418,7 @@ struct coresight_csr *coresight_csr_get(const char *name)
 	mutex_unlock(&csr_lock);
 	return ERR_PTR(-EINVAL);
 }
-EXPORT_SYMBOL(coresight_csr_get);
+EXPORT_SYMBOL_GPL(coresight_csr_get);
 
 int of_get_coresight_csr_name(struct device_node *node, const char **csr_name)
 {
@@ -432,7 +433,7 @@ int of_get_coresight_csr_name(struct device_node *node, const char **csr_name)
 	of_node_put(csr_node);
 	return ret;
 }
-EXPORT_SYMBOL(of_get_coresight_csr_name);
+EXPORT_SYMBOL_GPL(of_get_coresight_csr_name);
 
 static ssize_t timestamp_show(struct device *dev,
 				struct device_attribute *attr,

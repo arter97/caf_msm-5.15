@@ -81,7 +81,6 @@
 #define AT803X_DEBUG_DATA			0x1E
 
 #define AT803X_MODE_CFG_MASK			0x0F
-#define AT803X_MODE_CFG_RGMII			0x00
 #define AT803X_MODE_CFG_SGMII			0x01
 
 #define AT803X_PSSR				0x11	/*PHY-Specific Status Register*/
@@ -779,14 +778,6 @@ static int at803x_config_init(struct phy_device *phydev)
 		if (ret)
 			return ret;
 
-		/* Set bits 0 to 3 of Chip Config Register
-		 * to 0 for RGMII mode.
-		 */
-		if (phy_interface_is_rgmii(phydev))
-			__phy_modify(phydev, AT803X_REG_CHIP_CONFIG,
-				     AT803X_MODE_CFG_MASK,
-				     AT803X_MODE_CFG_RGMII);
-
 		ret = at8031_pll_config(phydev);
 		if (ret < 0)
 			return ret;
@@ -1384,8 +1375,6 @@ static struct phy_driver at803x_driver[] = {
 	.flags			= PHY_POLL_CABLE_TEST,
 	.config_init		= at803x_config_init,
 	.link_change_notify	= at803x_link_change_notify,
-	.set_wol		= at803x_set_wol,
-	.get_wol		= at803x_get_wol,
 	.suspend		= at803x_suspend,
 	.resume			= at803x_resume,
 	/* PHY_BASIC_FEATURES */

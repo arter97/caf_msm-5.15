@@ -865,7 +865,7 @@ void gpi_dump_for_geni(struct dma_chan *chan)
 
 	gpi_dump_debug_reg(gpii);
 }
-EXPORT_SYMBOL(gpi_dump_for_geni);
+EXPORT_SYMBOL_GPL(gpi_dump_for_geni);
 
 static void gpi_disable_interrupts(struct gpii *gpii)
 {

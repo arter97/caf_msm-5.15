@@ -7,10 +7,6 @@
 #define _TRACE_HOOK_FAULT_H
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
-#include <asm/ptrace.h>
-#endif
-
 struct pt_regs;
 
 DECLARE_RESTRICTED_HOOK(android_rvh_die_kernel_fault,

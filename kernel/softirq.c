@@ -35,6 +35,10 @@
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(irq_handler_entry);
 EXPORT_TRACEPOINT_SYMBOL_GPL(irq_handler_exit);
+EXPORT_TRACEPOINT_SYMBOL_GPL(softirq_entry);
+EXPORT_TRACEPOINT_SYMBOL_GPL(softirq_exit);
+EXPORT_TRACEPOINT_SYMBOL_GPL(tasklet_entry);
+EXPORT_TRACEPOINT_SYMBOL_GPL(tasklet_exit);
 
 /*
    - No shared variables, all the data are CPU local.
@@ -606,7 +610,8 @@ void irq_enter_rcu(void)
 {
 	__irq_enter_raw();
 
-	if (is_idle_task(current) && (irq_count() == HARDIRQ_OFFSET))
+	if (tick_nohz_full_cpu(smp_processor_id()) ||
+	    (is_idle_task(current) && (irq_count() == HARDIRQ_OFFSET)))
 		tick_irq_enter();
 
 	account_hardirq_enter(current);

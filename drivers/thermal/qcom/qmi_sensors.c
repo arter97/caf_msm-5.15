@@ -160,7 +160,7 @@ static void qmi_ts_update_temperature(struct qmi_ts_instance *ts,
 		if (notify &&
 			((qmi_sens->high_thresh != INT_MAX &&
 			qmi_sens->last_reading >= qmi_sens->high_thresh) ||
-			(qmi_sens->low_thresh != INT_MIN &&
+			(qmi_sens->low_thresh != (-INT_MAX) &&
 			 qmi_sens->last_reading <= qmi_sens->low_thresh))) {
 			pr_debug("Sensor:%s Notify. temp:%d\n",
 					ind_msg->sensor_id.sensor_id,
@@ -220,7 +220,7 @@ static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 		req.temp_threshold_high =
 			encode_qmi(qmi_sens->high_thresh);
 		req.temp_threshold_low_valid =
-			qmi_sens->low_thresh != INT_MIN;
+			qmi_sens->low_thresh != (-INT_MAX);
 		req.temp_threshold_low =
 			encode_qmi(qmi_sens->low_thresh);
 

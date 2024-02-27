@@ -477,8 +477,7 @@ static void guarantee_online_mems(struct cpuset *cs, nodemask_t *pmask)
 /*
  * update task's spread flag if cpuset's page/slab spread flag is set
  *
- * Call with callback_lock or cpuset_mutex held. The check can be skipped
- * if on default hierarchy.
+ * Call with callback_lock or cpuset_mutex held.
  */
 static void cpuset_update_task_spread_flag(struct cpuset *cs,
 					struct task_struct *tsk)
@@ -3048,7 +3047,7 @@ static void cpuset_bind(struct cgroup_subsys_state *root_css)
  */
 static void cpuset_fork(struct task_struct *task)
 {
-	int inherit_cpus = 0;
+	bool inherit_cpus = false;
 	if (task_css_is_root(task, cpuset_cgrp_id))
 		return;
 
@@ -3481,38 +3480,15 @@ void __init cpuset_init_smp(void)
  * Description: Returns the cpumask_var_t cpus_allowed of the cpuset
  * attached to the specified @tsk.  Guaranteed to return some non-empty
  * subset of cpu_online_mask, even if this means going outside the
- * tasks cpuset, except when the task is in the top cpuset.
+ * tasks cpuset.
  **/
 
 void cpuset_cpus_allowed(struct task_struct *tsk, struct cpumask *pmask)
 {
 	unsigned long flags;
-	struct cpuset *cs;
 
 	spin_lock_irqsave(&callback_lock, flags);
-	rcu_read_lock();
-
-	cs = task_cs(tsk);
-	if (cs != &top_cpuset)
-		guarantee_online_cpus(tsk, pmask);
-	/*
-	 * Tasks in the top cpuset won't get update to their cpumasks
-	 * when a hotplug online/offline event happens. So we include all
-	 * offline cpus in the allowed cpu list.
-	 */
-	if ((cs == &top_cpuset) || cpumask_empty(pmask)) {
-		const struct cpumask *possible_mask = task_cpu_possible_mask(tsk);
-
-		/*
-		 * We first exclude cpus allocated to partitions. If there is no
-		 * allowable online cpu left, we fall back to all possible cpus.
-		 */
-		cpumask_andnot(pmask, possible_mask, top_cpuset.subparts_cpus);
-		if (!cpumask_intersects(pmask, cpu_online_mask))
-			cpumask_copy(pmask, possible_mask);
-	}
-
-	rcu_read_unlock();
+	guarantee_online_cpus(tsk, pmask);
 	spin_unlock_irqrestore(&callback_lock, flags);
 }
 EXPORT_SYMBOL_GPL(cpuset_cpus_allowed);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef _TME_HWKM_MASTER_DEFS_H_
 #define _TME_HWKM_MASTER_DEFS_H_
@@ -459,4 +459,3 @@ struct tme_ext_err_info {
 } __packed;
 
 #endif /* _TME_HWKM_MASTER_DEFS_H_ */
-
