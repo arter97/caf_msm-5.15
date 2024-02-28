@@ -431,7 +431,8 @@ static struct mhi_controller *find_mhi_controller_by_name(const char *name)
 	list_for_each_entry_safe(mhi_priv, tmp_priv, &mhi_bus.controller_list,
 				 node) {
 		mhi_cntrl = mhi_priv->mhi_cntrl;
-		if (mhi_cntrl->mhi_dev->name && (!strcmp(name, mhi_cntrl->mhi_dev->name)))
+		if (mhi_cntrl->mhi_dev && mhi_cntrl->mhi_dev->name
+				&& (!strcmp(name, mhi_cntrl->mhi_dev->name)))
 			return mhi_cntrl;
 	}
 
