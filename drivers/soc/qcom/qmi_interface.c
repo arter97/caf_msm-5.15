@@ -621,12 +621,10 @@ static void qmi_data_ready(struct sock *sk)
 	if (!qmi)
 		return;
 
-	mutex_lock(&qmi->sock_lock);
 	QMI_INFO("qmi recv pkt queued for svc_id:0x%x sock[0x%x:0x%x]\n",
 		 qmi->svc_id, qmi->sq.sq_node, qmi->sq.sq_port);
 
 	queue_work(qmi->wq, &qmi->work);
-	mutex_unlock(&qmi->sock_lock);
 }
 
 static struct socket *qmi_sock_create(struct qmi_handle *qmi,

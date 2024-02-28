@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/of.h>
@@ -295,8 +296,9 @@ EXPORT_SYMBOL(ethqos_init_sgmii_regulators);
 
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 {
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	int ret = 0;
-
+#endif
 	if (ethqos->reg_rgmii) {
 		regulator_disable(ethqos->reg_rgmii);
 		devm_regulator_put(ethqos->reg_rgmii);
@@ -322,11 +324,13 @@ void ethqos_disable_regulators(struct qcom_ethqos *ethqos)
 	}
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 		if (ethqos->power_state) {
 			ret = ethqos_disable_serdes_consumers(ethqos);
 			if (ret < 0)
 				ETHQOSERR("Failed to disable SerDes consumers\n");
 		}
+#endif
 		devm_regulator_put(ethqos->vreg_a_sgmii_1p2);
 		ethqos->vreg_a_sgmii_1p2 = NULL;
 		devm_regulator_put(ethqos->vreg_a_sgmii_0p9);

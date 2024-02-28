@@ -60,6 +60,20 @@ config IOMMU_IO_PGTABLE_FAST
           This implementation is mainly optimized for use cases where the
           buffers are small (<= 64K) since it only supports 4K page sizes.
 
+config IOMMU_IO_PGTABLE_FAST_MAXSZ
+	int
+	prompt "Fastmap max address support in bits (range:32-36)"
+	default 32
+	range 32 36
+	help
+	  Selects maximum address in bits upto which fastmap mode of allocation
+	  can be supported. Default is 32 bit and maximum address support is
+	  limited to 36 bit as fastmap mode of allocation can cause increase in
+	  memory consumption directly proportional to number of prepopulated
+	  pagetables stored in memory.
+
+	  If unsure, use default option.
+
 config IOMMU_IO_PGTABLE_FAST_SELFTEST
 	bool "Fast IO pgtable selftests"
 	depends on IOMMU_IO_PGTABLE_FAST

@@ -280,8 +280,38 @@ static int mhi_netdev_queue_bg_pool(struct mhi_netdev *mhi_netdev,
 	return i;
 }
 
-static void mhi_netdev_queue(struct mhi_netdev *mhi_netdev,
-			     struct mhi_device *mhi_dev)
+static void mhi_netdev_queue_skb(struct mhi_netdev *mhi_netdev,
+				struct mhi_device *mhi_dev)
+{
+	struct net_device *ndev = mhi_netdev->ndev;
+	struct sk_buff *skb;
+	int nr_tre = mhi_get_free_desc_count(mhi_dev, DMA_FROM_DEVICE);
+	int i, size, err;
+
+	MSG_VERB("Enter free descriptors: %d\n", nr_tre);
+	if (!nr_tre)
+		return;
+
+	size = (mhi_netdev->mru < ndev->mtu) ? mhi_netdev->mru : ndev->mtu;
+
+	for (i = 0; i < nr_tre; i++) {
+		skb = netdev_alloc_skb(ndev, size);
+		if (unlikely(!skb))
+			break;
+
+		skb->dev = ndev;
+		err = mhi_queue_skb(mhi_dev, DMA_FROM_DEVICE, skb, size, MHI_EOT);
+		if (unlikely(err)) {
+			net_err_ratelimited("%s: Failed to queue RX buf (%d)\n",
+					ndev->name, err);
+			kfree_skb(skb);
+			break;
+		}
+	}
+}
+
+static void mhi_netdev_queue_dma(struct mhi_netdev *mhi_netdev,
+				struct mhi_device *mhi_dev)
 {
 	struct device *dev = mhi_dev->dev.parent->parent;
 	struct mhi_netbuf *netbuf, *temp_buf;
@@ -499,11 +529,14 @@ static int mhi_netdev_poll(struct napi_struct *napi, int budget)
 		return 0;
 	}
 
-	/* queue new buffers */
-	mhi_netdev_queue(mhi_netdev, mhi_dev);
+	/* queue new buffers based on interface*/
+	if (mhi_netdev->ethernet_interface)
+		mhi_netdev_queue_skb(mhi_netdev, mhi_dev);
+	else
+		mhi_netdev_queue_dma(mhi_netdev, mhi_dev);
 
 	if (rsc_dev)
-		mhi_netdev_queue(mhi_netdev, rsc_dev->mhi_dev);
+		mhi_netdev_queue_dma(mhi_netdev, rsc_dev->mhi_dev);
 
 	/* complete work if # of packet processed less than allocated budget */
 	if (rx_work < budget) {
@@ -684,7 +717,7 @@ static void mhi_netdev_ether_setup(struct net_device *dev)
 {
 	dev->netdev_ops = &mhi_netdev_ops_ip;
 	ether_setup(dev);
-	dev->max_mtu = ETH_MIN_MTU;
+	dev->max_mtu = ETH_MAX_MTU;
 	dev->min_mtu = ETH_MIN_MTU;
 }
 
@@ -785,24 +818,38 @@ static void mhi_netdev_push_skb(struct mhi_netdev *mhi_netdev,
 		return;
 	}
 
+	skb_add_rx_frag(skb, 0, netbuf->page, 0,
+			mhi_result->bytes_xferd, mhi_netdev->mru);
 	skb->dev = mhi_netdev->ndev;
-
-	if (mhi_netdev->ethernet_interface) {
-		skb_put(skb, mhi_result->bytes_xferd);
-		skb_copy_to_linear_data(skb, mhi_buf->buf, mhi_result->bytes_xferd);
-		skb->protocol = eth_type_trans(skb, mhi_netdev->ndev);
-	} else {
-		skb_add_rx_frag(skb, 0, netbuf->page, 0,
-				mhi_result->bytes_xferd, mhi_netdev->mru);
-		skb->protocol = mhi_netdev_ip_type_trans(*(u8 *)mhi_buf->buf);
-	}
+	skb->protocol = mhi_netdev_ip_type_trans(*(u8 *)mhi_buf->buf);
 	netif_receive_skb(skb);
 }
 
-static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
-				  struct mhi_result *mhi_result)
+static void mhi_netdev_xfer_dl_cb_eth(struct mhi_device *mhi_dev,
+				struct mhi_result *mhi_result,
+				struct mhi_netdev *mhi_netdev)
 {
-	struct mhi_netdev *mhi_netdev = dev_get_drvdata(&mhi_dev->dev);
+	struct sk_buff *skb;
+	struct net_device *ndev = mhi_netdev->ndev;
+
+	/* modem is down, drop the buffer */
+	if (mhi_result->transaction_status == -ENOTCONN)
+		return;
+
+	ndev->stats.rx_packets++;
+	ndev->stats.rx_bytes += mhi_result->bytes_xferd;
+
+	skb = mhi_result->buf_addr;
+	skb_put(skb, mhi_result->bytes_xferd);
+	skb->protocol = eth_type_trans(skb, mhi_netdev->ndev);
+
+	netif_receive_skb(skb);
+}
+
+static void mhi_netdev_xfer_dl_cb_rawip(struct mhi_device *mhi_dev,
+					struct mhi_result *mhi_result,
+					struct mhi_netdev *mhi_netdev)
+{
 	struct mhi_netbuf *netbuf = mhi_result->buf_addr;
 	struct mhi_buf *mhi_buf = &netbuf->mhi_buf;
 	struct sk_buff *skb;
@@ -847,6 +894,17 @@ static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
 	} else {
 		__free_pages(netbuf->page, mhi_netdev->order);
 	}
+}
+
+static void mhi_netdev_xfer_dl_cb(struct mhi_device *mhi_dev,
+				struct mhi_result *mhi_result)
+{
+	struct mhi_netdev *mhi_netdev = dev_get_drvdata(&mhi_dev->dev);
+
+	if (mhi_netdev->ethernet_interface)
+		mhi_netdev_xfer_dl_cb_eth(mhi_dev, mhi_result, mhi_netdev);
+	else
+		mhi_netdev_xfer_dl_cb_rawip(mhi_dev, mhi_result, mhi_netdev);
 }
 
 static void mhi_netdev_status_cb(struct mhi_device *mhi_dev,
@@ -1053,13 +1111,59 @@ static void mhi_netdev_clone_dev(struct mhi_netdev *mhi_netdev,
 	mhi_netdev->bg_pool = parent->bg_pool;
 }
 
+static int mhi_netdev_setup_dma(struct mhi_netdev *mhi_netdev,
+				struct mhi_netdev_driver_data *data)
+{
+	struct mhi_device *mhi_dev = mhi_netdev->mhi_dev;
+	int nr_tre, ret;
+
+	/* setup pool size ~2x ring length*/
+	nr_tre = mhi_get_free_desc_count(mhi_dev, DMA_FROM_DEVICE);
+	mhi_netdev->pool_size = 1 << __ilog2_u32(nr_tre);
+
+	if (nr_tre > mhi_netdev->pool_size)
+		mhi_netdev->pool_size <<= 1;
+
+	mhi_netdev->pool_size <<= 1;
+
+	/* if we expect child device to share then double the pool */
+	if (data->has_rsc_child)
+		mhi_netdev->pool_size <<= 1;
+
+	/* allocate memory pool */
+	ret = mhi_netdev_alloc_pool(mhi_netdev);
+	if (ret)
+		return -ENOMEM;
+
+	/* create a background task to allocate memory */
+	mhi_netdev->bg_pool = kmalloc(sizeof(*mhi_netdev->bg_pool),
+							GFP_KERNEL);
+	if (!mhi_netdev->bg_pool)
+		return -ENOMEM;
+
+	init_waitqueue_head(&mhi_netdev->alloc_event);
+	INIT_LIST_HEAD(mhi_netdev->bg_pool);
+	spin_lock_init(&mhi_netdev->bg_lock);
+	mhi_netdev->bg_pool_limit = mhi_netdev->pool_size / 4;
+	mhi_netdev->alloc_task = kthread_run(mhi_netdev_alloc_thread,
+						mhi_netdev,
+						mhi_netdev->ndev->name);
+
+	if (IS_ERR(mhi_netdev->alloc_task))
+		return PTR_ERR(mhi_netdev->alloc_task);
+
+	rsc_parent_netdev = mhi_netdev;
+
+	return 0;
+}
+
 static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 			    const struct mhi_device_id *id)
 {
 	struct mhi_netdev *mhi_netdev;
 	struct mhi_netdev_driver_data *data;
 	char node_name[40];
-	int nr_tre, ret;
+	int ret;
 
 	data = (struct mhi_netdev_driver_data *)id->driver_data;
 
@@ -1120,39 +1224,11 @@ static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 		if (ret)
 			return ret;
 
-		/* setup pool size ~2x ring length*/
-		nr_tre = mhi_get_free_desc_count(mhi_dev, DMA_FROM_DEVICE);
-		mhi_netdev->pool_size = 1 << __ilog2_u32(nr_tre);
-		if (nr_tre > mhi_netdev->pool_size)
-			mhi_netdev->pool_size <<= 1;
-		mhi_netdev->pool_size <<= 1;
-
-		/* if we expect child device to share then double the pool */
-		if (data->has_rsc_child)
-			mhi_netdev->pool_size <<= 1;
-
-		/* allocate memory pool */
-		ret = mhi_netdev_alloc_pool(mhi_netdev);
-		if (ret)
-			return -ENOMEM;
-
-		/* create a background task to allocate memory */
-		mhi_netdev->bg_pool = kmalloc(sizeof(*mhi_netdev->bg_pool),
-					      GFP_KERNEL);
-		if (!mhi_netdev->bg_pool)
-			return -ENOMEM;
-
-		init_waitqueue_head(&mhi_netdev->alloc_event);
-		INIT_LIST_HEAD(mhi_netdev->bg_pool);
-		spin_lock_init(&mhi_netdev->bg_lock);
-		mhi_netdev->bg_pool_limit = mhi_netdev->pool_size / 4;
-		mhi_netdev->alloc_task = kthread_run(mhi_netdev_alloc_thread,
-						     mhi_netdev,
-						     mhi_netdev->ndev->name);
-		if (IS_ERR(mhi_netdev->alloc_task))
-			return PTR_ERR(mhi_netdev->alloc_task);
-
-		rsc_parent_netdev = mhi_netdev;
+		if (!mhi_netdev->ethernet_interface) {
+			ret = mhi_netdev_setup_dma(mhi_netdev, data);
+			if (ret)
+				return ret;
+		}
 
 		/* create ipc log buffer */
 		snprintf(node_name, sizeof(node_name),
@@ -1209,8 +1285,18 @@ static const struct mhi_netdev_driver_data sw1_30a_data = {
 	.ethernet_interface = true,
 };
 
+static const struct mhi_netdev_driver_data hw1_30a_data = {
+	.mru = 0x4000,
+	.chain_skb = false,
+	.is_rsc_chan = false,
+	.has_rsc_child = false,
+	.interface_name = "rmnet_mhi",
+	.ethernet_interface = false,
+};
+
 static const struct mhi_device_id mhi_netdev_match_table[] = {
 	{ .chan = "IP_HW0", .driver_data = (kernel_ulong_t)&hw0_308_data },
+	{ .chan = "IP_HW1", .driver_data = (kernel_ulong_t)&hw1_30a_data },
 	{ .chan = "IP_HW0_RSC", .driver_data = (kernel_ulong_t)&hw0_rsc_308_data },
 	{ .chan = "IP_SW0", .driver_data = (kernel_ulong_t)&hw1_308_data },
 	{ .chan = "IP_SW1", .driver_data = (kernel_ulong_t)&sw1_30a_data },

@@ -835,23 +835,21 @@ static int adsp_shutdown(struct rproc *rproc)
 {
 	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
 	int handover;
-	int ret;
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_shutdown", "enter");
 
 	scm_pas_enable_bw();
+	/*
+	 * ADSP teardown is not possible in LPM. Ignore the SCM call return
+	 * status for the teardown sequence.
+	 */
 	if (adsp->retry_shutdown)
-		ret = qcom_scm_pas_shutdown_retry(adsp->pas_id);
+		qcom_scm_pas_shutdown_retry(adsp->pas_id);
 	else
-		ret = qcom_scm_pas_shutdown(adsp->pas_id);
-	if (ret)
-		panic("Panicking, remoteproc %s failed to shutdown.\n", rproc->name);
+		qcom_scm_pas_shutdown(adsp->pas_id);
 
-	if (adsp->dtb_pas_id) {
-		ret = qcom_scm_pas_shutdown(adsp->dtb_pas_id);
-		if (ret)
-			panic("Panicking, remoteproc %s dtb failed to shutdown.\n", rproc->name);
-	}
+	if (adsp->dtb_pas_id)
+		qcom_scm_pas_shutdown(adsp->dtb_pas_id);
 
 	scm_pas_disable_bw();
 	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
@@ -863,7 +861,7 @@ static int adsp_shutdown(struct rproc *rproc)
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_shutdown", "exit");
 
-	return ret;
+	return 0;
 }
 
 void adsp_set_ops_stop(struct rproc *rproc, bool suspend)
@@ -1221,7 +1219,7 @@ get_rproc_client:
 }
 
 static int adsp_pds_attach(struct device *dev, struct device **devs,
-			   char **pd_names)
+			   char **pd_names, size_t total_devs_size)
 {
 	size_t num_pds = 0;
 	int ret;
@@ -1237,7 +1235,7 @@ static int adsp_pds_attach(struct device *dev, struct device **devs,
 		return 1;
 	}
 
-	while (pd_names[num_pds])
+	while (pd_names[num_pds] && num_pds < total_devs_size)
 		num_pds++;
 
 	for (i = 0; i < num_pds; i++) {
@@ -1439,13 +1437,13 @@ static int adsp_probe(struct platform_device *pdev)
 	adsp_init_bus_scaling(adsp);
 
 	ret = adsp_pds_attach(&pdev->dev, adsp->active_pds,
-			      desc->active_pd_names);
+			      desc->active_pd_names, ARRAY_SIZE(adsp->active_pds));
 	if (ret < 0)
 		goto deinit_wakeup_source;
 	adsp->active_pd_count = ret;
 
 	ret = adsp_pds_attach(&pdev->dev, adsp->proxy_pds,
-			      desc->proxy_pd_names);
+			      desc->proxy_pd_names, ARRAY_SIZE(adsp->proxy_pds));
 	if (ret < 0)
 		goto detach_active_pds;
 	adsp->proxy_pd_count = ret;

@@ -1531,19 +1531,20 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_ETHII_TO_ETHII_EX:      Process Ethernet II to Ethernet II with
  *                                      generic lengths of src and dst headers
  * IPA_HDR_PROC_L2TP_UDP_HEADER_ADD:    Process WLAN To Ethernet packets to
- *                                      add L2TP UDP header.
+ *                                      add L2TP UDP header
  * IPA_HDR_PROC_L2TP_UDP_HEADER_REMOVE: Process Ethernet To WLAN packets to
- *                                      remove L2TP UDP header.
+ *                                      remove L2TP UDP header
  * IPA_HDR_PROC_SET_DSCP:
  * IPA_HDR_PROC_EoGRE_HEADER_ADD:       Add IPV[46] GRE header
  * IPA_HDR_PROC_EoGRE_HEADER_REMOVE:    Remove IPV[46] GRE header
- * IPA_HDR_PROC_WWAN_TO_ETHII_EX:		To update PCP value for E2E traffic.
+ * IPA_HDR_PROC_WWAN_TO_ETHII_EX:		To update PCP value for E2E traffic
  * IPA_HDR_PROC_NXT_RND:                Next Round FLT table
  * IPA_HDR_PROC_XLAT_NXT_RND:           Next Round FLT table with XLAT
  * IPA_HDR_PROC_IPSEC_ENCAP:            IPsec encap activation
  * IPA_HDR_PROC_IPSEC_DECAP:            IPsec decap activation
  * IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND:    IPsec encap activation + next round
  * IPA_HDR_PROC_IPSEC_DECAP_NXT_RND:    IPsec decap activation + next round
+ * IPA_HDR_PROC_2ND_PASS:               send to 2nd pass with no modification
  */
 enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_NONE,
@@ -1566,8 +1567,9 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_IPSEC_DECAP,
 	IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND,
 	IPA_HDR_PROC_IPSEC_DECAP_NXT_RND,
+	IPA_HDR_PROC_2ND_PASS,
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_IPSEC_DECAP_NXT_RND + 1)
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_2ND_PASS + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule

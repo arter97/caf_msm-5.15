@@ -253,6 +253,10 @@ struct plat_stmmacenet_data {
 	int (*serdes_powerup)(struct net_device *ndev, void *priv);
 	void (*serdes_powerdown)(struct net_device *ndev, void *priv);
 	void (*speed_mode_2500)(struct net_device *ndev, void *priv);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	int (*enable_power_saving)(struct net_device *ndev, bool enable);
+	void (*xpcs_powersaving)(struct net_device *ndev, bool enable);
+#endif
 	int (*serdes_powersaving)(struct net_device *ndev, void *priv, bool power_on,
 	     bool needs_reset);
 	void (*ptp_clk_freq_config)(void *priv);

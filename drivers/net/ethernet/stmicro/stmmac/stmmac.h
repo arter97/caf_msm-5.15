@@ -387,6 +387,10 @@ struct stmmac_priv {
 	u32 avb_vlan_id;
 	gh_vmid_t v2x_vm_id;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	bool ptp_init;
+#endif
 };
 
 enum stmmac_state {

@@ -20,7 +20,7 @@ struct scatterlist;
 struct av8l_fast_io_pgtable {
 	struct io_pgtable	  iop;
 	av8l_fast_iopte		 *pgd;
-	av8l_fast_iopte		 *puds[4];
+	av8l_fast_iopte		 *puds[64];
 	av8l_fast_iopte		 *pmds;
 	struct page		**pages; /* page table memory */
 	int			  nr_pages;

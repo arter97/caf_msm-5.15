@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"io-pgtable-fast: " fmt
@@ -130,6 +130,8 @@
 #define PTE_SH_IDX(pte) (pte & AV8L_FAST_PTE_SH_MASK)
 
 #define iopte_pmd_offset(pmds, base, iova) (pmds + ((iova - base) >> 12))
+
+#define MAX_ADDR_SZ     CONFIG_IOMMU_IO_PGTABLE_FAST_MAXSZ
 
 static inline dma_addr_t av8l_dma_addr(void *addr)
 {
@@ -436,14 +438,18 @@ av8l_fast_alloc_pgtable_data(struct io_pgtable_cfg *cfg)
 }
 
 /*
- * We need max 1 page for the pgd, 4 pages for puds (1GB VA per pud page) and
- * 2048 pages for pmds (each pud page contains 512 table entries, each
- * pointing to a pmd).
+ * We need max 1 page for the pgd. Right shifting (end - base)
+ * by 21 gives the pmd index, adding 1 to which gives total pmd pages.
+ * Similarly right shifting (end - base) by 30 gives pud index adding
+ * 1 to which gives total pud pages. num_pgtbl_pages is total number
+ * of pages finally needed to maintain the required fastmap range
+ * in three level pagtable format.
  */
 #define NUM_PGD_PAGES 1
-#define NUM_PUD_PAGES 4
-#define NUM_PMD_PAGES 2048
-#define NUM_PGTBL_PAGES (NUM_PGD_PAGES + NUM_PUD_PAGES + NUM_PMD_PAGES)
+#define num_pmd_pages(base, end)	(((end >> 21) - (base >> 21)) + 1)
+#define num_pud_pages(base, end)	(((end >> 30) - (base >> 30)) + 1)
+#define	num_pgtbl_pages(num_pmd_pages, num_pud_pages)	\
+			(NUM_PGD_PAGES + num_pud_pages + num_pmd_pages)
 
 /* undefine arch specific definitions which depends on page table format */
 #undef pud_index
@@ -453,7 +459,7 @@ av8l_fast_alloc_pgtable_data(struct io_pgtable_cfg *cfg)
 #undef pmd_mask
 #undef pmd_next
 
-#define pud_index(addr)		(((addr) >> 30) & 0x3)
+#define pud_index(addr)		(((addr) >> 30) & 0x1ff)
 #define pud_mask(addr)		((addr) & ~((1UL << 30) - 1))
 #define pud_next(addr, end)					\
 ({	unsigned long __boundary = pud_mask(addr + (1UL << 30));\
@@ -478,12 +484,17 @@ av8l_fast_prepopulate_pgtables(struct av8l_fast_io_pgtable *data,
 	int pmd_pg_index;
 	dma_addr_t base = pgtbl_info->iova_base;
 	dma_addr_t end = pgtbl_info->iova_end;
+	size_t npmds, npuds, num_pgtbl_pages;
 
-	pages = kmalloc(sizeof(*pages) * NUM_PGTBL_PAGES, __GFP_NOWARN |
-							__GFP_NORETRY);
+	npmds = num_pmd_pages(base, end);
+	npuds = num_pud_pages(base, end);
+	num_pgtbl_pages = num_pgtbl_pages(npuds, npmds);
+
+	pages = kmalloc_array(num_pgtbl_pages, sizeof(*pages), __GFP_NOWARN |
+								__GFP_NORETRY);
 
 	if (!pages)
-		pages = vmalloc(sizeof(*pages) * NUM_PGTBL_PAGES);
+		pages = vmalloc(sizeof(*pages) * num_pgtbl_pages);
 
 	if (!pages)
 		return -ENOMEM;
@@ -495,8 +506,8 @@ av8l_fast_prepopulate_pgtables(struct av8l_fast_io_pgtable *data,
 	data->pgd = page_address(page);
 
 	/*
-	 * We need max 2048 entries at level 2 to map 4GB of VA space. A page
-	 * can hold 512 entries, so we need max 4 pages.
+	 * We need max 512 entries at level 2 to map 1GB of VA space. A page
+	 * can hold 512 entries, so we need max npuds pages.
 	 */
 	for (i = pud_index(base), pud = base; pud < end;
 			++i, pud = pud_next(pud, end)) {
@@ -511,12 +522,13 @@ av8l_fast_prepopulate_pgtables(struct av8l_fast_io_pgtable *data,
 		ptep = ((av8l_fast_iopte *)data->pgd) + i;
 		*ptep = pte;
 	}
-	av8l_clean_range(cfg, data->pgd, data->pgd + 4);
+	av8l_clean_range(cfg, data->pgd + pud_index(base),
+				data->pgd + pud_index(base) + npuds);
 
 	/*
-	 * We have max 4 puds, each of which can point to 512 pmds, so we'll
-	 * have max 2048 pmds, each of which can hold 512 ptes, for a grand
-	 * total of 2048*512=1048576 PTEs.
+	 * We have max npuds, each of which can point to 512 pmds, so we'll
+	 * have max npuds*512 pmds, each of which can hold 512 ptes, for a grand
+	 * total of npmds*512 PTEs.
 	 */
 	pmd_pg_index = pg;
 	for (i = pud_index(base), pud = base; pud < end;
@@ -578,7 +590,7 @@ av8l_fast_alloc_pgtable(struct io_pgtable_cfg *cfg, void *cookie)
 		return NULL;
 
 	/* restrict according to the fast map requirements */
-	cfg->ias = 32;
+	cfg->ias = MAX_ADDR_SZ;
 	cfg->pgsize_bitmap = SZ_4K;
 
 	/* TCR */

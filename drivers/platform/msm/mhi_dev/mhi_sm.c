@@ -1359,6 +1359,7 @@ int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 		mhi_sm_debugfs_destroy();
 	flush_workqueue(mhi_sm_ctx->mhi_sm_wq);
 	destroy_workqueue(mhi_sm_ctx->mhi_sm_wq);
+	MHI_SM_DBG(mhi_dev->vf_id, "Destroyed sm workqueue\n");
 	/* Initiate MHI DMA reset */
 	if (mhi_sm_ctx->mhi_dev->use_mhi_dma) {
 		mhi_dma_fun_ops->mhi_dma_memcpy_disable(mhi_dma_fun_params);
@@ -1371,7 +1372,7 @@ int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 	mutex_destroy(&mhi_sm_ctx->mhi_state_lock);
 	kfree(mhi_dev_sm_ctx[vf_id]);
 	mhi_dev_sm_ctx[vf_id] = NULL;
-
+	MHI_SM_FUNC_EXIT(mhi_dev->vf_id);
 	return 0;
 }
 EXPORT_SYMBOL(mhi_dev_sm_exit);

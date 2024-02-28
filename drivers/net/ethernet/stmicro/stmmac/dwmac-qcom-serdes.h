@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #ifndef	_DWMAC_QCOM_SERDES_H
 #define	_DWMAC_QCOM_SERDES_H
@@ -885,6 +885,9 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 void qcom_ethqos_disable_serdes_clocks(struct qcom_ethqos *ethqos);
 int qcom_ethqos_enable_serdes_clocks(struct qcom_ethqos *ethqos);
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+void qcom_ethqos_serdes_power_ctrl(struct qcom_ethqos *ethqos, bool on);
+#endif
 #else
 static inline int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 {
@@ -910,6 +913,12 @@ int qcom_ethqos_enable_serdes_clocks(struct qcom_ethqos *ethqos)
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
 }
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+void qcom_ethqos_serdes_power_ctrl(struct qcom_ethqos *ethqos, bool on)
+{
+}
+#endif
 #endif
 
 #endif /*_DWMAC_QCOM_SERDES_H*/
