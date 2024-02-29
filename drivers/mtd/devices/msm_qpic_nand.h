@@ -176,6 +176,7 @@
 #define MSM_NAND_READ_LOCATION_LAST_CW_0(info) MSM_NAND_REG(info, 0x30F40)
 #define MSM_NAND_READ_LOCATION_LAST_CW_1(info) MSM_NAND_REG(info, 0x30F44)
 #define MSM_NAND_AUTO_STATUS_EN(info)       MSM_NAND_REG(info, 0x3002c)
+#define MSM_NAND_MULTI_PAGE_CMD(info)       MSM_NAND_REG(info, 0x30F60)
 
 #define NAND_FLASH_STATUS_EN                     BIT(0)
 #define NANDC_BUFFER_STATUS_EN                   BIT(1)
@@ -200,6 +201,13 @@
 #define MSM_NAND_CMD_PAGE_READ_ECC_PS   0x800033
 #define MSM_NAND_CMD_PAGE_READ_ALL_PS   0x800034
 
+/* device read commands for multipage */
+
+#define MSM_NAND_CMD_PAGE_READ_ECC_MP   0x400033
+#define MSM_NAND_CMD_PAGE_READ_ALL_MP   0x400034
+
+#define MAX_MULTI_PAGE_READS   8
+
 /* Version Mask */
 #define MSM_NAND_VERSION_MAJOR_MASK	0xF0000000
 #define MSM_NAND_VERSION_MAJOR_SHIFT	28
@@ -220,7 +228,7 @@ struct msm_nand_sps_cmd {
 };
 
 struct msm_nand_cmd_setup_desc {
-	struct sps_command_element ce[13];
+	struct sps_command_element ce[14];
 	uint32_t flags;
 	uint32_t num_ce;
 };
