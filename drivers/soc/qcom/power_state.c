@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: %s: " fmt, KBUILD_MODNAME, __func__
@@ -111,7 +111,7 @@ struct power_state_drvdata {
 	enum power_states current_state;
 	int subsys_count;
 	struct list_head sub_sys_list;
-	bool deep_sleep_allowed;
+	int deep_sleep_cnt;
 };
 
 static struct power_state_drvdata *drv;
@@ -124,7 +124,9 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 	case SUBSYS_DEEPSLEEP:
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+#if IS_ENABLED(CONFIG_QCOM_DS_SKIP_Q6_STOP)
 		adsp_set_ops_stop(rproc, true);
+#endif
 		rproc_shutdown(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -145,7 +147,9 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 	case SUBSYS_DEEPSLEEP:
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+#if IS_ENABLED(CONFIG_QCOM_DS_SKIP_Q6_STOP)
 		adsp_set_ops_stop(rproc, false);
+#endif
 		ret = rproc_boot(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -435,8 +439,10 @@ static void power_state_resume(void)
 {
 	struct arm_smccc_res res;
 
-	if (pm_suspend_via_firmware())
+	if (pm_suspend_via_firmware()) {
 		arm_smccc_smc(DS_ENTRY_SMC_ID, DS_NUM_PARAMETERS, DS_EXIT, 0, 0, 0, 0, 0, &res);
+		drv->deep_sleep_cnt += 1;
+	}
 }
 
 static int power_state_suspend(void)
@@ -452,28 +458,28 @@ static int power_state_suspend(void)
 	return 0;
 }
 
-static ssize_t deep_sleep_allowed_show(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t deep_sleep_cnt_show(struct kobject *kobj, struct kobj_attribute *attr,
 				       char *buf)
 {
 	struct power_state_drvdata *drv = container_of(attr, struct power_state_drvdata, ds_ka);
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", drv->deep_sleep_allowed);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", drv->deep_sleep_cnt);
 }
 
-static ssize_t deep_sleep_allowed_store(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t deep_sleep_cnt_store(struct kobject *kobj, struct kobj_attribute *attr,
 					const char *buf, size_t count)
 {
 	struct power_state_drvdata *drv = container_of(attr, struct power_state_drvdata, ds_ka);
-	bool val;
+	int val;
 	int ret;
 
-	ret = kstrtobool(buf, &val);
+	ret = kstrtoint(buf, 10, &val);
 	if (ret) {
 		pr_err("Invalid argument passed\n");
 		return ret;
 	}
 
-	drv->deep_sleep_allowed = val;
+	drv->deep_sleep_cnt = val;
 
 	return count;
 }
@@ -539,9 +545,9 @@ static int power_state_dev_init(struct power_state_drvdata *drv)
 
 	sysfs_attr_init(&drv->ds_ka.attr);
 	drv->ds_ka.attr.mode = 0644;
-	drv->ds_ka.attr.name = "deep_sleep_allowed";
-	drv->ds_ka.show = deep_sleep_allowed_show;
-	drv->ds_ka.store = deep_sleep_allowed_store;
+	drv->ds_ka.attr.name = "deep_sleep_cnt";
+	drv->ds_ka.show = deep_sleep_cnt_show;
+	drv->ds_ka.store = deep_sleep_cnt_store;
 
 	ret = sysfs_create_file(drv->ps_kobj, &drv->ds_ka.attr);
 	if (ret) {
