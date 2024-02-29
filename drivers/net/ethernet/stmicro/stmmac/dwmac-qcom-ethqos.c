@@ -6409,13 +6409,10 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-static int emac_power_down(struct stmmac_priv *priv)
+static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 {
-	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 	int ret = 0;
-
-	if (!refcount_dec_and_test(&ethqos->ps_refcount))
-		return 0;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
 	if (priv->plat->xpcs_powersaving)
 		priv->plat->xpcs_powersaving(priv->dev, true);
@@ -6430,18 +6427,18 @@ static int emac_power_down(struct stmmac_priv *priv)
 							     false);
 	}
 
+	ethqos->clk_active = false;
+
 	return ret;
 }
 
-static int emac_power_up(struct stmmac_priv *priv)
+static int __ethqos_emac_power_up(struct stmmac_priv *priv)
 {
-	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 	int ret = 0;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
-	if (refcount_inc_not_zero(&ethqos->ps_refcount))
+	if (ethqos->clk_gated)
 		return 0;
-
-	refcount_set(&ethqos->ps_refcount, 1);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		if (priv->plat->serdes_powersaving) {
@@ -6465,30 +6462,78 @@ static int emac_power_up(struct stmmac_priv *priv)
 	if (priv->plat->xpcs_powersaving)
 		priv->plat->xpcs_powersaving(priv->dev, false);
 
+	ethqos->clk_active = true;
+
 err:
 	return ret;
 }
 
-int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+static void ethqos_enable_clock_gating(struct net_device *ndev)
 {
-	int old_refcount = 0, new_refcount = 0, ret = 0;
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
 	mutex_lock(&ethqos->ps_lock);
+
+	if (!ethqos->clk_gated) {
+		ethqos->clk_gated = true;
+
+		if (ethqos->clk_active)
+			__ethqos_emac_power_down(priv);
+	}
+
+	ETHQOSINFO("Enable Clock Gating EMAC = %u ps_refcount = %u clk_active = %u\n",
+		   priv->plat->port_num, refcount_read(&ethqos->ps_refcount), ethqos->clk_active);
+
+	mutex_unlock(&ethqos->ps_lock);
+}
+
+static void ethqos_disable_clock_gating(struct net_device *ndev)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	mutex_lock(&ethqos->ps_lock);
+
+	if (ethqos->clk_gated) {
+		ethqos->clk_gated = false;
+
+		if (refcount_read(&ethqos->ps_refcount) != 0)
+			__ethqos_emac_power_up(priv);
+	}
+
+	ETHQOSINFO("Disable Clock Gating EMAC = %u ps_refcount = %u clk_active = %u\n",
+		   priv->plat->port_num, refcount_read(&ethqos->ps_refcount), ethqos->clk_active);
+
+	mutex_unlock(&ethqos->ps_lock);
+}
+
+int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+{
+	int ret = 0;
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+	unsigned int old_refcount, new_refcount;
+
+	mutex_lock(&ethqos->ps_lock);
+
 	old_refcount = refcount_read(&ethqos->ps_refcount);
 
-	if (enable)
-		ret = emac_power_down(priv);
-	else
-		ret = emac_power_up(priv);
+	if (enable) {
+		if (refcount_dec_and_test(&ethqos->ps_refcount))
+			ret = __ethqos_emac_power_down(priv);
+	} else {
+		if (!refcount_inc_not_zero(&ethqos->ps_refcount)) {
+			refcount_set(&ethqos->ps_refcount, 1);
+			ret = __ethqos_emac_power_up(priv);
+		}
+	}
 
 	new_refcount = refcount_read(&ethqos->ps_refcount);
-	ETHQOSINFO("emac = %d old_ref = %u  new_ref = %u, Save Power = %d",
-		   priv->plat->port_num,
-		   old_refcount,
-		   new_refcount,
-		   enable);
+
+	ETHQOSINFO("EMAC = %d Save Power = %u ps_refcount = %u->%u\n",
+		   priv->plat->port_num, enable, old_refcount, new_refcount);
+
 	mutex_unlock(&ethqos->ps_lock);
 
 	return ret;
@@ -7173,9 +7218,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos->pdev = pdev;
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	//Initialize ref count as clocks are initially turned on
+	/* Set ref count to 1 as clocks are initially turned on */
 	refcount_set(&ethqos->ps_refcount, 1);
 	mutex_init(&ethqos->ps_lock);
+	ethqos->clk_active = true;
 #endif
 
 	ethqos_init_regulators(ethqos);
@@ -7670,6 +7716,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	struct qcom_ethqos *ethqos;
 	int i, ret;
 	struct stmmac_priv *priv;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	struct net_device *ndev = platform_get_drvdata(pdev);
+#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,emac-smmu-embedded")) {
 		of_platform_depopulate(&pdev->dev);
@@ -7697,6 +7746,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	ethqos_change_if_cleanup_sysfs(ethqos);
 	ethqos_thermal_netlink_cleanup_sysfs(ethqos);
 	ret = stmmac_pltfr_remove(pdev);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_enable_clock_gating(ndev);
+#endif
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
@@ -7752,8 +7805,6 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	mutex_destroy(&ethqos->ps_lock);
-	if (refcount_read(&ethqos->ps_refcount) > 0)
-		ETHQOSERR("Clocks/Regulators are not yet turned off");
 #endif
 
 	emac_emb_smmu_exit();
@@ -7800,6 +7851,12 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (!ndev)
 		return -EINVAL;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		if (priv->plat->enable_power_saving(ndev, false) < 0)
+			return -EINVAL;
+	}
+#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -7839,6 +7896,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 			ETHQOSDBG("Disabled <%s>\n", EMAC_GDSC_EMAC_NAME);
 		}
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_enable_clock_gating(ndev);
+#endif
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
@@ -7886,6 +7947,10 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSERR(" Resume not possible\n");
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_disable_clock_gating(ndev);
+#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
@@ -7964,10 +8029,8 @@ static int qcom_ethqos_resume(struct device *dev)
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (!qcom_ethqos_is_phy_link_up(ethqos)) {
-		if (priv->plat->enable_power_saving)
-			ret = priv->plat->enable_power_saving(ndev, true);
-	}
+	if (priv->plat->enable_power_saving)
+		ret = priv->plat->enable_power_saving(ndev, true);
 #endif
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Resume End");
