@@ -1102,10 +1102,13 @@ static ssize_t slatecom_char_write(struct file *f, const char __user *buf,
 			pr_err("MSM RTC Disable cmd failed\n");
 		break;
 	case 'c':
-		opcode = GMI_MGR_FORCE_CRASH;
-		ret = slatecom_tx_msg(dev, &opcode, sizeof(opcode));
-		if (ret < 0)
-			pr_err("AON force crash cmd failed\n");
+		if (dev->slatecom_current_state == SLATECOM_STATE_GLINK_OPEN) {
+			opcode = GMI_MGR_FORCE_CRASH;
+			ret = slatecom_tx_msg(dev, &opcode, sizeof(opcode));
+			if (ret < 0)
+				pr_err("AON force crash cmd failed\n");
+		} else
+			pr_debug("glink is not open, skip AON force crash\n");
 		break;
 
 	default:
