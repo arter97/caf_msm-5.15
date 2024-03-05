@@ -150,6 +150,7 @@
 #define PCIE20_TRGT_MAP_CTRL_OFF       0x81C
 #define PCIE20_MISC_CONTROL_1          0x8BC
 
+#define PCIE20_SYSTEM_PAGE_SIZE_REG	0x20
 #define PCIE20_SRIOV_BAR_OFF(n)        (n * 0x4)
 #define PCIE20_SRIOV_BAR(n)            (PCIE20_SRIOV_BAR_OFF(n) + 0x24)
 #define PCIE20_TOTAL_VFS_INITIAL_VFS_REG 0xC
@@ -272,6 +273,13 @@
 #define EP_PCIE_DUMP(dev, fmt, arg...) do {			\
 	ipc_log_string((dev)->ipc_log_dump, \
 		"DUMP:%s: " fmt, __func__, arg); \
+	if (ep_pcie_get_debug_mask())   \
+		pr_alert("%s: " fmt, __func__, arg); \
+	} while (0)
+
+#define EP_PCIE_EOM(lane, dev, fmt, arg...) do {			\
+	ipc_log_string((dev)->ipc_log_eom, \
+		"" fmt, arg); \
 	if (ep_pcie_get_debug_mask())   \
 		pr_alert("%s: " fmt, __func__, arg); \
 	} while (0)
@@ -419,6 +427,7 @@ struct ep_pcie_dev_t {
 	bool			     mhi_soc_reset_en;
 	bool			     aoss_rst_clear;
 	bool			     avoid_reboot_in_d3hot;
+	bool			     dma_wake;
 	u32                          dbi_base_reg;
 	u32                          slv_space_reg;
 	u32                          phy_status_reg;
@@ -442,6 +451,7 @@ struct ep_pcie_dev_t {
 	void                         *ipc_log_sel;
 	void                         *ipc_log_ful;
 	void                         *ipc_log_dump;
+	void                         *ipc_log_eom;
 	struct mutex                 setup_mtx;
 	struct mutex                 ext_mtx;
 	spinlock_t                   ext_lock;
@@ -469,7 +479,6 @@ struct ep_pcie_dev_t {
 	bool                         enumerated;
 	enum ep_pcie_link_status     link_status;
 	bool                         power_on;
-	bool                         suspending;
 	bool                         l23_ready;
 	bool                         l1ss_enabled;
 	bool                         no_notify;
@@ -496,6 +505,7 @@ struct ep_pcie_dev_t {
 	u32				tcsr_reset_separation_offset;
 	u32				tcsr_perst_enable_offset;
 	u32				perst_raw_rst_status_mask;
+	u32				pcie_disconnect_req_reg_mask;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;

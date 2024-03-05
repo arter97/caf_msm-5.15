@@ -292,6 +292,8 @@ struct qcom_ethqos {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *rgmii_txc_suspend_state;
 	struct pinctrl_state *rgmii_txc_resume_state;
+	/* Boolean flag for turning off GDSC during suspend */
+	bool gdsc_off_on_suspend;
 };
 
 struct pps_cfg {
@@ -410,4 +412,7 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb);
 int ethqos_init_pps(void *priv);
 unsigned int dwmac_qcom_get_eth_type(unsigned char *buf);
+
+#define EMAC_GDSC_EMAC_NAME "gdsc_emac"
+
 #endif

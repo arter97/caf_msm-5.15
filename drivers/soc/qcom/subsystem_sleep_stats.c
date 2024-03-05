@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cdev.h>
@@ -101,12 +101,6 @@ enum subsystem_pid {
 	PID_OTHERS = -2,
 };
 
-struct stats_config {
-	unsigned int offset_addr;
-	unsigned int ddr_offset_addr;
-	unsigned int num_records;
-};
-
 struct sleep_stats_data {
 	dev_t		dev_no;
 	struct class	*stats_class;
@@ -194,6 +188,9 @@ static int subsystem_sleep_stats(struct sleep_stats_data *stats_data, struct sle
 	if (idx == DDR && !config->ddr_offset_addr)
 		return -EINVAL;
 
+	if (idx == DDR_STATS && !config->ddr_offset_addr)
+		return -EINVAL;
+
 	if (pid == SUBSYSTEM_STATS_OTHERS_NUM)
 		memcpy_fromio(stats, stats_data->reg[idx], sizeof(*stats));
 	else {
@@ -239,7 +236,7 @@ bool has_subsystem_slept(void)
 		return sleep_flag;
 
 	for (i = 0; i < config->num_records; i++) {
-		if (subsystem_stats[i].not_present)
+		if (subsystem_stats[i].not_present || subsystem_stats[i].smem_item == APSS)
 			continue;
 
 		if ((b_subsystem_stats[i].count == a_subsystem_stats[i].count) &&
@@ -494,6 +491,9 @@ static int subsystem_stats_probe(struct platform_device *pdev)
 	for (i = 0; i < config->num_records; i++) {
 		stats_data->config[i] = config;
 		offset = (i * sizeof(struct sleep_stats));
+		if (config->appended_stats_avail)
+			offset += sizeof(struct appended_stats);
+
 		stats_data->reg[i] = stats_data->reg_base + offset;
 	}
 
@@ -642,11 +642,13 @@ static const struct stats_config rpmh_data = {
 	.offset_addr = 0x4,
 	.ddr_offset_addr = 0x1c,
 	.num_records = 3,
+	.appended_stats_avail = false,
 };
 
 static const struct stats_config rpm_data = {
 	.offset_addr = 0x14,
 	.num_records = 2,
+	.appended_stats_avail = true,
 };
 
 static const struct of_device_id subsystem_stats_table[] = {

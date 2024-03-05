@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2014 Sony Mobile Communications AB
  * Copyright (c) 2012-2013, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -32,6 +32,9 @@
 #include <soc/qcom/secure_buffer.h>
 #include <trace/events/rproc_qcom.h>
 #include <soc/qcom/qcom_ramdump.h>
+#if IS_ENABLED(CONFIG_QCOM_DS_SKIP_Q6_STOP)
+#include <linux/remoteproc/qcom_rproc.h>
+#endif
 
 #include "qcom_common.h"
 #include "qcom_pil_info.h"
@@ -41,7 +44,6 @@
 #define XO_FREQ		19200000
 #define PIL_TZ_AVG_BW	UINT_MAX
 #define PIL_TZ_PEAK_BW	UINT_MAX
-#define QMP_MSG_LEN	64
 
 static struct icc_path *scm_perf_client;
 static int scm_pas_bw_count;
@@ -183,16 +185,6 @@ static void adsp_minidump(struct rproc *rproc)
 
 exit:
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_minidump", "exit");
-}
-
-static int adsp_toggle_load_state(struct qmp *qmp, const char *name, bool enable)
-{
-	char buf[QMP_MSG_LEN] = {};
-
-	snprintf(buf, sizeof(buf),
-		 "{class: image, res: load_state, name: %s, val: %s}",
-		 name, enable ? "on" : "off");
-	return qmp_send(qmp, buf, sizeof(buf));
 }
 
 static int adsp_pds_enable(struct qcom_adsp *adsp, struct device **pds,
@@ -486,7 +478,7 @@ static int adsp_start(struct rproc *rproc)
 		goto disable_active_pds;
 
 	if (adsp->qmp) {
-		ret = adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
+		ret = qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
 		if (ret)
 			goto disable_proxy_pds;
 	}
@@ -582,7 +574,7 @@ disable_xo_clk:
 	clk_disable_unprepare(adsp->xo);
 disable_load_state:
 	if (adsp->qmp)
-		adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+		qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
 disable_proxy_pds:
 	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 disable_active_pds:
@@ -636,7 +628,7 @@ static int adsp_stop(struct rproc *rproc)
 	scm_pas_disable_bw();
 	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
 	if (adsp->qmp)
-		adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+		qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
 	handover = qcom_q6v5_unprepare(&adsp->q6v5);
 	if (handover)
 		qcom_pas_handover(&adsp->q6v5);
@@ -645,6 +637,54 @@ static int adsp_stop(struct rproc *rproc)
 
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_QCOM_DS_SKIP_Q6_STOP)
+static int adsp_shutdown(struct rproc *rproc)
+{
+	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
+	int handover;
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_shutdown", "enter");
+
+	scm_pas_enable_bw();
+	/*
+	 * ADSP teardown is not possible in LPM. Ignore the SCM call return
+	 * status for the teardown sequence.
+	 */
+	if (adsp->retry_shutdown)
+		qcom_scm_pas_shutdown_retry(adsp->pas_id);
+	else
+		qcom_scm_pas_shutdown(adsp->pas_id);
+
+	if (adsp->dtb_pas_id)
+		qcom_scm_pas_shutdown(adsp->dtb_pas_id);
+
+	scm_pas_disable_bw();
+	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
+	if (adsp->qmp)
+		qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+	handover = qcom_q6v5_unprepare(&adsp->q6v5);
+	if (handover)
+		qcom_pas_handover(&adsp->q6v5);
+
+	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_shutdown", "exit");
+
+	return 0;
+}
+
+void adsp_set_ops_stop(struct rproc *rproc, bool suspend)
+{
+	struct qcom_adsp *adsp;
+
+	adsp = (struct qcom_adsp *)rproc->priv;
+	qcom_sysmon_set_ops_stop(adsp->sysmon, suspend);
+	if (suspend)
+		rproc->ops->stop = adsp_shutdown;
+	else
+		rproc->ops->stop = adsp_stop;
+}
+EXPORT_SYMBOL_GPL(adsp_set_ops_stop);
+#endif
 
 static int adsp_attach(struct rproc *rproc)
 {
@@ -684,7 +724,7 @@ begin_attach:
 	if (ret < 0)
 		goto disable_active_pds;
 
-	ret = adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
+	ret = qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
 	if (ret)
 		goto disable_proxy_pds;
 
@@ -733,7 +773,7 @@ disable_aggre2_clk:
 disable_xo_clk:
 	clk_disable_unprepare(adsp->xo);
 disable_load_state:
-	adsp_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+	qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
 disable_proxy_pds:
 	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 disable_active_pds:
@@ -1375,6 +1415,29 @@ static const struct adsp_data khaje_adsp_resource = {
 	.ssctl_id = 0x14,
 };
 
+static const struct adsp_data bengal_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.minidump_id = 5,
+	.uses_elf64 = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+static const struct adsp_data qcs605_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.minidump_id = 5,
+	.uses_elf64 = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
 static const struct adsp_data msm8998_adsp_resource = {
 		.crash_reason_smem = 423,
 		.firmware_name = "adsp.mdt",
@@ -1509,6 +1572,29 @@ static const struct adsp_data khaje_cdsp_resource = {
 	.ssctl_id = 0x17,
 };
 
+static const struct adsp_data bengal_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.minidump_id = 7,
+	.uses_elf64 = false,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
+static const struct adsp_data qcs605_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.minidump_id = 7,
+	.uses_elf64 = false,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
 static const struct adsp_data mpss_resource_init = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
@@ -1599,6 +1685,18 @@ static const struct adsp_data cinder_mpss_resource = {
 };
 
 static const struct adsp_data khaje_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
+};
+
+static const struct adsp_data bengal_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
 	.pas_id = 4,
@@ -1841,6 +1939,7 @@ static const struct adsp_data lemans_adsp_resource = {
 	.sysmon_name = "adsp",
 	.qmp_name = "adsp",
 	.ssctl_id = 0x14,
+	.minidump_id = 5,
 };
 
 static const struct adsp_data lemans_cdsp_resource = {
@@ -1854,6 +1953,7 @@ static const struct adsp_data lemans_cdsp_resource = {
 	.sysmon_name = "cdsp",
 	.qmp_name = "cdsp",
 	.ssctl_id = 0x17,
+	.minidump_id = 19,
 };
 
 static const struct adsp_data lemans_cdsp1_resource = {
@@ -1867,6 +1967,7 @@ static const struct adsp_data lemans_cdsp1_resource = {
 	.sysmon_name = "cdsp1",
 	.qmp_name = "cdsp1",
 	.ssctl_id = 0x20,
+	.minidump_id = 20,
 };
 
 static const struct adsp_data lemans_gpdsp0_resource = {
@@ -1880,6 +1981,7 @@ static const struct adsp_data lemans_gpdsp0_resource = {
 	.sysmon_name = "gpdsp0",
 	.qmp_name = "gpdsp0",
 	.ssctl_id = 0x21,
+	.minidump_id = 21,
 };
 
 static const struct adsp_data lemans_gpdsp1_resource = {
@@ -1893,6 +1995,7 @@ static const struct adsp_data lemans_gpdsp1_resource = {
 	.sysmon_name = "gpdsp1",
 	.qmp_name = "gpdsp1",
 	.ssctl_id = 0x22,
+	.minidump_id = 22,
 };
 
 static const struct adsp_data kona_adsp_resource = {
@@ -1973,10 +2076,46 @@ static const struct adsp_data qcs405_modem_resource = {
 	.pas_id = 6,
 	.has_aggre2_clk = false,
 	.auto_boot = false,
-	.ssr_name = "wcnss",
+	.ssr_name = "mpss",
 	.sysmon_name = "wlan",
 	.qmp_name = "wlan",
 	.ssctl_id = 0x12,
+};
+
+static const struct adsp_data trinket_modem_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
+};
+
+static const struct adsp_data trinket_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+static const struct adsp_data trinket_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.has_aggre2_clk = false,
+	.auto_boot = true,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
 };
 
 static const struct of_device_id adsp_of_match[] = {
@@ -2039,6 +2178,14 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,qcs405-adsp-pas", .data = &qcs405_adsp_resource},
 	{ .compatible = "qcom,qcs405-wlan-dsp", .data = &qcs405_modem_resource},
 	{ .compatible = "qcom,qcs405-cdsp-pas", .data = &qcs405_cdsp_resource},
+	{ .compatible = "qcom,trinket-modem-pas", .data = &trinket_modem_resource},
+	{ .compatible = "qcom,trinket-adsp-pas", .data = &trinket_adsp_resource},
+	{ .compatible = "qcom,trinket-cdsp-pas", .data = &trinket_cdsp_resource},
+	{ .compatible = "qcom,qcs605-adsp-pas", .data = &qcs605_adsp_resource},
+	{ .compatible = "qcom,qcs605-cdsp-pas", .data = &qcs605_cdsp_resource},
+	{ .compatible = "qcom,bengal-adsp-pas", .data = &bengal_adsp_resource},
+	{ .compatible = "qcom,bengal-cdsp-pas", .data = &bengal_cdsp_resource},
+	{ .compatible = "qcom,bengal-modem-pas", .data = &bengal_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
