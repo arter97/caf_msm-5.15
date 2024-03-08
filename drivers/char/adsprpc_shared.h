@@ -120,6 +120,9 @@
 #define NUM_CHANNELS	(MAX_DOMAIN_ID + 1)	/* adsp, mdsp, slpi, cdsp, cdsp1, gpdsp, gpdsp1*/
 #define NUM_SESSIONS	13	/* max 12 compute, 1 cpz */
 
+/* Default maximum sessions allowed per process */
+#define DEFAULT_MAX_SESS_PER_PROC 4
+
 #define RH_CID ADSP_DOMAIN_ID
 
 #define VALID_FASTRPC_CID(cid) \
@@ -995,6 +998,8 @@ struct fastrpc_apps {
 	bool single_core_latency_vote;
 	/* Indicates process type is configured for SMMU context bank */
 	bool cb_pd_type;
+	/* Maximum sessions allowed to be created per process */
+	uint32_t max_sess_per_proc;
 };
 
 struct fastrpc_mmap {
@@ -1020,7 +1025,8 @@ struct fastrpc_mmap {
 	bool in_use;				/* Indicates if persistent map is in use*/
 	struct timespec64 map_start_time;
 	struct timespec64 map_end_time;
-	bool is_filemap;			/*flag to indicate map used in process init*/
+	bool is_filemap;			/* flag to indicate map used in process init */
+	bool is_dumped;				/* flag to indicate map is dumped during SSR */
 	char *servloc_name;			/* Indicate which daemon mapped this */
 	unsigned int ctx_refs; /* Indicates reference count for context map */
 };
@@ -1095,6 +1101,8 @@ struct fastrpc_file {
 	int sessionid;
 	int tgid_open;	/* Process ID during device open */
 	int tgid;		/* Process ID that uses device for RPC calls */
+	/* Unique HLOS process ID created by fastrpc for each client */
+	int tgid_frpc;
 	int cid;
 	bool trusted_vm;
 	uint64_t ssrcount;
@@ -1166,6 +1174,10 @@ struct fastrpc_file {
 	 * config parameters.
 	 */
 	struct fastrpc_proc_sharedbuf_info sharedbuf_info;
+	/* Flag to indicate 4 session support available */
+	bool multi_session_support;
+	/* Flag to indicate session info is set */
+	bool set_session_info;
 };
 
 union fastrpc_ioctl_param {

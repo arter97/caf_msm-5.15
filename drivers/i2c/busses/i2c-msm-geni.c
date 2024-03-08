@@ -2342,6 +2342,13 @@ skip_bw_vote:
 			return ret;
 		}
 
+		geni_write_reg(0x7f, gi2c->base, GENI_OUTPUT_CTRL);
+		/*
+		 * Added 10 us delay to settle the write of the register as per
+		 * HW team recommendation
+		 */
+		udelay(10);
+
 		if (gi2c->se_mode == FIFO_SE_DMA)
 			enable_irq(gi2c->irq);
 
@@ -2426,7 +2433,7 @@ static int geni_i2c_suspend_late(struct device *device)
 		pm_runtime_enable(device);
 	}
 	i2c_unlock_bus(&gi2c->adap, I2C_LOCK_SEGMENT);
-	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__);
+	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev, "%s ret=%d\n", __func__, ret);
 	return 0;
 }
 #else
