@@ -6371,9 +6371,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 
 	if (power_state) {
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-			qcom_ethqos_serdes_power_ctrl(ethqos, true);
-#endif
 			ret = ethqos_enable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
@@ -6382,6 +6379,8 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 			if (ret)
 				return -EINVAL;
+
+			qcom_ethqos_serdes_power_ctrl(ethqos, true);
 #endif
 
 			if (needs_serdes_reset)
@@ -6391,6 +6390,8 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 		}
 	} else {
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		qcom_ethqos_serdes_power_ctrl(ethqos, false);
+
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 #endif
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
@@ -6398,9 +6399,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			if (ret < 0)
 				return ret;
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-			qcom_ethqos_serdes_power_ctrl(ethqos, false);
-#endif
 			ETHQOSINFO("power saving turned on\n");
 		}
 	}
@@ -6445,7 +6443,7 @@ static int __ethqos_emac_power_up(struct stmmac_priv *priv)
 			ret = priv->plat->serdes_powersaving(priv->dev,
 							     priv->plat->bsp_priv,
 							     true,
-							     true);
+							     false);
 			if (ret < 0) {
 				ETHQOSERR("Failed to enable serdes clocks/regulators\n");
 				goto err;
