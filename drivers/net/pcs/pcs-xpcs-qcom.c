@@ -99,6 +99,13 @@ struct xpcs_id {
 	const struct xpcs_compat *compat;
 };
 
+char dw_xpcs_err_names[4][21] = {
+	"NO_ERROR",
+	"FAULT_DETECT_ERR",
+	"ALIGNMENT_OR_SYNC_ERR",
+	"HiBER_ERR"
+};
+
 const struct xpcs_compat *xpcs_find_compat(const struct xpcs_id *id,
 					   phy_interface_t interface)
 {
@@ -427,6 +434,12 @@ static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *xpcs)
 
 	return qcom_xpcs_poll_reset_usxgmii(xpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
 }
+
+int qcom_xpcs_soft_reset_usxgmii(struct dw_xpcs_qcom *xpcs)
+{
+	return qcom_xpcs_reset_usxgmii(xpcs);
+}
+EXPORT_SYMBOL_GPL(qcom_xpcs_soft_reset_usxgmii);
 
 /* Reenable Clause 37 Autonegotiation for 10/100/1000M SGMII */
 static int qcom_xpcs_unset_2p5g_sgmii(struct dw_xpcs_qcom *xpcs)
@@ -879,6 +892,38 @@ out:
 err:
 	XPCSERR("Failed to bring up SGMII link\n");
 }
+
+/* @brief Check if error happens after link up/down
+ * This function detect remote fault, alignment error or synchornization error
+ * in 10 Gbps USXGMII mode.
+ *
+ * @param[in] xpcs qcom xpcs data
+ * @param[in] speed link speed
+ * @return 0 if no error occurs, positive number if pcs error occurs,
+ *	     negative number if other error.
+ */
+int qcom_xpcs_usxgmii_link_error_detect(struct dw_xpcs_qcom *xpcs, int speed)
+{
+	int val;
+
+	if (speed != SPEED_10000)
+		return -EINVAL;
+
+	val = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_STS1);
+
+	// Remote fault detection
+	if (val & FLT_DETECTION_10G)
+		return DW_XPCS_FLT_ERR;
+	if (val & ALIGN_ERROR_10G)
+		return DW_XPCS_ALIGN_SYNC_ERR;
+
+	val = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_KR_STS1);
+	if (val & HIBER_DETECTION_10G)
+		return DW_XPCS_HIBER_ERR;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_xpcs_usxgmii_link_error_detect);
 
 void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed)
 {
