@@ -261,7 +261,7 @@ bool current_subsystem_sleep(void)
 	for (i = 0; i < ARRAY_SIZE(subsystem_stats); i++) {
 		ret = subsystem_sleep_stats(stats_data, c_subsystem_stats + i,
 					subsystem_stats[i].pid, subsystem_stats[i].smem_item);
-		if (ret != -ENODEV || subsystem_stats[i].smem_item != APSS) {
+		if (ret != -ENODEV && subsystem_stats[i].smem_item != APSS) {
 			if (c_subsystem_stats[i].last_exited_at >
 					c_subsystem_stats[i].last_entered_at) {
 				pr_warn("Subsystem %s not in sleep\n", subsystem_stats[i].name);
