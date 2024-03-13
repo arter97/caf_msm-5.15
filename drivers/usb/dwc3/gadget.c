@@ -4295,6 +4295,7 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 	struct dwc3_vendor	*vdwc = container_of(dwc, struct dwc3_vendor, dwc);
 	enum dwc3_link_state next = evtinfo & DWC3_LINK_STATE_MASK;
 
+	pr_err("prashk %s", __func__);
 	if (!vdwc->suspended && next == DWC3_LINK_STATE_U3) {
 		vdwc->suspended = true;
 		dwc3_suspend_gadget(dwc);
