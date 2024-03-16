@@ -375,10 +375,22 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv->plat->bsp_priv;
 	s8 eprio;
+	int i = 0, tc_prio = 0;
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
-	if (eth_type == ETH_P_TSN) {
+	if (priv->plat->qos_enabled && skb->priority) {
+		/* TODO: IF qos ie enabled and IPA offload is disabled, we need to handle*/
+		tc_prio = 1 << (skb->priority - 1);
+		for (i = 2; i < priv->plat->tx_qos_queues_to_use; i++) {
+			if (priv->plat->qos_ch_map.tc_tx_info[i]) {
+				if (priv->plat->qos_ch_map.ch_to_tc_map_tx[i] & tc_prio) {
+					txqueue_select = i;
+					break;
+				}
+			}
+		}
+	} else if (eth_type == ETH_P_TSN) {
 		/* Read VLAN priority field from skb->data */
 		priority = dwmac_qcom_get_vlan_ucp(skb->data);
 

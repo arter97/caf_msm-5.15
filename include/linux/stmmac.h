@@ -213,6 +213,13 @@ enum ch_owner {
 	USE_IN_OFFLOADER = 2,
 };
 
+struct ch_to_tc_map {
+	bool tc_rx_info[MTL_MAX_TX_QUEUES];
+	bool tc_tx_info[MTL_MAX_RX_QUEUES];
+	u32 ch_to_tc_map_tx[MTL_MAX_TX_QUEUES];
+	u32 ch_to_tc_map_rx[MTL_MAX_RX_QUEUES];
+};
+
 struct plat_stmmacenet_data {
 	int bus_id;
 	int phy_addr;
@@ -359,5 +366,6 @@ struct plat_stmmacenet_data {
 	bool is_config_supp;
 	char qoscfg[4];
 	bool qos_enabled;
+	struct ch_to_tc_map qos_ch_map;
 };
 #endif
