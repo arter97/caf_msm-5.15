@@ -105,6 +105,17 @@ static int dwxgmac2_rx_ipc(struct mac_device_info *hw)
 	return !!(readl(ioaddr + XGMAC_RX_CONFIG) & XGMAC_CONFIG_IPC);
 }
 
+static void dwxgmac2_rx_queue_disable(struct mac_device_info *hw, u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+
+	value = readl(ioaddr + XGMAC_RXQ_CTRL0);
+	value &= ~(XGMAC_RXQEN(queue));
+
+	writel(value, ioaddr + XGMAC_RXQ_CTRL0);
+}
+
 static void dwxgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
 				     u32 queue)
 {
@@ -1827,6 +1838,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.qcom_set_vlan = dwxgmac2_set_vlan_filter_rx_queue,
 	.rx_ipc = dwxgmac2_rx_ipc,
 	.rx_queue_enable = dwxgmac2_rx_queue_enable,
+	.rx_queue_disable = dwxgmac2_rx_queue_disable,
 	.rx_queue_prio = dwxgmac2_rx_queue_prio,
 	.tx_queue_prio = dwxgmac2_tx_queue_prio,
 	.rx_queue_routing = dxgmac2_rx_queue_routing,

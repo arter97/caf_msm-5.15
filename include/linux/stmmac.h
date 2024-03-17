@@ -270,6 +270,8 @@ struct plat_stmmacenet_data {
 	void (*dump_debug_regs)(void *priv);
 	unsigned int (*get_eth_type)(unsigned char *buf);
 	int (*enable_wol)(struct net_device *ndev, struct ethtool_wolinfo *wol);
+	int (*release_dma_resources)(struct net_device *ndev);
+	int (*request_dma_resources)(struct net_device *ndev);
 	void *bsp_priv;
 	struct clk *stmmac_clk;
 	struct clk *pclk;
@@ -356,5 +358,6 @@ struct plat_stmmacenet_data {
 	int tx_qos_queues_to_use;
 	bool is_config_supp;
 	char qoscfg[4];
+	bool qos_enabled;
 };
 #endif

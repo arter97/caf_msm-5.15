@@ -8697,6 +8697,97 @@ int stmmac_resume(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(stmmac_resume);
 
+int stmmac_release_dma_resources(struct net_device *ndev)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int chan = 0;
+
+	netif_tx_disable(ndev);
+	stmmac_disable_all_queues(priv);
+
+	if (!priv->tx_coal_timer_disable) {
+		for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
+			hrtimer_cancel(&priv->tx_queue[chan].txtimer);
+	}
+
+	/* Stop TX/RX DMA and clear the descriptors */
+	stmmac_stop_all_dma(priv);
+
+	/* Release and free the Rx/Tx resources */
+	free_dma_desc_resources(priv);
+
+	/* Disable the MAC Rx/Tx */
+	stmmac_mac_set(priv, priv->ioaddr, false);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_release_dma_resources);
+
+int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int ret = 0;
+	u32 queue;
+	u32 rx_queues = priv->plat->rx_queues_to_use - 1;
+	int i = 0;
+
+	ret = alloc_dma_desc_resources(priv);
+	if (ret < 0)
+		netdev_err(priv->dev, "%s: DMA descriptors allocation failed\n",
+			   __func__);
+
+	ret = init_dma_desc_rings(ndev, GFP_KERNEL);
+	if (ret < 0)
+		netdev_err(priv->dev, "%s: DMA descriptors initialization failed\n",
+			   __func__);
+
+	ret = stmmac_init_dma_engine(priv);
+	if (ret < 0) {
+		netdev_err(priv->dev, "%s: DMA engine initialization failed\n",
+			   __func__);
+		return ret;
+	}
+
+	/* set TX and RX rings length */
+	 stmmac_set_rings_length(priv);
+
+	/* Initialize the MAC Core */
+	stmmac_core_init(priv, priv->hw, ndev);
+
+	/* Initialize MTL*/
+	stmmac_mtl_configuration(priv);
+
+	/* Disable unused RX queues*/
+	for (i = (rx_queues - queue_cnt); i > 0; i--) {
+		stmmac_rx_queue_disable(priv, priv->hw, i);
+		pr_info("disable queue %d\n", i);
+	}
+
+	/* Enable the MAC Rx/Tx */
+	stmmac_mac_set(priv, priv->ioaddr, true);
+
+	/* Set the HW DMA mode and the COE */
+	stmmac_dma_operation_mode(priv);
+
+	if (priv->use_riwt) {
+		for (queue = 0; queue < priv->plat->rx_queues_to_use; queue++) {
+			if (!priv->rx_riwt[queue])
+				priv->rx_riwt[queue] = DEF_DMA_RIWT;
+				stmmac_rx_watchdog(priv, priv->ioaddr,
+						   priv->rx_riwt[queue], queue);
+		}
+	}
+
+	/* Start the ball rolling... */
+	stmmac_start_all_dma(priv);
+	stmmac_enable_all_queues(priv);
+	netif_tx_start_all_queues(priv->dev);
+	stmmac_enable_all_dma_irq(priv);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(stmmac_request_dma_resources);
+
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)
 {
