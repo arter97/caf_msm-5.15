@@ -417,9 +417,15 @@ struct stmmac_ops {
 	int (*config_l3_filter_xgmac)(struct mac_device_info *hw, u32 filter_no,
 				      bool en, bool ipv6, bool sa, bool inv,
 				      u32 match, char *ipv6_addr);
+	int (*config_l3_filter_with_mask)(struct mac_device_info *hw, u32 filter_no,
+					  bool en, bool ipv6, bool sa, bool inv,
+					  u32 match, char *ipv6_addr, u16 mask, u16 dma_ch);
 	int (*config_l4_filter)(struct mac_device_info *hw, u32 filter_no,
 				bool en, bool udp, bool sa, bool inv,
 				u32 match);
+	int (*config_l4_filter_with_route)(struct mac_device_info *hw, u32 filter_no,
+					   bool en, bool udp, bool sa, bool inv,
+					   u32 match, u16 dma_ch);
 	void (*set_arp_offload)(struct mac_device_info *hw, bool en, u32 addr);
 	/* Enable the VLAN MAC configuration for DMA Queue*/
 	void (*qcom_set_vlan)(struct vlan_filter_info *vlan, void __iomem *ioaddr);

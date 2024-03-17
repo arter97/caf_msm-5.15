@@ -388,6 +388,9 @@ struct stmmac_priv {
 	bool en_wol;
 	u32 avb_vlan_id;
 	gh_vmid_t v2x_vm_id;
+	int unique_filter;
+	u16 qos_l3_l4_filter_start;
+	u16 qos_l3_l4_filter_end;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
