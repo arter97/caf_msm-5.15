@@ -7524,6 +7524,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
+	plat_dat->enable_pfc = of_property_read_bool(np, "enable-pfc");
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII ||

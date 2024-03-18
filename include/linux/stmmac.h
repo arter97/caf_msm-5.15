@@ -367,5 +367,6 @@ struct plat_stmmacenet_data {
 	char qoscfg[4];
 	bool qos_enabled;
 	struct ch_to_tc_map qos_ch_map;
+	bool enable_pfc;
 };
 #endif

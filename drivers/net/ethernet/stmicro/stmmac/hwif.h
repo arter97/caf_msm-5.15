@@ -441,6 +441,8 @@ struct stmmac_ops {
 				 enum stmmac_mpacket_type type);
 	int (*fpe_irq_status)(void __iomem *ioaddr, struct net_device *dev);
 	void (*flush_tx_mtl)(struct mac_device_info *hw, u32 chan);
+	void (*config_pfc)(struct mac_device_info *hw);
+	void (*configure_pfc_tx_flow_ctrl)(struct mac_device_info *hw, u32 queue);
 };
 
 #define stmmac_core_init(__priv, __args...) \
@@ -557,6 +559,11 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, add_hw_vlan_rx_routing_fltr, __args)
 #define stmmac_del_hw_vlan_rx_routing_fltr(__priv, __args...) \
 	stmmac_do_callback(__priv, mac, del_hw_vlan_rx_routing_fltr, __args)
+#define stmmac_configure_pfc(__priv, __args...) \
+	stmmac_do_void_callback(__priv, mac, config_pfc, __args)
+#define stmmac_configure_pfc_tx_flow_ctrl(__priv, __args...) \
+		stmmac_do_void_callback(__priv, mac, configure_pfc_tx_flow_ctrl, __args)
+
 struct stmmac_priv;
 
 /* PTP and HW Timer helpers */

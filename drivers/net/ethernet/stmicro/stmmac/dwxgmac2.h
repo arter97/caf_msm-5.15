@@ -93,6 +93,8 @@
 #define XGMAC_VLAN_CSVL			BIT(19)
 #define XGMAC_VLAN_VLC			GENMASK(17, 16)
 #define XGMAC_VLAN_VLC_SHIFT		16
+#define XGMAC_TXQ_FLOW_CTRL(x)         ((x) * 4 + 0x70)
+#define XGMAC_SET_TXQ_FLOW_CTRL		0x1000032
 #define XGMAC_RXQ_CTRL0			0x000000a0
 #define XGMAC_RXQEN(x)			GENMASK((x) * 2 + 1, (x) * 2)
 #define XGMAC_RXQEN_SHIFT(x)		((x) * 2)
@@ -118,6 +120,7 @@
 #define XGMAC_TFE			BIT(1)
 #define XGMAC_RX_FLOW_CTRL		0x00000090
 #define XGMAC_RFE			BIT(0)
+#define XGMAC_PFCE                     BIT(8)
 #define XGMAC_PMT			0x000000c0
 #define XGMAC_GLBLUCAST			BIT(9)
 #define XGMAC_RWKPKTEN			BIT(2)

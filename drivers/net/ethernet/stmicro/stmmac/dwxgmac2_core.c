@@ -122,7 +122,8 @@ static void dwxgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
 	void __iomem *ioaddr = hw->pcsr;
 	u32 value;
 
-	value = readl(ioaddr + XGMAC_RXQ_CTRL0) & ~XGMAC_RXQEN(queue);
+	value = readl(ioaddr + XGMAC_RXQ_CTRL0);
+	value &= ~(XGMAC_RXQEN(queue));
 	if (mode == MTL_QUEUE_AVB)
 		value |= 0x1 << XGMAC_RXQEN_SHIFT(queue);
 	else if (mode == MTL_QUEUE_DCB)
@@ -1982,6 +1983,26 @@ int dwxgmac2_del_hw_vlan_rx_routing_fltr(struct net_device *dev, struct mac_devi
 	return ret;
 }
 
+static void dwxgmac2_config_pfc(struct mac_device_info *hw)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	int reg_val = 0;
+
+	/* Configure PFCE and RFE bit in RX flow control */
+	reg_val = readl_relaxed(ioaddr + XGMAC_RX_FLOW_CTRL);
+	reg_val |= XGMAC_PFCE | XGMAC_RFE;
+	writel_relaxed(reg_val, ioaddr + XGMAC_RX_FLOW_CTRL);
+}
+
+static void dwxgmac2_pfc_tx_flow_ctrl(struct mac_device_info *hw, u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+
+	/* Configure TX/RX queues for PFC */
+	/* Configure pause time to 256 clock cycles and PLT to -144ST */
+	writel_relaxed(XGMAC_SET_TXQ_FLOW_CTRL, ioaddr + XGMAC_TXQ_FLOW_CTRL(queue));
+}
+
 const struct stmmac_ops dwxgmac210_ops = {
 	.core_init = dwxgmac2_core_init,
 	.set_mac = dwxgmac2_set_mac,
@@ -2037,6 +2058,8 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.disable_queue_dynamic_dma_ch_selection = dwxgmac2_disable_queue_dynamic_dma_ch_selection,
 	.add_hw_vlan_rx_routing_fltr = dwxgmac2_add_hw_vlan_rx_routing_fltr,
 	.del_hw_vlan_rx_routing_fltr = dwxgmac2_del_hw_vlan_rx_routing_fltr,
+	.config_pfc = dwxgmac2_config_pfc,
+	.configure_pfc_tx_flow_ctrl = dwxgmac2_pfc_tx_flow_ctrl,
 };
 
 static void dwxlgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,

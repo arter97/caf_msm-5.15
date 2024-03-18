@@ -8799,6 +8799,18 @@ int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt)
 }
 EXPORT_SYMBOL_GPL(stmmac_request_dma_resources);
 
+void stmmac_mac_config_pfc(struct stmmac_priv *priv)
+{
+	priv->hw->mac->config_pfc(priv->hw);
+}
+EXPORT_SYMBOL_GPL(stmmac_mac_config_pfc);
+
+void stmmac_pfc_tx_flow_ctrl(struct stmmac_priv *priv, u32 queue)
+{
+	priv->hw->mac->configure_pfc_tx_flow_ctrl(priv->hw, queue);
+}
+EXPORT_SYMBOL_GPL(stmmac_pfc_tx_flow_ctrl);
+
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)
 {

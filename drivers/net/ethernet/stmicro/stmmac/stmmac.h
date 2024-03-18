@@ -436,6 +436,8 @@ int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
 void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable);
 int stmmac_release_dma_resources(struct net_device *ndev);
 int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt);
+void stmmac_mac_config_pfc(struct stmmac_priv *priv);
+void stmmac_pfc_tx_flow_ctrl(struct stmmac_priv *priv, u32 queue);
 
 static inline bool stmmac_xdp_is_enabled(struct stmmac_priv *priv)
 {
