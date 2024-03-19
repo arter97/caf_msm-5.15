@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/unistd.h>
@@ -988,7 +988,7 @@ static int hgsl_dbcq_open(struct hgsl_priv *priv,
 		goto err;
 	}
 
-	dbcq->queue_mem = hgsl_zalloc(sizeof(struct hgsl_mem_node));
+	dbcq->queue_mem = hgsl_mem_node_zalloc(hgsl->default_iocoherency);
 	if (!dbcq->queue_mem) {
 		LOGE("out of memory");
 		ret = -ENOMEM;
@@ -2247,14 +2247,13 @@ static int hgsl_ioctl_mem_alloc(struct file *filep, unsigned long arg)
 		goto out;
 	}
 
-	mem_node = hgsl_zalloc(sizeof(*mem_node));
+	mem_node = hgsl_mem_node_zalloc(hgsl->default_iocoherency);
 	if (mem_node == NULL) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
 	mem_node->flags = params.flags;
-	mem_node->default_iocoherency = hgsl->default_iocoherency;
 
 	ret = hgsl_sharedmem_alloc(hgsl->dev, params.sizebytes, params.flags, mem_node);
 	if (ret)
@@ -2369,7 +2368,7 @@ static int hgsl_ioctl_set_metainfo(struct file *filep, unsigned long arg)
 	int ret = 0;
 	struct hgsl_mem_node *mem_node = NULL;
 	struct hgsl_mem_node *tmp = NULL;
-	char metainfo[HGSL_MEM_META_MAX_SIZE];
+	char metainfo[HGSL_MEM_META_MAX_SIZE] = {0};
 
 	if (copy_from_user(&params, USRPTR(arg), sizeof(params))) {
 		LOGE("failed to copy params from user");
@@ -2436,7 +2435,7 @@ static int hgsl_ioctl_mem_map_smmu(struct file *filep, unsigned long arg)
 		goto out;
 	}
 
-	mem_node = hgsl_zalloc(sizeof(*mem_node));
+	mem_node = hgsl_mem_node_zalloc(hgsl->default_iocoherency);
 	if (mem_node == NULL) {
 		ret = -ENOMEM;
 		goto out;
@@ -2446,7 +2445,7 @@ static int hgsl_ioctl_mem_map_smmu(struct file *filep, unsigned long arg)
 	mem_node->flags = params.flags;
 	mem_node->fd = params.fd;
 	mem_node->memtype = params.memtype;
-	mem_node->default_iocoherency = hgsl->default_iocoherency;
+
 	ret = hgsl_hyp_mem_map_smmu(hab_channel, params.size, params.offset, mem_node);
 
 	if (ret == 0) {

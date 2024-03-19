@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -2459,7 +2459,7 @@ checkbme:
 	ret = qcom_ep_pcie_icc_bw_update(dev, dev->current_link_speed, dev->current_link_width);
 	if (ret) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to set bus bandwidth:%d\n", dev->rev, ret);
-		return ret;
+		goto out;
 	}
 
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
@@ -3678,8 +3678,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 	}
 
 	cap = readl_relaxed(dbi + PCIE20_MSI_CAP_ID_NEXT_CTRL(n));
-	EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
-			ep_pcie_dev.rev, cap);
 
 	if (cap & BIT(16)) {
 		cfg->msi_type = MSI;
@@ -3687,10 +3685,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
 		upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
 		data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
-
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
-				ep_pcie_dev.rev, lower, upper, data, vf_id);
 
 		if (ep_pcie_dev.use_iatu_msi) {
 			if (ep_pcie_dev.active_config)
@@ -3728,25 +3722,28 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 				EP_PCIE_DBG(&ep_pcie_dev,
 					"PCIe V%d: MSI config has been changed by host side for %d time(s)\n",
 					ep_pcie_dev.rev, changes);
-				EP_PCIE_DBG(&ep_pcie_dev,
-					"PCIe V%d: old MSI cfg: lower:0x%x; upper:0x%x; data:0x%x; msg_num:0x%x\n",
-					ep_pcie_dev.rev, msi_cfg->lower,
-					msi_cfg->upper,
-					msi_cfg->data,
-					msi_cfg->msg_num);
 				msi_cfg->lower = lower;
 				msi_cfg->upper = upper;
 				msi_cfg->data = data;
 				ep_pcie_dev.conf_ipa_msi_iatu[vf_id] = false;
+				EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
+					ep_pcie_dev.rev, cap);
+				EP_PCIE_DBG(&ep_pcie_dev,
+					"PCIe V%d: New MSI cfg: lower:0x%x; upper:0x%x; data:0x%x; msg_num:0x%x\n",
+					ep_pcie_dev.rev, msi_cfg->lower,
+					msi_cfg->upper,
+					msi_cfg->data,
+					msi_cfg->msg_num);
 			}
-			/*
-			 * All transactions originating from IPA have the RO
-			 * bit set by default. Setup another ATU region to clear
-			 * the RO bit for MSIs triggered via IPA DMA.
-			 */
-			if (ep_pcie_dev.no_path_from_ipa_to_pcie ||
-				(ep_pcie_dev.active_config &&
-				!ep_pcie_dev.conf_ipa_msi_iatu[vf_id])) {
+		}
+		/*
+		 * All transactions originating from IPA have the RO
+		 * bit set by default. Setup another ATU region to clear
+		 * the RO bit for MSIs triggered via IPA DMA.
+		 */
+		if (ep_pcie_dev.no_path_from_ipa_to_pcie ||
+			(ep_pcie_dev.active_config &&
+			!ep_pcie_dev.conf_ipa_msi_iatu[vf_id])) {
 				ep_pcie_config_outbound_iatu_entry(&ep_pcie_dev,
 					EP_PCIE_OATU_INDEX_IPA_MSI,
 					vf_id,
@@ -3757,7 +3754,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 				EP_PCIE_DBG(&ep_pcie_dev,
 					"PCIe V%d: Conf iATU for IPA MSI info: lower:0x%x; upper:0x%x\n",
 					ep_pcie_dev.rev, lower, upper);
-			}
 		}
 		return 0;
 	}

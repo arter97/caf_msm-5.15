@@ -862,7 +862,9 @@ static void ffs_epfile_async_io_complete(struct usb_ep *_ep,
 	ENTER();
 
 	INIT_WORK(&io_data->work, ffs_user_copy_worker);
-	queue_work(ffs->io_completion_wq, &io_data->work);
+
+	if (ffs && ffs->io_completion_wq)
+		queue_work(ffs->io_completion_wq, &io_data->work);
 }
 
 static void __ffs_epfile_read_buffer_free(struct ffs_epfile *epfile)
