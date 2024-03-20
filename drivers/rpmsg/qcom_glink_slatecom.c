@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -223,6 +223,7 @@ enum {
  * @intent_req_result: Result of intent request
  * @intent_req_comp: Completion for intent_req signalling
  * @remote_close: Tracks remote initiated close request
+ * @local_close: Tracks local initiated close request
  */
 struct glink_slatecom_channel {
 	struct rpmsg_endpoint ept;
@@ -248,7 +249,8 @@ struct glink_slatecom_channel {
 	struct completion open_ack;
 	struct completion open_req;
 
-	struct completion close_ack;
+	struct completion rx_close_ack;
+	struct completion send_close_ack;
 
 	struct mutex intent_req_lock;
 	bool intent_req_result;
@@ -259,6 +261,7 @@ struct glink_slatecom_channel {
 	wait_queue_head_t intent_req_comp;
 
 	bool remote_close;
+	bool local_close;
 };
 
 struct rx_pkt {
@@ -312,11 +315,13 @@ glink_slatecom_alloc_channel(struct glink_slatecom *glink, const char *name)
 	channel->glink = glink;
 	channel->name = kstrdup(name, GFP_KERNEL);
 	channel->remote_close = false;
+	channel->local_close = false;
 
 	init_completion(&channel->open_req);
 	init_completion(&channel->open_ack);
 
-	init_completion(&channel->close_ack);
+	init_completion(&channel->rx_close_ack);
+	init_completion(&channel->send_close_ack);
 
 	atomic_set(&channel->intent_req_acked, 0);
 	atomic_set(&channel->intent_req_completed, 0);
@@ -1047,7 +1052,8 @@ static void glink_slatecom_send_close_req(struct glink_slatecom *glink,
 		return;
 	}
 	if (!channel->remote_close) {
-		ret = wait_for_completion_timeout(&channel->close_ack, 2 * HZ);
+		channel->local_close = true;
+		ret = wait_for_completion_timeout(&channel->rx_close_ack, 2 * HZ);
 		if (!ret)
 			GLINK_ERR(glink, "rx_close_ack timedout[%d]:[%d]\n",
 				 channel->lcid, channel->rcid);
@@ -1317,6 +1323,7 @@ static void glink_slatecom_destroy_ept(struct rpmsg_endpoint *ept)
 	struct glink_slatecom_channel *channel = to_glink_channel(ept);
 	struct glink_slatecom *glink = channel->glink;
 	unsigned long flags;
+	int ret;
 
 	CH_INFO(channel, "\n");
 
@@ -1329,16 +1336,32 @@ static void glink_slatecom_destroy_ept(struct rpmsg_endpoint *ept)
 	spin_unlock_irqrestore(&channel->recv_lock, flags);
 
 	glink_slatecom_send_close_req(glink, channel);
+
+	if (channel->local_close) {
+		ret = wait_for_completion_timeout(&channel->send_close_ack, 2 * HZ);
+		if (!ret)
+			GLINK_ERR(glink, "send_close_ack timedout[%d]:[%d]\n",
+				 channel->lcid, channel->rcid);
+	}
 }
 
 static void glink_slatecom_send_close_ack(struct glink_slatecom *glink,
 				     unsigned int rcid)
 {
 	struct glink_slatecom_msg req = { 0 };
+	struct glink_slatecom_channel *channel;
+
+	mutex_lock(&glink->idr_lock);
+	channel = idr_find(&glink->rcids, rcid);
+	mutex_unlock(&glink->idr_lock);
+	if (WARN(!channel, "close request on unknown channel\n"))
+		return;
 
 	req.cmd = cpu_to_le16(SLATECOM_CMD_CLOSE_ACK);
 	req.param1 = cpu_to_le16(rcid);
 
+	complete_all(&channel->send_close_ack);
+	CH_INFO(channel, "\n");
 	GLINK_INFO(glink, "rcid:%d\n", rcid);
 	glink_slatecom_tx(glink, &req, sizeof(req), true);
 }
@@ -1393,7 +1416,7 @@ static void glink_slatecom_rx_close_ack(struct glink_slatecom *glink,
 	idr_remove(&glink->lcids, channel->lcid);
 	channel->lcid = 0;
 	mutex_unlock(&glink->idr_lock);
-	complete_all(&channel->close_ack);
+	complete_all(&channel->rx_close_ack);
 
 	/* Decouple the potential rpdev from the channel */
 	if (channel->rpdev) {
@@ -2223,7 +2246,8 @@ static int glink_slatecom_cleanup(struct glink_slatecom *glink)
 	/* Release any defunct local channels, waiting for close-ack */
 	idr_for_each_entry(&glink->lcids, channel, cid) {
 		/* Wakeup threads waiting for intent*/
-		complete(&channel->close_ack);
+		complete(&channel->rx_close_ack);
+		complete(&channel->send_close_ack);
 
 		atomic_inc(&channel->intent_req_acked);
 		wake_up(&channel->intent_req_ack);
