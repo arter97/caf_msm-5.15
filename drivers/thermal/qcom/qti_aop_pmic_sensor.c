@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/platform_device.h>
@@ -17,6 +17,8 @@
 #define MSG_MAX_LEN 64
 #define MBOX_TOUT_MS 1000
 #define PMIC_RAIL_NAME_LENGTH 10
+#define IDX_OFFSET 2
+#define KEY_LEN 5
 
 struct pmic_rails {
 	int pmic_id;
@@ -28,6 +30,7 @@ struct pmic_stats {
 	u32 pmic_id;
 	u32 volt;
 	u32 temp;
+	u32 curr;
 };
 
 struct aop_pmic_sensor_device {
@@ -47,6 +50,7 @@ struct aop_pmic_sensor_device {
 struct aop_pmic_sensor_peripheral_data {
 	int last_temp_reading;
 	int last_volt_reading;
+	int last_curr_reading;
 	struct pmic_rails *pmic_rail;
 	struct thermal_zone_device *tz_dev;
 	struct aop_pmic_sensor_device *dev;
@@ -68,12 +72,7 @@ struct aop_msg {
 enum rail_type {
 	TEMP_TYPE,
 	VOLT_TYPE,
-};
-
-enum volt_type {
-	MSS_VOLT = 1,
-	MX_VOLT,
-	CX_VOLT,
+	CURR_TYPE,
 };
 
 static int qmp_send_msg(struct aop_pmic_sensor_device *aop_psens_dev, const char *resource_name,
@@ -181,24 +180,38 @@ static int aop_psens_probe_temp(struct platform_device *pdev,
 	return 0;
 }
 
-static ssize_t aop_psens_volt_read(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t aop_psens_volt_curr_read(struct device *dev, struct device_attribute *attr,
+				char *buf)
 {
-	int volt, pmic_id;
+	int pmic_id, ret, data = 0;
+	char key[KEY_LEN] = {0};
+	int *last = 0;
+	int offset;
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
 	struct aop_pmic_sensor_hwmon_state *state = dev_get_drvdata(dev);
 
-	pmic_id = sattr->index;
+	pmic_id = ((sattr->index) % 3 == 0) ? 3 : (sattr->index)%3;
 	state->aop_psens_perph->pmic_rail->pmic_id = pmic_id;
 
-	volt = qmp_read_data(state->aop_psens_perph, "volt", offsetof(struct pmic_stats, volt));
+	if (state->aop_psens_perph->dev->pmic_rail[sattr->index + IDX_OFFSET].type ==
+					VOLT_TYPE) {
+		ret = scnprintf(key, KEY_LEN, "volt");
+		last = &(state->aop_psens_perph->last_volt_reading);
+		offset = offsetof(struct pmic_stats, volt);
+	} else {
+		ret = scnprintf(key, KEY_LEN, "curr");
+		last = &(state->aop_psens_perph->last_curr_reading);
+		offset = offsetof(struct pmic_stats, curr);
+	}
 
-	/* voltage is in milli volt */
-	state->aop_psens_perph->last_volt_reading = volt;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", volt);
+	data = qmp_read_data(state->aop_psens_perph, key, offset);
+	*last = data;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", *last);
 }
 
-static int aop_psens_probe_volt(struct platform_device *pdev,
+static int aop_psens_probe_volt_and_curr(struct platform_device *pdev,
 			struct aop_pmic_sensor_device *aop_psens_dev, int channels)
 {
 	int ret, i;
@@ -221,7 +234,7 @@ static int aop_psens_probe_volt(struct platform_device *pdev,
 		return -ENOMEM;
 
 	for (i = 0; i < aop_psens_dev->ss_count; i++) {
-		if (aop_psens_dev->pmic_rail[i].type == VOLT_TYPE) {
+		if (aop_psens_dev->pmic_rail[i].type != TEMP_TYPE) {
 			a = devm_kzalloc(dev, sizeof(*a), GFP_KERNEL);
 			if (a == NULL)
 				return -ENOMEM;
@@ -241,7 +254,7 @@ static int aop_psens_probe_volt(struct platform_device *pdev,
 			if (a->dev_attr.attr.name == NULL)
 				return -ENOMEM;
 
-			a->dev_attr.show = aop_psens_volt_read;
+			a->dev_attr.show = aop_psens_volt_curr_read;
 			a->dev_attr.attr.mode = 0444;
 			a->index = idx + 1;
 			st->attrs[idx] = &a->dev_attr.attr;
@@ -320,7 +333,7 @@ static int aop_pmic_parse_dt(struct device *dev, struct platform_device *pdev,
 		}
 		aop_psens_dev->pmic_rail[idx].type = val;
 
-		if (aop_psens_dev->pmic_rail[idx].type == VOLT_TYPE)
+		if (aop_psens_dev->pmic_rail[idx].type != TEMP_TYPE)
 			num_channels++;
 
 		idx++;
@@ -376,7 +389,7 @@ static int aop_pmic_sensor_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = aop_psens_probe_volt(pdev, aop_psens_dev, num_channels);
+	ret = aop_psens_probe_volt_and_curr(pdev, aop_psens_dev, num_channels);
 	if (ret != 0) {
 		pr_err("failed to register voltage hwmon device for qti-bmc, ret=%d\n", ret);
 		return ret;
