@@ -4192,7 +4192,12 @@ static ssize_t nw_loopback_handling_config(struct file *file, const char __user 
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		return -EFAULT;
@@ -4409,7 +4414,12 @@ static ssize_t loopback_handling_config(struct file *file, const char __user *us
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		goto fail;
@@ -4511,7 +4521,11 @@ static ssize_t speed_chg_handling_config(struct file *file, const char __user *u
 	if (!in_buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(in_buf, user_buffer, buf_len);
+	if (buf_len < count) {
+		ETHQOSERR("Required buffer exceeds available limit\n");
+		return -ENOMEM;
+	}
+	ret = copy_from_user(in_buf, user_buffer, count);
 	if (ret) {
 		ETHQOSERR("unable to copy from user\n");
 		goto fail;
@@ -6357,9 +6371,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 
 	if (power_state) {
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-			qcom_ethqos_serdes_power_ctrl(ethqos, true);
-#endif
 			ret = ethqos_enable_serdes_consumers(ethqos);
 			if (ret < 0)
 				return ret;
@@ -6368,6 +6379,8 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 			if (ret)
 				return -EINVAL;
+
+			qcom_ethqos_serdes_power_ctrl(ethqos, true);
 #endif
 
 			if (needs_serdes_reset)
@@ -6377,6 +6390,8 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 		}
 	} else {
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		qcom_ethqos_serdes_power_ctrl(ethqos, false);
+
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 #endif
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
@@ -6384,9 +6399,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			if (ret < 0)
 				return ret;
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-			qcom_ethqos_serdes_power_ctrl(ethqos, false);
-#endif
 			ETHQOSINFO("power saving turned on\n");
 		}
 	}
@@ -6395,62 +6407,133 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 {
-	struct qcom_ethqos *ethqos;
 	int ret = 0;
-	struct stmmac_priv *priv;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
-	priv = netdev_priv(ndev);
-	if (!priv) {
-		ETHQOSERR("priv is NULL\n");
-		return -EINVAL;
+	if (priv->plat->xpcs_powersaving)
+		priv->plat->xpcs_powersaving(priv->dev, true);
+
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		ethqos_disable_sgmii_usxgmii_clks(ethqos);
+
+		if (priv->plat->serdes_powersaving)
+			ret = priv->plat->serdes_powersaving(priv->dev,
+							     priv->plat->bsp_priv,
+							     false,
+							     false);
 	}
 
-	ethqos = priv->plat->bsp_priv;
-	if (!ethqos) {
-		ETHQOSERR("ethqos is NULL\n");
-		return -EINVAL;
-	}
+	ethqos->clk_active = false;
 
-	if (ethqos->enable_power_saving == enable) {
-		ETHQOSINFO("Ignore Power save %d\n", ethqos->enable_power_saving);
+	return ret;
+}
+
+static int __ethqos_emac_power_up(struct stmmac_priv *priv)
+{
+	int ret = 0;
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	if (ethqos->clk_gated)
 		return 0;
-	}
 
-	if (enable) {
-
-		if (priv->plat->xpcs_powersaving)
-			priv->plat->xpcs_powersaving(ndev, true);
-
-		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-			ethqos_disable_sgmii_usxgmii_clks(ethqos);
-
-			if (priv->plat->serdes_powersaving)
-				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
-							       false, false);
-		}
-	} else {
-		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-			if (priv->plat->serdes_powersaving)
-				priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv,
-							       true, true);
-
-			ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
-
+	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+		if (priv->plat->serdes_powersaving) {
+			ret = priv->plat->serdes_powersaving(priv->dev,
+							     priv->plat->bsp_priv,
+							     true,
+							     false);
 			if (ret < 0) {
-				ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
+				ETHQOSERR("Failed to enable serdes clocks/regulators\n");
 				goto err;
 			}
 		}
 
-		if (priv->plat->xpcs_powersaving)
-			priv->plat->xpcs_powersaving(ndev, false);
+		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
+		if (ret < 0) {
+			ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
+			goto err;
+		}
 	}
 
-	ethqos->enable_power_saving = enable;
+	if (priv->plat->xpcs_powersaving)
+		priv->plat->xpcs_powersaving(priv->dev, false);
+
+	ethqos->clk_active = true;
 
 err:
+	return ret;
+}
+
+static void ethqos_enable_clock_gating(struct net_device *ndev)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	mutex_lock(&ethqos->ps_lock);
+
+	if (!ethqos->clk_gated) {
+		ethqos->clk_gated = true;
+
+		if (ethqos->clk_active)
+			__ethqos_emac_power_down(priv);
+	}
+
+	ETHQOSINFO("Enable Clock Gating EMAC = %u ps_refcount = %u clk_active = %u\n",
+		   priv->plat->port_num, refcount_read(&ethqos->ps_refcount), ethqos->clk_active);
+
+	mutex_unlock(&ethqos->ps_lock);
+}
+
+static void ethqos_disable_clock_gating(struct net_device *ndev)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+
+	mutex_lock(&ethqos->ps_lock);
+
+	if (ethqos->clk_gated) {
+		ethqos->clk_gated = false;
+
+		if (refcount_read(&ethqos->ps_refcount) != 0)
+			__ethqos_emac_power_up(priv);
+	}
+
+	ETHQOSINFO("Disable Clock Gating EMAC = %u ps_refcount = %u clk_active = %u\n",
+		   priv->plat->port_num, refcount_read(&ethqos->ps_refcount), ethqos->clk_active);
+
+	mutex_unlock(&ethqos->ps_lock);
+}
+
+int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
+{
+	int ret = 0;
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
+	unsigned int old_refcount, new_refcount;
+
+	mutex_lock(&ethqos->ps_lock);
+
+	old_refcount = refcount_read(&ethqos->ps_refcount);
+
+	if (enable) {
+		if (refcount_dec_and_test(&ethqos->ps_refcount))
+			ret = __ethqos_emac_power_down(priv);
+	} else {
+		if (!refcount_inc_not_zero(&ethqos->ps_refcount)) {
+			refcount_set(&ethqos->ps_refcount, 1);
+			ret = __ethqos_emac_power_up(priv);
+		}
+	}
+
+	new_refcount = refcount_read(&ethqos->ps_refcount);
+
+	ETHQOSINFO("EMAC = %d Save Power = %u ps_refcount = %u->%u\n",
+		   priv->plat->port_num, enable, old_refcount, new_refcount);
+
+	mutex_unlock(&ethqos->ps_lock);
+
 	return ret;
 }
 #endif
@@ -7132,6 +7215,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos->pdev = pdev;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	/* Set ref count to 1 as clocks are initially turned on */
+	refcount_set(&ethqos->ps_refcount, 1);
+	mutex_init(&ethqos->ps_lock);
+	ethqos->clk_active = true;
+#endif
+
 	ethqos_init_regulators(ethqos);
 
 	ethqos_init_gpio(ethqos);
@@ -7624,6 +7714,9 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	struct qcom_ethqos *ethqos;
 	int i, ret;
 	struct stmmac_priv *priv;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	struct net_device *ndev = platform_get_drvdata(pdev);
+#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,emac-smmu-embedded")) {
 		of_platform_depopulate(&pdev->dev);
@@ -7651,6 +7744,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	ethqos_change_if_cleanup_sysfs(ethqos);
 	ethqos_thermal_netlink_cleanup_sysfs(ethqos);
 	ret = stmmac_pltfr_remove(pdev);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_enable_clock_gating(ndev);
+#endif
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
@@ -7704,6 +7801,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	mutex_destroy(&ethqos->ps_lock);
+#endif
+
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
 	qcom_ethqos_unregister_panic_notifier(ethqos);
@@ -7748,6 +7849,12 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (!ndev)
 		return -EINVAL;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		if (priv->plat->enable_power_saving(ndev, false) < 0)
+			return -EINVAL;
+	}
+#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -7787,6 +7894,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 			ETHQOSDBG("Disabled <%s>\n", EMAC_GDSC_EMAC_NAME);
 		}
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_enable_clock_gating(ndev);
+#endif
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
@@ -7834,6 +7945,10 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSERR(" Resume not possible\n");
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	ethqos_disable_clock_gating(ndev);
+#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
@@ -7912,10 +8027,8 @@ static int qcom_ethqos_resume(struct device *dev)
 	}
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (!qcom_ethqos_is_phy_link_up(ethqos)) {
-		if (priv->plat->enable_power_saving)
-			ret = priv->plat->enable_power_saving(ndev, true);
-	}
+	if (priv->plat->enable_power_saving)
+		ret = priv->plat->enable_power_saving(ndev, true);
 #endif
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Resume End");

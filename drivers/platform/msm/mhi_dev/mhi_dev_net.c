@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -272,8 +272,6 @@ struct mhi_dev_net_client {
 	/*To check write channel is empty or not*/
 	spinlock_t wrt_lock;
 	spinlock_t rd_lock;
-	struct mutex in_chan_lock;
-	struct mutex out_chan_lock;
 	spinlock_t net_tx_q_state;
 };
 
@@ -702,6 +700,7 @@ static void mhi_dev_net_ether_setup(struct net_device *dev)
 	ether_setup(dev);
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = ETH_MAX_MTU;
+	dev->mtu = MHI_NET_DEFAULT_MTU;
 }
 
 static int mhi_dev_net_enable_iface(struct mhi_dev_net_client *mhi_dev_net_ptr)
@@ -847,8 +846,6 @@ rx_req_failed:
 handle_in_err:
 	mhi_net_ctxt.dev_ops->close_channel(client->out_handle);
 handle_not_rdy_err:
-	mutex_unlock(&client->in_chan_lock);
-	mutex_unlock(&client->out_chan_lock);
 	return rc;
 }
 
@@ -887,23 +884,12 @@ static int mhi_dev_net_rgstr_client(struct mhi_dev_net_client *client, int idx)
 {
 	client->out_chan = idx;
 	client->in_chan = idx + 1;
-	mutex_init(&client->in_chan_lock);
-	mutex_init(&client->out_chan_lock);
 	spin_lock_init(&client->wrt_lock);
 	spin_lock_init(&client->net_tx_q_state);
 	spin_lock_init(&client->rd_lock);
 	mhi_dev_net_log(client->vf_id, MHI_INFO, "Registering OUT ch_id:%d\t"
 			"IN ch_id:%d channels\n",
 			client->out_chan, client->in_chan);
-	return 0;
-}
-
-static int mhi_dev_net_dergstr_client
-				(struct mhi_dev_net_client *client)
-{
-	mutex_destroy(&client->in_chan_lock);
-	mutex_destroy(&client->out_chan_lock);
-
 	return 0;
 }
 
@@ -949,9 +935,9 @@ static void mhi_dev_net_state_cb(struct mhi_dev_client_cb_data *cb_data)
 			mhi_client->out_chan);
 		return;
 	}
-	mhi_dev_net_log(mhi_client->vf_id, MHI_MSG_VERBOSE, "IN ch_id::%d, state :%d\n",
+	mhi_dev_net_log(mhi_client->vf_id, MHI_VERBOSE, "IN ch_id::%d, state :%d\n",
 			mhi_client->in_chan, info_in_ch);
-	mhi_dev_net_log(mhi_client->vf_id, MHI_MSG_VERBOSE, "OUT ch_id:%d, state :%d\n",
+	mhi_dev_net_log(mhi_client->vf_id, MHI_VERBOSE, "OUT ch_id:%d, state :%d\n",
 			mhi_client->out_chan, info_out_ch);
 	if (info_in_ch == MHI_STATE_CONNECTED &&
 		info_out_ch == MHI_STATE_CONNECTED) {
@@ -1061,7 +1047,7 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 		if (ret_val < 0) {
 			mhi_dev_net_log(vf_id, MHI_ERROR,
 					"Failed to init client attributes\n");
-			goto channel_init_fail;
+			goto init_failed;
 		}
 		mhi_dev_net_log(vf_id, MHI_DBG, "Initializing client\n");
 
@@ -1070,7 +1056,7 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 		if (ret_val) {
 			mhi_dev_net_log(vf_id, MHI_CRITICAL,
 				"Failed to reg client %d ret 0\n", ret_val);
-			goto client_register_fail;
+			goto init_failed;
 		}
 
 		ret_val = dev_ops->register_state_cb(mhi_dev_net_state_cb,
@@ -1078,7 +1064,7 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 						   mhi_net_client[i]->out_chan,
 						   vf_id);
 		if (ret_val < 0 && ret_val != -EEXIST)
-			goto register_state_cb_fail;
+			goto init_failed;
 
 		ret_val = dev_ops->register_state_cb(mhi_dev_net_state_cb,
 						   mhi_net_client[i],
@@ -1105,12 +1091,12 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 					if (ret_val < 0) {
 						mhi_dev_net_log(vf_id, MHI_ERROR,
 							"Failed to open channels\n");
-						goto channel_open_fail;
+						goto init_failed;
 					}
 				}
 			}
 		} else if (ret_val < 0) {
-			goto register_state_cb_fail;
+			goto init_failed;
 		}
 	}
 
@@ -1118,13 +1104,8 @@ int mhi_dev_net_interface_init(struct mhi_dev_ops *dev_ops, uint32_t vf_id, uint
 
 mem_alloc_fail:
 	ret_val = -ENOMEM;
-channel_open_fail:
-register_state_cb_fail:
-	for (j = i ; j >= 0; j--)
-		mhi_dev_net_dergstr_client(mhi_net_client[j]);
-client_register_fail:
-channel_init_fail:
-	for (j = i ; j >= 0; j--) {
+init_failed:
+	for (j = i ; j > 0; j--) {
 		destroy_workqueue(mhi_net_client[j]->pending_pckt_wq);
 		kfree(mhi_net_client[j]);
 	}
@@ -1177,7 +1158,7 @@ static int mhi_dev_net_probe(struct platform_device *pdev)
 			mhi_net_ctxt.eth_iface_out_ch =
 				kcalloc(num_mhi_eth_chan, sizeof(uint32_t), GFP_KERNEL);
 			if (!mhi_net_ctxt.eth_iface_out_ch) {
-				mhi_dev_net_log(MHI_PF_ID, MHI_MSG_ERROR,
+				mhi_dev_net_log(MHI_PF_ID, MHI_ERROR,
 						"Memory alloc failed for mhi_net_ctxt.eth_iface_out_ch\n");
 				return -ENOMEM;
 			}
@@ -1194,14 +1175,14 @@ static int mhi_dev_net_probe(struct platform_device *pdev)
 					mhi_dev_net_log(MHI_PF_ID, MHI_INFO,
 							"mhi_net_ctxt.eth_iface_out_ch[%d]=%d\n", i,
 							mhi_net_ctxt.eth_iface_out_ch[i]);
-					mhi_dev_net_log(MHI_PF_ID, MHI_MSG_ERROR,
+					mhi_dev_net_log(MHI_PF_ID, MHI_ERROR,
 							"mhi_net_ctxt.eth_iface_out_ch[%d]=%d\n", i,
 							mhi_net_ctxt.eth_iface_out_ch[i]);
 					if (mhi_net_ctxt.eth_iface_out_ch[i]) {
 						mhi_dev_net_log(MHI_PF_ID, MHI_INFO,
 								"Channel %d uses ethernet interface\n",
 								mhi_net_ctxt.eth_iface_out_ch[i]);
-						mhi_dev_net_log(MHI_PF_ID, MHI_MSG_ERROR,
+						mhi_dev_net_log(MHI_PF_ID, MHI_ERROR,
 								"Channel %d uses ethernet interface\n",
 								mhi_net_ctxt.eth_iface_out_ch[i]);
 					}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -1487,7 +1487,7 @@ static void ep_pcie_config_outbound_iatu_entry(struct ep_pcie_dev_t *dev,
 		readl_relaxed(dev->dm_core + PCIE20_PLR_IATU_CTRL2));
 }
 
-static void ep_pcie_notify_event(struct ep_pcie_dev_t *dev,
+static bool ep_pcie_notify_event(struct ep_pcie_dev_t *dev,
 					enum ep_pcie_event event)
 {
 	if (dev->event_reg && dev->event_reg->callback &&
@@ -1497,14 +1497,16 @@ static void ep_pcie_notify_event(struct ep_pcie_dev_t *dev,
 		notify->event = event;
 		notify->user = dev->event_reg->user;
 		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: Callback client for event %d\n",
+			"PCIe V%d: Callback client for event 0x%x\n",
 			dev->rev, event);
 		dev->event_reg->callback(notify);
 	} else {
 		EP_PCIE_DBG(&ep_pcie_dev,
-			"PCIe V%d: Client does not register for event %d\n",
+			"PCIe V%d: Client does not register for event 0x%x\n",
 			dev->rev, event);
+		return false;
 	}
+	return true;
 }
 
 static void ep_pcie_notify_vf_bme_event(struct ep_pcie_dev_t *dev,
@@ -2459,7 +2461,7 @@ checkbme:
 	ret = qcom_ep_pcie_icc_bw_update(dev, dev->current_link_speed, dev->current_link_width);
 	if (ret) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to set bus bandwidth:%d\n", dev->rev, ret);
-		return ret;
+		goto out;
 	}
 
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
@@ -3020,9 +3022,7 @@ static irqreturn_t ep_pcie_handle_perst_irq(int irq, void *data)
 			"PCIe V%d: No. %ld PERST assertion\n",
 			dev->rev, dev->perst_ast_counter);
 
-		if (dev->event_reg->events & EP_PCIE_EVENT_PM_D3_COLD) {
-			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_COLD);
-		} else {
+		if (!ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_COLD)) {
 			dev->no_notify = true;
 			EP_PCIE_DBG(dev,
 				"PCIe V%d: Client driver is not ready when this PERST assertion happens; shutdown link now\n",
@@ -3045,20 +3045,11 @@ static irqreturn_t ep_pcie_handle_perst_deassert(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
 
-	if (!dev->enumerated || dev->dma_wake) {
+	if (!ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_RST_DEAST)) {
 		EP_PCIE_DBG(dev,
-		"PCIe V%d: Start enumeration due to PERST deassertion\n",
-		dev->rev);
+			"PCIe V%d: Start enumeration due to PERST deassertion\n", dev->rev);
 		ep_pcie_enumeration(dev);
-		if (dev->dma_wake) {
-			EP_PCIE_DBG(dev,
-				"PCIe V%d: Handle perst deassert for dma wake\n", dev->rev);
-			dev->dma_wake = false;
-		}
-	} else {
-		ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_RST_DEAST);
 	}
-
 	return IRQ_HANDLED;
 }
 
@@ -3678,8 +3669,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 	}
 
 	cap = readl_relaxed(dbi + PCIE20_MSI_CAP_ID_NEXT_CTRL(n));
-	EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
-			ep_pcie_dev.rev, cap);
 
 	if (cap & BIT(16)) {
 		cfg->msi_type = MSI;
@@ -3687,10 +3676,6 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 		lower = readl_relaxed(dbi + PCIE20_MSI_LOWER(n));
 		upper = readl_relaxed(dbi + PCIE20_MSI_UPPER(n));
 		data = readl_relaxed(dbi + PCIE20_MSI_DATA(n));
-
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: MSI info: lower:0x%x; upper:0x%x; data:0x%x vf_id:%d\n",
-				ep_pcie_dev.rev, lower, upper, data, vf_id);
 
 		if (ep_pcie_dev.use_iatu_msi) {
 			if (ep_pcie_dev.active_config)
@@ -3728,16 +3713,18 @@ int ep_pcie_core_get_msi_config(struct ep_pcie_msi_config *cfg, u32 vf_id)
 				EP_PCIE_DBG(&ep_pcie_dev,
 					"PCIe V%d: MSI config has been changed by host side for %d time(s)\n",
 					ep_pcie_dev.rev, changes);
-				EP_PCIE_DBG(&ep_pcie_dev,
-					"PCIe V%d: old MSI cfg: lower:0x%x; upper:0x%x; data:0x%x; msg_num:0x%x\n",
-					ep_pcie_dev.rev, msi_cfg->lower,
-					msi_cfg->upper,
-					msi_cfg->data,
-					msi_cfg->msg_num);
 				msi_cfg->lower = lower;
 				msi_cfg->upper = upper;
 				msi_cfg->data = data;
 				ep_pcie_dev.conf_ipa_msi_iatu[vf_id] = false;
+				EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: MSI CAP:0x%x\n",
+					ep_pcie_dev.rev, cap);
+				EP_PCIE_DBG(&ep_pcie_dev,
+					"PCIe V%d: New MSI cfg: lower:0x%x; upper:0x%x; data:0x%x; msg_num:0x%x\n",
+					ep_pcie_dev.rev, msi_cfg->lower,
+					msi_cfg->upper,
+					msi_cfg->data,
+					msi_cfg->msg_num);
 			}
 		}
 		/*
@@ -3919,7 +3906,6 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 	if (!atomic_read(&dev->perst_deast)) {
 		if (event == EP_PCIE_EVENT_INVALID) {
 			EP_PCIE_DBG(dev, "PCIe V%d: Wake from DMA Call Back\n", dev->rev);
-			dev->dma_wake = true;
 		}
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);

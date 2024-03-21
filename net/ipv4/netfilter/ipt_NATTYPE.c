@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved. */
-/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/types.h>
 #include <linux/ip.h>
@@ -54,8 +54,8 @@ static void nattype_nte_debug_print(const struct ipt_nattype *nte,
 	       &nte->range.min_addr.ip, ntohs(nte->range.min_proto.all),
 		ntohs(nte->nat_port),
 		&nte->dest_addr, ntohs(nte->dest_port));
-	DEBUGP("Timeout[%lx], Expires[%lx]\n", nte->timeout_value,
-	       nte->timeout.expires);
+	DEBUGP("Timeout[%lx], Expires[%lx], Current[%lx]\n", nte->timeout_value,
+	       nte->timeout.expires, jiffies);
 }
 
 /* netfilter NATTYPE nattype_free()
@@ -81,8 +81,9 @@ bool nattype_refresh_timer_impl(unsigned long nat_type,
 		spin_unlock_bh(&nattype_lock);
 		return false;
 	}
+	DEBUGP("%s: timeout_value=%lx, jiffies=%lx", __func__, timeout_value, jiffies);
 	if (del_timer(&nte->timeout)) {
-		nte->timeout.expires = jiffies + timeout_value;
+		nte->timeout.expires = timeout_value + jiffies - nfct_time_stamp;
 		add_timer(&nte->timeout);
 		spin_unlock_bh(&nattype_lock);
 		nattype_nte_debug_print(nte, "refresh");
@@ -294,7 +295,7 @@ static unsigned int nattype_nat(struct sk_buff *skb,
 		 * found the entry.
 		 */
 		if (!nattype_refresh_timer((unsigned long)nte,
-					    nte->timeout_value))
+					    nfct_time_stamp + nte->timeout_value))
 			break;
 
 		/* netfilter
@@ -327,6 +328,7 @@ static unsigned int nattype_forward(struct sk_buff *skb,
 	const struct ipt_nattype_info *info = par->targinfo;
 	u16 nat_port;
 	enum ip_conntrack_dir dir;
+	unsigned long timeout_value;
 
 	if (xt_hooknum(par) != NF_INET_POST_ROUTING)
 		return XT_CONTINUE;
@@ -432,7 +434,8 @@ static unsigned int nattype_forward(struct sk_buff *skb,
 		 * entry as this one is timed out and will be removed
 		 * from the list shortly.
 		 */
-		if (!nattype_refresh_timer((unsigned long)nte2,  nte2->timeout_value))
+		timeout_value = nfct_time_stamp + nte2->timeout_value;
+		if (!nattype_refresh_timer((unsigned long)nte2, timeout_value))
 			break;
 
 		/* netfilter NATTYPE
