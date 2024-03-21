@@ -154,6 +154,7 @@
 #define IPA_IOCTL_QUERY_CACHED_DRIVER_MSG       98
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
 #define IPA_IOCTL_ADD_VLAN_PRIORITY             100
+#define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
 /**
  * max size of the header to be inserted
  */
@@ -2783,6 +2784,8 @@ struct ipa_ioc_v4_nat_init {
  * @expn_table_entries: input parameter, IPv6CT expansion table number of
  *                      entries
  * @tbl_index: input parameter, index of the table
+ * @mem_type: input parameter, type of memory the table resides in
+ * @focus_change: input parameter, are we moving to/from sram or ddr
  */
 struct ipa_ioc_ipv6ct_init {
 	uint32_t base_table_offset;
@@ -2790,6 +2793,9 @@ struct ipa_ioc_ipv6ct_init {
 	uint16_t table_entries;
 	uint16_t expn_table_entries;
 	uint8_t tbl_index;
+
+	uint8_t  mem_type;
+	uint8_t  focus_change;
 };
 
 /**
@@ -4076,6 +4082,9 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 				IPA_IOCTL_ADD_VLAN_PRIORITY, \
 				struct ipa_ioc_vlan_priority)
 
+#define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \
+				struct ipa_nat_in_sram_info)
 /*
  * unique magic number of the Tethering bridge ioctls
  */

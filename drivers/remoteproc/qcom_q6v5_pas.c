@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2014 Sony Mobile Communications AB
  * Copyright (c) 2012-2013, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -2466,7 +2466,6 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,trinket-cdsp-pas", .data = &trinket_cdsp_resource},
 	{ .compatible = "qcom,qcs605-adsp-pas", .data = &qcs605_adsp_resource},
 	{ .compatible = "qcom,qcs605-cdsp-pas", .data = &qcs605_cdsp_resource},
-	{ .compatible = "qcom,qcs605-modem-pas", .data = &qcs605_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
