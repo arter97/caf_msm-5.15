@@ -7666,6 +7666,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		priv->plat->enable_power_saving(ndev, true);
 #endif
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	/* Send the probe completion event early so that early eth is not impacted. */
+	complete_all(&priv->probe_done);
+#endif
+
 	if (ethqos->early_eth_enabled) {
 		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
 		    plat_dat->interface == PHY_INTERFACE_MODE_RGMII ||
