@@ -6379,8 +6379,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 			if (ret)
 				return -EINVAL;
-
-			qcom_ethqos_serdes_power_ctrl(ethqos, true);
 #endif
 
 			if (needs_serdes_reset)
@@ -6390,7 +6388,7 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 		}
 	} else {
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-		qcom_ethqos_serdes_power_ctrl(ethqos, false);
+		qcom_ethqos_serdes_power_down(ethqos);
 
 		qcom_ethqos_disable_serdes_clocks(ethqos);
 #endif
