@@ -1952,6 +1952,7 @@
   reset_control_deassert
   __reset_control_get
   reset_control_put
+  return_address
   rfkill_alloc
   rfkill_blocked
   rfkill_destroy
@@ -2224,6 +2225,7 @@
   stop_one_cpu
   stop_one_cpu_nowait
   store_sampling_rate
+  strchr
   strchrnul
   strcmp
   strcpy
@@ -2287,6 +2289,7 @@
   sysfs_remove_link
   sysfs_remove_link_from_group
   sysfs_streq
+  sysfs_update_group
   sysrq_mask
   system_32bit_el0_cpumask
   system_freezable_power_efficient_wq
@@ -2569,6 +2572,7 @@
   __tracepoint_suspend_resume
   __tracepoint_unmap
   trace_print_array_seq
+  trace_print_flags_seq
   trace_raw_output_prep
   trace_seq_printf
   trace_seq_putc
@@ -2671,6 +2675,7 @@
   usb_debug_root
   usb_decode_ctrl
   usb_deregister
+  usb_deregister_device_driver
   usb_driver_set_configuration
   usb_ep_alloc_request
   usb_ep_autoconfig
@@ -2695,6 +2700,7 @@
   usb_phy_set_charger_current
   usb_pipe_type_check
   usb_put_function_instance
+  usb_register_device_driver
   usb_register_driver
   usb_register_notify
   usb_remove_phy
@@ -2704,6 +2710,7 @@
   usb_role_switch_register
   usb_role_switch_set_role
   usb_role_switch_unregister
+  usb_set_configuration
   usb_set_device_state
   usb_speed_string
   usb_string_id
