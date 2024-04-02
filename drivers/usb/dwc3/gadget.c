@@ -1702,8 +1702,8 @@ static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool int
 {
 	struct dwc3 *dwc = dep->dwc;
 	struct dwc3_gadget_ep_cmd_params params;
-	u32 cmd;
-	int ret;
+	u32 cmd, reg;
+	int ret, retries = 500;
 
 	cmd = DWC3_DEPCMD_ENDTRANSFER;
 	cmd |= force ? DWC3_DEPCMD_HIPRI_FORCERM : 0;
@@ -1727,6 +1727,20 @@ static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool int
 	if (!interrupt) {
 		if (!DWC3_IP_IS(DWC3) || DWC3_VER_IS_PRIOR(DWC3, 310A))
 			mdelay(1);
+		else {
+			do {
+				reg = dwc3_readl(dep->regs, DWC3_DEPCMD);
+				if (!(reg & DWC3_DEPCMD_CMDACT))
+					break;
+				udelay(2);
+			} while (--retries);
+
+			if (!retries) {
+				dep->flags |= DWC3_EP_DELAY_STOP;
+				return -ETIMEDOUT;
+			}
+		}
+
 		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
 	} else if (!ret) {
 		dep->flags |= DWC3_EP_END_TRANSFER_PENDING;
