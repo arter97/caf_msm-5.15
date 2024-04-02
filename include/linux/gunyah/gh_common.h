@@ -43,6 +43,8 @@ enum gh_vm_names {
 	GH_TELE_VM,
 	GH_FOTA_VM,
 	GH_AUTO_VM,
+	GH_ROBOTICS_VM1,
+	GH_ROBOTICS_VM2,
 	GH_VM_MAX
 };
 
