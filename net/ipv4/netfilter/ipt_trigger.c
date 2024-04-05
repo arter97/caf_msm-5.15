@@ -76,7 +76,7 @@ static LIST_HEAD(trigger_list);
 static void trigger_refresh(struct ipt_trigger *trig, unsigned long extra_jiffies)
 {
 	NF_CT_ASSERT(trig);
-	spin_lock_bh(&nf_conntrack_lock);
+	spin_lock_bh(&nf_conntrack_expect_lock);
 
 	/* Need del_timer for race avoidance (may already be dying). */
 	if (del_timer(&trig->timeout)) {
@@ -84,7 +84,7 @@ static void trigger_refresh(struct ipt_trigger *trig, unsigned long extra_jiffie
 		add_timer(&trig->timeout);
 	}
 
-	spin_unlock_bh(&nf_conntrack_lock);
+	spin_unlock_bh(&nf_conntrack_expect_lock);
 }
 
 static void __del_trigger(struct ipt_trigger *trig)
@@ -96,14 +96,14 @@ static void __del_trigger(struct ipt_trigger *trig)
 	kfree(trig);
 }
 
-static void trigger_timeout(unsigned long ul_trig)
+static void trigger_timeout(struct timer_list *t)
 {
-	struct ipt_trigger *trig = (void *)ul_trig;
+	struct ipt_trigger *trig = from_timer(trig, t, timeout);
 
 	DEBUGP(KERN_LEVL "trigger list %p timed out\n", trig);
-	spin_lock_bh(&nf_conntrack_lock);
+	spin_lock_bh(&nf_conntrack_expect_lock);
 	__del_trigger(trig);
-	spin_unlock_bh(&nf_conntrack_lock);
+	spin_unlock_bh(&nf_conntrack_expect_lock);
 }
 
 static unsigned int
@@ -111,11 +111,11 @@ add_new_trigger(struct ipt_trigger *trig)
 {
 	struct ipt_trigger *new;
 
-	spin_lock_bh(&nf_conntrack_lock);
+	spin_lock_bh(&nf_conntrack_expect_lock);
 	new = kmalloc(sizeof(*new), GFP_ATOMIC);
 
 	if (!new) {
-		spin_unlock_bh(&nf_conntrack_lock);
+		spin_unlock_bh(&nf_conntrack_expect_lock);
 		DEBUGP(KERN_LEVL "%s: OOM allocating trigger list\n", __func__);
 		return -ENOMEM;
 	}
@@ -127,13 +127,13 @@ add_new_trigger(struct ipt_trigger *trig)
 	/* add to global table of trigger */
 	list_add(&trigger_list, &new->list);
 	/* add and start timer if required */
-	init_timer(&new->timeout);
+	//init_timer(&new->timeout);
 	new->timeout.data = (unsigned long)new;
 	new->timeout.function = trigger_timeout;
 	new->timeout.expires = jiffies + (TRIGGER_TIMEOUT * HZ);
-	add_timer(&new->timeout);
+	timer_setup(&new->timeout, trigger_timeout, 0);
 
-	spin_unlock_bh(&nf_conntrack_lock);
+	spin_unlock_bh(&nf_conntrack_expect_lock);
 
 	return 0;
 }
@@ -274,7 +274,7 @@ trigger_in(struct sk_buff *skb)
 	return XT_CONTINUE;	/* the match was done but no trigger exist  */
 }
 
-static void xt_nat_convert_range(struct nf_nat_range *dst
+static void xt_nat_convert_range(struct nf_nat_range2 *dst,
 				 const struct nf_nat_ipv4_range *src)
 {
 	memset(&dst->min_addr, 0, sizeof(dst->min_addr));
@@ -302,7 +302,7 @@ trigger_dnat(struct sk_buff *skb, int hooknum)
 	struct nf_conn *ct;
 	enum ip_conntrack_info ctinfo;
 	struct nf_nat_ipv4_multi_range_compat newrange;
-	struct nf_nat_range range;
+	struct nf_nat_range2 range_info;
 
 	DEBUGP(KERN_LEVL "####Starting  %s ############\n", __func__);
 	DEBUGP(KERN_LEVL "TRIGGER_DNAT: Protocol ->%s  SRC_IP->%pI4 DST IP->%pI4\n",
@@ -334,7 +334,7 @@ trigger_dnat(struct sk_buff *skb, int hooknum)
 	newrange.range[0].min.all = 0;
 	newrange.range[0].min.all = 0;
 
-	xt_nat_convert_range(&range, &newrange.range[0]);
+	xt_nat_convert_range(&range_info, &newrange.range[0]);
 
 	/* We call here to create the nat processor  that will replace packet source address
 	 *  to the address of the port forwarder requestor.
@@ -349,7 +349,7 @@ trigger_dnat(struct sk_buff *skb, int hooknum)
 	 */
 
 	/* Alter the destination of incoming packet. */
-	return nf_nat_setup_info(ct, &range, NF_NAT_MANIP_DST);
+	return nf_nat_setup_info(ct, &range_info, NF_NAT_MANIP_DST);
 }
 
 static unsigned int
