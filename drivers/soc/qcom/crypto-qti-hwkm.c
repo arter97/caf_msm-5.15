@@ -280,7 +280,7 @@ static int crypto_qti_program_key_v1(const struct ice_mmio_data *mmio_data,
 
 int crypto_qti_program_key(const struct ice_mmio_data *mmio_data,
 			   const struct blk_crypto_key *key, unsigned int slot,
-			   unsigned int data_unit_mask, int capid)
+			   unsigned int data_unit_mask, int capid, int storage_type)
 {
 	int err = 0;
 	union crypto_cfg cfg;
@@ -290,7 +290,7 @@ int crypto_qti_program_key(const struct ice_mmio_data *mmio_data,
 		return -EINVAL;
 	}
 
-	if (!qti_hwkm_init_done) {
+	if (qti_hwkm_init_required(mmio_data)) {
 		err = qti_hwkm_init(mmio_data);
 		if (err) {
 			pr_err("%s: Error with HWKM init %d\n", __func__, err);
@@ -337,7 +337,7 @@ exit:
 EXPORT_SYMBOL(crypto_qti_program_key);
 
 int crypto_qti_invalidate_key(const struct ice_mmio_data *mmio_data,
-			      unsigned int slot)
+			      unsigned int slot, int storage_type)
 {
 	int err = 0;
 

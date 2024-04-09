@@ -120,8 +120,16 @@
 #define NUM_CHANNELS	(MAX_DOMAIN_ID + 1)	/* adsp, mdsp, slpi, cdsp, cdsp1, gpdsp, gpdsp1*/
 #define NUM_SESSIONS	13	/* max 12 compute, 1 cpz */
 
+/* Default maximum sessions allowed per process */
+#define DEFAULT_MAX_SESS_PER_PROC 4
+
+#define RH_CID ADSP_DOMAIN_ID
+
 #define VALID_FASTRPC_CID(cid) \
 	(cid >= ADSP_DOMAIN_ID && cid < NUM_CHANNELS)
+
+#define GET_DEV_FROM_CID(me, cid) \
+	((me->dev[cid] == NULL) ? me->dev[RH_CID] : me->dev[cid])
 
 #define REMOTE_SCALARS_LENGTH(sc)	(REMOTE_SCALARS_INBUFS(sc) +\
 					REMOTE_SCALARS_OUTBUFS(sc) +\
@@ -208,6 +216,15 @@ struct remote_buf {
 	size_t len;		/* length of buffer */
 };
 
+/* structure to hold fd and size of buffer shared with DSP,
+ * which contains initial debug parameters that needs to be passed
+ * during process initialization.
+ */
+struct fastrpc_proc_sharedbuf_info {
+	int buf_fd;
+	int buf_size;
+};
+
 struct remote_dma_handle {
 	int fd;
 	uint32_t offset;
@@ -291,6 +308,14 @@ struct fastrpc_ioctl_notif_rsp {
 	uint32_t status;			/* Status of the process */
 };
 
+/* FastRPC ioctl structure to set session related info */
+struct fastrpc_proc_sess_info {
+	uint32_t domain_id;  /* Set the remote subsystem, Domain ID of the session  */
+	uint32_t session_id; /* Unused, Set the Session ID on remote subsystem */
+	uint32_t pd_type;    /* Set the process type on remote subsystem */
+	uint32_t sharedcb;   /* Unused, Session can share context bank with other sessions */
+};
+
 /* INIT a new process or attach to guestos */
 enum fastrpc_init_flags {
 	FASTRPC_INIT_NO_CREATE       = -1,
@@ -305,6 +330,9 @@ enum fastrpc_invoke2_type {
 	FASTRPC_INVOKE2_ASYNC_RESPONSE = 2,
 	FASTRPC_INVOKE2_KERNEL_OPTIMIZATIONS,
 	FASTRPC_INVOKE2_STATUS_NOTIF,
+	FASTRPC_INVOKE2_PROC_SHAREDBUF_INFO,
+	/* Set session info of remote sub system */
+	FASTRPC_INVOKE2_SESS_INFO,
 };
 
 struct fastrpc_ioctl_invoke2 {
@@ -705,6 +733,21 @@ struct gid_list {
 	unsigned int gidcount;
 };
 
+/*
+ * Process types on remote subsystem
+ * Always add new PD types at the end, before MAX_PD_TYPE
+ */
+#define DEFAULT_UNUSED    0  /* pd type not configured for context banks */
+#define ROOT_PD           1  /* Root PD */
+#define AUDIO_STATICPD    2  /* ADSP Audio Static PD */
+#define SENSORS_STATICPD  3  /* ADSP Sensors Static PD */
+#define SECURE_STATICPD   4  /* CDSP Secure Static PD */
+#define OIS_STATICPD      5  /* ADSP OIS Static PD */
+#define CPZ_USERPD        6  /* CDSP CPZ USER PD */
+#define USERPD            7  /* DSP User Dynamic PD */
+#define GUEST_OS_SHARED   8  /* Legacy Guest OS Shared */
+#define MAX_PD_TYPE       9  /* Max PD type */
+
 struct fastrpc_file;
 
 struct fastrpc_buf {
@@ -784,7 +827,7 @@ struct smq_notif_rsp {
 struct smq_invoke_ctx {
 	struct hlist_node hn;
 	/* Async node to add to async job ctx list */
-	struct list_head asyncn;
+	struct hlist_node asyncn;
 	struct completion work;
 	int retval;
 	int pid;
@@ -831,7 +874,7 @@ struct fastrpc_ctx_lst {
 	/* Number of active contexts queued to DSP */
 	uint32_t num_active_ctxs;
 	/* Queue which holds all async job contexts of process */
-	struct list_head async_queue;
+	struct hlist_head async_queue;
 	/* Queue which holds all status notifications of process */
 	struct list_head notif_queue;
 };
@@ -845,6 +888,8 @@ struct fastrpc_smmu {
 	int secure;
 	int coherent;
 	int sharedcb;
+	/* Process type on remote sub system */
+	int pd_type;
 	/* gen pool for QRTR */
 	struct gen_pool *frpc_genpool;
 	/* fastrpc gen pool buffer */
@@ -889,7 +934,7 @@ struct fastrpc_channel_ctx {
 	struct mutex smd_mutex;
 	uint64_t sesscount;
 	uint64_t ssrcount;
-	int in_hib;
+	int hib_state;
 	void *handle;
 	uint64_t prevssrcount;
 	int subsystemstate;
@@ -923,7 +968,7 @@ struct fastrpc_apps {
 	int compat;
 	struct hlist_head drivers;
 	spinlock_t hlock;
-	struct device *dev;
+	struct device *dev[NUM_CHANNELS];
 	/* Indicates fastrpc device node info */
 	struct device *dev_fastrpc;
 	unsigned int latency;
@@ -951,6 +996,10 @@ struct fastrpc_apps {
 	unsigned int lowest_capacity_core_count;
 	/* Flag to check if PM QoS vote needs to be done for only one core */
 	bool single_core_latency_vote;
+	/* Indicates process type is configured for SMMU context bank */
+	bool cb_pd_type;
+	/* Maximum sessions allowed to be created per process */
+	uint32_t max_sess_per_proc;
 };
 
 struct fastrpc_mmap {
@@ -976,8 +1025,7 @@ struct fastrpc_mmap {
 	bool in_use;				/* Indicates if persistent map is in use*/
 	struct timespec64 map_start_time;
 	struct timespec64 map_end_time;
-	/* Mapping for fastrpc shell */
-	bool is_filemap;
+	bool is_filemap;			/*flag to indicate map used in process init*/
 	char *servloc_name;			/* Indicate which daemon mapped this */
 	unsigned int ctx_refs; /* Indicates reference count for context map */
 };
@@ -1019,6 +1067,13 @@ struct fastrpc_dspsignal {
 	int state;
 };
 
+struct memory_snapshot {
+	/* Total size of heap buffers allocated in userspace */
+	size_t heap_bufs_size;
+	/* Total size of non-heap buffers allocated in userspace */
+	size_t nonheap_bufs_size;
+};
+
 struct fastrpc_file {
 	struct hlist_node hn;
 	spinlock_t hlock;
@@ -1036,6 +1091,8 @@ struct fastrpc_file {
 	struct fastrpc_buf *pers_hdr_buf;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;
+	/* Store snapshot of memory occupied by different buffers */
+	struct memory_snapshot mem_snap;
 
 	struct fastrpc_session_ctx *secsctx;
 	uint32_t mode;
@@ -1043,6 +1100,8 @@ struct fastrpc_file {
 	int sessionid;
 	int tgid_open;	/* Process ID during device open */
 	int tgid;		/* Process ID that uses device for RPC calls */
+	/* Unique HLOS process ID created by fastrpc for each client */
+	int tgid_frpc;
 	int cid;
 	bool trusted_vm;
 	uint64_t ssrcount;
@@ -1051,6 +1110,8 @@ struct fastrpc_file {
 	int file_close;
 	int dsp_proc_init;
 	int sharedcb;
+	/* Process type on remote sub system */
+	int pd_type;
 	struct fastrpc_apps *apps;
 	struct dentry *debugfs_file;
 	struct dev_pm_qos_request *dev_pm_qos_req;
@@ -1106,6 +1167,16 @@ struct fastrpc_file {
 	bool exit_notif;
 	/* Flag to indicate async thread exit requested*/
 	bool exit_async;
+	/*
+	 * structure to hold fd and size of buffer shared with DSP,
+	 * which contains initial debug configurations and other initial
+	 * config parameters.
+	 */
+	struct fastrpc_proc_sharedbuf_info sharedbuf_info;
+	/* Flag to indicate 4 session support available */
+	bool multi_session_support;
+	/* Flag to indicate session info is set */
+	bool set_session_info;
 };
 
 union fastrpc_ioctl_param {

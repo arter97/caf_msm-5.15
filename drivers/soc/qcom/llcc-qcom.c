@@ -416,15 +416,15 @@ static const struct llcc_slice_config kalama_data[] =  {
 };
 
 static const struct llcc_slice_config crow_data[] =  {
-	{LLCC_CPUSS,     1, 640, 0, 0, 0xFF,     0x0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{LLCC_CPUSS,     1, 640, 0, 0, 0xFF,     0x0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{LLCC_VIDSC0,    2, 128, 3, 1, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{LLCC_MDMHPGRW, 25, 512, 3, 0, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{LLCC_GPUHTW,   11, 256, 1, 1, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{LLCC_GPU,       9, 256, 1, 0, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+	{LLCC_GPU,       9, 640, 1, 0, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
 	{LLCC_MMUHWT,   18, 128, 1, 1, 0xFF,     0x0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{LLCC_MDMPNG,   27, 512, 0, 1,  0x0,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{LLCC_MDMPNG,   27, 512, 0, 1, 0xFF,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{LLCC_MDMVPE,   29,  64, 1, 1, 0xF0,     0x0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1},
-	{LLCC_WRTCH,    31, 256, 1, 1, 0xFF,     0x0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{LLCC_WRTCH,    31,   0, 1, 1, 0x00,     0x0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 static const struct llcc_slice_config kona_data[] =  {
@@ -495,6 +495,20 @@ static struct llcc_slice_config lemans_data[] =  {
 	{LLCC_APTCM,    30, 1024, 3, 1, 0x0, 0xF0, 1, 0, 0, 1, 0, 0, 0},
 	{LLCC_WRTCH,    31, 512, 1, 1, 0x00FF, 0x0, 0, 0, 0, 0, 1, 0, 0},
 };
+
+static struct llcc_slice_config qcs605_data[] =  {
+	{LLCC_CPUSS,     1, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 1},
+	{LLCC_VIDSC0,    2, 256, 2, 1, 0x3, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_VIDSC1,    3, 256, 2, 1, 0x3, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_VOICE,     5, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_AUDIO,     6, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_MDM,       8, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_CMPT,      10, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_GPU,       12, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 1, 0},
+	{LLCC_MMUHWT,    13, 512, 1, 0, 0xF, 0x0, 0, 0, 1, 0, 1},
+	{LLCC_AUDHW,     22, 512, 1, 1, 0xF, 0x0, 0, 0, 1, 1, 0},
+};
+
 
 static const struct qcom_llcc_config diwali_cfg = {
 	.sct_data       = diwali_data,
@@ -573,6 +587,11 @@ static const struct qcom_llcc_config cinder_cfg[] = {
 static const struct qcom_llcc_config lemans_cfg = {
 	.sct_data       = lemans_data,
 	.size           = ARRAY_SIZE(lemans_data),
+};
+
+static const struct qcom_llcc_config qcs605_cfg = {
+	.sct_data       = qcs605_data,
+	.size           = ARRAY_SIZE(qcs605_data),
 };
 
 static struct llcc_drv_data *drv_data = (void *) -EPROBE_DEFER;
@@ -1312,6 +1331,7 @@ static const struct of_device_id qcom_llcc_of_match[] = {
 	{ .compatible = "qcom,cinder-llcc", .data = &cinder_cfg },
 	{ .compatible = "qcom,lemans-llcc", .data = &lemans_cfg },
 	{ .compatible = "qcom,crow-llcc", .data = &crow_cfg },
+	{ .compatible = "qcom,qcs605-llcc", .data = &qcs605_cfg },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, qcom_llcc_of_match);

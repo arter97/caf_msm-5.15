@@ -1360,6 +1360,43 @@ static int msm_gpio_irq_set_type(struct irq_data *d, unsigned int type)
 	return 0;
 }
 
+static int msm_gpio_irq_set_irqchip_state(struct irq_data *d, enum irqchip_irq_state which,
+					  bool val)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct msm_pinctrl *pctrl = gpiochip_get_data(gc);
+	const struct msm_pingroup *g = &pctrl->soc->groups[d->hwirq];
+
+	if (which != IRQCHIP_STATE_PENDING)
+		return -EINVAL;
+
+	if (test_bit(d->hwirq, pctrl->skip_wake_irqs))
+		return -EINVAL;
+
+	msm_writel_intr_status(val, pctrl, g);
+
+	return 0;
+}
+
+static int msm_gpio_irq_get_irqchip_state(struct irq_data *d, enum irqchip_irq_state which,
+					  bool *val)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct msm_pinctrl *pctrl = gpiochip_get_data(gc);
+	const struct msm_pingroup *g = &pctrl->soc->groups[d->hwirq];
+
+	if (which != IRQCHIP_STATE_PENDING)
+		return -EINVAL;
+
+	if (test_bit(d->hwirq, pctrl->skip_wake_irqs))
+		return -EINVAL;
+
+	g = &pctrl->soc->groups[d->hwirq];
+	*val = msm_readl_intr_status(pctrl, g);
+
+	return 0;
+}
+
 static int msm_gpio_irq_set_wake(struct irq_data *d, unsigned int on)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
@@ -1563,6 +1600,8 @@ static int msm_gpio_init(struct msm_pinctrl *pctrl)
 	pctrl->irq_chip.irq_request_resources = msm_gpio_irq_reqres;
 	pctrl->irq_chip.irq_release_resources = msm_gpio_irq_relres;
 	pctrl->irq_chip.irq_set_affinity = msm_gpio_irq_set_affinity;
+	pctrl->irq_chip.irq_set_irqchip_state = msm_gpio_irq_set_irqchip_state;
+	pctrl->irq_chip.irq_get_irqchip_state = msm_gpio_irq_get_irqchip_state;
 	pctrl->irq_chip.irq_set_vcpu_affinity = msm_gpio_irq_set_vcpu_affinity;
 	pctrl->irq_chip.flags = IRQCHIP_MASK_ON_SUSPEND |
 				IRQCHIP_SET_TYPE_MASKED |
@@ -1761,9 +1800,11 @@ static int msm_pinctrl_hibernation_suspend(void)
 				msm_readl_ctl(pctrl, pgroup);
 		pctrl->gpio_regs[i].io_reg =
 				msm_readl_io(pctrl, pgroup);
-		pctrl->gpio_regs[i].intr_cfg_reg =
+		if (pgroup->intr_cfg_reg)
+			pctrl->gpio_regs[i].intr_cfg_reg =
 				msm_readl_intr_cfg(pctrl, pgroup);
-		pctrl->gpio_regs[i].intr_status_reg =
+		if (pgroup->intr_status_reg)
+			pctrl->gpio_regs[i].intr_status_reg =
 				msm_readl_intr_status(pctrl, pgroup);
 	}
 
@@ -1806,9 +1847,11 @@ static void msm_pinctrl_hibernation_resume(void)
 		pgroup = &soc->groups[i];
 		msm_writel_ctl(pctrl->gpio_regs[i].ctl_reg, pctrl, pgroup);
 		msm_writel_io(pctrl->gpio_regs[i].io_reg, pctrl, pgroup);
-		msm_writel_intr_cfg(pctrl->gpio_regs[i].intr_cfg_reg,
-			pctrl, pgroup);
-		msm_writel_intr_status(pctrl->gpio_regs[i].intr_status_reg,
+		if (pgroup->intr_cfg_reg)
+			msm_writel_intr_cfg(pctrl->gpio_regs[i].intr_cfg_reg,
+				pctrl, pgroup);
+		if (pgroup->intr_status_reg)
+			msm_writel_intr_status(pctrl->gpio_regs[i].intr_status_reg,
 				pctrl, pgroup);
 	}
 

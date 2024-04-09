@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: %s: " fmt, KBUILD_MODNAME, __func__
@@ -79,6 +79,9 @@ static struct subsystem_event_data event_data[] = {
 	{ "mpss", MDSP_BEFORE_POWERDOWN, MDSP_AFTER_POWERUP },
 	{ "lpass", ADSP_BEFORE_POWERDOWN, ADSP_AFTER_POWERUP },
 	{ "cdsp", CDSP_BEFORE_POWERDOWN, CDSP_AFTER_POWERUP },
+	{ "cdsp1", CDSP1_BEFORE_POWERDOWN, CDSP1_AFTER_POWERUP },
+	{ "gpdsp0", GPDSP0_BEFORE_POWERDOWN, GPDSP0_AFTER_POWERUP },
+	{ "gpdsp1", GPDSP1_BEFORE_POWERDOWN, GPDSP1_AFTER_POWERUP },
 };
 
 struct subsystem_data {
@@ -106,9 +109,9 @@ struct power_state_drvdata {
 	struct msm_rpm_kvp kvp_req;
 	struct syscore_ops ps_ops;
 	enum power_states current_state;
-	u32 subsys_count;
+	int subsys_count;
 	struct list_head sub_sys_list;
-	bool deep_sleep_allowed;
+	int deep_sleep_cnt;
 };
 
 static struct power_state_drvdata *drv;
@@ -121,6 +124,7 @@ static int subsys_suspend(struct subsystem_data *ss_data, struct rproc *rproc, u
 	case SUBSYS_DEEPSLEEP:
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+		adsp_set_ops_stop(rproc, true);
 		rproc_shutdown(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -141,6 +145,7 @@ static int subsys_resume(struct subsystem_data *ss_data, struct rproc *rproc, u3
 	case SUBSYS_DEEPSLEEP:
 	case SUBSYS_HIBERNATE:
 		ss_data->ignore_ssr = true;
+		adsp_set_ops_stop(rproc, false);
 		ret = rproc_boot(rproc);
 		ss_data->ignore_ssr = false;
 		break;
@@ -430,8 +435,10 @@ static void power_state_resume(void)
 {
 	struct arm_smccc_res res;
 
-	if (pm_suspend_via_firmware())
+	if (pm_suspend_via_firmware()) {
 		arm_smccc_smc(DS_ENTRY_SMC_ID, DS_NUM_PARAMETERS, DS_EXIT, 0, 0, 0, 0, 0, &res);
+		drv->deep_sleep_cnt += 1;
+	}
 }
 
 static int power_state_suspend(void)
@@ -447,28 +454,28 @@ static int power_state_suspend(void)
 	return 0;
 }
 
-static ssize_t deep_sleep_allowed_show(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t deep_sleep_cnt_show(struct kobject *kobj, struct kobj_attribute *attr,
 				       char *buf)
 {
 	struct power_state_drvdata *drv = container_of(attr, struct power_state_drvdata, ds_ka);
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", drv->deep_sleep_allowed);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", drv->deep_sleep_cnt);
 }
 
-static ssize_t deep_sleep_allowed_store(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t deep_sleep_cnt_store(struct kobject *kobj, struct kobj_attribute *attr,
 					const char *buf, size_t count)
 {
 	struct power_state_drvdata *drv = container_of(attr, struct power_state_drvdata, ds_ka);
-	bool val;
+	int val;
 	int ret;
 
-	ret = kstrtobool(buf, &val);
+	ret = kstrtoint(buf, 10, &val);
 	if (ret) {
 		pr_err("Invalid argument passed\n");
 		return ret;
 	}
 
-	drv->deep_sleep_allowed = val;
+	drv->deep_sleep_cnt = val;
 
 	return count;
 }
@@ -534,9 +541,9 @@ static int power_state_dev_init(struct power_state_drvdata *drv)
 
 	sysfs_attr_init(&drv->ds_ka.attr);
 	drv->ds_ka.attr.mode = 0644;
-	drv->ds_ka.attr.name = "deep_sleep_allowed";
-	drv->ds_ka.show = deep_sleep_allowed_show;
-	drv->ds_ka.store = deep_sleep_allowed_store;
+	drv->ds_ka.attr.name = "deep_sleep_cnt";
+	drv->ds_ka.show = deep_sleep_cnt_show;
+	drv->ds_ka.store = deep_sleep_cnt_store;
 
 	ret = sysfs_create_file(drv->ps_kobj, &drv->ds_ka.attr);
 	if (ret) {
@@ -568,6 +575,12 @@ static int power_state_probe(struct platform_device *pdev)
 	if (!drv)
 		return -ENOMEM;
 
+	if (IS_ENABLED(CONFIG_NOTIFY_AOP)) {
+		drv->qmp = qmp_get(&pdev->dev);
+		if (IS_ERR(drv->qmp))
+			return -EPROBE_DEFER;
+	}
+
 	drv->ps_pm_nb.notifier_call = ps_pm_cb;
 	drv->ps_pm_nb.priority = PS_PM_NOTIFIER_PRIORITY;
 	ret = register_pm_notifier(&drv->ps_pm_nb);
@@ -578,13 +591,11 @@ static int power_state_probe(struct platform_device *pdev)
 	if (!drv->ps_ws)
 		goto remove_pm_notifier;
 
-	ret = power_state_dev_init(drv);
-	if (ret)
-		goto remove_ws;
-
 	INIT_LIST_HEAD(&drv->sub_sys_list);
 
 	drv->subsys_count = of_property_count_strings(dn, "qcom,subsys-name");
+	if (drv->subsys_count < 0)
+		drv->subsys_count = 0;
 	for (i = 0; i < drv->subsys_count; i++) {
 		of_property_read_string_index(dn, "qcom,subsys-name", i, &name);
 
@@ -598,7 +609,7 @@ static int power_state_probe(struct platform_device *pdev)
 			goto remove_ss;
 		}
 
-		ss_data->name = name;
+		ss_data->name = kstrdup_const(name, GFP_KERNEL);
 		ss_data->rproc_handle = rproc_handle;
 
 		ss_data->ps_ssr_nb.notifier_call = ps_ssr_cb;
@@ -624,13 +635,9 @@ static int power_state_probe(struct platform_device *pdev)
 		list_add_tail(&ss_data->list, &drv->sub_sys_list);
 	}
 
-	if (IS_ENABLED(CONFIG_NOTIFY_AOP)) {
-		drv->qmp = qmp_get(&pdev->dev);
-		if (IS_ERR(drv->qmp)) {
-			ret = PTR_ERR(drv->qmp);
-			goto remove_ss;
-		}
-	}
+	ret = power_state_dev_init(drv);
+	if (ret)
+		goto remove_ss;
 
 	drv->ps_ops.suspend = power_state_suspend;
 	drv->ps_ops.resume = power_state_resume;
@@ -645,7 +652,6 @@ remove_ss:
 		list_del(&ss_data->list);
 	}
 	INIT_LIST_HEAD(&drv->sub_sys_list);
-remove_ws:
 	wakeup_source_unregister(drv->ps_ws);
 remove_pm_notifier:
 	unregister_pm_notifier(&drv->ps_pm_nb);

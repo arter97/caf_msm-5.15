@@ -11,6 +11,7 @@
 #include "remoteproc_internal.h"
 #include <linux/soc/qcom/qmi.h>
 #include <linux/remoteproc/qcom_rproc.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 
 static const char * const subdevice_state_string[] = {
 	[QCOM_SSR_BEFORE_POWERUP]	= "before_powerup",
@@ -65,6 +66,8 @@ typedef void (*rproc_dumpfn_t)(struct rproc *rproc, struct rproc_dump_segment *s
 void qcom_minidump(struct rproc *rproc, struct device *md_dev,
 			unsigned int minidump_id, rproc_dumpfn_t dumpfn);
 
+int qcom_rproc_toggle_load_state(struct qmp *qmp, const char *name, bool enable);
+
 void qcom_add_glink_subdev(struct rproc *rproc, struct qcom_rproc_glink *glink,
 			   const char *ssr_name);
 void qcom_remove_glink_subdev(struct rproc *rproc, struct qcom_rproc_glink *glink);
@@ -90,6 +93,7 @@ void qcom_remove_sysmon_subdev(struct qcom_sysmon *sysmon);
 bool qcom_sysmon_shutdown_acked(struct qcom_sysmon *sysmon);
 uint32_t qcom_sysmon_get_txn_id(struct qcom_sysmon *sysmon);
 int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len);
+void qcom_sysmon_set_ops_stop(struct qcom_sysmon *sysmon, bool suspend);
 #else
 static inline struct qcom_sysmon *qcom_add_sysmon_subdev(struct rproc *rproc,
 							 const char *name,
@@ -117,6 +121,9 @@ static inline int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon,
 {
 	return -ENODEV;
 }
+
+static inline void qcom_sysmon_set_ops_stop(struct qcom_sysmon *sysmon,
+	bool suspend) { }
 #endif
 
 #endif
