@@ -74,6 +74,21 @@ static const int xpcs_2500basex_features[] = {
 	__ETHTOOL_LINK_MODE_MASK_NBITS,
 };
 
+static const int xpcs_usx5g_features[] = {
+	ETHTOOL_LINK_MODE_Pause_BIT,
+	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
+	ETHTOOL_LINK_MODE_Autoneg_BIT,
+	ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_100baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
+	__ETHTOOL_LINK_MODE_MASK_NBITS,
+};
+
 static const phy_interface_t xpcs_usxgmii_interfaces[] = {
 	PHY_INTERFACE_MODE_USXGMII,
 };
@@ -86,10 +101,15 @@ static const phy_interface_t xpcs_2500basex_interfaces[] = {
 	PHY_INTERFACE_MODE_2500BASEX,
 };
 
+static const phy_interface_t xpcs_usx5g_interfaces[] = {
+	PHY_INTERFACE_MODE_5GBASER,
+};
+
 enum {
 	DW_XPCS_USXGMII,
 	DW_XPCS_SGMII,
 	DW_XPCS_2500BASEX,
+	DW_XPCS_USX5G,
 	DW_XPCS_INTERFACE_MAX,
 };
 
@@ -630,6 +650,7 @@ static void qcom_xpcs_handle_an_intr(struct dw_xpcs_qcom *xpcs,
 	int ret = 0;
 
 	switch (interface) {
+	case PHY_INTERFACE_MODE_5GBASER:
 	case PHY_INTERFACE_MODE_USXGMII:
 		ret = qcom_xpcs_usxgmii_read_intr_status(xpcs);
 		if (ret < 0)
@@ -925,9 +946,10 @@ int qcom_xpcs_usxgmii_link_error_detect(struct dw_xpcs_qcom *xpcs, int speed)
 }
 EXPORT_SYMBOL_GPL(qcom_xpcs_usxgmii_link_error_detect);
 
-void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed)
+void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed, phy_interface_t interface)
 {
 	int mmd_ctrl;
+	int ret = 0;
 
 	mmd_ctrl = qcom_xpcs_read(xpcs, DW_SR_MII_MMD_CTRL);
 	if (mmd_ctrl < 0)
@@ -965,6 +987,17 @@ void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *xpcs, int speed)
 	}
 
 	mmd_ctrl = qcom_xpcs_write(xpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
+
+	ret = qcom_xpcs_read(xpcs, DW_VR_MII_PCS_KR_CTRL);
+	if (ret < 0)
+		goto out;
+
+	if (interface == PHY_INTERFACE_MODE_5GBASER)
+		ret |= USXGMII_5G;
+	else
+		ret &= ~USXG_MODE_SEL;
+
+	qcom_xpcs_write(xpcs, DW_VR_MII_PCS_KR_CTRL, ret);
 
 	mmd_ctrl = qcom_xpcs_reset_usxgmii(xpcs);
 	if (mmd_ctrl < 0)
@@ -1029,7 +1062,8 @@ static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *xpcs, phy_interface_t inte
 		ret &= ~DW_VR_MII_PCS_MODE_MASK;
 		ret |= DW_VR_MII_PCS_MODE_C37_SGMII;
 		return qcom_xpcs_write(xpcs, DW_VR_MII_AN_CTRL, ret);
-	} else if (interface == PHY_INTERFACE_MODE_USXGMII) {
+	} else if (interface == PHY_INTERFACE_MODE_USXGMII ||
+		   interface == PHY_INTERFACE_MODE_5GBASER) {
 		ret = qcom_xpcs_read(xpcs, DW_SR_MII_PCS_CTRL2);
 		if (ret < 0)
 			goto out;
@@ -1084,10 +1118,12 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
 		qcom_xpcs_select_mode(xpcs, interface);
 		qcom_xpcs_link_up_sgmii_2500basex(xpcs, speed, duplex, interface);
 		break;
+	case PHY_INTERFACE_MODE_5GBASER:
 	case PHY_INTERFACE_MODE_USXGMII:
 		if (xpcs->intr_en)
 			return;
-		qcom_xpcs_link_up_usxgmii(xpcs, speed);
+		qcom_xpcs_select_mode(xpcs, interface);
+		qcom_xpcs_link_up_usxgmii(xpcs, speed, interface);
 		break;
 	default:
 		XPCSERR("Invalid MII mode: %s\n", phy_modes(interface));
@@ -1156,6 +1192,12 @@ static const struct xpcs_compat synopsys_xpcs_compat[DW_XPCS_INTERFACE_MAX] = {
 		.interface = xpcs_2500basex_interfaces,
 		.num_interfaces = ARRAY_SIZE(xpcs_2500basex_features),
 		.an_mode = DW_2500BASEX,
+	},
+	[DW_XPCS_USX5G] = {
+		.supported = xpcs_usx5g_features,
+		.interface = xpcs_usx5g_interfaces,
+		.num_interfaces = ARRAY_SIZE(xpcs_usx5g_interfaces),
+		.an_mode = DW_AN_C37_USXGMII,
 	},
 };
 
