@@ -329,6 +329,7 @@ struct mhi_controller_config {
  * @bhi: Points to base of MHI BHI register space
  * @bhie: Points to base of MHI BHIe register space
  * @wake_db: MHI WAKE doorbell register address
+ * @edl_db: MHI EDL channel 91 doorbell register address
  * @iova_start: IOMMU starting address for data (required)
  * @iova_stop: IOMMU stop address for data (required)
  * @fw_image: Firmware image name for normal booting (optional)
@@ -418,6 +419,7 @@ struct mhi_controller {
 	void __iomem *bhi;
 	void __iomem *bhie;
 	void __iomem *wake_db;
+	void __iomem *edl_db;
 
 	dma_addr_t iova_start;
 	dma_addr_t iova_stop;
@@ -446,6 +448,7 @@ struct mhi_controller {
 	u32 serial_number;
 	u32 oem_pk_hash[MHI_MAX_OEM_PK_HASH_SEGMENTS];
 	u32 session_id;
+	bool dev_reset_support;
 
 	struct mhi_event *mhi_event;
 	struct mhi_cmd *mhi_cmd;
