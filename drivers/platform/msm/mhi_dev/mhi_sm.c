@@ -61,6 +61,9 @@ static inline const char *mhi_sm_dev_event_str(enum mhi_dev_event state)
 	case MHI_DEV_EVENT_CORE_WAKEUP:
 		str = "MHI_DEV_EVENT_CORE_WAKEUP";
 		break;
+	case MHI_DEV_EVENT_CHANNEL_ERROR:
+		str = "MHI_DEV_EVENT_CHANNEL_ERROR";
+		break;
 	default:
 		str = "INVALID MHI_DEV_EVENT";
 	}
@@ -215,6 +218,7 @@ struct mhi_sm_ep_pcie_event {
  * @d3_cold_event_cnt: total number of EP_PCIE_EVENT_PM_D3_COLD events
  * @d0_event_cnt: total number of EP_PCIE_EVENT_PM_D0 events
  * @linkdown_event_cnt: total number of EP_PCIE_EVENT_LINKDOWN events
+ * @channel_error_cnt: total number of MHI_DEV_EVENT_CHANNEL_ERROR events
  */
 struct mhi_sm_stats {
 	int m0_event_cnt;
@@ -228,6 +232,7 @@ struct mhi_sm_stats {
 	int d3_cold_event_cnt;
 	int d0_event_cnt;
 	int linkdown_event_cnt;
+	int channel_error_cnt;
 };
 
 /**
@@ -388,6 +393,7 @@ static bool mhi_sm_is_legal_event_on_state(struct mhi_sm_dev *mhi_sm_ctx,
 		break;
 	case MHI_DEV_EVENT_M3_STATE:
 	case MHI_DEV_EVENT_HW_ACC_WAKEUP:
+	case MHI_DEV_EVENT_CHANNEL_ERROR:
 	case MHI_DEV_EVENT_CORE_WAKEUP:
 		res = (curr_state == MHI_DEV_M3_STATE ||
 			curr_state == MHI_DEV_M2_STATE ||
@@ -1066,6 +1072,9 @@ static void mhi_sm_dev_event_manager(struct work_struct *work)
 		MHI_SM_ERR(mhi->vf_id, "Error: %s event is not supported\n",
 			mhi_sm_dev_event_str(chg_event->event));
 		break;
+	case MHI_DEV_EVENT_CHANNEL_ERROR:
+		res = mhi_channel_error_notif(mhi);
+		break;
 	default:
 		MHI_SM_ERR(mhi->vf_id, "Error: Invalid event, 0x%x", chg_event->event);
 		break;
@@ -1550,6 +1559,9 @@ int mhi_dev_notify_sm_event(struct mhi_dev *mhi, enum mhi_dev_event event)
 	case MHI_DEV_EVENT_M1_STATE:
 	case MHI_DEV_EVENT_M2_STATE:
 		mhi_sm_ctx->stats.m2_event_cnt++;
+		break;
+	case MHI_DEV_EVENT_CHANNEL_ERROR:
+		mhi_sm_ctx->stats.channel_error_cnt++;
 		break;
 	default:
 		MHI_SM_ERR(mhi->vf_id, "Invalid event, received: 0x%x event\n", event);

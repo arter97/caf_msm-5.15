@@ -60,6 +60,7 @@ enum mhi_dev_ring_element_type_id {
 	MHI_DEV_RING_EL_CMD_COMPLETION_EVT = 33,
 	MHI_DEV_RING_EL_TRANSFER_COMPLETION_EVENT = 34,
 	MHI_DEV_RING_EL_EE_STATE_CHANGE_NOTIFY = 64,
+	MHI_DEV_RING_EL_CH_STATE_CHANGE_NOTIFY = 65,
 	MHI_DEV_RING_EL_UNDEF
 };
 
@@ -1176,6 +1177,13 @@ int mhi_dev_syserr(struct mhi_dev *mhi);
  * @dev:	MHI device structure.
  */
 int mhi_dev_suspend(struct mhi_dev *mhi);
+
+/**
+ * mhi_channel_error_notif() - Send state change event to the host for channel e
+				error notification
+ * @dev:	MHI device structure.
+ */
+int mhi_channel_error_notif(struct mhi_dev *mhi);
 
 /**
  * mhi_dev_resume() - MHI device resume to update the channel state to running.
