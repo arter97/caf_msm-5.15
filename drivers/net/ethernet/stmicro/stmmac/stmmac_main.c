@@ -4503,6 +4503,17 @@ static int stmmac_open(struct net_device *dev)
 	int ret;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	/* We cannot wait indefinitely as we are holding the RTNL lock. */
+	ret = wait_for_completion_interruptible_timeout(&priv->probe_done, msecs_to_jiffies(10));
+	if (ret == 0 || ret == -ERESTARTSYS) {
+		netdev_err(priv->dev,
+			   "%s: Probe not completed yet (error: %d). Retry is needed!\n",
+			   __func__, ret);
+		return -ERESTARTSYS;
+	}
+#endif
+
 	ret = pm_runtime_get_sync(priv->device);
 	if (ret < 0) {
 		pm_runtime_put_noidle(priv->device);
@@ -4683,6 +4694,14 @@ dma_desc_error:
 		phylink_disconnect_phy(priv->phylink);
 init_phy_error:
 	pm_runtime_put(priv->device);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving) {
+		ret = priv->plat->enable_power_saving(priv->dev, true);
+		netdev_info(priv->dev, "%s enable power saving for error case", __func__, ret);
+	}
+#endif
+
 	return ret;
 }
 
@@ -8356,6 +8375,10 @@ int stmmac_dvr_probe(struct device *device,
 		netdev_err(ndev, "failed to setup phy (%d)\n", ret);
 		goto error_phy_setup;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	init_completion(&priv->probe_done);
+#endif
 
 	ret = register_netdev(ndev);
 	if (ret) {
