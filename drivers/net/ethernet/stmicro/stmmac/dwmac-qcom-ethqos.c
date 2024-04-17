@@ -6410,9 +6410,6 @@ static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 	int ret = 0;
 	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
-	if (priv->plat->xpcs_powersaving)
-		priv->plat->xpcs_powersaving(priv->dev, true);
-
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 
@@ -6454,9 +6451,6 @@ static int __ethqos_emac_power_up(struct stmmac_priv *priv)
 			goto err;
 		}
 	}
-
-	if (priv->plat->xpcs_powersaving)
-		priv->plat->xpcs_powersaving(priv->dev, false);
 
 	ethqos->clk_active = true;
 
