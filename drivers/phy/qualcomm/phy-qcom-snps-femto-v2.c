@@ -80,9 +80,12 @@
 #define LS_FS_OUTPUT_IMPEDANCE_MASK		GENMASK(3, 0)
 
 static const char * const qcom_snps_hsphy_vreg_names[] = {
-	"vdda-pll", "vdda33", "vdda18",
+	"vdda-pll", "vdda18", "vdda33",
 };
 
+static const char * const qcom_snps_hsphy_shared_vreg_names[] = {
+	"vdda-pll", "vdda18", "vdda18-1", "vdda33",
+};
 #define SNPS_HS_NUM_VREGS		ARRAY_SIZE(qcom_snps_hsphy_vreg_names)
 
 struct override_param {
@@ -133,8 +136,10 @@ struct qcom_snps_hsphy {
 	struct clk_bulk_data *clks;
 	struct reset_control *phy_reset;
 	struct regulator_bulk_data vregs[SNPS_HS_NUM_VREGS];
+	struct regulator_bulk_data shared_vregs[SNPS_HS_NUM_VREGS + 1];
 
 	bool phy_initialized;
+	bool virtual_sharedldo_vdd18;
 	enum phy_mode mode;
 	struct phy_override_seq update_seq_cfg[NUM_HSPHY_TUNING_PARAMS];
 };
@@ -391,16 +396,6 @@ static int qcom_snps_hsphy_init(struct phy *phy)
 
 	dev_vdbg(&phy->dev, "%s(): Initializing SNPS HS phy\n", __func__);
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
-	if (ret)
-		return ret;
-
-	ret = clk_bulk_prepare_enable(hsphy->num_clks, hsphy->clks);
-	if (ret) {
-		dev_err(&phy->dev, "failed to enable clocks, %d\n", ret);
-		goto poweroff_phy;
-	}
-
 	ret = reset_control_assert(hsphy->phy_reset);
 	if (ret) {
 		dev_err(&phy->dev, "failed to assert phy_reset, %d\n", ret);
@@ -408,6 +403,22 @@ static int qcom_snps_hsphy_init(struct phy *phy)
 	}
 
 	usleep_range(100, 150);
+
+	if (hsphy->virtual_sharedldo_vdd18) {
+		ret = regulator_bulk_enable(ARRAY_SIZE(hsphy->shared_vregs), hsphy->shared_vregs);
+		if (ret)
+			return ret;
+	} else {
+		ret = regulator_bulk_enable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
+		if (ret)
+			return ret;
+	}
+
+	ret = clk_bulk_prepare_enable(hsphy->num_clks, hsphy->clks);
+	if (ret) {
+		dev_err(&phy->dev, "failed to enable clocks, %d\n", ret);
+		goto poweroff_phy;
+	}
 
 	ret = reset_control_deassert(hsphy->phy_reset);
 	if (ret) {
@@ -472,7 +483,10 @@ static int qcom_snps_hsphy_init(struct phy *phy)
 disable_clks:
 	clk_bulk_disable_unprepare(hsphy->num_clks, hsphy->clks);
 poweroff_phy:
-	regulator_bulk_disable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
+	if (hsphy->virtual_sharedldo_vdd18)
+		regulator_bulk_disable(ARRAY_SIZE(hsphy->shared_vregs), hsphy->shared_vregs);
+	else
+		regulator_bulk_disable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
 
 	return ret;
 }
@@ -483,7 +497,11 @@ static int qcom_snps_hsphy_exit(struct phy *phy)
 
 	reset_control_assert(hsphy->phy_reset);
 	clk_bulk_disable_unprepare(hsphy->num_clks, hsphy->clks);
-	regulator_bulk_disable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
+	if (hsphy->virtual_sharedldo_vdd18)
+		regulator_bulk_disable(ARRAY_SIZE(hsphy->shared_vregs), hsphy->shared_vregs);
+	else
+		regulator_bulk_disable(ARRAY_SIZE(hsphy->vregs), hsphy->vregs);
+
 	hsphy->phy_initialized = false;
 
 	return 0;
@@ -591,14 +609,28 @@ static int qcom_snps_hsphy_probe(struct platform_device *pdev)
 		return PTR_ERR(hsphy->phy_reset);
 	}
 
-	num = ARRAY_SIZE(hsphy->vregs);
-	for (i = 0; i < num; i++)
-		hsphy->vregs[i].supply = qcom_snps_hsphy_vreg_names[i];
+	hsphy->virtual_sharedldo_vdd18 = device_property_read_bool(dev,
+			"qcom,virtual-shared-ldo");
 
-	ret = devm_regulator_bulk_get(dev, num, hsphy->vregs);
-	if (ret)
-		return dev_err_probe(dev, ret,
-				     "failed to get regulator supplies\n");
+	if (hsphy->virtual_sharedldo_vdd18) {
+		num = ARRAY_SIZE(hsphy->shared_vregs);
+		for (i = 0; i < num; i++)
+			hsphy->shared_vregs[i].supply = qcom_snps_hsphy_shared_vreg_names[i];
+
+		ret = devm_regulator_bulk_get(dev, num, hsphy->shared_vregs);
+		if (ret)
+			return dev_err_probe(dev, ret,
+					"failed to get regulator supplies\n");
+	} else {
+		num = ARRAY_SIZE(hsphy->vregs);
+		for (i = 0; i < num; i++)
+			hsphy->vregs[i].supply = qcom_snps_hsphy_vreg_names[i];
+
+		ret = devm_regulator_bulk_get(dev, num, hsphy->vregs);
+		if (ret)
+			return dev_err_probe(dev, ret,
+					"failed to get regulator supplies\n");
+	}
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);

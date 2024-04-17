@@ -82,12 +82,12 @@
 #define TXVREFTUNE0_MASK			0xF
 #define PARAM_OVRD_MASK			0xFF
 
-#define USB_HSPHY_3P3_VOL_MIN			3050000 /* uV */
+#define USB_HSPHY_3P3_VOL_MIN			3072000 /* uV */
 #define USB_HSPHY_3P3_VOL_MAX			3300000 /* uV */
 #define USB_HSPHY_3P3_HPM_LOAD			16000	/* uA */
 #define USB_HSPHY_3P3_VOL_FSHOST		3150000 /* uV */
 
-#define USB_HSPHY_1P8_VOL_MIN			1704000 /* uV */
+#define USB_HSPHY_1P8_VOL_MIN			1800000 /* uV */
 #define USB_HSPHY_1P8_VOL_MAX			1800000 /* uV */
 #define USB_HSPHY_1P8_HPM_LOAD			19000	/* uA */
 
@@ -116,6 +116,7 @@ struct msm_hsphy {
 	struct regulator	*vdd;
 	struct regulator	*vdda33;
 	struct regulator	*vdda18;
+	struct regulator	*vdda18_1;
 	int			vdd_levels[3]; /* none, low, high */
 
 	bool			clocks_enabled;
@@ -123,6 +124,7 @@ struct msm_hsphy {
 	bool			suspended;
 	bool			cable_connected;
 	bool			dpdm_enable;
+	bool 			virtual_sharedldo_vdd18;
 
 	int			*param_override_seq;
 	int			param_override_seq_cnt;
@@ -236,7 +238,8 @@ err_vdd:
 	return ret;
 }
 
-static int vdda18_phy_enable_disable(struct msm_hsphy *phy, bool on)
+static int vdda18_phy_enable_disable(struct msm_hsphy *phy,
+		struct regulator *vdda18, bool on)
 {
 	int ret = 0;
 
@@ -244,13 +247,13 @@ static int vdda18_phy_enable_disable(struct msm_hsphy *phy, bool on)
 		goto disable_vdda18;
 
 	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
-		ret = regulator_set_load(phy->vdda18, USB_HSPHY_1P8_HPM_LOAD);
+		ret = regulator_set_load(vdda18, USB_HSPHY_1P8_HPM_LOAD);
 		if (ret < 0) {
 			dev_err(phy->phy.dev, "Unable to set HPM of vdda18:%d\n", ret);
 			goto err_vdda18;
 		}
 
-		ret = regulator_set_voltage(phy->vdda18, USB_HSPHY_1P8_VOL_MIN,
+		ret = regulator_set_voltage(vdda18, USB_HSPHY_1P8_VOL_MIN,
 							USB_HSPHY_1P8_VOL_MAX);
 		if (ret) {
 			dev_err(phy->phy.dev,
@@ -259,7 +262,7 @@ static int vdda18_phy_enable_disable(struct msm_hsphy *phy, bool on)
 		}
 	}
 
-	ret = regulator_enable(phy->vdda18);
+	ret = regulator_enable(vdda18);
 	if (ret) {
 		dev_err(phy->phy.dev, "Unable to enable vdda18:%d\n", ret);
 		goto unset_vdda18;
@@ -270,13 +273,13 @@ static int vdda18_phy_enable_disable(struct msm_hsphy *phy, bool on)
 	return ret;
 
 disable_vdda18:
-	ret = regulator_disable(phy->vdda18);
+	ret = regulator_disable(vdda18);
 	if (ret)
 		dev_err(phy->phy.dev, "Unable to disable vdda18:%d\n", ret);
 
 unset_vdda18:
 	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
-		ret = regulator_set_voltage(phy->vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
+		ret = regulator_set_voltage(vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
 		if (ret)
 			dev_err(phy->phy.dev,
 				"Unable to set (0) voltage for vdda18:%d\n", ret);
@@ -284,7 +287,7 @@ unset_vdda18:
 
 put_vdda18_lpm:
 	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
-		ret = regulator_set_load(phy->vdda18, 0);
+		ret = regulator_set_load(vdda18, 0);
 		if (ret < 0)
 			dev_err(phy->phy.dev, "Unable to set LPM of vdda18\n");
 	}
@@ -362,22 +365,47 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		return 0;
 	}
 
-	ret = vdd_phy_enable_disable(phy, on);
-	if (ret < 0)
-		goto err_hs_reg;
+	if (on) {
+		ret = vdd_phy_enable_disable(phy, on);
+		if (ret < 0)
+			goto err_hs_reg;
 
-	ret = vdda18_phy_enable_disable(phy, on);
-	if (ret < 0)
-		goto err_hs_reg;
+		ret = vdda18_phy_enable_disable(phy, phy->vdda18, on);
+		if (ret < 0)
+			goto err_hs_reg;
 
-	ret = vdda33_phy_enable_disable(phy, on);
-	if (ret < 0)
-		goto err_hs_reg;
+		if (phy->virtual_sharedldo_vdd18) {
+			ret = vdda18_phy_enable_disable(phy, phy->vdda18_1, on);
+			if (ret < 0)
+				goto err_hs_reg;
+		}
 
-	if (on)
+		ret = vdda33_phy_enable_disable(phy, on);
+		if (ret < 0)
+			goto err_hs_reg;
+
 		phy->power_enabled = true;
-	else
+	} else {
+		ret = vdda33_phy_enable_disable(phy, on);
+		if (ret < 0)
+			goto err_hs_reg;
+
+		ret = vdda18_phy_enable_disable(phy, phy->vdda18, on);
+		if (ret < 0)
+			goto err_hs_reg;
+
+		if (phy->virtual_sharedldo_vdd18) {
+			ret = vdda18_phy_enable_disable(phy, phy->vdda18_1, on);
+			if (ret < 0)
+				goto err_hs_reg;
+		}
+
+		ret = vdd_phy_enable_disable(phy, on);
+		if (ret < 0)
+			goto err_hs_reg;
+
 		phy->power_enabled = false;
+	}
 
 	return ret;
 
@@ -406,7 +434,7 @@ static void msm_usb_write_readback(void __iomem *base, u32 offset,
 			__func__, val, offset);
 }
 
-static void msm_hsphy_reset(struct msm_hsphy *phy)
+static void msm_hsphy_reset_assert(struct msm_hsphy *phy)
 {
 	int ret;
 
@@ -414,12 +442,18 @@ static void msm_hsphy_reset(struct msm_hsphy *phy)
 	if (ret)
 		dev_err(phy->phy.dev, "%s: phy_reset assert failed\n",
 								__func__);
+
 	usleep_range(100, 150);
+}
+
+static void msm_hsphy_reset_deassert(struct msm_hsphy *phy)
+{
+	int ret;
 
 	ret = reset_control_deassert(phy->phy_reset);
 	if (ret)
 		dev_err(phy->phy.dev, "%s: phy_reset deassert failed\n",
-							__func__);
+								__func__);
 }
 
 static void hsusb_phy_write_seq(void __iomem *base, u32 *seq, int cnt,
@@ -474,13 +508,15 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 		}
 	}
 
+	msm_hsphy_reset_assert(phy);
+
 	ret = msm_hsphy_enable_power(phy, true);
 	if (ret)
 		return ret;
 
 	msm_hsphy_enable_clocks(phy, true);
 
-	msm_hsphy_reset(phy);
+	msm_hsphy_reset_deassert(phy);
 
 	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
 				UTMI_PHY_CMN_CTRL_OVERRIDE_EN,
@@ -646,6 +682,7 @@ suspend:
 							USB2_PHY_USB_PHY_PWRDOWN_CTRL,
 							PWRDOWN_B, 0);
 					}
+					msm_hsphy_reset_assert(phy);
 					msm_hsphy_enable_clocks(phy, false);
 					msm_hsphy_enable_power(phy, false);
 				}
@@ -795,6 +832,7 @@ static int msm_hsphy_dpdm_regulator_enable(struct regulator_dev *rdev)
 
 	mutex_lock(&phy->phy_lock);
 	if (!phy->dpdm_enable) {
+		msm_hsphy_reset_assert(phy);
 		ret = msm_hsphy_enable_power(phy, true);
 		if (ret) {
 			mutex_unlock(&phy->phy_lock);
@@ -803,7 +841,7 @@ static int msm_hsphy_dpdm_regulator_enable(struct regulator_dev *rdev)
 
 		msm_hsphy_enable_clocks(phy, true);
 
-		msm_hsphy_reset(phy);
+		msm_hsphy_reset_deassert(phy);
 
 		/*
 		 * For PMIC charger detection, place PHY in UTMI non-driving
@@ -845,6 +883,7 @@ static int msm_hsphy_dpdm_regulator_disable(struct regulator_dev *rdev)
 	mutex_lock(&phy->phy_lock);
 	if (phy->dpdm_enable) {
 		if (!phy->cable_connected) {
+			msm_hsphy_reset_assert(phy);
 			msm_hsphy_enable_clocks(phy, false);
 			ret = msm_hsphy_enable_power(phy, false);
 			if (ret < 0) {
@@ -997,6 +1036,9 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		}
 	}
 
+	phy->virtual_sharedldo_vdd18 = device_property_read_bool(dev,
+				"qcom,virtual-shared-ldo");
+
 	phy->phy_reset = devm_reset_control_get(dev, "phy_reset");
 	if (IS_ERR(phy->phy_reset))
 		return PTR_ERR(phy->phy_reset);
@@ -1056,6 +1098,15 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		dev_err(dev, "unable to get vdda18 supply\n");
 		ret = PTR_ERR(phy->vdda18);
 		goto err_ret;
+	}
+
+	if (phy->virtual_sharedldo_vdd18) {
+		phy->vdda18_1 = devm_regulator_get(dev, "vdda18-1");
+		if (IS_ERR(phy->vdda18_1)) {
+			dev_err(dev, "unable to get vdda18_1 supply\n");
+			ret = PTR_ERR(phy->vdda18_1);
+			goto err_ret;
+		}
 	}
 
 	mutex_init(&phy->phy_lock);
