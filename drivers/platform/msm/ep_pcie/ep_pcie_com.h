@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __EP_PCIE_COM_H
@@ -431,7 +431,6 @@ struct ep_pcie_dev_t {
 	bool			     mhi_soc_reset_en;
 	bool			     aoss_rst_clear;
 	bool			     avoid_reboot_in_d3hot;
-	bool			     dma_wake;
 	u32                          dbi_base_reg;
 	u32                          slv_space_reg;
 	u32                          phy_status_reg;
@@ -514,6 +513,7 @@ struct ep_pcie_dev_t {
 	u32				tcsr_perst_enable_offset;
 	u32				perst_raw_rst_status_mask;
 	u32				pcie_disconnect_req_reg_mask;
+	u32				tcsr_hot_reset_en_offset;
 };
 
 extern struct ep_pcie_dev_t ep_pcie_dev;

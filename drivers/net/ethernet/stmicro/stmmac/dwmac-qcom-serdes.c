@@ -11,14 +11,16 @@
 #include "dwmac-qcom-serdes.h"
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-void qcom_ethqos_serdes_power_ctrl(struct qcom_ethqos *ethqos, bool on)
+void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 {
-	ETHQOSINFO("%s: Power On: %d\n", __func__, on);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES3_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES3_PCS_SW_RESET);
+	usleep_range(100, 200);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES3_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES3_PCS_PHY_START);
 
-	if (on)
-		writel_relaxed(0x1, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
-	else
-		writel_relaxed(0x0, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	/* Set current speed to 0 so that serdes will be reprogrammed on next link up. */
+	ethqos->curr_serdes_speed = 0;
 }
 #endif
 
