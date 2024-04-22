@@ -2621,7 +2621,7 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 	return 0;
 }
 
-static int __dwc3_gadget_start(struct dwc3 *dwc);
+static noinline int __dwc3_gadget_start(struct dwc3 *dwc);
 
 static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 {
@@ -2811,7 +2811,7 @@ static void dwc3_gadget_setup_nump(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 }
 
-static int __dwc3_gadget_start(struct dwc3 *dwc)
+static noinline int __dwc3_gadget_start(struct dwc3 *dwc)
 {
 	struct dwc3_ep		*dep;
 	int			ret = 0;

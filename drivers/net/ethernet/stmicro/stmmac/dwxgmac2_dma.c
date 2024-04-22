@@ -299,12 +299,17 @@ static void dwxgmac2_dma_start_tx(void __iomem *ioaddr, u32 chan)
 
 static void dwxgmac2_dma_stop_tx(void __iomem *ioaddr, u32 chan)
 {
+	int ret;
 	u32 value;
 
 	value = readl(ioaddr + XGMAC_DMA_CH_TX_CONTROL(chan));
 	value &= ~XGMAC_TXST;
 	writel(value, ioaddr + XGMAC_DMA_CH_TX_CONTROL(chan));
 
+	ret = readl_poll_timeout(ioaddr + XGMAC_DMA_CH_STATUS(chan), value,
+				 value & XGMAC_TPS, 1, 100000);
+	if (ret)
+		pr_err("%s Tx DMA (%d) is not in stopped state\n", __func__, chan);
 }
 
 static void dwxgmac2_dma_start_rx(void __iomem *ioaddr, u32 chan)
