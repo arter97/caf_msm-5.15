@@ -1654,28 +1654,18 @@ void dwxgmac2_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
 static void dwxgmac2_flush_tx_mtl(struct mac_device_info *hw,
 				  u32 queue)
 {
+	int ret;
+	u32 value;
 	void __iomem *ioaddr = hw->pcsr;
-	u32 vy_count = 0;
-	unsigned long RETRYCOUNT = 1000;
-	u32 ftq = 0;
 
-	/*Flush Tx Queue */
-	ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
-	ftq |= 1;
-	writel(ftq, ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+	value = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+	value |= XGMAC_FTQ;
+	writel(value, ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
 
-	/*Poll Until Poll Condition */
-	while (1) {
-		if (vy_count > RETRYCOUNT) {
-			pr_err("unable to flush tx queue %d\n", queue);
-			break;
-		}
-		vy_count++;
-		usleep_range(1000, 1500);
-		ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
-		if (((ftq) & (0x1)) == 0)
-			break;
-	}
+	ret = readl_poll_timeout(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue), value,
+				 !(value & XGMAC_FTQ), 1, 100000);
+	if (ret)
+		pr_err("%s MTL Tx controller (%d) failed to flush\n", __func__, queue);
 }
 
 const struct stmmac_ops dwxgmac210_ops = {
