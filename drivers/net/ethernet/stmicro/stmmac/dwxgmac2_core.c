@@ -33,6 +33,9 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 		case SPEED_10000:
 			tx |= hw->link.xgmii.speed10000;
 			break;
+		case SPEED_5000:
+			tx |= hw->link.xgmii.speed5000;
+			break;
 		case SPEED_2500:
 			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
 				tx |= hw->link.xgmii.speed2500;
