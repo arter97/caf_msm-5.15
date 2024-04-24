@@ -16,6 +16,7 @@ struct timer_list {
 	 */
 	struct hlist_node	entry;
 	unsigned long		expires;
+	unsigned long            data;
 	void			(*function)(struct timer_list *);
 	u32			flags;
 

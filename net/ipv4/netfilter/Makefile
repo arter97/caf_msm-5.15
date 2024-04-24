@@ -48,6 +48,7 @@ obj-$(CONFIG_IP_NF_TARGET_TRIGGER_MODULE) += ipt_TRIGGER.o
 obj-$(CONFIG_IP_NF_TARGET_NATTYPE_MODULE) += ipt_NATTYPE.o
 obj-$(CONFIG_IP_NF_TARGET_REJECT) += ipt_REJECT.o
 obj-$(CONFIG_IP_NF_TARGET_SYNPROXY) += ipt_SYNPROXY.o
+obj-$(CONFIG_IP_NF_TARGET_TRIGGER) += ipt_trigger.o
 
 # generic ARP tables
 obj-$(CONFIG_IP_NF_ARPTABLES) += arp_tables.o

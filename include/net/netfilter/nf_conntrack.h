@@ -29,6 +29,8 @@
 
 #define SIP_LIST_ELEMENTS       2
 
+#define NF_CT_ASSERT(x)
+
 struct nf_ct_udp {
 	unsigned long	stream_ts;
 };
