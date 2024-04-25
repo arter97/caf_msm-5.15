@@ -626,6 +626,7 @@ static netdev_tx_t mhi_dev_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct mhi_dev_net_client *mhi_dev_net_ptr =
 			*(struct mhi_dev_net_client **)netdev_priv(dev);
 	unsigned long flags;
+	int len;
 
 	if (skb->len <= 0) {
 		mhi_dev_net_log(mhi_dev_net_ptr->vf_id, MHI_ERROR,
@@ -634,7 +635,15 @@ static netdev_tx_t mhi_dev_net_xmit(struct sk_buff *skb, struct net_device *dev)
 		return NETDEV_TX_OK;
 	}
 	spin_lock_irqsave(&mhi_dev_net_ptr->wrt_lock, flags);
-	skb_queue_tail(&(mhi_dev_net_ptr->tx_buffers), skb);
+	len = skb_queue_len(&(mhi_dev_net_ptr->tx_buffers));
+	if (len <= (2 * mhi_net_ctxt.tx_reqs)) {
+		skb_queue_tail(&(mhi_dev_net_ptr->tx_buffers), skb);
+	} else {
+		mhi_dev_net_log(mhi_dev_net_ptr->vf_id, MHI_INFO, "channel queue is full\n");
+		netif_stop_queue(mhi_dev_net_ptr->dev);
+		spin_unlock_irqrestore(&mhi_dev_net_ptr->wrt_lock, flags);
+		return NETDEV_TX_BUSY;
+	}
 	spin_unlock_irqrestore(&mhi_dev_net_ptr->wrt_lock, flags);
 
 	queue_work(mhi_dev_net_ptr->pending_pckt_wq,
