@@ -1030,7 +1030,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_COM_VCO_TUNE2_MODE0);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_COM_VCO_TUNE_INITVAL2);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_COM_HSCLK_SEL_1);
-	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_COM_HSCLK_HS_SWITCH_SEL_1);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_COM_HSCLK_HS_SWITCH_SEL_1);
 	writel_relaxed(0x04, ethqos->sgmii_base + QSERDES_COM_CORECLK_DIV_MODE0);
 	writel_relaxed(0x10, ethqos->sgmii_base + QSERDES_COM_CORE_CLK_EN);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_CMN_CONFIG_1);
@@ -1061,7 +1061,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_LOW);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_RX0_UCDR_FASTLOCK_COUNT_HIGH);
 	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CONTROLS);
-	writel_relaxed(0x80, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
+	writel_relaxed(0x81, ethqos->sgmii_base + QSERDES_RX0_UCDR_PI_CTRL2);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX_UCDR_SB2_THRESH2);
 	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_RX0_RX_TERM_BW);
@@ -1095,12 +1095,12 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x3B, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH3);
 	writel_relaxed(0xB7, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH4);
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
-
+	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES3_PCS_LINE_RESET_TIME);
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
-	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
 	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
 	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
 
