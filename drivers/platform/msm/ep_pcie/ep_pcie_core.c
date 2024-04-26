@@ -2153,6 +2153,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	u32 val = 0;
 	u32 retries = 0;
 	u32 bme = 0;
+	u32 link_in_l2 = 0;
 	bool perst = true;
 	bool ltssm_en = false;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
@@ -2234,12 +2235,18 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0), BIT(0));
 		}
 
+		val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
+		EP_PCIE_DBG(dev, "PCIe V%d: PARF_PM_STTS value is : 0x%x.\n",
+				dev->rev, val);
+
+		link_in_l2 = !!(val & PARF_PM_LINKST_IN_L2);
+		val = !!(val & PARF_XMLH_LINK_UP);
+
+		if (link_in_l2)
+			goto trainlink;
+
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
-			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
-			val = val & PARF_XMLH_LINK_UP;
-			EP_PCIE_DBG(dev, "PCIe V%d: Link status is 0x%x.\n",
-					dev->rev, val);
 			if (val) {
 				EP_PCIE_INFO(dev,
 					"PCIe V%d: link initialized by bootloader for LE PCIe endpoint; skip link training in HLOS.\n",
@@ -2287,6 +2294,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			}
 		}
 
+trainlink:
 		ret = ep_pcie_reset_init(dev);
 		if (ret)
 			goto link_fail;
