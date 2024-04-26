@@ -1451,7 +1451,13 @@ int qcom_ethqos_serdes_update(struct qcom_ethqos *ethqos,
 	case PHY_INTERFACE_MODE_2500BASEX:
 		ret = qcom_ethqos_serdes_update_sgmii(ethqos, speed);
 		break;
+	case PHY_INTERFACE_MODE_5GBASER:
 	case PHY_INTERFACE_MODE_USXGMII:
+		if (interface == PHY_INTERFACE_MODE_USXGMII)
+			ethqos->usxgmii_mode = USXGMII_MODE_10G;
+		else if (interface == PHY_INTERFACE_MODE_5GBASER)
+			ethqos->usxgmii_mode = USXGMII_MODE_5G;
+
 		ret = qcom_ethqos_serdes_update_usxgmii(ethqos, speed);
 		break;
 	default:
@@ -1472,8 +1478,6 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 	struct resource *res = NULL;
 	struct platform_device *pdev = ethqos->pdev;
 	int ret;
-	u32 mode = 0;
-	struct device_node *serdes_node = NULL;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "serdes");
 	ethqos->sgmii_base = devm_ioremap_resource(&pdev->dev, res);
@@ -1494,34 +1498,6 @@ int qcom_ethqos_serdes_configure_dt(struct qcom_ethqos *ethqos, int interface)
 		ETHQOSERR("%s : configure_serdes_dt Failed phyaux", __func__);
 		ret = PTR_ERR(ethqos->phyaux_clk);
 		goto err_mem;
-	}
-
-	if (interface == PHY_INTERFACE_MODE_USXGMII) {
-		serdes_node = of_get_child_by_name(pdev->dev.of_node, "serdes-config");
-		if (serdes_node) {
-			ret = of_property_read_u32(serdes_node, "usxgmii-mode",
-						   &mode);
-			switch (mode) {
-			case 10000:
-				ethqos->usxgmii_mode = USXGMII_MODE_10G;
-				break;
-			case 5000:
-				ethqos->usxgmii_mode = USXGMII_MODE_5G;
-				break;
-			case 2500:
-				ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
-				break;
-			default:
-				ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
-				ethqos->usxgmii_mode = USXGMII_MODE_NA;
-				goto err_mem;
-			}
-		} else {
-			ETHQOSERR("Unable to find Serdes node from device tree\n");
-			ethqos->usxgmii_mode = USXGMII_MODE_NA;
-			goto err_mem;
-		}
-		of_node_put(serdes_node);
 	}
 
 	ret = qcom_ethqos_enable_serdes_clocks(ethqos);
