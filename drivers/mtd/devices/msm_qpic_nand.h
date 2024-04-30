@@ -31,6 +31,7 @@
 #include <linux/soc/qcom/smem.h>
 #include <linux/interconnect.h>
 #include <linux/suspend.h>
+#include <linux/nvmem-consumer.h>
 
 #define PAGE_SIZE_2K 2048
 #define PAGE_SIZE_4K 4096
