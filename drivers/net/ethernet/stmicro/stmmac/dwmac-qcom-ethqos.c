@@ -1832,6 +1832,7 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 		reinit_completion(&ethqos->clk_enable_done);
 
 	ethqos->clks_suspended = 1;
+	priv->clk_suspend = 1;
 
 	ethqos_update_rgmii_clk_and_bus_cfg(ethqos, 0);
 
@@ -1902,6 +1903,7 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 		ethqos_update_rgmii_clk_and_bus_cfg(ethqos, SPEED_10);
 
 	ethqos->clks_suspended = 0;
+	priv->clk_suspend = 0;
 
 	if (priv->plat->phy_intr_en_extn_stm)
 		complete_all(&ethqos->clk_enable_done);
@@ -3145,7 +3147,6 @@ static int qcom_ethqos_suspend(struct device *dev)
 		}
 	}
 	ret = stmmac_suspend(dev);
-	qcom_ethqos_phy_suspend_clks(ethqos);
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("disable phy at suspend\n");
@@ -3164,6 +3165,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 	place_marker("M - Ethernet Suspend End");
 #endif
 	ETHQOSDBG(" ret = %d\n", ret);
+	mdelay(1);
+	qcom_ethqos_phy_suspend_clks(ethqos);
 	return ret;
 }
 

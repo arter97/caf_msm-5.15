@@ -4455,6 +4455,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	tx_q = &priv->tx_queue[queue];
 	first_tx = tx_q->cur_tx;
 
+	if (priv->clk_suspend)
+		return NETDEV_TX_BUSY;
+
 	if (priv->tx_path_in_lpi_mode && priv->eee_sw_timer_en)
 		stmmac_disable_eee_mode(priv);
 
@@ -5966,6 +5969,9 @@ static irqreturn_t stmmac_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = (struct net_device *)dev_id;
 	struct stmmac_priv *priv = netdev_priv(dev);
+
+	if (priv->clk_suspend)
+		return IRQ_HANDLED;
 
 	/* Check if adapter is up */
 	if (test_bit(STMMAC_DOWN, &priv->state))
