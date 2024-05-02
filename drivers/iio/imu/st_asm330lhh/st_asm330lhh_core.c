@@ -1057,6 +1057,24 @@ static int st_asm330lhh_get_int_reg(struct st_asm330lhh_hw *hw, u8 *drdy_reg)
 	return err;
 }
 
+static int st_asm330lhh_wait_for_reg_clear(struct st_asm330lhh_hw *hw,
+				   u8 addr, u8 mask, u8 max_retry)
+{
+	u8 i = 0;
+	u8 data = 0;
+	int ret = EAGAIN;
+
+	for (i = 0; i < max_retry; i++) {
+		hw->tf->read(hw->dev, addr, sizeof(data), &data);
+		if ((data & mask) == 0) {
+			ret = 0;
+			break;
+		}
+		udelay(1000);
+	}
+	return ret;
+}
+
 static int st_asm330lhh_reset_device(struct st_asm330lhh_hw *hw)
 {
 	int err;
@@ -1074,13 +1092,18 @@ static int st_asm330lhh_reset_device(struct st_asm330lhh_hw *hw)
 	if (err < 0)
 		return err;
 
-	msleep(50);
+	msleep(40); //35ms is turn-on-time
+	st_asm330lhh_wait_for_reg_clear(hw, ST_ASM330LHH_REG_CTRL3_C_ADDR,
+					   ST_ASM330LHH_REG_SW_RESET_MASK, 10);
+
 
 	/* boot */
 	err = st_asm330lhh_write_with_mask(hw, ST_ASM330LHH_REG_CTRL3_C_ADDR,
 					   ST_ASM330LHH_REG_BOOT_MASK, 1);
 
-	msleep(50);
+	//wait until the bit is cleared
+	st_asm330lhh_wait_for_reg_clear(hw, ST_ASM330LHH_REG_CTRL3_C_ADDR,
+					   ST_ASM330LHH_REG_SW_RESET_MASK, 50);
 
 	return err;
 }
