@@ -155,6 +155,8 @@
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
 #define IPA_IOCTL_ADD_VLAN_PRIORITY             100
 #define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
+#define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
+
 /**
  * max size of the header to be inserted
  */
@@ -4088,6 +4090,11 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 #define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \
 				struct ipa_nat_in_sram_info)
+
+#define IPA_IOC_UPDATE_L2TP_CONFIG _IOW(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_L2TP_CONFIG, \
+				uint32_t)
+
 /*
  * unique magic number of the Tethering bridge ioctls
  */
