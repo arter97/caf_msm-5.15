@@ -6758,9 +6758,7 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 	struct net_device *ndev = to_net_dev(dev);
 	struct stmmac_priv *priv;
 	struct qcom_ethqos *ethqos;
-	struct device_node *serdes_node = NULL;
 	struct phy_device *phydev = NULL;
-	u32 mode = 0;
 	unsigned int speed = 0;
 	struct sk_buff *skb_out;
 	int res;
@@ -6792,35 +6790,6 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 		ret = ethqos_enable_sgmii_usxgmii_clks(ethqos, priv->plat->interface);
 		if (ret)
 			return -1;
-		if (priv->plat->interface == PHY_INTERFACE_MODE_USXGMII) {
-			serdes_node = of_get_child_by_name(ethqos->pdev->dev.of_node,
-							   "serdes-config");
-			if (serdes_node) {
-				ret = of_property_read_u32(serdes_node, "usxgmii-mode",
-							   &mode);
-				switch (mode) {
-				case 10000:
-					ethqos->usxgmii_mode = USXGMII_MODE_10G;
-					break;
-				case 5000:
-					ethqos->usxgmii_mode = USXGMII_MODE_5G;
-					break;
-				case 2500:
-					ethqos->usxgmii_mode = USXGMII_MODE_2P5G;
-					break;
-				default:
-					ETHQOSERR("Invalid USXGMII mode found: %d\n", mode);
-					ethqos->usxgmii_mode = USXGMII_MODE_NA;
-					return -1;
-				}
-			} else {
-				ETHQOSERR("Unable to find Serdes node from device tree\n");
-				ethqos->usxgmii_mode = USXGMII_MODE_NA;
-				return -1;
-			}
-			of_node_put(serdes_node);
-			ETHQOSINFO("%s :usxgmii_mode = %d", __func__, ethqos->usxgmii_mode);
-		}
 		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 		if (ret)
 			return -1;
