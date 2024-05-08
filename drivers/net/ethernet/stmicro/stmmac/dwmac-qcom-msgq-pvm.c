@@ -135,7 +135,7 @@ void qcom_ethmsgq_register_notify(qcom_ethmsgq_notify notify, void *user_data)
 
 static int recv_thread(void *data)
 {
-	struct msg_format rx_msg;
+	struct msg_format rx_msg = { 0 };
 	size_t recv_size;
 	int ret;
 
