@@ -404,9 +404,11 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 		device_property_read_u32_array(priv->device,
 					       "snps,reset-delays-us",
 					       delays, ARRAY_SIZE(delays));
-
 		if (priv->plat->reset_phy1_gpio) {
-			if (priv->plat->is_valid_eth_intf) {
+			if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+			    priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+			    priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
+			    priv->plat->interface == PHY_INTERFACE_MODE_5GBASER) {
 				devm_gpiod_put(priv->device, reset_gpio);
 				reset_gpio = priv->plat->reset_phy1_gpio;
 				gpiod_set_value(reset_gpio, 1);
@@ -517,8 +519,15 @@ int stmmac_mdio_register(struct net_device *ndev)
 	else
 		new_bus->probe_capabilities = MDIOBUS_C22_C45;
 
+	if (priv->plat->is_valid_eth_intf && priv->plat->interface ==  PHY_INTERFACE_MODE_RGMII)
+		new_bus->probe_capabilities = MDIOBUS_C22;
+
 	if (priv->plat->has_xgmac) {
-		if (priv->plat->is_valid_eth_intf)
+		if (priv->plat->is_valid_eth_intf &&
+		    (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+		     priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+		     priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
+		     priv->plat->interface == PHY_INTERFACE_MODE_5GBASER))
 			new_bus->probe_capabilities = MDIOBUS_C45;
 
 		new_bus->read = &stmmac_xgmac2_mdio_read;
