@@ -7834,6 +7834,9 @@ int msm_pcie_retrain_port_link(struct pci_dev *ep_dev, u16 target_link_speed)
 	struct pci_dev *port_dev;
 	struct msm_pcie_dev_t *pcie_dev = PCIE_BUS_PRIV_DATA(ep_dev->bus);
 
+	if (!pcie_dev->power_on)
+		return 0;
+
 	port_dev = ep_dev->bus->self;
 	PCIE_DBG(pcie_dev, "Calling API to retrain Bus:0x%x DF:0x%x to Gen%d\n",
 			port_dev->bus->number, port_dev->devfn, target_link_speed);
