@@ -333,6 +333,8 @@ static struct tc956xmac_rx_parser_entry snps_rxp_entries_filter_phy_pause_frames
 };
 #endif
 
+static const struct firmware *pfw;
+
 /*!
  * \brief API to save and restore clock and reset during suspend-resume.
  *
@@ -1133,7 +1135,7 @@ static int tc956xmac_xgmac3_default_data(struct pci_dev *pdev,
 		plat->max_speed = 10000;
 	}
 	if (plat->port_interface == ENABLE_RGMII_INTERFACE) {
-		plat->interface = PHY_INTERFACE_MODE_RGMII;
+		plat->interface = PHY_INTERFACE_MODE_RGMII_ID;
 		plat->max_speed = 1000;
 	}
 	if ((plat->port_interface == ENABLE_SGMII_INTERFACE) ||
@@ -1862,26 +1864,26 @@ s32 tc956x_load_firmware(struct device *dev, struct tc956xmac_resources *res)
 	} while (adrs < fw_size);
 
 #else
-	const struct firmware *pfw = NULL;
 
-	NMSGPR_INFO(dev,  "FW Loading: .bin\n");
+	if (!pfw) {
+		NMSGPR_INFO(dev,  "FW Loading: .bin\n");
 
-	/* Get TC956X FW binary through kernel firmware interface request */
-	if (request_firmware(&pfw, FIRMWARE_NAME, dev) != 0) {
-		NMSGPR_ERR(dev,
-		"TC956X: Error in calling request_firmware");
-		return -EINVAL;
-	}
+		/* Get TC956X FW binary through kernel firmware interface request */
+		if (request_firmware(&pfw, FIRMWARE_NAME, dev) != 0) {
+			NMSGPR_ERR(dev, "TC956X: Error in calling request_firmware");
+			return -EINVAL;
+		}
 
-	if (pfw == NULL) {
-		NMSGPR_ERR(dev, "TC956X: request_firmware: pfw == NULL");
-		return -EINVAL;
-	}
+		if (!pfw) {
+			NMSGPR_ERR(dev, "TC956X: request_firmware: pfw == NULL");
+			return -EINVAL;
+		}
 
-	/* Validate the size of the firmware */
-	if (pfw->size > TC956X_FW_MAX_SIZE) {
-		NMSGPR_ERR(dev, "Error : FW size exceeds the memory size\n");
-		return -EINVAL;
+		/* Validate the size of the firmware */
+		if (pfw->size > TC956X_FW_MAX_SIZE) {
+			NMSGPR_ERR(dev, "Error : FW size exceeds the memory size\n");
+			return -EINVAL;
+		}
 	}
 
 	NMSGPR_INFO(dev,  "FW Loading Start...\n");
@@ -1909,8 +1911,6 @@ s32 tc956x_load_firmware(struct device *dev, struct tc956xmac_resources *res)
 	/* Copy TC956X FW to SRAM */
 	memcpy_toio(res->tc956x_SRAM_pci_base_addr, pfw->data, pfw->size);
 #endif
-	/* Release kernel firmware interface */
-	release_firmware(pfw);
 #endif
 
 	NMSGPR_INFO(dev,  "FW Loading Finish.\n");
@@ -2828,6 +2828,7 @@ static int tc956xmac_pci_probe(struct pci_dev *pdev,
 			mac1_interface = ENABLE_SGMII_INTERFACE;
 		res.port_interface = mac1_interface;
 	}
+	tc956x_platform_port_interface_overlay(&pdev->dev, &res);
 
 	plat->port_interface = res.port_interface;
 
@@ -3333,6 +3334,12 @@ static void tc956xmac_pci_remove(struct pci_dev *pdev)
 	/* Destroy Mutex only once */
 	if (tc956xmac_pm_usage_counter == TC956X_NO_MAC_DEVICE_IN_USE)
 		mutex_destroy(&tc956x_pm_suspend_lock);
+
+	if (pfw) {
+		/* Release kernel firmware interface */
+		release_firmware(pfw);
+		pfw = NULL;
+	}
 	DBGPR_FUNC(&(pdev->dev), "<--%s\n", __func__);
 }
 
