@@ -197,12 +197,22 @@ static int qcom_snps_hsphy_suspend(struct qcom_snps_hsphy *hsphy)
 					   0, USB2_AUTO_RESUME);
 	}
 
+	clk_bulk_disable_unprepare(hsphy->num_clks, hsphy->clks);
+
 	return 0;
 }
 
 static int qcom_snps_hsphy_resume(struct qcom_snps_hsphy *hsphy)
 {
+	int ret;
+
 	dev_dbg(&hsphy->phy->dev, "Resume QCOM SNPS PHY, mode\n");
+
+	ret = clk_bulk_prepare_enable(hsphy->num_clks, hsphy->clks);
+	if (ret) {
+		dev_err(&hsphy->phy->dev, "failed to enable clocks, %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
