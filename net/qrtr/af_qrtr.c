@@ -111,6 +111,8 @@ struct qrtr_sock {
 	struct sockaddr_qrtr peer;
 
 	int state;
+	char comm[TASK_COMM_LEN];
+	int pid;
 };
 
 static inline struct qrtr_sock *qrtr_sk(struct sock *sk)
@@ -253,12 +255,12 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 			data_size = hdr->size;
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pl_buf, data_size);
 		QRTR_INFO(node->ilc,
-			  "TX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] [%s]\n",
+			  "TX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] tx_client[pid:%d, comm:%s]\n",
 			  hdr->size, hdr->confirm_rx,
 			  hdr->src_node_id, hdr->src_port_id,
 			  hdr->dst_node_id, hdr->dst_port_id,
 			  (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32),
-			  current->comm);
+			  current->pid, current->comm);
 	} else {
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pkt, sizeof(pkt));
 		if (type == QRTR_TYPE_NEW_SERVER ||
@@ -302,6 +304,7 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 {
 	struct qrtr_ctrl_pkt pkt = {0,};
 	struct qrtr_cb *cb;
+	struct qrtr_sock *ipc;
 	u64 pl_buf = 0;
 	u32 data_size;
 
@@ -311,15 +314,18 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 	cb = (struct qrtr_cb *)skb->cb;
 	data_size = sizeof(pl_buf);
 
+	ipc = qrtr_port_lookup(cb->dst_port);
+
 	if (cb->type == QRTR_TYPE_DATA) {
 		if (skb->len < data_size)
 			data_size = skb->len;
 		skb_copy_bits(skb, 0, &pl_buf, data_size);
 		QRTR_INFO(node->ilc,
-			  "RX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x]\n",
+			  "RX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] rx_client[pid:%d, comm:%s]\n",
 			  skb->len, cb->confirm_rx, cb->src_node, cb->src_port,
 			  cb->dst_node, cb->dst_port,
-			  (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32));
+			  (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32),
+			  ipc ? ipc->pid : -1, ipc ? ipc->comm : "NULL");
 	} else {
 		skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
 		if (cb->type == QRTR_TYPE_NEW_SERVER ||
@@ -364,6 +370,10 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 				  "RX CTRL: cmd:0x%x node[0x%x]\n",
 				  cb->type, le32_to_cpu(pkt.proc.node));
 	}
+
+	if (ipc)
+		qrtr_port_put(ipc);
+
 }
 
 struct qrtr_tx_flow *qrtr_flow_lookup(struct qrtr_node *node, unsigned long key)
@@ -379,6 +389,7 @@ void qrtr_print_wakeup_reason(const void *data)
 {
 	const struct qrtr_hdr_v1 *v1;
 	const struct qrtr_hdr_v2 *v2;
+	struct qrtr_sock *ipc;
 	struct qrtr_cb cb;
 	unsigned int size;
 	unsigned int ver;
@@ -424,12 +435,16 @@ void qrtr_print_wakeup_reason(const void *data)
 	size = (sizeof(preview) > size) ? size : sizeof(preview);
 	memcpy(&preview, data + hdrlen, size);
 
-	pr_info("%s: src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] service[0x%x]\n",
+	ipc = qrtr_port_lookup(cb.dst_port);
+
+	pr_info("%s: src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] service[0x%x] rx_client[pid:%d, comm:%s]\n",
 		__func__,
 		cb.src_node, cb.src_port,
 		cb.dst_node, cb.dst_port,
 		(unsigned int)preview, (unsigned int)(preview >> 32),
-		service_id);
+		service_id, ipc ? ipc->pid : -1, ipc ? ipc->comm : "NULL");
+	if (ipc)
+		qrtr_port_put(ipc);
 }
 EXPORT_SYMBOL(qrtr_print_wakeup_reason);
 
@@ -2537,6 +2552,9 @@ static int qrtr_create(struct net *net, struct socket *sock,
 	ipc->us.sq_node = qrtr_local_nid;
 	ipc->us.sq_port = 0;
 	ipc->state = QRTR_STATE_INIT;
+	ipc->pid = current->pid;
+
+	snprintf(ipc->comm, sizeof(ipc->comm), "%s", current->comm);
 
 	return 0;
 }
