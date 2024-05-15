@@ -1346,6 +1346,10 @@ static int stmmac_init_phy(struct net_device *dev)
 			return -ENODEV;
 		}
 		ret = phylink_connect_phy(priv->phylink, priv->phydev);
+		if (ret) {
+			pr_err("phylink_connect_phy failed\n");
+			return ret;
+		}
 		if (priv->plat->phy_intr_en_extn_stm) {
 			priv->phydev->irq = PHY_MAC_INTERRUPT;
 			priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
