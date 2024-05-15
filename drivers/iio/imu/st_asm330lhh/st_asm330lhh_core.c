@@ -1222,7 +1222,7 @@ static void st_asm330lhh_enable_acc_gyro(struct st_asm330lhh_hw *hw)
 		sensor->odr = 104;
 		sensor->uodr = 0;
 		sensor->watermark = 30;
-		delay = 1000000 / sensor->odr;
+		delay = 500000 / sensor->odr;
 
 		if (sensor->id == ST_ASM330LHH_ID_ACC) {
 			st_asm330lhh_set_full_scale(sensor, acc_gain);
