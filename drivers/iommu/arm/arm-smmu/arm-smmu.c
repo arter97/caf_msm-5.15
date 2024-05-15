@@ -4204,13 +4204,8 @@ static const struct dev_pm_ops arm_smmu_pm_ops = {
 	SET_RUNTIME_PM_OPS(arm_smmu_runtime_suspend,
 			   arm_smmu_runtime_resume, NULL)
 	.prepare = arm_smmu_pm_prepare,
-#ifdef CONFIG_DEEPSLEEP
-	.suspend_late  = arm_smmu_pm_suspend,
-	.resume_early   = arm_smmu_pm_resume,
-#else
-	.suspend = arm_smmu_pm_suspend,
-	.resume = arm_smmu_pm_resume,
-#endif
+	.suspend  = arm_smmu_pm_suspend,
+	.resume   = arm_smmu_pm_resume,
 	.thaw_early = arm_smmu_pm_restore_early,
 	.freeze_late = arm_smmu_pm_freeze_late,
 	.restore_early = arm_smmu_pm_restore_early,
