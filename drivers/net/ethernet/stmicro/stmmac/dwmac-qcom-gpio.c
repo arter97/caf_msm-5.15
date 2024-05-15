@@ -457,70 +457,11 @@ void ethqos_free_gpios(struct qcom_ethqos *ethqos)
 }
 EXPORT_SYMBOL(ethqos_free_gpios);
 
-int ethqos_init_pinctrl(struct device *dev)
-{
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pinctrl_state;
-	int i = 0;
-	int num_names;
-	const char *name;
-	int ret = 0;
-
-	pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR_OR_NULL(pinctrl)) {
-		ret = PTR_ERR(pinctrl);
-		ETHQOSERR("Failed to get pinctrl, err = %d\n", ret);
-		return ret;
-	}
-
-	num_names = of_property_count_strings(dev->of_node, "pinctrl-names");
-	if (num_names < 0) {
-		dev_err(dev, "Cannot parse pinctrl-names: %d\n",
-			num_names);
-		return num_names;
-	}
-
-	for (i = 0; i < num_names; i++) {
-		ret = of_property_read_string_index(dev->of_node,
-						    "pinctrl-names",
-						    i, &name);
-
-		if (!strcmp(name, PINCTRL_STATE_DEFAULT))
-			continue;
-
-		pinctrl_state = pinctrl_lookup_state(pinctrl, name);
-		if (IS_ERR_OR_NULL(pinctrl_state)) {
-			ret = PTR_ERR(pinctrl_state);
-			ETHQOSERR("lookup_state %s failed %d\n", name, ret);
-			return ret;
-		}
-
-		ETHQOSDBG("pinctrl_lookup_state %s succeeded\n", name);
-
-		ret = pinctrl_select_state(pinctrl, pinctrl_state);
-		if (ret) {
-			ETHQOSERR("select_state %s failed %d\n", name, ret);
-			return ret;
-		}
-
-		ETHQOSDBG("pinctrl_select_state %s succeeded\n", name);
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL(ethqos_init_pinctrl);
-
 int ethqos_init_gpio(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
 	ethqos->gpio_phy_intr_redirect = -1;
-
-	ret = ethqos_init_pinctrl(&ethqos->pdev->dev);
-	if (ret) {
-		ETHQOSERR("ethqos_init_pinctrl failed");
-		return ret;
-	}
 
 	if (of_property_read_bool(ethqos->pdev->dev.of_node, "qcom,phy-intr-redirect")) {
 		ret = setup_gpio_input_common(&ethqos->pdev->dev,
