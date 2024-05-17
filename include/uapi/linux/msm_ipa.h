@@ -157,6 +157,7 @@
 #define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
 #define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
 #define IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING      103
+#define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       104
 
 /**
  * max size of the header to be inserted
@@ -3756,6 +3757,7 @@ struct ipa_ioc_dscp_pcp_map_info {
 struct ipa_ioc_pdn_dscp_map_info {
 	uint32_t add;
 	uint8_t pdn_dscp_map[IPA_UC_MAX_PDN_DSCP_VAL];
+	char pdn_name[IPA_UC_MAX_PDN_DSCP_VAL][IPA_RESOURCE_NAME_MAX];
 };
 
 /**
@@ -4127,6 +4129,10 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 
 #define IPA_IOC_ADD_DEL_PDN_DSCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING, \
+				struct ipa_ioc_pdn_dscp_map_info)
+
+#define IPA_IOC_UPDATE_PDN_DSCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING, \
 				struct ipa_ioc_pdn_dscp_map_info)
 
 #define IPA_IOC_ADD_VLAN_PRIORITY _IOWR(IPA_IOC_MAGIC, \
