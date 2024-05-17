@@ -36,6 +36,12 @@
 
 #define DWC3_MSG_MAX	500
 
+/* Numer of ports supported by a multiport controller */
+#define MAX_PORTS_SUPPORTED     4
+
+/* XHCI Reg constants */
+#define DWC3_XHCI_HCSPARAMS1    0x04
+
 /* Global constants */
 #define DWC3_PULL_UP_TIMEOUT	500	/* ms */
 #define DWC3_BOUNCE_SIZE	1024	/* size of a superspeed bulk */
@@ -1144,8 +1150,10 @@ struct dwc3 {
 	struct usb_phy		*usb2_phy;
 	struct usb_phy		*usb3_phy;
 
-	struct phy		*usb2_generic_phy;
-	struct phy		*usb3_generic_phy;
+	u32			num_ports;
+	u32			num_ss_ports;
+	struct phy		*usb2_generic_phy[MAX_PORTS_SUPPORTED];
+	struct phy		*usb3_generic_phy[MAX_PORTS_SUPPORTED];
 
 	bool			phys_ready;
 
