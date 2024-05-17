@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020 Synopsys, Inc. and/or its affiliates.
- * Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Synopsys DesignWare XPCS helpers
  *
  * Author: Jose Abreu <Jose.Abreu@synopsys.com>
@@ -218,6 +218,11 @@
 
 /* Tx Preemable Control for Debug Register */
 #define TX_PMBL_CTRL				BIT(8)
+
+/* Error Detection Bit Definitions*/
+#define FLT_DETECTION_10G			BIT(7)
+#define ALIGN_ERROR_10G				BIT(0)
+#define HIBER_DETECTION_10G			BIT(1)
 
 struct xpcs_compat {
 	const int *supported;

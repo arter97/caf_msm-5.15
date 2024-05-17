@@ -29,6 +29,15 @@ struct dw_xpcs_qcom {
 	bool fixed_phy_mode;
 };
 
+enum dw_xpcs_err_type {
+	DW_XPCS_FLT_ERR = 1,
+	DW_XPCS_ALIGN_SYNC_ERR,
+	DW_XPCS_HIBER_ERR,
+	DW_XPCS_ERR_CNT
+};
+
+extern char dw_xpcs_err_names[4][21];
+
 #if IS_ENABLED(CONFIG_PCS_QCOM)
 int qcom_xpcs_get_an_mode(struct dw_xpcs_qcom *xpcs,
 			  phy_interface_t interface);
@@ -54,6 +63,8 @@ int ethqos_xpcs_intr_enable(struct net_device *ndev);
 int ethqos_xpcs_init(struct net_device *ndev);
 int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs);
 int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm);
+int qcom_xpcs_usxgmii_link_error_detect(struct dw_xpcs_qcom *xpcs, int speed);
+int qcom_xpcs_soft_reset_usxgmii(struct dw_xpcs_qcom *xpcs);
 
 #else /* IS_ENABLED(CONFIG_PCS_QCOM) */
 static inline int qcom_xpcs_get_an_mode(struct dw_xpcs_qcom *xpcs,
@@ -141,6 +152,14 @@ static inline int qcom_xpcs_verify_lnk_status_usxgmii(struct dw_xpcs_qcom *xpcs)
 	return 0;
 }
 static inline int qcom_xpcs_lpm(struct dw_xpcs_qcom *xpcs, bool lpm)
+{
+	return 0;
+}
+static inline int qcom_xpcs_usxgmii_link_error_detect(struct dw_xpcs_qcom *xpcs, int speed)
+{
+	return 0;
+}
+static inline int qcom_xpcs_soft_reset_usxgmii(struct dw_xpcs_qcom *xpcs)
 {
 	return 0;
 }

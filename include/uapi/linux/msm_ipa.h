@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_IPA_H_
@@ -155,6 +155,8 @@
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
 #define IPA_IOCTL_ADD_VLAN_PRIORITY             100
 #define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
+#define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
+
 /**
  * max size of the header to be inserted
  */
@@ -563,9 +565,12 @@ enum ipa_client_type {
 
 	IPA_CLIENT_ETHERNET_PROD1		= 146,
 	/* RESERVED CONS				= 147, */
+
+	/* RESERVED PROD			            = 148, */
+	IPA_CLIENT_ETHERNET_LOW_LAT_CONS		= 149,
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_ETHERNET_PROD1 + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_ETHERNET_LOW_LAT_CONS + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -4085,6 +4090,11 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 #define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \
 				struct ipa_nat_in_sram_info)
+
+#define IPA_IOC_UPDATE_L2TP_CONFIG _IOW(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_L2TP_CONFIG, \
+				uint32_t)
+
 /*
  * unique magic number of the Tethering bridge ioctls
  */

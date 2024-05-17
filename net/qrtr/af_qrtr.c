@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2015, Sony Mobile Communications Inc.
  * Copyright (c) 2013, 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/kthread.h>
 #include <linux/module.h>
@@ -129,7 +129,7 @@ static DEFINE_SPINLOCK(qrtr_nodes_lock);
 static LIST_HEAD(qrtr_all_epts);
 /* lock for qrtr_all_epts */
 static DECLARE_RWSEM(qrtr_epts_lock);
-
+static DECLARE_RWSEM(flow_sem_lock);
 /* local port allocation management */
 static DEFINE_XARRAY_ALLOC(qrtr_ports);
 u32 qrtr_ports_next = QRTR_MIN_EPH_SOCKET;
@@ -205,6 +205,8 @@ struct qrtr_tx_flow_waiter {
  * @tx_failed: indicates that a message with confirm_rx flag was lost
  * @waiters: list of ports to notify when this flow resumes
  * @lock: lock to protect flow variables
+ * @ref: reference count for tx flow
+ * @node: endpoint node to which this flow belongs
  */
 struct qrtr_tx_flow {
 	struct wait_queue_head resume_tx;
@@ -213,6 +215,8 @@ struct qrtr_tx_flow {
 	struct list_head waiters;
 	/* protect above flow variables */
 	spinlock_t lock;
+	struct kref ref;
+	struct qrtr_node *node;
 };
 
 #define QRTR_TX_FLOW_HIGH	10
@@ -228,6 +232,7 @@ static struct qrtr_sock *qrtr_port_lookup(int port);
 static void qrtr_port_put(struct qrtr_sock *ipc);
 static void qrtr_handle_del_proc(struct qrtr_node *node, struct sk_buff *skb);
 static void qrtr_cleanup_flow_control(struct qrtr_node *node, struct sk_buff *skb);
+static void __qrtr_del_flow(struct kref *kref);
 
 static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 			    struct sk_buff *skb)
@@ -361,6 +366,15 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 	}
 }
 
+struct qrtr_tx_flow *qrtr_flow_lookup(struct qrtr_node *node, unsigned long key)
+{
+	struct qrtr_tx_flow *flow;
+
+	flow = radix_tree_lookup(&node->qrtr_tx_flow, key);
+	if (flow)
+		kref_get(&flow->ref);
+	return flow;
+}
 void qrtr_print_wakeup_reason(const void *data)
 {
 	const struct qrtr_hdr_v1 *v1;
@@ -489,7 +503,9 @@ static void __qrtr_node_release(struct kref *kref)
 			kfree(waiter);
 		}
 		radix_tree_iter_delete(&node->qrtr_tx_flow, &iter, slot);
-		kfree(flow);
+		mutex_unlock(&node->qrtr_tx_lock);
+		kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
+		mutex_lock(&node->qrtr_tx_lock);
 	}
 	mutex_unlock(&node->qrtr_tx_lock);
 
@@ -539,7 +555,7 @@ static void qrtr_tx_resume(struct qrtr_node *node, struct sk_buff *skb)
 	key = (u64)src.sq_node << 32 | src.sq_port;
 
 	mutex_lock(&node->qrtr_tx_lock);
-	flow = radix_tree_lookup(&node->qrtr_tx_flow, key);
+	flow = qrtr_flow_lookup(node, key);
 	mutex_unlock(&node->qrtr_tx_lock);
 	if (!flow)
 		return;
@@ -561,7 +577,7 @@ static void qrtr_tx_resume(struct qrtr_node *node, struct sk_buff *skb)
 		kfree(waiter);
 	}
 	spin_unlock_irqrestore(&flow->lock, flags);
-
+	kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
 	consume_skb(skb);
 }
 
@@ -598,13 +614,17 @@ static int qrtr_tx_wait(struct qrtr_node *node, struct sockaddr_qrtr *to,
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
 
 	mutex_lock(&node->qrtr_tx_lock);
-	flow = radix_tree_lookup(&node->qrtr_tx_flow, key);
+	flow = qrtr_flow_lookup(node, key);
 	if (!flow) {
 		flow = kzalloc(sizeof(*flow), GFP_KERNEL);
 		if (flow) {
 			INIT_LIST_HEAD(&flow->waiters);
 			init_waitqueue_head(&flow->resume_tx);
 			spin_lock_init(&flow->lock);
+			kref_init(&flow->ref);
+			kref_get(&flow->ref);
+			flow->node = node;
+
 			if (radix_tree_insert(&node->qrtr_tx_flow, key, flow)) {
 				kfree(flow);
 				flow = NULL;
@@ -635,6 +655,7 @@ static int qrtr_tx_wait(struct qrtr_node *node, struct sockaddr_qrtr *to,
 		list_for_each_entry(waiter, &flow->waiters, node) {
 			if (waiter->sk == sk) {
 				spin_unlock_irq(&flow->lock);
+				kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
 				return -EAGAIN;
 			}
 		}
@@ -642,6 +663,7 @@ static int qrtr_tx_wait(struct qrtr_node *node, struct sockaddr_qrtr *to,
 		waiter = kzalloc(sizeof(*waiter), GFP_ATOMIC);
 		if (!waiter) {
 			spin_unlock_irq(&flow->lock);
+			kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
 			return -ENOMEM;
 		}
 		waiter->sk = sk;
@@ -657,7 +679,7 @@ static int qrtr_tx_wait(struct qrtr_node *node, struct sockaddr_qrtr *to,
 		confirm_rx = flow->pending == QRTR_TX_FLOW_LOW;
 	}
 	spin_unlock_irq(&flow->lock);
-
+	kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
 	return confirm_rx;
 }
 
@@ -681,12 +703,13 @@ static void qrtr_tx_flow_failed(struct qrtr_node *node, int dest_node,
 	struct qrtr_tx_flow *flow;
 
 	mutex_lock(&node->qrtr_tx_lock);
-	flow = radix_tree_lookup(&node->qrtr_tx_flow, key);
+	flow = qrtr_flow_lookup(node, key);
 	mutex_unlock(&node->qrtr_tx_lock);
 	if (flow) {
 		spin_lock_irq(&flow->lock);
 		flow->tx_failed = 1;
 		spin_unlock_irq(&flow->lock);
+		kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
 	}
 }
 
@@ -1399,6 +1422,17 @@ static void qrtr_node_rx_work(struct kthread_work *work)
 	}
 }
 
+static void __qrtr_del_flow(struct kref *kref)
+{
+	struct qrtr_tx_flow *flow = container_of(kref, struct qrtr_tx_flow, ref);
+	struct qrtr_node *node = flow->node;
+
+	up_write(&flow_sem_lock);
+	mutex_lock(&node->qrtr_tx_lock);
+	kfree(flow);
+	mutex_unlock(&node->qrtr_tx_lock);
+}
+
 static void qrtr_cleanup_flow_control(struct qrtr_node *node,
 				      struct sk_buff *skb)
 {
@@ -1441,7 +1475,9 @@ static void qrtr_cleanup_flow_control(struct qrtr_node *node,
 		if (flow == (struct qrtr_tx_flow *)rcu_dereference(*slot)) {
 			radix_tree_iter_delete(&node->qrtr_tx_flow,
 					       &iter, slot);
-			kfree(flow);
+			mutex_unlock(&node->qrtr_tx_lock);
+			kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
+			mutex_lock(&node->qrtr_tx_lock);
 			break;
 		}
 	}
@@ -1476,7 +1512,9 @@ static void qrtr_handle_del_proc(struct qrtr_node *node, struct sk_buff *skb)
 			kfree(waiter);
 		}
 		radix_tree_iter_delete(&node->qrtr_tx_flow, &iter, slot);
-		kfree(flow);
+		mutex_unlock(&node->qrtr_tx_lock);
+		kref_put_rwsem_lock(&flow->ref, __qrtr_del_flow, &flow_sem_lock);
+		mutex_lock(&node->qrtr_tx_lock);
 	}
 	mutex_unlock(&node->qrtr_tx_lock);
 
