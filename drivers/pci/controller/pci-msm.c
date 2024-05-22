@@ -8418,6 +8418,7 @@ static struct platform_driver msm_pcie_driver = {
 		.name		= "pci-msm",
 		.pm = &qcom_pcie_pm_ops,
 		.of_match_table	= msm_pcie_match,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 

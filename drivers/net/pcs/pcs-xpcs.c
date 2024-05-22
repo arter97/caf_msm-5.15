@@ -77,6 +77,21 @@ static const int xpcs_sgmii_features[] = {
 	__ETHTOOL_LINK_MODE_MASK_NBITS,
 };
 
+static const int xpcs_usx5g_features[] = {
+	ETHTOOL_LINK_MODE_Pause_BIT,
+	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
+	ETHTOOL_LINK_MODE_Autoneg_BIT,
+	ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_100baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+	ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+	ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
+	__ETHTOOL_LINK_MODE_MASK_NBITS,
+};
+
 static const int xpcs_2500basex_features[] = {
 	ETHTOOL_LINK_MODE_Pause_BIT,
 	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
@@ -102,6 +117,10 @@ static const phy_interface_t xpcs_sgmii_interfaces[] = {
 	PHY_INTERFACE_MODE_SGMII,
 };
 
+static const phy_interface_t xpcs_usx5g_interfaces[] = {
+	PHY_INTERFACE_MODE_5GBASER,
+};
+
 static const phy_interface_t xpcs_2500basex_interfaces[] = {
 	PHY_INTERFACE_MODE_2500BASEX,
 	PHY_INTERFACE_MODE_MAX,
@@ -113,6 +132,7 @@ enum {
 	DW_XPCS_XLGMII,
 	DW_XPCS_SGMII,
 	DW_XPCS_2500BASEX,
+	DW_XPCS_USX5G,
 	DW_XPCS_INTERFACE_MAX,
 };
 
@@ -1050,6 +1070,12 @@ static const struct xpcs_compat synopsys_xpcs_compat[DW_XPCS_INTERFACE_MAX] = {
 		.interface = xpcs_2500basex_interfaces,
 		.num_interfaces = ARRAY_SIZE(xpcs_2500basex_features),
 		.an_mode = DW_2500BASEX,
+	},
+	[DW_XPCS_USX5G] = {
+		.supported = xpcs_usx5g_features,
+		.interface = xpcs_usx5g_interfaces,
+		.num_interfaces = ARRAY_SIZE(xpcs_usx5g_interfaces),
+		.an_mode = DW_AN_C73,
 	},
 };
 

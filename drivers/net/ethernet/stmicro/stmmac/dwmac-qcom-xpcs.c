@@ -75,7 +75,7 @@ int ethqos_xpcs_init(struct net_device *ndev)
 	}
 
 	qxpcs = qcom_xpcs_create(xpcs_base, priv->plat->phy_interface);
-	if (IS_ERR(qxpcs)) {
+	if (!qxpcs || IS_ERR(qxpcs)) {
 		ETHQOSERR("XPCS failed to be created: %d\n", PTR_ERR(qxpcs));
 		return -ENODEV;
 	}

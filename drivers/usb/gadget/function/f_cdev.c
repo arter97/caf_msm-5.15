@@ -99,6 +99,8 @@ struct f_cdev {
 
 	struct list_head	read_pool;
 	struct list_head	read_queued;
+	struct list_head	read_ep_queued;
+	struct list_head	write_ep_queued;
 	struct list_head	write_pool;
 	struct list_head	write_pending;
 
@@ -590,6 +592,8 @@ static void usb_cser_resume(struct usb_function *f)
 			pr_err("EP QUEUE failed:%d\n", ret);
 				list_add(&req->list, &port->write_pool);
 		} else {
+			if (list_empty(&req->list))
+				list_add(&req->list, &port->write_ep_queued);
 			port->nbytes_from_port_bridge += req->length;
 		}
 	}
@@ -601,9 +605,57 @@ static void usb_cser_suspend(struct usb_function *f)
 {
 	struct f_cdev *port = func_to_port(f);
 	struct usb_composite_dev *cdev = f->config->cdev;
+	struct list_head	*pool;
+	struct usb_ep		*ep;
+	unsigned long		flags;
 
 	dev_dbg(&cdev->gadget->dev, "cser suspend\n");
 	port->is_suspended = true;
+
+	/* Dequeue the submitted requests. */
+	spin_lock_irqsave(&port->port_lock, flags);
+	pool = &port->read_ep_queued;
+	ep = port->port_usb.out;
+	while (!list_empty(pool)) {
+		struct usb_request	*req;
+
+		req = list_entry(pool->next, struct usb_request, list);
+		if (req) {
+			list_del_init(&req->list);
+			spin_unlock_irqrestore(&port->port_lock, flags);
+			usb_ep_dequeue(ep, req);
+			spin_lock_irqsave(&port->port_lock, flags);
+		} else {
+			pr_err("rx req is null\n");
+			break;
+		}
+	}
+
+	port->setup_pending = true;
+	pool = &port->write_ep_queued;
+	ep = port->port_usb.in;
+	while (!list_empty(pool)) {
+		struct usb_request	*req;
+
+		req = list_entry(pool->next, struct usb_request, list);
+		if (req) {
+			list_del_init(&req->list);
+			spin_unlock_irqrestore(&port->port_lock, flags);
+			usb_ep_dequeue(ep, req);
+			spin_lock_irqsave(&port->port_lock, flags);
+		} else {
+			pr_err("tx req is null\n");
+			break;
+		}
+	}
+
+	if (port->port_usb.pending) {
+		spin_unlock_irqrestore(&port->port_lock, flags);
+		usb_ep_dequeue(port->port_usb.notify, port->port_usb.notify_req);
+		spin_lock_irqsave(&port->port_lock, flags);
+	}
+
+	spin_unlock_irqrestore(&port->port_lock, flags);
 }
 
 static int usb_cser_func_suspend(struct usb_function *f, u8 options)
@@ -751,7 +803,7 @@ static void usb_cser_notify_complete(struct usb_ep *ep, struct usb_request *req)
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	port->port_usb.pending = false;
-	if (req->status != -ESHUTDOWN && port->port_usb.q_again) {
+	if (req->status != -ESHUTDOWN && port->port_usb.q_again && !(port->is_suspended)) {
 		port->port_usb.q_again = false;
 		spin_unlock_irqrestore(&port->port_lock, flags);
 		port_notify_serial_state(&port->port_usb);
@@ -1042,7 +1094,7 @@ static void usb_cser_start_rx(struct f_cdev *port)
 	}
 
 	spin_lock_irqsave(&port->port_lock, flags);
-	if (!(port->is_connected && port->port_open)) {
+	if ((!(port->is_connected && port->port_open)) || (port->is_suspended)) {
 		spin_unlock_irqrestore(&port->port_lock, flags);
 		pr_debug("can't start rx.\n");
 		return;
@@ -1068,6 +1120,8 @@ static void usb_cser_start_rx(struct f_cdev *port)
 			port->setup_pending = true;
 			break;
 		} else {
+			if (list_empty(&req->list))
+				list_add(&req->list, &port->read_ep_queued);
 			port->setup_pending = false;
 		}
 	}
@@ -1089,7 +1143,8 @@ static void usb_cser_read_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 
 	spin_lock_irqsave(&port->port_lock, flags);
-	if (!port->port_open) {
+	list_del_init(&req->list);
+	if ((!port->port_open) || (port->is_suspended)) {
 		list_add_tail(&req->list, &port->read_pool);
 		spin_unlock_irqrestore(&port->port_lock, flags);
 		return;
@@ -1103,8 +1158,14 @@ static void usb_cser_read_complete(struct usb_ep *ep, struct usb_request *req)
 		if (req->status == -EPIPE) {
 			spin_unlock_irqrestore(&port->port_lock, flags);
 			ret = usb_ep_queue(ep, req, GFP_KERNEL);
-			if (!ret)
+			if (!ret) {
+				spin_lock_irqsave(&port->port_lock, flags);
+				if (list_empty(&req->list))
+					list_add(&req->list, &port->read_ep_queued);
+				spin_unlock_irqrestore(&port->port_lock, flags);
 				return;
+			}
+
 			spin_lock_irqsave(&port->port_lock, flags);
 		}
 		/*
@@ -1138,6 +1199,7 @@ static void usb_cser_write_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 
 	spin_lock_irqsave(&port->port_lock, flags);
+	list_del_init(&req->list);
 	port->nbytes_to_host += req->actual;
 	list_add_tail(&req->list, &port->write_pool);
 	spin_unlock_irqrestore(&port->port_lock, flags);
@@ -1171,6 +1233,13 @@ static void usb_cser_start_io(struct f_cdev *port)
 	port->current_rx_req = NULL;
 	port->pending_rx_bytes = 0;
 	port->current_rx_buf = NULL;
+
+	INIT_LIST_HEAD(&port->read_pool);
+	INIT_LIST_HEAD(&port->read_queued);
+	INIT_LIST_HEAD(&port->read_ep_queued);
+	INIT_LIST_HEAD(&port->write_ep_queued);
+	INIT_LIST_HEAD(&port->write_pool);
+	INIT_LIST_HEAD(&port->write_pending);
 
 	ret = usb_cser_alloc_requests(port->port_usb.out,
 				&port->read_pool,
@@ -1226,8 +1295,10 @@ static void usb_cser_stop_io(struct f_cdev *port)
 	port->current_rx_buf = NULL;
 	usb_cser_free_requests(out, &port->read_queued);
 	usb_cser_free_requests(out, &port->read_pool);
+	usb_cser_free_requests(out, &port->read_ep_queued);
 	usb_cser_free_requests(in, &port->write_pool);
 	usb_cser_free_requests(in, &port->write_pending);
+	usb_cser_free_requests(in, &port->write_ep_queued);
 	spin_unlock_irqrestore(&port->port_lock, flags);
 }
 
@@ -1477,6 +1548,8 @@ ssize_t f_cdev_write(struct file *file,
 		}
 		spin_lock_irqsave(&port->port_lock, flags);
 		port->nbytes_from_port_bridge += req->length;
+		if (list_empty(&req->list))
+			list_add(&req->list, &port->write_ep_queued);
 		spin_unlock_irqrestore(&port->port_lock, flags);
 	}
 
@@ -1938,6 +2011,8 @@ static struct f_cdev *f_cdev_alloc(char *func_name, int portno)
 	init_waitqueue_head(&port->read_wq);
 	INIT_LIST_HEAD(&port->read_pool);
 	INIT_LIST_HEAD(&port->read_queued);
+	INIT_LIST_HEAD(&port->read_ep_queued);
+	INIT_LIST_HEAD(&port->write_ep_queued);
 	INIT_LIST_HEAD(&port->write_pool);
 	INIT_LIST_HEAD(&port->write_pending);
 
