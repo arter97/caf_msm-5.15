@@ -262,12 +262,19 @@ static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
 				    bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+	u32 intr_en;
 
 	if (rx)
 		value |= XGMAC_DMA_INT_DEFAULT_RX;
-	if (tx)
+	if (tx) {
 		value |= XGMAC_DMA_INT_DEFAULT_TX;
-
+		/* Enable Timestamp interrupt */
+		if (chan == AUX_TS_CHANNEL) {
+			intr_en = readl(ioaddr + XGMAC_INT_EN);
+			intr_en |= XGMAC_TSIE;
+			writel(intr_en, ioaddr + XGMAC_INT_EN);
+		}
+	}
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 
@@ -275,12 +282,19 @@ static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
 				     bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+	u32 intr_en;
 
 	if (rx)
 		value &= ~XGMAC_DMA_INT_DEFAULT_RX;
-	if (tx)
+	if (tx) {
 		value &= ~XGMAC_DMA_INT_DEFAULT_TX;
-
+		/* Disable Timestamp interrupt */
+		if (chan == AUX_TS_CHANNEL) {
+			intr_en = readl(ioaddr + XGMAC_INT_EN);
+			intr_en &= ~XGMAC_TSIE;
+			writel(intr_en, ioaddr + XGMAC_INT_EN);
+		}
+	}
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 

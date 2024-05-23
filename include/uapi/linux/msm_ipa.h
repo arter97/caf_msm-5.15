@@ -155,6 +155,10 @@
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
 #define IPA_IOCTL_ADD_VLAN_PRIORITY             100
 #define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
+#define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
+#define IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING      103
+#define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       104
+
 /**
  * max size of the header to be inserted
  */
@@ -224,6 +228,11 @@
  * Max number of DSCP entries in uc
  */
 #define IPA_UC_MAX_DSCP_VAL 64
+
+/**
+ * Max number of PDN-DSCP mapping entries in uc
+ */
+#define IPA_UC_MAX_PDN_DSCP_VAL 16
 
 /**
  * New feature flag for CV2X config.
@@ -1061,7 +1070,14 @@ enum ipa_ipsec_ul_flt_evt {
 #define IPA_IPSEC_UL_FLT_EVENT_MAX IPA_IPSEC_UL_FLT_EVENT_MAX
 };
 
-#define IPA_EVENT_MAX_NUM (IPA_IPSEC_UL_FLT_EVENT_MAX)
+enum ipa_pdn_dscp_evt {
+	IPA_PDN_DSCP_ADD_EVENT = IPA_IPSEC_UL_FLT_EVENT_MAX,
+	IPA_PDN_DSCP_DEL_EVENT,
+	IPA_PDN_DSCP_EVENT_MAX
+#define IPA_PDN_DSCP_EVENT_MAX IPA_PDN_DSCP_EVENT_MAX
+};
+
+#define IPA_EVENT_MAX_NUM (IPA_PDN_DSCP_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -1541,7 +1557,7 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_SET_DSCP:
  * IPA_HDR_PROC_EoGRE_HEADER_ADD:       Add IPV[46] GRE header
  * IPA_HDR_PROC_EoGRE_HEADER_REMOVE:    Remove IPV[46] GRE header
- * IPA_HDR_PROC_WWAN_TO_ETHII_EX:		To update PCP value for E2E traffic
+ * IPA_HDR_PROC_WWAN_TO_ETHII_EX:       To update PCP value for E2E traffic
  * IPA_HDR_PROC_NXT_RND:                Next Round FLT table
  * IPA_HDR_PROC_XLAT_NXT_RND:           Next Round FLT table with XLAT
  * IPA_HDR_PROC_IPSEC_ENCAP:            IPsec encap activation
@@ -1549,6 +1565,8 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND:    IPsec encap activation + next round
  * IPA_HDR_PROC_IPSEC_DECAP_NXT_RND:    IPsec decap activation + next round
  * IPA_HDR_PROC_2ND_PASS:               send to 2nd pass with no modification
+ * IPA_HDR_PROC_MARK_DSCP:              Mark DSCP value based on PDN or tuple
+ *                                      info for DL traffic
  */
 enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_NONE,
@@ -1572,8 +1590,9 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_IPSEC_ENCAP_NXT_RND,
 	IPA_HDR_PROC_IPSEC_DECAP_NXT_RND,
 	IPA_HDR_PROC_2ND_PASS,
+	IPA_HDR_PROC_MARK_DSCP,
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_2ND_PASS + 1)
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_MARK_DSCP + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule
@@ -1908,6 +1927,20 @@ struct ipa_ipsec_params {
 	union ipa_ipsec_pre_procparams pre_params;
 };
 
+/**
+ * struct ipa_pdn_dscp_procparams -
+ * @input_valid: Specifies whether the proc params hold
+ *	the dscp value
+ *	0 - use dscp value from pdn-dscp table sent to uc
+ *	1 - use dscp value from proc params
+ * @input_dscp_value: Specifies DSCP value
+ * @reserved: for future use
+ */
+struct ipa_pdn_dscp_procparams {
+	uint32_t valid : 1;
+	uint32_t dscp_val : 6;
+	uint32_t reserved : 25;
+};
 
 /**
  * struct ipa_hdr_proc_ctx_add - processing context descriptor includes
@@ -1934,6 +1967,7 @@ struct ipa_hdr_proc_ctx_add {
 	struct ipa_eth_II_to_eth_II_ex_procparams generic_params;
 	struct ipa_wwan_to_eth_II_ex_procparams generic_params_v2;
 	struct ipa_ipsec_params ipsec_params;
+	struct ipa_pdn_dscp_procparams pdn_dscp_params;
 };
 
 #define IPA_L2TP_HDR_PROC_SUPPORT
@@ -3715,6 +3749,18 @@ struct ipa_ioc_dscp_pcp_map_info {
 };
 
 /**
+ * struct ipa_ioc_pdn_dscp_map_info - provide pdn dscp mapping info to add/delete
+ * @add: Boolean to indicate add or delete the mapping
+ * @dscp_pcp_map: DSCP <6 bits>.
+ *                PDN(mux_id) is used as index (0-15).
+ */
+struct ipa_ioc_pdn_dscp_map_info {
+	uint32_t add;
+	uint8_t pdn_dscp_map[IPA_UC_MAX_PDN_DSCP_VAL];
+	char pdn_name[IPA_UC_MAX_PDN_DSCP_VAL][IPA_RESOURCE_NAME_MAX];
+};
+
+/**
  * struct vlan_priority - provides info required for vlan prirority
  * @vlan_name: vlan interface name
  * @vlan_priority: priority of corresponding vlan
@@ -4081,6 +4127,14 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 				IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING, \
 				struct ipa_ioc_dscp_pcp_map_info)
 
+#define IPA_IOC_ADD_DEL_PDN_DSCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING, \
+				struct ipa_ioc_pdn_dscp_map_info)
+
+#define IPA_IOC_UPDATE_PDN_DSCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING, \
+				struct ipa_ioc_pdn_dscp_map_info)
+
 #define IPA_IOC_ADD_VLAN_PRIORITY _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_VLAN_PRIORITY, \
 				struct ipa_ioc_vlan_priority)
@@ -4088,6 +4142,11 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 #define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \
 				struct ipa_nat_in_sram_info)
+
+#define IPA_IOC_UPDATE_L2TP_CONFIG _IOW(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_L2TP_CONFIG, \
+				uint32_t)
+
 /*
  * unique magic number of the Tethering bridge ioctls
  */

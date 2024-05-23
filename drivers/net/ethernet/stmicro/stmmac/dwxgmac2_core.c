@@ -33,6 +33,9 @@ static void dwxgmac2_core_init(struct mac_device_info *hw,
 		case SPEED_10000:
 			tx |= hw->link.xgmii.speed10000;
 			break;
+		case SPEED_5000:
+			tx |= hw->link.xgmii.speed5000;
+			break;
 		case SPEED_2500:
 			if (priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX)
 				tx |= hw->link.xgmii.speed2500;
@@ -1241,6 +1244,19 @@ static int dwxgmac2_flex_pps_config(void __iomem *ioaddr, int index,
 	val |= XGMAC_TRGTMODSELx(index, XGMAC_PPSCMD_START);
 	val |= XGMAC_PPSEN0;
 
+	/* XGMAC Core has 4 PPS outputs at most.
+	 *
+	 * Prior XGMAC Core 3.20, Fixed mode or Flexible mode are selectable for
+	 * PPS0 only via PPSEN0. PPS{1,2,3} are in Flexible mode by default,
+	 * and can not be switched to Fixed mode, since PPSEN{1,2,3} are
+	 * read-only reserved to 0.
+	 * But we always set PPSEN{1,2,3} do not make things worse ;-)
+	 *
+	 * From XGMAC Core 3.20 and later, PPSEN{0,1,2,3} are writable and must
+	 * be set, or the PPS outputs stay in Fixed PPS mode by default.
+	 */
+	/*val |= XGMAC_PPSENx(index);*/
+
 	writel(cfg->start.tv_sec, ioaddr + XGMAC_PPSx_TARGET_TIME_SEC(index));
 
 	if (!(systime_flags & PTP_TCR_TSCTRLSSR))
@@ -1519,7 +1535,8 @@ static int dwxgmac3_est_configure(void __iomem *ioaddr, struct stmmac_est *cfg,
 	return 0;
 }
 
-static void dwxgmac3_fpe_configure(void __iomem *ioaddr, u32 num_txq,
+static void dwxgmac3_fpe_configure(void __iomem *ioaddr, struct stmmac_fpe_cfg *cfg,
+				   u32 num_txq,
 				   u32 num_rxq, bool enable)
 {
 	u32 value;
@@ -1654,28 +1671,18 @@ void dwxgmac2_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
 static void dwxgmac2_flush_tx_mtl(struct mac_device_info *hw,
 				  u32 queue)
 {
+	int ret;
+	u32 value;
 	void __iomem *ioaddr = hw->pcsr;
-	u32 vy_count = 0;
-	unsigned long RETRYCOUNT = 1000;
-	u32 ftq = 0;
 
-	/*Flush Tx Queue */
-	ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
-	ftq |= 1;
-	writel(ftq, ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+	value = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
+	value |= XGMAC_FTQ;
+	writel(value, ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
 
-	/*Poll Until Poll Condition */
-	while (1) {
-		if (vy_count > RETRYCOUNT) {
-			pr_err("unable to flush tx queue %d\n", queue);
-			break;
-		}
-		vy_count++;
-		usleep_range(1000, 1500);
-		ftq = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue));
-		if (((ftq) & (0x1)) == 0)
-			break;
-	}
+	ret = readl_poll_timeout(ioaddr + XGMAC_MTL_TXQ_OPMODE(queue), value,
+				 !(value & XGMAC_FTQ), 1, 100000);
+	if (ret)
+		pr_err("%s MTL Tx controller (%d) failed to flush\n", __func__, queue);
 }
 
 const struct stmmac_ops dwxgmac210_ops = {

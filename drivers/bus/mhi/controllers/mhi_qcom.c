@@ -1247,7 +1247,7 @@ static int mhi_qcom_register_controller(struct mhi_controller *mhi_cntrl,
 		ret = mhi_controller_set_sfr_support(mhi_cntrl,
 						     MHI_MAX_SFR_LEN);
 		if (ret)
-			goto error_register;
+			return -EINVAL;
 	}
 
 	if (dev_info->timesync) {
@@ -1256,7 +1256,7 @@ static int mhi_qcom_register_controller(struct mhi_controller *mhi_cntrl,
 						    &mhi_qcom_lpm_disable,
 						    &mhi_qcom_lpm_enable);
 		if (ret)
-			goto error_register;
+			return -EINVAL;
 	}
 
 	if (dev_info->drv_support)
@@ -1273,11 +1273,6 @@ static int mhi_qcom_register_controller(struct mhi_controller *mhi_cntrl,
 							 dev_info->name, 0);
 
 	return 0;
-
-error_register:
-	mhi_unregister_controller(mhi_cntrl);
-
-	return -EINVAL;
 }
 
 int mhi_qcom_pci_probe(struct pci_dev *pci_dev,
@@ -1298,19 +1293,19 @@ int mhi_qcom_pci_probe(struct pci_dev *pci_dev,
 	if (mhi_priv->driver_remove) {
 		ret = mhi_qcom_register_controller(mhi_cntrl, mhi_priv);
 		if (ret)
-			goto error_init_pci;
+			goto error_mhi_register_controller;
 	}
 
 	mhi_priv->powered_on = true;
 
 	ret = mhi_arch_pcie_init(mhi_cntrl);
 	if (ret)
-		goto error_init_pci;
+		goto error_mhi_register_controller;
 
 	ret = dma_set_mask_and_coherent(mhi_cntrl->cntrl_dev,
 					DMA_BIT_MASK(dev_info->dma_data_width));
 	if (ret)
-		goto error_init_pci;
+		goto error_arch_pcie_init;
 
 	if (debug_mode) {
 		if (mhi_cntrl->debugfs_dentry)
@@ -1326,19 +1321,19 @@ int mhi_qcom_pci_probe(struct pci_dev *pci_dev,
 	if (ret) {
 		MHI_CNTRL_ERR("Failed to power up MHI\n");
 		mhi_priv->powered_on = false;
-		goto error_power_up;
+		goto error_arch_pcie_init;
 	}
 
 	pm_runtime_mark_last_busy(mhi_cntrl->cntrl_dev);
 
 	return 0;
 
-error_power_up:
+error_arch_pcie_init:
 	mhi_arch_pcie_deinit(mhi_cntrl);
 
-error_init_pci:
+error_mhi_register_controller:
+	mhi_unregister_controller(mhi_cntrl);
 	mhi_deinit_pci_dev(pci_dev, dev_info);
-
 	dev_set_drvdata(&pci_dev->dev, NULL);
 	mhi_cntrl->cntrl_dev = NULL;
 

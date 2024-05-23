@@ -24,6 +24,9 @@
 static struct device *dev_node;
 static char active_boot_part[ACTIVE_BOOT_PART_MAX] = "boot";
 
+/* Variable to check boot device is NAND or not */
+static bool is_bootdevice_nand = true;
+
 /*
  * Function to get the active boot partition information
  * from kernel command line during system boot.
@@ -37,6 +40,60 @@ static int __init get_active_boot_part(char *str)
 
 __setup("part.activeboot=", get_active_boot_part);
 #endif
+
+/* Function to check whether boot device is
+ * NAND or not by reading boot_config register.
+ */
+static void msm_nand_boot_device_is_nand(struct platform_device *pdev)
+{
+	u8 *buf;
+	size_t len;
+	u32 nand_boot, boot_dev_bits;
+	struct nvmem_cell *cell;
+
+	cell = nvmem_cell_get(&pdev->dev, "boot_conf");
+	if (IS_ERR(cell)) {
+		dev_err(&pdev->dev, "nvmem cell get failed err:(%ld)\n", PTR_ERR(cell));
+		return;
+	}
+
+	buf = (u8 *)nvmem_cell_read(cell, &len);
+	if (IS_ERR(buf)) {
+		dev_err(&pdev->dev, "nvmem cell read failed err:(%ld)\n", PTR_ERR(buf));
+		goto put_nvmem_cell;
+	}
+
+	if (of_property_read_u32(pdev->dev.of_node,
+				   "qcom,boot_dev_bits",
+				   &boot_dev_bits)) {
+		dev_err(&pdev->dev, "number of bits to represent boot device not found\n");
+		goto free_buf;
+	}
+
+	if (of_property_read_u32(pdev->dev.of_node,
+				   "qcom,nand_boot",
+				   &nand_boot)) {
+		dev_err(&pdev->dev, "boot_config value for boot device not found\n");
+		goto free_buf;
+	}
+
+	/* Storage boot device fuse is present in QFPROM_RAW_OEM_CONFIG_ROW0_LSB
+	 * this fuse is blown by bootloader and populated in boot_config
+	 * register[1:4] FAST_BOOT bits - hence shift read data by 1 and mask it with 0xf.
+	 *
+	 * FAST_BOOT bits might vary from target to target. It could be [1:3] or [1:4] or [1:5].
+	 * So, get the FAST_BOOT bits information from dtsi and shift accordingly.
+	 */
+	is_bootdevice_nand = (((*buf >> 1) & ((1 << boot_dev_bits) - 1)) == nand_boot) ?
+										true : false;
+	if (!is_bootdevice_nand)
+		dev_err(&pdev->dev, "boot_config val = 0x%x boot dev = 0x%x\n",
+					(*buf >> 1) & ((1 << boot_dev_bits) - 1), nand_boot);
+free_buf:
+	kfree(buf);
+put_nvmem_cell:
+	nvmem_cell_put(cell);
+}
 
 /*
  * Get the DMA memory for requested amount of size. It returns the pointer
@@ -231,9 +288,14 @@ static void msm_nand_print_rpm_info(struct device *dev)
 static int msm_nand_suspend(struct device *dev)
 {
 	int ret = 0;
-	struct msm_nand_info *info = dev_get_drvdata(dev);
-	struct msm_nand_chip *chip = &info->nand_chip;
+	struct msm_nand_info *info;
+	struct msm_nand_chip *chip;
 
+	/* If boot device is not NAND return success */
+	if (!is_bootdevice_nand)
+		return 0;
+	info = dev_get_drvdata(dev);
+	chip = &info->nand_chip;
 	mutex_lock(&info->lock);
 
 	/* Returns true for Deep sleep/Quick boot case else false */
@@ -266,8 +328,12 @@ out:
 static int msm_nand_resume(struct device *dev)
 {
 	int ret = 0;
-	struct msm_nand_info *info = dev_get_drvdata(dev);
+	struct msm_nand_info *info;
 
+	/* If boot device is not NAND return success */
+	if (!is_bootdevice_nand)
+		return 0;
+	info = dev_get_drvdata(dev);
 	mutex_lock(&info->lock);
 
 	if (!pm_runtime_suspended(dev))
@@ -5085,27 +5151,14 @@ static int msm_nand_probe(struct platform_device *pdev)
 	int i, err, nr_parts;
 	struct device *dev;
 	u32 adjustment_offset;
-	void __iomem *boot_cfg_base;
-	u32 boot_dev;
 	struct version qpic_version = {0};
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						"boot_cfg");
-	if (res && res->start) {
-		boot_cfg_base = devm_ioremap(&pdev->dev, res->start,
-						resource_size(res));
-		if (!boot_cfg_base) {
-			pr_err("ioremap() failed for addr 0x%x size 0x%x\n",
-				res->start, resource_size(res));
-			return -ENOMEM;
-		}
-		boot_dev = (readl_relaxed(boot_cfg_base) & BOOT_DEV_MASK) >> 1;
-		if (boot_dev != BOOT_DEV_NAND) {
-			pr_err("disabling nand as boot device (%x) is not NAND\n",
-					boot_dev);
-			return -ENODEV;
-		}
-	}
+	msm_nand_boot_device_is_nand(pdev);
+	/* If boot device is not NAND return success
+	 * from NAND probe.
+	 */
+	if (!is_bootdevice_nand)
+		return 0;
 	/*
 	 * The partition information can also be passed from kernel command
 	 * line. Also, the MTD core layer supports adding the whole device as
@@ -5308,8 +5361,13 @@ out:
  */
 static int msm_nand_remove(struct platform_device *pdev)
 {
-	struct msm_nand_info *info = dev_get_drvdata(&pdev->dev);
 
+	struct msm_nand_info *info;
+
+	/* If boot device is not NAND return success */
+	if (!is_bootdevice_nand)
+		return 0;
+	info = dev_get_drvdata(&pdev->dev);
 	msm_nand_bam_unregister_panic_handler();
 	if (pm_runtime_suspended(&(pdev)->dev))
 		pm_runtime_resume(&(pdev)->dev);
@@ -5331,8 +5389,12 @@ static int msm_nand_remove(struct platform_device *pdev)
 
 static void msm_nand_shutdown(struct platform_device *pdev)
 {
-	struct msm_nand_info *info = dev_get_drvdata(&pdev->dev);
+	struct msm_nand_info *info;
 
+	/* If boot device is not NAND return success */
+	if (!is_bootdevice_nand)
+		return;
+	info = dev_get_drvdata(&pdev->dev);
 	mutex_lock(&info->lock);
 	pr_debug("reboot handler\n");
 
