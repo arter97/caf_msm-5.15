@@ -7,7 +7,7 @@
  * Copyright (C) 2012, 2019 Linaro Ltd.
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cma.h>
@@ -129,7 +129,7 @@ struct dma_buf *cma_heap_allocate(struct dma_heap *heap,
 		}
 		cma_pages = pfn_to_page(PFN_DOWN(info->handle));
 	} else {
-		cma_pages = cma_alloc(cma_heap->cma, nr_pages, align, false);
+		cma_pages = cma_alloc(cma_heap->cma, nr_pages, align, GFP_KERNEL);
 		if (!cma_pages)
 			goto free_info;
 
