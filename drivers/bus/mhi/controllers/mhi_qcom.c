@@ -259,6 +259,12 @@ static const struct mhi_channel_config modem_qcom_sa525m_mhi_channels[] = {
 	MHI_CHANNEL_CONFIG_DL(3, "SAHARA", 128, 1, MHI_EE_SBL,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false,
 			      false, false, 0, 0),
+	/* EDL channels */
+	MHI_CHANNEL_CONFIG_UL(34, "FIREHOSE", 32, 1, MHI_EE_EDL,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(35, "FIREHOSE", 32, 1, MHI_EE_EDL,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
 	/* AMSS channels */
 	MHI_CHANNEL_CONFIG_UL(0, "LOOPBACK", 64, 2, MHI_EE_AMSS,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
