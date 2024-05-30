@@ -439,13 +439,9 @@ int hgsl_mem_cache_op(struct device *dev, struct hgsl_mem_node *mem_node,
 		return -EINVAL;
 
 	cache_mode = mem_node->flags & GSL_MEMFLAGS_CACHEMODE_MASK;
-	switch (cache_mode) {
-	case GSL_MEMFLAGS_WRITETHROUGH:
-	case GSL_MEMFLAGS_WRITEBACK:
-		break;
-	default:
+	if (cache_mode != GSL_MEMFLAGS_WRITETHROUGH &&
+		cache_mode != GSL_MEMFLAGS_WRITEBACK)
 		return 0;
-	}
 
 	if (sizebytes == 0 || sizebytes > UINT_MAX || offsetbytes > UINT_MAX)
 		return -ERANGE;
@@ -617,19 +613,19 @@ out:
 int hgsl_mem_add_node(struct rb_root *rb_root,
 		struct hgsl_mem_node *mem_node)
 {
-	struct rb_node **p;
-	struct rb_node *rb = NULL;
+	struct rb_node **cur;
+	struct rb_node *parent = NULL;
 	struct hgsl_mem_node *node = NULL;
 	int ret = 0;
 
-	p = &rb_root->rb_node;
-	while (*p) {
-		rb = *p;
-		node = rb_entry(rb, struct hgsl_mem_node, mem_rb_node);
+	cur = &rb_root->rb_node;
+	while (*cur) {
+		parent = *cur;
+		node = rb_entry(parent, struct hgsl_mem_node, mem_rb_node);
 		if (mem_node->memdesc.gpuaddr > node->memdesc.gpuaddr)
-			p = &rb->rb_right;
+			cur = &parent->rb_right;
 		else if (mem_node->memdesc.gpuaddr < node->memdesc.gpuaddr)
-			p = &rb->rb_left;
+			cur = &parent->rb_left;
 		else {
 			LOGE("Duplicate gpuaddr: 0x%llx",
 				mem_node->memdesc.gpuaddr);
@@ -638,7 +634,7 @@ int hgsl_mem_add_node(struct rb_root *rb_root,
 		}
 	}
 
-	rb_link_node(&mem_node->mem_rb_node, rb, p);
+	rb_link_node(&mem_node->mem_rb_node, parent, cur);
 	rb_insert_color(&mem_node->mem_rb_node, rb_root);
 out:
 	return ret;
@@ -648,21 +644,21 @@ struct hgsl_mem_node *hgsl_mem_find_node_locked(
 		struct rb_root *rb_root, uint64_t gpuaddr,
 		uint64_t size, bool accurate)
 {
-	struct rb_node *rb = NULL;
+	struct rb_node *cur = NULL;
 	struct hgsl_mem_node *node_found = NULL;
 
-	rb = rb_root->rb_node;
-	while (rb) {
-		node_found = rb_entry(rb, struct hgsl_mem_node, mem_rb_node);
+	cur = rb_root->rb_node;
+	while (cur) {
+		node_found = rb_entry(cur, struct hgsl_mem_node, mem_rb_node);
 		if (hgsl_mem_range_inspect(
 				node_found->memdesc.gpuaddr, gpuaddr,
 				node_found->memdesc.size64, size,
 				accurate)) {
 			return node_found;
 		} else if (node_found->memdesc.gpuaddr < gpuaddr)
-			rb = rb->rb_right;
+			cur = cur->rb_right;
 		else if (node_found->memdesc.gpuaddr > gpuaddr)
-			rb = rb->rb_left;
+			cur = cur->rb_left;
 		else {
 			LOGE("Invalid addr: 0x%llx size: [0x%llx 0x%llx]",
 				gpuaddr, size, node_found->memdesc.size64);
