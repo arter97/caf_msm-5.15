@@ -495,6 +495,7 @@ struct mhi_controller {
 	bool fbc_download;
 	bool wake_set;
 	unsigned long irq_flags;
+	struct notifier_block mhi_shutdown_notifier;
 	u32 mru;
 };
 

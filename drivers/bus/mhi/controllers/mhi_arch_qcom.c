@@ -17,6 +17,8 @@
 #include <linux/suspend.h>
 #include <linux/mhi.h>
 #include <linux/mhi_misc.h>
+#include <linux/reboot.h>
+#include <linux/notifier.h>
 #include "mhi_qcom.h"
 
 /**
@@ -54,6 +56,20 @@ struct arch_info {
 #define MHI_BOOT_DEFAULT_RX_LEN (0x1000)
 
 #define MHI_BUS_BW_CFG_COUNT (5)
+
+static void mhi_arch_esoc_ops_power_off(void *priv, unsigned int flags);
+
+static int mhi_shutdown_handler(struct notifier_block *nb, unsigned long action,
+				void *data)
+{
+	struct mhi_controller *mhi_cntrl =
+		container_of(nb, struct mhi_controller, mhi_shutdown_notifier);
+
+	if (action == SYS_DOWN)
+		mhi_arch_esoc_ops_power_off(mhi_cntrl, GRACEFUL_SHUTDOWN);
+
+	return NOTIFY_DONE;
+}
 
 static int mhi_arch_pm_notifier(struct notifier_block *nb,
 				unsigned long event, void *unused)
@@ -515,8 +531,18 @@ int mhi_arch_pcie_init(struct mhi_controller *mhi_cntrl)
 		 */
 		complete_all(&arch_info->pm_completion);
 
+		if (dev_info->reboot_notify_support) {
+			/* register Shutdown notifier to get shutdown events */
+			mhi_cntrl->mhi_shutdown_notifier.notifier_call = mhi_shutdown_handler;
+			ret = devm_register_reboot_notifier(mhi_cntrl->cntrl_dev,
+							&(mhi_cntrl->mhi_shutdown_notifier));
+			if (ret)
+				MHI_CNTRL_ERR("Failed to register reboot notifier (err=%d)\n", ret);
+		}
+
 		arch_info->esoc_client = devm_register_esoc_client(
 						mhi_cntrl->cntrl_dev, "mdm");
+
 		if (IS_ERR_OR_NULL(arch_info->esoc_client)) {
 			MHI_CNTRL_ERR("Failed to register esoc client\n");
 		} else {

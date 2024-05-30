@@ -401,6 +401,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sdx65_info = {
 	.sfr_support = true,
 	.timesync = true,
 	.drv_support = false,
+	.reboot_notify_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_lemans_info = {
@@ -414,6 +415,7 @@ static const struct mhi_pci_dev_info mhi_qcom_lemans_info = {
 	.sfr_support = false,
 	.timesync = false,
 	.drv_support = false,
+	.reboot_notify_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sdx75_info = {
@@ -429,13 +431,14 @@ static const struct mhi_pci_dev_info mhi_qcom_sdx75_info = {
 	.sfr_support = true,
 	.timesync = true,
 	.drv_support = false,
+	.reboot_notify_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
 	.device_id = 0x030a,
-	.name = "esoc0",
-	.fw_image = "sdx75m/xbl_s.melf",
-	.edl_image = "sdx75m/edl.mbn",
+	.name = "SA525",
+	.fw_image = "sa525m/xbl_s.melf",
+	.edl_image = "sa525m/edl.mbn",
 	.config = &modem_qcom_sa525m_mhi_config,
 	.bar_num = MHI_PCI_BAR_NUM,
 	.dma_data_width = 64,
@@ -444,6 +447,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
 	.sfr_support = false,
 	.timesync = false,
 	.drv_support = false,
+	.reboot_notify_support = true,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
@@ -459,6 +463,7 @@ static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
 	.sfr_support = false,
 	.timesync = false,
 	.drv_support = false,
+	.reboot_notify_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sxr_info = {
@@ -472,6 +477,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sxr_info = {
 	.sfr_support = false,
 	.timesync = false,
 	.drv_support = false,
+	.reboot_notify_support = false,
 };
 static const struct pci_device_id mhi_pcie_device_id[] = {
 	{ PCI_DEVICE(MHI_PCIE_VENDOR_ID, 0x0308),
