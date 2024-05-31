@@ -6387,7 +6387,7 @@ drain_data:
 			skb_set_hash(skb, hash, hash_type);
 
 		skb_record_rx_queue(skb, queue);
-		if (priv->plat->qos_enabled && priv->plat->qos_ch_map.tc_rx_info[queue]) {
+		if (priv->plat->qos_active && priv->plat->qos_ch_map.tc_rx_info[queue]) {
 			c2t_map = priv->plat->qos_ch_map.ch_to_tc_map_rx[queue];
 			while (c2t_map) {
 				c2t_map = c2t_map >> 1;
@@ -8810,6 +8810,60 @@ void stmmac_pfc_tx_flow_ctrl(struct stmmac_priv *priv, u32 queue)
 	priv->hw->mac->configure_pfc_tx_flow_ctrl(priv->hw, queue);
 }
 EXPORT_SYMBOL_GPL(stmmac_pfc_tx_flow_ctrl);
+
+int stmmac_config_rx_queue(struct net_device *ndev, u32 queue, bool skip_sw)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct stmmac_channel *ch = &priv->channel[queue];
+
+	if (skip_sw) {
+		napi_disable(&ch->rx_napi);
+		stmmac_disable_rx_queue(priv, queue);
+		pr_info("napi disable for ch %d\n", queue);
+	}
+
+	priv->plat->rx_queues_cfg[queue].skip_sw = skip_sw;
+
+	if (!skip_sw) {
+		pr_info("napi enable for ch %d\n", queue);
+		stmmac_enable_rx_queue(priv, queue);
+		napi_enable(&ch->rx_napi);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_config_rx_queue);
+
+int stmmac_config_tx_queue(struct net_device *ndev, u32 queue, bool skip_sw)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct stmmac_channel *ch = &priv->channel[queue];
+	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
+
+	if (skip_sw) {
+		pr_info("napi disable for ch %d\n", queue);
+		napi_disable(&ch->tx_napi);
+		if (!priv->tx_coal_timer_disable)
+			hrtimer_cancel(&priv->tx_queue[queue].txtimer);
+		stmmac_disable_tx_queue(priv, queue);
+	}
+
+	priv->plat->tx_queues_cfg[queue].skip_sw = skip_sw;
+
+	if (!skip_sw) {
+		stmmac_enable_tx_queue(priv, queue);
+		pr_info("napi enable for ch %d\n", queue);
+		napi_enable(&ch->tx_napi);
+		priv->tx_coal_frames[queue] = STMMAC_TX_FRAMES;
+		priv->tx_coal_timer[queue] = STMMAC_COAL_TX_TIMER;
+
+		hrtimer_init(&tx_q->txtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		tx_q->txtimer.function = stmmac_tx_timer;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_config_tx_queue);
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)
