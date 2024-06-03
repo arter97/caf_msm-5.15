@@ -31,6 +31,9 @@
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <soc/qcom/secure_buffer.h>
 #include <trace/events/rproc_qcom.h>
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+#include <linux/reboot.h>
+#endif
 #if IS_ENABLED(CONFIG_QCOM_DS_SKIP_Q6_STOP)
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
@@ -704,6 +707,14 @@ static int adsp_start(struct rproc *rproc)
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "enter");
 
 	ret = qcom_scm_pas_auth_and_reset(adsp->pas_id);
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+	if (ret) {
+		dev_err(adsp->dev,
+			"Auth and reset failed for remoteproc %s, Rebooting the device for slot switch\n",
+			rproc->name);
+		kernel_restart("firmware auth failed");
+	}
+#endif
 	if (ret)
 		panic("Panicking, auth and reset failed for remoteproc %s\n", rproc->name);
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "exit");
