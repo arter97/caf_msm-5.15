@@ -14,7 +14,7 @@
  *	- Context fault reporting
  *	- Extended Stream ID (16 bit)
  *
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "arm-smmu: " fmt
@@ -3388,50 +3388,6 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 }
 #endif
 
-static int arm_smmu_parse_impl_def_registers(struct arm_smmu_device *smmu)
-{
-	struct device *dev = smmu->dev;
-	int i, ntuples, ret;
-	u32 *tuples;
-	struct arm_smmu_impl_def_reg *regs, *regit;
-
-	if (!of_find_property(dev->of_node, "attach-impl-defs", &ntuples))
-		return 0;
-
-	ntuples /= sizeof(u32);
-	if (ntuples % 2) {
-		dev_err(dev,
-			"Invalid number of attach-impl-defs registers: %d\n",
-			ntuples);
-		return -EINVAL;
-	}
-
-	regs = devm_kmalloc_array(dev, ntuples, sizeof(*regs), GFP_KERNEL);
-	if (!regs)
-		return -ENOMEM;
-
-	tuples = kmalloc_array(ntuples * 2, sizeof(*tuples), GFP_KERNEL);
-	if (!tuples)
-		return -ENOMEM;
-
-	ret = of_property_read_u32_array(dev->of_node, "attach-impl-defs",
-					tuples, ntuples);
-	if (ret)
-		goto out;
-
-	for (i = 0, regit = regs; i < ntuples; i += 2, ++regit) {
-		regit->offset = tuples[i];
-		regit->value = tuples[i + 1];
-	}
-
-	smmu->impl_def_attach_registers = regs;
-	smmu->num_impl_def_attach_registers = ntuples / 2;
-
-out:
-	kfree(tuples);
-	return ret;
-}
-
 static int arm_smmu_device_cfg_probe(struct arm_smmu_device *smmu)
 {
 	unsigned int size;
@@ -3949,10 +3905,6 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	if (err)
 		goto out_power_off;
 
-	err = arm_smmu_parse_impl_def_registers(smmu);
-	if (err)
-		goto out_power_off;
-
 	if (smmu->version == ARM_SMMU_V2) {
 		if (smmu->num_context_banks > smmu->num_context_irqs) {
 			dev_err(dev,
@@ -4108,7 +4060,7 @@ static int __maybe_unused arm_smmu_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused arm_smmu_pm_resume_common(struct device *dev)
+static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
 {
 	int ret;
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
@@ -4167,7 +4119,7 @@ static int __maybe_unused arm_smmu_pm_restore_early(struct device *dev)
 		smmu_domain->pgtbl_ops = pgtbl_ops;
 		arm_smmu_init_context_bank(smmu_domain, pgtbl_cfg);
 	}
-	ret = arm_smmu_pm_resume_common(dev);
+	ret = arm_smmu_pm_resume(dev);
 	if (ret) {
 		dev_err(dev, "Failed to resume\n");
 		return ret;
@@ -4202,6 +4154,8 @@ static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
 
 static int arm_smmu_pm_prepare(struct device *dev)
 {
+	int ret = 0;
+
 	if (!of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
 		return 0;
 
@@ -4210,22 +4164,29 @@ static int arm_smmu_pm_prepare(struct device *dev)
 	 * cause a deadlock where cx vote is never put down causing timeout. So,
 	 * abort system suspend here if dev->power.usage_count is 1 as this indicates
 	 * rpm_suspend is in progress and prepare is the one incrementing this counter.
-	 * Now rpm_suspend can continue and put down cx vote. System suspend will resume
-	 * later and complete.
+	 * Now pm runtime put sync suspend will complete the rpm suspend and system
+	 * suspend will resume later and complete.
+	 * in case if runtime still not suspended after sync suspend also then will
+	 * retry with EGAIN by incrementing the usage count to avoid the under flow.
 	 */
 	if (pm_runtime_suspended(dev))
 		return 0;
 
-	return (atomic_read(&dev->power.usage_count) == 1) ? -EINPROGRESS : 0;
+	if (atomic_read(&dev->power.usage_count) == 1) {
+		ret = pm_runtime_put_sync_suspend(dev);
+		if (ret < 0) {
+			dev_err(dev, "sync supend failed to suspend the rpm\n");
+			pm_runtime_get_noresume(dev);
+			return -EAGAIN;
+		}
+	}
+	return 0;
 }
 
 static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
 {
 	int ret = 0;
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
-
-	if (pm_suspend_via_firmware())
-		return arm_smmu_pm_freeze_late(dev);
 
 	if (pm_runtime_suspended(dev))
 		goto clk_unprepare;
@@ -4237,14 +4198,6 @@ static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
 clk_unprepare:
 	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
 	return ret;
-}
-
-static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
-{
-	if (pm_suspend_via_firmware())
-		return arm_smmu_pm_restore_early(dev);
-	else
-		return arm_smmu_pm_resume_common(dev);
 }
 
 static const struct dev_pm_ops arm_smmu_pm_ops = {
