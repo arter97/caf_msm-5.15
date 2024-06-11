@@ -1182,7 +1182,6 @@ drivers/media/mc/mc-devnode.c
 drivers/media/mc/mc-entity.c
 drivers/media/mc/mc-request.c
 drivers/media/rc/bpf-lirc.c
-drivers/media/rc/keymaps/rc-cec.c
 drivers/media/rc/lirc_dev.c
 drivers/media/rc/rc-core-priv.h
 drivers/media/rc/rc-ir-raw.c
