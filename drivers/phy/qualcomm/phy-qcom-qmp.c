@@ -5714,8 +5714,6 @@ static int qcom_qmp_phy_probe(struct platform_device *pdev)
 
 		usb_cfg = combo_cfg->usb_cfg;
 		cfg = usb_cfg; /* Setup clks and regulators */
-	} else {
-		usb_cfg = cfg;
 	}
 
 	/* per PHY serdes; usually located at base address */
@@ -5809,7 +5807,7 @@ static int qcom_qmp_phy_probe(struct platform_device *pdev)
 			if (ret) {
 				dev_err(qmp->dev,
 					"failed to register pipe clock source\n");
-			//	goto err_node_put;
+				goto err_node_put;
 			}
 		} else if (cfg->type == PHY_TYPE_DP) {
 			ret = phy_dp_clks_register(qmp, qmp->phys[id], child);
