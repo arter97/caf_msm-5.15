@@ -5551,7 +5551,9 @@ static int ufs_qcom_probe(struct platform_device *pdev)
 	if (err)
 		ufs_qcom_msg(ERR, dev, "ufshcd_pltfrm_init() failed %d\n", err);
 
-	ufs_qcom_register_hooks();
+	if (!(of_property_read_bool(np, "secondary-storage")))
+		ufs_qcom_register_hooks();
+
 	return err;
 }
 
@@ -5667,8 +5669,16 @@ static int ufs_qcom_system_resume(struct device *dev)
 
 static int ufs_qcom_suspend_prepare(struct device *dev)
 {
-	struct ufs_hba *hba = dev_get_drvdata(dev);
-	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	struct ufs_hba *hba;
+	struct ufs_qcom_host *host;
+
+	if (!is_bootdevice_ufs) {
+		dev_info(dev, "UFS is not boot dev.\n");
+		return 0;
+	}
+
+	hba = dev_get_drvdata(dev);
+	host = ufshcd_get_variant(hba);
 
 	/* For deep sleep, set spm level to lvl 5 because all
 	 * regulators is turned off in DS. For other senerios
@@ -5678,11 +5688,6 @@ static int ufs_qcom_suspend_prepare(struct device *dev)
 		hba->spm_lvl = UFS_PM_LVL_5;
 	else
 		hba->spm_lvl = host->spm_lvl_default;
-
-	if (!is_bootdevice_ufs) {
-		dev_info(dev, "UFS is not boot dev.\n");
-		return 0;
-	}
 
 	return ufshcd_suspend_prepare(dev);
 }
