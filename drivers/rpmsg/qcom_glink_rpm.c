@@ -384,35 +384,54 @@ static int glink_rpm_remove(struct platform_device *pdev)
 	return 0;
 }
 
-int glink_rpm_resume_noirq(struct device *dev)
+int glink_rpm_start(struct device *dev)
 {
-#if IS_ENABLED(CONFIG_DEEPSLEEP) && IS_ENABLED(CONFIG_RPMSG_QCOM_GLINK_RPM)
 	struct qcom_glink *glink;
 	int ret = 0;
 
+	glink_ssr_notify_rpm();
+	glink_rpm_unregister(dev);
+	glink = glink_rpm_register(dev, dev->of_node);
+	if (IS_ERR(glink)) {
+		ret = PTR_ERR(glink);
+		pr_err("glink_rpm_register failed\n");
+	}
+	ret = qcom_glink_native_start(glink);
+	if (ret)
+		pr_err("Failed to register glink as chrdev\n");
+
+	dev_set_drvdata(dev, glink);
+	glink_rpm_ready_wait();
+
+	return 0;
+}
+
+int glink_rpm_resume_noirq(struct device *dev)
+{
+	int ret = 0;
+
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
 	if (pm_suspend_via_firmware()) {
 		dev_info(dev, "Deep sleep exit path\n");
-
-		glink_ssr_notify_rpm();
-		glink_rpm_unregister(dev);
-		glink = glink_rpm_register(dev, dev->of_node);
-		if (IS_ERR(glink)) {
-			ret = PTR_ERR(glink);
-			pr_err("glink_rpm_register failed\n");
-		}
-		ret = qcom_glink_native_start(glink);
-		if (ret)
-			pr_err("Failed to register glink as chrdev\n");
-
-		dev_set_drvdata(dev, glink);
-		glink_rpm_ready_wait();
+		ret = glink_rpm_start(dev);
 	}
 #endif
-	return 0;
+	return ret;
+}
+
+int glink_rpm_restore_noirq(struct device *dev)
+{
+	int ret = 0;
+
+	dev_info(dev, "Hibernate exit path\n");
+	ret = glink_rpm_start(dev);
+
+	return ret;
 }
 
 const struct dev_pm_ops glink_rpm_pm_ops = {
 	.resume_noirq = glink_rpm_resume_noirq,
+	.restore_noirq = glink_rpm_restore_noirq,
 };
 
 static const struct of_device_id glink_rpm_of_match[] = {
