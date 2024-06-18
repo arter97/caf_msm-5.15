@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _LINUX_RPMSG_QCOM_GLINK_H
@@ -12,6 +13,7 @@ struct qcom_glink;
 
 #if IS_ENABLED(CONFIG_RPMSG_QCOM_GLINK)
 void qcom_glink_ssr_notify(const char *ssr_name);
+void glink_ssr_notify_rpm(void);
 #else
 static inline void qcom_glink_ssr_notify(const char *ssr_name) {}
 #endif
