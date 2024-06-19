@@ -222,6 +222,7 @@
 #define MSI_EXIT_L1SS_WAIT	              10
 #define MSI_EXIT_L1SS_WAIT_MAX_COUNT          100
 #define XMLH_LINK_UP                          0x400
+#define PARF_PM_LINKST_IN_L2                  0x00000020
 #define PARF_XMLH_LINK_UP                     0x40000000
 
 #define MAX_PROP_SIZE 32
@@ -508,6 +509,9 @@ struct ep_pcie_dev_t {
 	bool				override_disable_sriov;
 	bool				no_path_from_ipa_to_pcie;
 	bool				configure_hard_reset;
+	bool				l1_disable;
+	bool				perst_sep_en;
+	bool				hot_rst_disable;
 	u32				tcsr_perst_separation_en_offset;
 	u32				tcsr_reset_separation_offset;
 	u32				tcsr_perst_enable_offset;

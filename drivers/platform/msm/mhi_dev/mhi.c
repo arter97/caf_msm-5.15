@@ -1966,6 +1966,15 @@ static void mhi_hwc_cb(void *priv, enum mhi_dma_event_type event,
 			goto err;
 		}
 		break;
+	case MHI_DMA_EVENT_SSR_RESET:
+		mhi_log(mhi_ctx->vf_id, MHI_MSG_INFO,
+			"SSR event notified on vf_id%d", mhi_ctx->vf_id);
+		/*
+		 * Queue the Channel error handling to SM layer to avoid any
+		 * race conditions with M2/M3 state handling.
+		 */
+		mhi_dev_notify_sm_event(mhi_ctx, MHI_DEV_EVENT_CHANNEL_ERROR);
+		break;
 	default:
 		mhi_log(mhi_ctx->vf_id, MHI_MSG_ERROR,
 			"HW ch uC unknown event 0x%X\n", event);
@@ -3434,6 +3443,15 @@ void mhi_dev_pm_relax(struct mhi_dev *mhi_ctx)
 	mhi_log(mhi_ctx->vf_id, MHI_MSG_VERBOSE, "releasing mhi wakelock\n");
 }
 EXPORT_SYMBOL(mhi_dev_pm_relax);
+
+int mhi_channel_error_notif(struct mhi_dev *mhi)
+{
+	union mhi_dev_ring_element_type event;
+
+	event.evt_ee_state.type = MHI_DEV_RING_EL_CH_STATE_CHANGE_NOTIFY;
+	return mhi_dev_flush_cmd_completion_events(mhi, &event);
+}
+EXPORT_SYMBOL_GPL(mhi_channel_error_notif);
 
 int mhi_dev_suspend(struct mhi_dev *mhi)
 {

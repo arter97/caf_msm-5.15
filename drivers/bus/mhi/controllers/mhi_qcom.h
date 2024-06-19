@@ -14,6 +14,8 @@
 
 #define PCI_INVALID_READ(val) ((val) == U32_MAX)
 
+#define GRACEFUL_SHUTDOWN 0x0
+
 #define MHI_CNTRL_LOG(fmt, ...) do {	\
 	struct mhi_qcom_priv *mhi_priv = \
 			mhi_controller_get_privdata(mhi_cntrl); \
@@ -78,6 +80,8 @@ struct mhi_pci_dev_info {
 	bool sfr_support;
 	bool timesync;
 	bool drv_support;
+	bool reboot_notify_support;
+	bool dev_reset_support;
 };
 
 struct mhi_qcom_priv {
