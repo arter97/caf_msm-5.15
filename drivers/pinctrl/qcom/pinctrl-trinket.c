@@ -246,14 +246,14 @@ static const struct pinctrl_pin_desc trinket_pins[] = {
 	PINCTRL_PIN(130, "GPIO_130"),
 	PINCTRL_PIN(131, "GPIO_131"),
 	PINCTRL_PIN(132, "GPIO_132"),
-	PINCTRL_PIN(133, "SDC1_RCLK"),
-	PINCTRL_PIN(134, "SDC1_CLK"),
-	PINCTRL_PIN(135, "SDC1_CMD"),
-	PINCTRL_PIN(136, "SDC1_DATA"),
-	PINCTRL_PIN(137, "SDC2_CLK"),
-	PINCTRL_PIN(138, "SDC2_CMD"),
-	PINCTRL_PIN(139, "SDC2_DATA"),
-	PINCTRL_PIN(140, "UFS_RESET"),
+	PINCTRL_PIN(133, "UFS_RESET"),
+	PINCTRL_PIN(134, "SDC1_RCLK"),
+	PINCTRL_PIN(135, "SDC1_CLK"),
+	PINCTRL_PIN(136, "SDC1_CMD"),
+	PINCTRL_PIN(137, "SDC1_DATA"),
+	PINCTRL_PIN(138, "SDC2_CLK"),
+	PINCTRL_PIN(139, "SDC2_CMD"),
+	PINCTRL_PIN(140, "SDC2_DATA"),
 };
 
 #define DECLARE_MSM_GPIO_PINS(pin) \
@@ -392,14 +392,14 @@ DECLARE_MSM_GPIO_PINS(130);
 DECLARE_MSM_GPIO_PINS(131);
 DECLARE_MSM_GPIO_PINS(132);
 
-static const unsigned int sdc1_rclk_pins[] = { 133 };
-static const unsigned int sdc1_clk_pins[] = { 134 };
-static const unsigned int sdc1_cmd_pins[] = { 135 };
-static const unsigned int sdc1_data_pins[] = { 136 };
-static const unsigned int sdc2_clk_pins[] = { 137 };
-static const unsigned int sdc2_cmd_pins[] = { 138 };
-static const unsigned int sdc2_data_pins[] = { 139 };
-static const unsigned int ufs_reset_pins[] = { 140 };
+static const unsigned int ufs_reset_pins[] = { 133 };
+static const unsigned int sdc1_rclk_pins[] = { 134 };
+static const unsigned int sdc1_clk_pins[] = { 135 };
+static const unsigned int sdc1_cmd_pins[] = { 136 };
+static const unsigned int sdc1_data_pins[] = { 137 };
+static const unsigned int sdc2_clk_pins[] = { 138 };
+static const unsigned int sdc2_cmd_pins[] = { 139 };
+static const unsigned int sdc2_data_pins[] = { 140 };
 
 enum trinket_functions {
 	msm_mux_qup00,
@@ -1531,14 +1531,27 @@ static const struct msm_pingroup trinket_groups[] = {
 	[131] = PINGROUP(131, SOUTH, phase_flag20, NA, NA, NA, NA, NA, NA, NA,
 			 NA),
 	[132] = PINGROUP(132, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	[133] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x18d000, 15, 0),
-	[134] = SDC_QDSD_PINGROUP(sdc1_clk, 0x18d000, 13, 6),
-	[135] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x18d000, 11, 3),
-	[136] = SDC_QDSD_PINGROUP(sdc1_data, 0x18d000, 9, 0),
-	[137] = SDC_QDSD_PINGROUP(sdc2_clk, 0x58b000, 14, 6),
-	[138] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x58b000, 11, 3),
-	[139] = SDC_QDSD_PINGROUP(sdc2_data, 0x58b000, 9, 0),
-	[140] = UFS_RESET(ufs_reset, 0x190000),
+	[133] = UFS_RESET(ufs_reset, 0x190000),
+	[134] = SDC_QDSD_PINGROUP(sdc1_rclk, 0x18d000, 15, 0),
+	[135] = SDC_QDSD_PINGROUP(sdc1_clk, 0x18d000, 13, 6),
+	[136] = SDC_QDSD_PINGROUP(sdc1_cmd, 0x18d000, 11, 3),
+	[137] = SDC_QDSD_PINGROUP(sdc1_data, 0x18d000, 9, 0),
+	[138] = SDC_QDSD_PINGROUP(sdc2_clk, 0x58b000, 14, 6),
+	[139] = SDC_QDSD_PINGROUP(sdc2_cmd, 0x58b000, 11, 3),
+	[140] = SDC_QDSD_PINGROUP(sdc2_data, 0x58b000, 9, 0),
+};
+
+static const struct msm_gpio_wakeirq_map trinket_mpm_map[] = {
+	{1, 14}, {3, 15}, {4, 16}, {9, 17}, {13, 18}, {14, 23}, {15, 19},
+	{17, 20}, {19, 21}, {21, 22}, {22, 84}, {25, 24}, {26, 25},
+	{27, 26}, {29, 27}, {33, 28}, {36, 29}, {42, 30}, {43, 5},
+	{44, 31}, {45, 6}, {47, 32}, {50, 33}, {59, 7}, {70, 34}, {72, 8},
+	{75, 35}, {79, 36}, {80, 37}, {81, 38}, {82, 39}, {83, 9}, {85, 40},
+	{86, 41}, {88, 42}, {89, 43}, {91, 44}, {92, 45}, {93, 46}, {94, 47},
+	{95, 48}, {96, 49}, {97, 70}, {98, 50}, {99, 51}, {100, 64}, {101, 52},
+	{102, 53}, {105, 54}, {107, 55}, {110, 56}, {111, 57}, {112, 58}, {118, 59},
+	{120, 71}, {122, 60}, {123, 61}, {124, 13}, {126, 62}, {128, 63}, {130, 65},
+	{131, 66}, {132, 67},
 };
 
 static const struct msm_pinctrl_soc_data trinket_pinctrl = {
@@ -1548,7 +1561,9 @@ static const struct msm_pinctrl_soc_data trinket_pinctrl = {
 	.nfunctions = ARRAY_SIZE(trinket_functions),
 	.groups = trinket_groups,
 	.ngroups = ARRAY_SIZE(trinket_groups),
-	.ngpios = 133,
+	.ngpios = 134,
+	.wakeirq_map = trinket_mpm_map,
+	.nwakeirq_map = ARRAY_SIZE(trinket_mpm_map),
 };
 
 static int trinket_pinctrl_probe(struct platform_device *pdev)

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __VIRTIO_FASTRPC_BASE_H__
@@ -19,12 +19,11 @@
 #define PID_SIZE		10
 #define FASTRPC_MSG_MAX	256
 
-#define CDSP1_DOMAIN_ID	4
-
 struct vfastrpc_channel_ctx {
 	int secure;
 	bool unsigned_support;
 	struct fastrpc_dsp_capabilities dsp_cap_kernel;
+	uint64_t sesscount;
 };
 
 struct virt_fastrpc_vq {
@@ -52,6 +51,7 @@ struct vfastrpc_apps {
 	bool has_mmap;
 	bool has_control;
 	bool has_mem_map;
+	u32 signed_pd_control;
 
 	struct device *dev;
 	struct cdev cdev;
@@ -63,6 +63,8 @@ struct vfastrpc_apps {
 	const struct file_operations *debugfs_fops;
 	spinlock_t msglock;
 	struct virt_fastrpc_msg *msgtable[FASTRPC_MSG_MAX];
+	uint32_t max_sess_per_proc;
+	spinlock_t hlock;
 };
 
 #endif /*__VIRTIO_FASTRPC_BASE_H__*/

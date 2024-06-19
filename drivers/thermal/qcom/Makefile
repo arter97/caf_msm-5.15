@@ -3,6 +3,7 @@ obj-$(CONFIG_QCOM_TSENS)	+= qcom_tsens.o
 qcom_tsens-y			+= tsens.o tsens-v2.o tsens-v1.o tsens-v0_1.o \
 					tsens-8960.o
 obj-$(CONFIG_QCOM_SPMI_ADC_TM5)	+= qcom-spmi-adc-tm5.o
+obj-$(CONFIG_QCOM_SPMI_MBG_TM)	+= qcom-spmi-mbg-tm.o
 obj-$(CONFIG_QCOM_SPMI_TEMP_ALARM)	+= qcom-spmi-temp-alarm.o
 obj-$(CONFIG_QCOM_LMH)		+= lmh.o
 obj-$(CONFIG_QTI_CPU_PAUSE_COOLING_DEVICE) += thermal_pause.o
@@ -27,7 +28,7 @@ obj-$(CONFIG_QTI_USERSPACE_CDEV) += qti_userspace_cdev.o
 obj-${CONFIG_QTI_SDPM_CLOCK_MONITOR} += sdpm_clk.o
 obj-$(CONFIG_QTI_THERMALZONE_CONFIG_DEBUG) += thermal_config.o
 obj-$(CONFIG_THERMAL_TSENS_LEGACY)	+= msm-tsens-driver.o
-msm-tsens-driver-y			+= msm-tsens.o tsens2xxx.o tsens-dbg.o
+msm-tsens-driver-y			+= msm-tsens.o tsens2xxx.o tsens-dbg.o tsens-calib.o tsens-mtc.o tsens1xxx.o
 obj-$(CONFIG_QTI_LMH_CPU_VDD_COOLING_DEVICE) += lmh_cpu_vdd_cdev.o
 obj-$(CONFIG_QTI_CX_IPEAK_COOLING_DEVICE) += cx_ipeak_cdev.o
 obj-$(CONFIG_REGULATOR_COOLING_DEVICE) += regulator_cdev.o

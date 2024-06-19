@@ -74,6 +74,9 @@
 
 #define RPC_CLIENT_NAME_SIZE (64)
 
+struct hgsl_context;
+struct hgsl_priv;
+
 /* RPC opcodes */
 /* WARNING: when inserting new opcode, please insert it to the end before RPC_FUNC_LAST */
 /* Inserting the new opcode in the middle of the list will break the protocol ! */
@@ -157,6 +160,8 @@ enum gsl_rpc_func_t {
 	RPC_PERFCOUNTERS_READ,
 	RPC_NOTIFY_CLEANUP,
 	RPC_COMMAND_RESETSTATUS,
+	RPC_CONTEXT_QUERY_DBCQ,
+	RPC_CONTEXT_REGISTER_DBCQ,
 	RPC_FUNC_LAST /* insert new func BEFORE this line! */
 };
 
@@ -197,12 +202,25 @@ enum gsl_rpc_server_mode_t {
 
 #pragma pack(push, 4)
 
+/* For RPC_HANDSHAKE version < 2 */
 struct handshake_params_t {
 	uint32_t size;
 	uint32_t client_type;
 	uint32_t client_version;
 	uint32_t pid;
 	char name[RPC_CLIENT_NAME_SIZE];
+};
+
+struct handshake_params_v2_t {
+	uint32_t size;
+	uint32_t client_type;
+	uint32_t client_version;
+	uint32_t pid;
+	char name[RPC_CLIENT_NAME_SIZE];
+	/* user id in current namespace, if set to (uid_t)(-1),
+	 * backend will ignore it and use default settings
+	 */
+	uint32_t uid;
 };
 
 struct sub_handshake_params_t {
@@ -391,6 +409,29 @@ struct notify_cleanup_params_t {
 	uint32_t            timeout;
 };
 
+struct query_dbcq_params_t {
+	uint32_t                size;
+	uint32_t                devhandle;
+	uint32_t                ctxthandle;
+	uint32_t                length;
+};
+
+struct register_dbcq_params_t {
+	uint32_t                size;
+	uint32_t                devhandle;
+	uint32_t                ctxthandle;
+	uint32_t                len;
+	uint32_t                queue_body_offset;
+	uint32_t                export_id;
+};
+
+struct context_create_params_v1_t {
+	uint32_t                          size;
+	struct context_create_params_t    ctxt_create_param;
+	struct memory_map_ext_fd_params_t shadow_map_param;
+	uint32_t                          dbq_off;
+};
+
 #pragma pack(pop)
 
 struct hgsl_hab_channel_t {
@@ -413,6 +454,8 @@ struct hgsl_dbq_info {
 	int32_t  queue_off_dwords;
 	uint32_t db_signal;
 	struct dma_buf *dma_buf;
+	uint64_t gmuaddr;
+	uint32_t ibdesc_max_size;
 	struct hgsl_hab_channel_t *hab_channel;
 };
 
@@ -440,7 +483,7 @@ int hgsl_hyp_dbq_create(struct hgsl_hab_channel_t *hab_channel,
 	uint32_t ctxthandle, uint32_t *dbq_info);
 
 int hgsl_hyp_ctxt_destroy(struct hgsl_hab_channel_t *hab_channel,
-	uint32_t devhandle, uint32_t context_id, uint32_t *rval);
+	uint32_t devhandle, uint32_t context_id, uint32_t *rval, uint32_t dbcq_export_id);
 
 int hgsl_hyp_get_shadowts_mem(struct hgsl_hab_channel_t *hab_channel,
 	uint32_t context_id, uint32_t *shadow_ts_flags,
@@ -449,15 +492,8 @@ int hgsl_hyp_get_shadowts_mem(struct hgsl_hab_channel_t *hab_channel,
 int hgsl_hyp_put_shadowts_mem(struct hgsl_hab_channel_t *hab_channel,
 	struct hgsl_mem_node *mem_node);
 
-int hgsl_hyp_mem_alloc(struct hgsl_hyp_priv_t *priv,
-	struct hgsl_ioctl_mem_alloc_params *hgsl_params,
-	struct hgsl_mem_node *mem_node);
-
-int hgsl_hyp_mem_free(struct hgsl_hyp_priv_t *priv,
-	struct hgsl_mem_node *mem_node);
-
 int hgsl_hyp_mem_map_smmu(struct hgsl_hab_channel_t *hab_channel,
-	struct hgsl_ioctl_mem_map_smmu_params *hgsl_params,
+	uint64_t size, uint64_t offset,
 	struct hgsl_mem_node *mem_node);
 
 int hgsl_hyp_mem_unmap_smmu(struct hgsl_hab_channel_t *hab_channel,
@@ -515,4 +551,18 @@ int hgsl_hyp_get_dbq_info(struct hgsl_hyp_priv_t *priv, uint32_t dbq_idx,
 
 int hgsl_hyp_notify_cleanup(struct hgsl_hab_channel_t *hab_channel, uint32_t timeout);
 
+int hgsl_hyp_query_dbcq(struct hgsl_hab_channel_t *hab_channel, uint32_t devhandle,
+	uint32_t ctxthandle, uint32_t length, uint32_t *db_signal, uint32_t *queue_gmuaddr,
+	uint32_t *irq_idx);
+
+int hgsl_hyp_context_register_dbcq(struct hgsl_hab_channel_t *hab_channel,
+	uint32_t devhandle, uint32_t ctxthandle, struct dma_buf *dma_buf, uint32_t size,
+	uint32_t queue_body_offset, uint32_t *export_id);
+
+int hgsl_hyp_ctxt_create_v1(struct device *dev,
+			struct hgsl_priv *priv,
+			struct hgsl_hab_channel_t *hab_channel,
+			struct hgsl_context *ctxt,
+			struct hgsl_ioctl_ctxt_create_params *hgsl_params,
+			int dbq_off, uint32_t *dbq_info);
 #endif

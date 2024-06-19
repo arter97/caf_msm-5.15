@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright(c) 2020, Analogix Semiconductor. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 #include <linux/gcd.h>
@@ -796,7 +797,7 @@ static int sp_tx_edid_read(struct anx7625_data *ctx,
 	int count, blocks_num;
 	u8 pblock_buf[MAX_DPCD_BUFFER_SIZE];
 	u8 i, j;
-	u8 g_edid_break = 0;
+	int g_edid_break = 0;
 	int ret;
 	struct device *dev = &ctx->client->dev;
 
@@ -827,7 +828,7 @@ static int sp_tx_edid_read(struct anx7625_data *ctx,
 				g_edid_break = edid_read(ctx, offset,
 							 pblock_buf);
 
-				if (g_edid_break)
+				if (g_edid_break < 0)
 					break;
 
 				memcpy(&pedid_blocks_buf[offset],
@@ -1106,7 +1107,7 @@ static void anx7625_hpd_polling(struct anx7625_data *ctx)
 				 ctx, val,
 				 ((val & HPD_STATUS) || (val < 0)),
 				 5000,
-				 5000 * 100);
+				 5000 * 10);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "no hpd.\n");
 		return;
@@ -1382,7 +1383,7 @@ static int anx7625_bridge_attach(struct drm_bridge *bridge,
 		if (err)
 			return err;
 	}
-	device_link_add(bridge->dev->dev, dev, DL_FLAG_PM_RUNTIME);
+	device_link_add(bridge->dev->dev, dev, DL_FLAG_STATELESS);
 	return 0;
 }
 

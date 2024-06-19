@@ -12,6 +12,7 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/regulator/consumer.h>
@@ -28,6 +29,11 @@
 #define OPMODE_MASK				(0x3 << 3)
 #define OPMODE_NONDRIVING			(0x1 << 3)
 #define SLEEPM					BIT(0)
+#define OPMODE_NORMAL				(0x00)
+#define TERMSEL					BIT(5)
+
+#define USB2_PHY_USB_PHY_UTMI_CTRL1		(0x40)
+#define XCVRSEL					BIT(0)
 
 #define USB2_PHY_USB_PHY_UTMI_CTRL5		(0x50)
 #define POR					BIT(1)
@@ -87,6 +93,14 @@
 
 #define USB_HSPHY_VDD_HPM_LOAD			30000	/* uA */
 
+
+/* struct hs_phy_priv_data - target specific private data */
+struct hs_phy_priv_data {
+	bool limit_control_vdd;
+	bool limit_control_vdda_18;
+	bool limit_control_vdda33;
+};
+
 struct msm_hsphy {
 	struct usb_phy		phy;
 	void __iomem		*base;
@@ -133,6 +147,7 @@ struct msm_hsphy {
 	u8			param_ovrd1;
 	u8			param_ovrd2;
 	u8			param_ovrd3;
+	const struct hs_phy_priv_data *phy_priv_data;
 };
 
 static void msm_hsphy_enable_clocks(struct msm_hsphy *phy, bool on)
@@ -166,22 +181,14 @@ static void msm_hsphy_enable_clocks(struct msm_hsphy *phy, bool on)
 
 }
 
-static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
+static int vdd_phy_enable_disable(struct msm_hsphy *phy, bool on)
 {
 	int ret = 0;
 
-	dev_dbg(phy->phy.dev, "%s turn %s regulators. power_enabled:%d\n",
-			__func__, on ? "on" : "off", phy->power_enabled);
-
-	if (phy->power_enabled == on) {
-		dev_dbg(phy->phy.dev, "PHYs' regulators are already ON.\n");
-		return 0;
-	}
-
 	if (!on)
-		goto disable_vdda33;
+		goto disable_vdd;
 
-	if (!phy->regulator_limit_control[0]) {
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdd) {
 		ret = regulator_set_load(phy->vdd, USB_HSPHY_VDD_HPM_LOAD);
 		if (ret < 0) {
 			dev_err(phy->phy.dev, "Unable to set HPM of vdd:%d\n", ret);
@@ -202,11 +209,46 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		goto unconfig_vdd;
 	}
 
-	if (!phy->regulator_limit_control[1]) {
+	dev_dbg(phy->phy.dev, "%s(): HSUSB PHY's vdd turned ON.\n", __func__);
+
+	return ret;
+
+disable_vdd:
+	ret = regulator_disable(phy->vdd);
+	if (ret)
+		dev_err(phy->phy.dev, "Unable to disable vdd:%d\n", ret);
+
+unconfig_vdd:
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdd) {
+		ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[0],
+					    phy->vdd_levels[2]);
+		if (ret)
+			dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
+	}
+
+put_vdd_lpm:
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdd) {
+		ret = regulator_set_load(phy->vdd, 0);
+		if (ret < 0)
+			dev_err(phy->phy.dev, "Unable to set LPM of vdd\n");
+	}
+
+err_vdd:
+	return ret;
+}
+
+static int vdda18_phy_enable_disable(struct msm_hsphy *phy, bool on)
+{
+	int ret = 0;
+
+	if (!on)
+		goto disable_vdda18;
+
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
 		ret = regulator_set_load(phy->vdda18, USB_HSPHY_1P8_HPM_LOAD);
 		if (ret < 0) {
 			dev_err(phy->phy.dev, "Unable to set HPM of vdda18:%d\n", ret);
-			goto disable_vdd;
+			goto err_vdda18;
 		}
 
 		ret = regulator_set_voltage(phy->vdda18, USB_HSPHY_1P8_VOL_MIN,
@@ -224,11 +266,46 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		goto unset_vdda18;
 	}
 
-	if (!phy->regulator_limit_control[2]) {
+	dev_dbg(phy->phy.dev, "%s(): HSUSB PHY's vdda18 turned ON.\n", __func__);
+
+	return ret;
+
+disable_vdda18:
+	ret = regulator_disable(phy->vdda18);
+	if (ret)
+		dev_err(phy->phy.dev, "Unable to disable vdda18:%d\n", ret);
+
+unset_vdda18:
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
+		ret = regulator_set_voltage(phy->vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
+		if (ret)
+			dev_err(phy->phy.dev,
+				"Unable to set (0) voltage for vdda18:%d\n", ret);
+	}
+
+put_vdda18_lpm:
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda_18) {
+		ret = regulator_set_load(phy->vdda18, 0);
+		if (ret < 0)
+			dev_err(phy->phy.dev, "Unable to set LPM of vdda18\n");
+	}
+
+err_vdda18:
+	return ret;
+}
+
+static int vdda33_phy_enable_disable(struct msm_hsphy *phy, bool on)
+{
+	int ret = 0;
+
+	if (!on)
+		goto disable_vdda33;
+
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda33) {
 		ret = regulator_set_load(phy->vdda33, USB_HSPHY_3P3_HPM_LOAD);
 		if (ret < 0) {
 			dev_err(phy->phy.dev, "Unable to set HPM of vdda33:%d\n", ret);
-			goto disable_vdda18;
+			goto err_vdda33;
 		}
 
 		ret = regulator_set_voltage(phy->vdda33, USB_HSPHY_3P3_VOL_MIN,
@@ -246,9 +323,8 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 		goto unset_vdd33;
 	}
 
-	phy->power_enabled = true;
+	dev_dbg(phy->phy.dev, "%s(): HSUSB PHY's vdda33 turned ON.\n", __func__);
 
-	pr_debug("%s(): HSUSB PHY's regulators are turned ON.\n", __func__);
 	return ret;
 
 disable_vdda33:
@@ -257,7 +333,7 @@ disable_vdda33:
 		dev_err(phy->phy.dev, "Unable to disable vdda33:%d\n", ret);
 
 unset_vdd33:
-	if (!phy->regulator_limit_control[2]) {
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda33) {
 		ret = regulator_set_voltage(phy->vdda33, 0, USB_HSPHY_3P3_VOL_MAX);
 		if (ret)
 			dev_err(phy->phy.dev,
@@ -265,55 +341,50 @@ unset_vdd33:
 	}
 
 put_vdda33_lpm:
-	if (!phy->regulator_limit_control[2]) {
+	if (phy->phy_priv_data == NULL || !phy->phy_priv_data->limit_control_vdda33) {
 		ret = regulator_set_load(phy->vdda33, 0);
 		if (ret < 0)
 			dev_err(phy->phy.dev, "Unable to set (0) HPM of vdda33\n");
 	}
 
-disable_vdda18:
-	ret = regulator_disable(phy->vdda18);
-	if (ret)
-		dev_err(phy->phy.dev, "Unable to disable vdda18:%d\n", ret);
+err_vdda33:
+	return ret;
+}
 
-unset_vdda18:
-	if (!phy->regulator_limit_control[1]) {
-		ret = regulator_set_voltage(phy->vdda18, 0, USB_HSPHY_1P8_VOL_MAX);
-		if (ret)
-			dev_err(phy->phy.dev,
-				"Unable to set (0) voltage for vdda18:%d\n", ret);
+static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
+{
+	int ret = 0;
+
+	dev_dbg(phy->phy.dev, "%s turn %s regulators. power_enabled:%d\n",
+			__func__, on ? "on" : "off", phy->power_enabled);
+
+	if (phy->power_enabled == on) {
+		dev_dbg(phy->phy.dev, "PHYs' regulators are already %s.\n", on ? "ON" : "OFF");
+		return 0;
 	}
 
-put_vdda18_lpm:
-	if (!phy->regulator_limit_control[1]) {
-		ret = regulator_set_load(phy->vdda18, 0);
-		if (ret < 0)
-			dev_err(phy->phy.dev, "Unable to set LPM of vdda18\n");
-	}
+	ret = vdd_phy_enable_disable(phy, on);
+	if (ret < 0)
+		goto err_hs_reg;
 
-disable_vdd:
-	ret = regulator_disable(phy->vdd);
-	if (ret)
-		dev_err(phy->phy.dev, "Unable to disable vdd:%d\n", ret);
+	ret = vdda18_phy_enable_disable(phy, on);
+	if (ret < 0)
+		goto err_hs_reg;
 
-unconfig_vdd:
-	if (!phy->regulator_limit_control[0]) {
-		ret = regulator_set_voltage(phy->vdd, phy->vdd_levels[0],
-					    phy->vdd_levels[2]);
-		if (ret)
-			dev_err(phy->phy.dev, "unable to set voltage for hsusb vdd\n");
-	}
+	ret = vdda33_phy_enable_disable(phy, on);
+	if (ret < 0)
+		goto err_hs_reg;
 
-put_vdd_lpm:
-	if (!phy->regulator_limit_control[0]) {
-		ret = regulator_set_load(phy->vdd, 0);
-		if (ret < 0)
-			dev_err(phy->phy.dev, "Unable to set LPM of vdd\n");
-	}
+	if (on)
+		phy->power_enabled = true;
+	else
+		phy->power_enabled = false;
 
-err_vdd:
-	phy->power_enabled = false;
-	dev_dbg(phy->phy.dev, "HSUSB PHY's regulators are turned OFF.\n");
+	return ret;
+
+err_hs_reg:
+	dev_err(phy->phy.dev, "HSUSB PHY's regulators set/unset failed\n");
+	dev_err(phy->phy.dev, "Some or all HSUSB PHY's regulators are turned OFF\n");
 	return ret;
 }
 
@@ -533,7 +604,15 @@ static int msm_hsphy_set_suspend(struct usb_phy *uphy, int suspend)
 
 suspend:
 	if (suspend) { /* Bus suspend */
-		if (phy->cable_connected) {
+		/*
+		 * The HUB class drivers calls usb_phy_notify_disconnect() upon a device
+		 * disconnect. Consider a scenario where a USB device is disconnected without
+		 * detaching the OTG cable. phy->cable_connected is marked false due to above
+		 * mentioned call path. Now, while entering low power mode (host bus suspend),
+		 * we come here and turn off regulators thinking no cable is connected. Prevent
+		 * this by not turning off regulators while in host mode.
+		 */
+		if (phy->cable_connected || (phy->phy.flags & PHY_HOST_MODE)) {
 			/* Enable auto-resume functionality during host mode
 			 * bus suspend with some FS/HS peripheral connected.
 			 */
@@ -640,6 +719,63 @@ static int msm_hsphy_set_power(struct usb_phy *uphy, unsigned int mA)
 
 	phy->vbus_draw = mA;
 	schedule_work(&phy->vbus_draw_work);
+
+	return 0;
+}
+
+#define DP_PULSE_WIDTH_MSEC 200
+static enum usb_charger_type usb_phy_drive_dp_pulse(struct usb_phy *uphy)
+{
+	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
+	int ret;
+
+	ret = msm_hsphy_enable_power(phy, true);
+	if (ret < 0) {
+		dev_dbg(phy->phy.dev,
+			"dpdm regulator enable failed:%d\n", ret);
+		return 0;
+	}
+	msm_hsphy_enable_clocks(phy, true);
+	/* set utmi_phy_cmn_cntrl_override_en &
+	 * utmi_phy_datapath_ctrl_override_en
+	 */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
+				UTMI_PHY_CMN_CTRL_OVERRIDE_EN,
+				UTMI_PHY_CMN_CTRL_OVERRIDE_EN);
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
+				UTMI_PHY_DATAPATH_CTRL_OVERRIDE_EN,
+				UTMI_PHY_DATAPATH_CTRL_OVERRIDE_EN);
+	/* set opmode to normal i.e. 0x0 & termsel to fs */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_UTMI_CTRL0,
+				OPMODE_MASK, OPMODE_NORMAL);
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_UTMI_CTRL0,
+				TERMSEL, TERMSEL);
+	/* set xcvrsel to fs */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_UTMI_CTRL1,
+					XCVRSEL, XCVRSEL);
+	msleep(DP_PULSE_WIDTH_MSEC);
+	/* clear termsel to fs */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_UTMI_CTRL0,
+				TERMSEL, 0x00);
+	/* clear xcvrsel */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_UTMI_CTRL1,
+					XCVRSEL, 0x00);
+	/* clear utmi_phy_cmn_cntrl_override_en &
+	 * utmi_phy_datapath_ctrl_override_en
+	 */
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
+				UTMI_PHY_CMN_CTRL_OVERRIDE_EN, 0x00);
+	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
+				UTMI_PHY_DATAPATH_CTRL_OVERRIDE_EN, 0x00);
+
+	msleep(20);
+
+	msm_hsphy_enable_clocks(phy, false);
+	ret = msm_hsphy_enable_power(phy, false);
+	if (ret < 0) {
+		dev_dbg(phy->phy.dev,
+			"dpdm regulator disable failed:%d\n", ret);
+	}
 
 	return 0;
 }
@@ -781,6 +917,7 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	struct msm_hsphy *phy;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
+	const struct hs_phy_priv_data *driver_data;
 	int ret = 0;
 
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
@@ -789,6 +926,8 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		goto err_ret;
 	}
 
+	driver_data = of_device_get_match_data(dev);
+	phy->phy_priv_data = driver_data;
 	phy->phy.dev = dev;
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"hsusb_phy_base");
@@ -899,16 +1038,6 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 		goto err_ret;
 	}
 
-	ret = of_property_read_u32_array(dev->of_node, "qcom,regulator-limit-control",
-					 (u32 *) phy->regulator_limit_control,
-					 ARRAY_SIZE(phy->regulator_limit_control));
-	if (ret) {
-		dev_err(dev, "Error reading the regulator-limit-control property\n");
-		phy->regulator_limit_control[0] = 0;
-		phy->regulator_limit_control[1] = 0;
-		phy->regulator_limit_control[2] = 0;
-	}
-
 	phy->vdd = devm_regulator_get(dev, "vdd");
 	if (IS_ERR(phy->vdd)) {
 		dev_err(dev, "unable to get vdd supply\n");
@@ -939,6 +1068,7 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	phy->phy.notify_disconnect	= msm_hsphy_notify_disconnect;
 	phy->phy.set_power		= msm_hsphy_set_power;
 	phy->phy.type			= USB_PHY_TYPE_USB2;
+	phy->phy.charger_detect		= usb_phy_drive_dp_pulse;
 
 	ret = usb_add_phy_dev(&phy->phy);
 	if (ret)
@@ -986,12 +1116,21 @@ static int msm_hsphy_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct hs_phy_priv_data priv_data_lemans = {
+	.limit_control_vdda_18 = true,
+};
+
 static const struct of_device_id msm_usb_id_table[] = {
 	{
 		.compatible = "qcom,usb-hsphy-snps-femto",
 	},
+	{
+		.compatible = "qcom,usb-hsphy-snps-femto-lemans",
+		.data = &priv_data_lemans,
+	},
 	{ },
 };
+
 MODULE_DEVICE_TABLE(of, msm_usb_id_table);
 
 static struct platform_driver msm_hsphy_driver = {

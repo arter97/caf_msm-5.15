@@ -16,6 +16,7 @@ qcom_logbuf_vh.ko
 qcom_cpu_vendor_hooks.ko
 clk-smd-rpm.ko
 gcc-khaje.ko
+gcc-sm6115.ko
 qcom-cpufreq-hw.ko
 qcom_ipcc.ko
 qcom_ipc_logging.ko
@@ -48,9 +49,11 @@ nvmem_qfprom.ko
 nvmem_qcom-spmi-sdam.ko
 phy-qcom-ufs.ko
 phy-qcom-ufs-qmp-v4-khaje.ko
+phy-qcom-ufs-qmp-v3-660.ko
 phy-qcom-ufs-qrbtc-sdm845.ko
 pinctrl-msm.ko
 proxy-consumer.ko
+qcom-dcvs.ko
 qpnp-power-on.ko
 msm-poweroff.ko
 qcom_dma_heaps.ko
@@ -72,6 +75,7 @@ ufs_qcom.ko
 arm_smmu.ko
 mem-offline.ko
 sdhci-msm.ko
+sdhci-msm-scaling.ko
 msm_rtb.ko
 rproc_qcom_common.ko
 qcom_glink_spss.ko

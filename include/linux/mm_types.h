@@ -89,6 +89,7 @@ struct page {
 			 * by the page owner.
 			 */
 			struct list_head lru;
+
 			/* See page-flags.h for PAGE_MAPPING_FLAGS */
 			struct address_space *mapping;
 			pgoff_t index;		/* Our offset within mapping. */
@@ -308,7 +309,7 @@ struct vm_region {
 #ifdef CONFIG_USERFAULTFD
 #define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) { NULL, })
 struct vm_userfaultfd_ctx {
-	struct userfaultfd_ctx *ctx;
+	struct userfaultfd_ctx __rcu *ctx;
 };
 #else /* CONFIG_USERFAULTFD */
 #define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) {})

@@ -11,7 +11,7 @@
 #define GLINK_FEATURE_TRACER_PKT	BIT(2)
 #define GLINK_FEATURE_ZERO_COPY		BIT(3)
 #define GLINK_FEATURE_ZERO_COPY_POOLS	BIT(4)
-
+#define GLINK_FEATURE_SHORT_CMD         BIT(8)
 
 struct qcom_glink_pipe {
 	size_t length;
@@ -32,8 +32,8 @@ struct qcom_glink_pipe {
 struct qcom_glink;
 extern const struct dev_pm_ops glink_native_pm_ops;
 
-#if defined(CONFIG_DEEPSLEEP) && defined(CONFIG_RPMSG_QCOM_GLINK_RPM)
-int glink_rpm_resume_noirq(struct device *dev);
+#if IS_ENABLED(CONFIG_DEEPSLEEP) && IS_ENABLED(CONFIG_RPMSG_QCOM_GLINK_RPM)
+void glink_rpm_ready_wait(void);
 #endif
 
 struct qcom_glink *qcom_glink_native_probe(struct device *dev,

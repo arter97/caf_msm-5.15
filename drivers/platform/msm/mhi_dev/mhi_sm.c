@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -531,10 +531,12 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 				goto exit;
 			}
 
-			res = mhi_pcie_config_db_routing(mhi_sm_ctx->mhi_dev);
-			if (res) {
-				MHI_SM_ERR(mhi->vf_id, "Error configuring db routing\n");
-				goto exit;
+			if (!mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie) {
+				res = mhi_pcie_config_db_routing(mhi_sm_ctx->mhi_dev);
+				if (res) {
+					MHI_SM_ERR(mhi->vf_id, "Error configuring db routing\n");
+					goto exit;
+				}
 			}
 		}
 		break;
@@ -573,7 +575,8 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 		}
 	}
 
-	if (mhi_dma_fun_ops->mhi_dma_update_mstate) {
+	if (mhi_dma_fun_ops->mhi_dma_update_mstate &&
+		!(mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie)) {
 		res = mhi_dma_fun_ops->mhi_dma_update_mstate(mhi_dma_fun_params,
 									MHI_DMA_STATE_M0);
 		if (res) {
@@ -700,7 +703,8 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 		}
 
 		/* Notify MHI DMA of state change */
-		if (mhi_dma_fun_ops->mhi_dma_update_mstate) {
+		if (mhi_dma_fun_ops->mhi_dma_update_mstate &&
+			!(mhi_sm_ctx->mhi_dev->no_path_from_ipa_to_pcie)) {
 			if (new_state == MHI_DEV_M2_STATE)
 				res = mhi_dma_fun_ops->mhi_dma_update_mstate(mhi_dma_fun_params,
 						MHI_DMA_STATE_M2);
@@ -939,7 +943,18 @@ static void mhi_sm_dev_event_manager(struct work_struct *work)
 	struct mhi_sm_device_event *chg_event = container_of(work,
 		struct mhi_sm_device_event, work);
 	struct mhi_sm_dev *mhi_sm_ctx = chg_event->mhi_sm_ctx;
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
+
+	if (!mhi_sm_ctx) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Failed, MHI SM is not initialized\n");
+		return;
+	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
+	if (!mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI reset done\n");
+		return;
+	}
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -1024,7 +1039,18 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 	enum ep_pcie_event pcie_event = chg_event->event;
 	unsigned long flags;
 	struct mhi_sm_dev *mhi_sm_ctx = chg_event->mhi_sm_ctx;
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
+
+	if (!mhi_sm_ctx) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Failed, MHI SM is not initialized\n");
+		return;
+	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
+	if (!mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI reset done\n");
+		return;
+	}
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -1192,11 +1218,15 @@ int mhi_dev_sm_init(struct mhi_dev *mhi_dev)
 
 	vf_id = mhi_dev->vf_id;
 
+	if (vf_id >= MHI_MAX_NUM_INSTANCES) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Invalid vf_id, return\n");
+		return -EINVAL;
+	}
+
 	MHI_SM_FUNC_ENTRY(vf_id);
 
 	if (!mhi_dev_sm_ctx[vf_id])
-		mhi_dev_sm_ctx[vf_id] = devm_kzalloc(mhi_dev->mhi_hw_ctx->dev,
-					sizeof(*mhi_sm_ctx), GFP_KERNEL);
+		mhi_dev_sm_ctx[vf_id] = kzalloc(sizeof(*mhi_sm_ctx), GFP_KERNEL);
 	if (!mhi_dev_sm_ctx[vf_id])
 		return -ENOMEM;
 
@@ -1239,15 +1269,22 @@ EXPORT_SYMBOL(mhi_dev_sm_init);
 int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 {
 	struct mhi_sm_dev *mhi_sm_ctx = mhi_dev->mhi_sm_ctx;
-	int vf_id = 0;
-	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
-	MHI_SM_FUNC_ENTRY(mhi_dev->vf_id);
+	int vf_id = mhi_dev->vf_id;
+	struct mhi_dma_function_params mhi_dma_fun_params;
 
+	if (vf_id >= MHI_MAX_NUM_INSTANCES) {
+		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Invalid vf_id, return\n");
+		return -EINVAL;
+	}
+
+	mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
+	MHI_SM_FUNC_ENTRY(mhi_dev->vf_id);
 	atomic_set(&mhi_sm_ctx->pending_device_events, 0);
 	atomic_set(&mhi_sm_ctx->pending_pcie_events, 0);
 	mhi_sm_debugfs_destroy();
 	flush_workqueue(mhi_sm_ctx->mhi_sm_wq);
 	destroy_workqueue(mhi_sm_ctx->mhi_sm_wq);
+	MHI_SM_DBG(mhi_dev->vf_id, "Destroyed sm workqueue\n");
 	/* Initiate MHI DMA reset */
 	if (mhi_sm_ctx->mhi_dev->use_mhi_dma) {
 		mhi_dma_fun_ops->mhi_dma_memcpy_disable(mhi_dma_fun_params);
@@ -1258,8 +1295,9 @@ int mhi_dev_sm_exit(struct mhi_dev *mhi_dev)
 	if (mhi_sm_ctx->mhi_dev->use_edma)
 		mhi_edma_release();
 	mutex_destroy(&mhi_sm_ctx->mhi_state_lock);
+	kfree(mhi_dev_sm_ctx[vf_id]);
 	mhi_dev_sm_ctx[vf_id] = NULL;
-
+	MHI_SM_FUNC_EXIT(mhi_dev->vf_id);
 	return 0;
 }
 EXPORT_SYMBOL(mhi_dev_sm_exit);
@@ -1391,8 +1429,8 @@ int mhi_dev_notify_sm_event(struct mhi_dev *mhi, enum mhi_dev_event event)
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
-	if (!mhi_sm_ctx) {
-		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized\n");
+	if (!mhi_sm_ctx || !mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized / MHI reset done\n");
 		return -EFAULT;
 	}
 
@@ -1467,17 +1505,21 @@ void mhi_dev_sm_pcie_handler(struct ep_pcie_notify *notify)
 	struct mhi_sm_ep_pcie_event *dstate_change_evt;
 	enum ep_pcie_event event;
 	unsigned long flags;
-	struct mhi_dev_ctx *mhi_hw_ctx = notify->user;
-	struct mhi_dev *mhi = mhi_hw_ctx->mhi_dev[0];
-	struct mhi_sm_dev *mhi_sm_ctx = mhi->mhi_sm_ctx;
+	struct mhi_dev_ctx *mhi_hw_ctx;
+	struct mhi_dev *mhi;
+	struct mhi_sm_dev *mhi_sm_ctx;
 
 	if (WARN_ON(!notify)) {
 		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Null argument - notify\n");
 		return;
 	}
 
-	if (!mhi_sm_ctx) {
-		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized\n");
+	mhi_hw_ctx = notify->user;
+	mhi = mhi_hw_ctx->mhi_dev[0];
+	mhi_sm_ctx = mhi->mhi_sm_ctx;
+
+	if (!mhi_sm_ctx || !mhi_dev_sm_ctx[mhi->vf_id]) {
+		MHI_SM_ERR(mhi->vf_id, "Failed, MHI SM is not initialized / MHI reset done\n");
 		return;
 	}
 
@@ -1601,40 +1643,6 @@ exit:
 }
 EXPORT_SYMBOL(mhi_dev_sm_pcie_handler);
 
-/**
- * mhi_dev_sm_syserr() - switch to system error state.
- *
- * Called on system error condition.
- * Switch MHI to SYSERR state, notify MHI-host and ASSERT on the device.
- * Synchronic function.
- *
- * Return:	0: success
- *		negative: failure
- */
-int mhi_dev_sm_syserr(void)
-{
-	int res, i;
-	struct mhi_sm_dev *mhi_sm_ctx;
-
-	MHI_SM_FUNC_ENTRY(MHI_PF_VALUE);
-
-	for (i = 0; i < MHI_MAX_NUM_INSTANCES; i++) {
-		if (!mhi_dev_sm_ctx[i])
-			continue;
-
-		mhi_sm_ctx = mhi_dev_sm_ctx[i];
-		mutex_lock(&mhi_sm_ctx->mhi_state_lock);
-		res = mhi_sm_handle_syserr(mhi_sm_ctx);
-		if (res)
-			MHI_SM_ERR(i, "mhi_sm_handle_syserr failed %d\n", res);
-		mutex_unlock(&mhi_sm_ctx->mhi_state_lock);
-	}
-
-	MHI_SM_FUNC_EXIT(MHI_PF_VALUE);
-	return res;
-}
-EXPORT_SYMBOL(mhi_dev_sm_syserr);
-
 #ifdef CONFIG_DEBUG_FS
 static ssize_t mhi_sm_debugfs_read(struct file *file, char __user *ubuf,
 				size_t count, loff_t *ppos)
@@ -1719,12 +1727,14 @@ static ssize_t mhi_sm_debugfs_write(struct file *file,
 	unsigned long missing;
 	s8 in_num = 0;
 	struct mhi_sm_dev *mhi_sm_ctx = mhi_dev_sm_ctx[0];
-	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
+	struct mhi_dev *mhi;
 
 	if (!mhi_sm_ctx) {
 		MHI_SM_ERR(MHI_DEFAULT_ERROR_LOG_ID, "Not initialized\n");
 		return -EFAULT;
 	}
+
+	mhi = mhi_sm_ctx->mhi_dev;
 
 	if (sizeof(dbg_buff) < count + 1)
 		return -EFAULT;

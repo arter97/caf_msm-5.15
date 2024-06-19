@@ -289,6 +289,8 @@ struct qcom_ethqos {
 	u32 backup_bmcr;
 	unsigned backup_autoneg:1;
 	int curr_serdes_speed;
+	/* Boolean flag for turning off GDSC during suspend */
+	bool gdsc_off_on_suspend;
 };
 
 struct pps_cfg {
@@ -331,7 +333,7 @@ struct ip_params {
 	unsigned char mac_addr[QCOM_ETH_QOS_MAC_ADDR_LEN];
 };
 
-int ethqos_init_reqgulators(struct qcom_ethqos *ethqos);
+int ethqos_init_regulators(struct qcom_ethqos *ethqos);
 void ethqos_disable_regulators(struct qcom_ethqos *ethqos);
 int ethqos_init_gpio(struct qcom_ethqos *ethqos);
 void ethqos_free_gpios(struct qcom_ethqos *ethqos);

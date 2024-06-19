@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -110,6 +110,10 @@ static const char *const pmic_models[] = {
 	[32] = "PM8150B",
 	[33] = "PMK8002",
 	[36] = "PM8009",
+	/* Lemansau Main Domain */
+	[78] = "PM8775",
+	/* Lemansau SAIL Domain */
+	[79] = "PM8775",
 };
 #endif /* CONFIG_DEBUG_FS */
 
@@ -356,7 +360,7 @@ struct smem_image_version {
 #define MAX_SOCINFO_ATTRS 50
 /* sysfs attributes */
 #define ATTR_DEFINE(param)      \
-	static DEVICE_ATTR(param, (S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH ), \
+	static DEVICE_ATTR(param, 0444, \
 			msm_get_##param,     \
 			NULL)
 
@@ -369,10 +373,16 @@ struct smem_image_version {
 	{ \
 		u32 *part_info; \
 		int num_parts = 0; \
-		int str_pos = 0, i = 0; \
+		int str_pos = 0, i = 0, ret = 0; \
 		num_parts = socinfo_get_part_count(part_enum); \
+		if (num_parts <= 0) \
+			return -EINVAL;  \
 		part_info = kmalloc_array(num_parts, sizeof(*part_info), GFP_KERNEL); \
-		socinfo_get_subpart_info(part_enum, part_info, num_parts); \
+		ret = socinfo_get_subpart_info(part_enum, part_info, num_parts); \
+		if (ret < 0) { \
+			kfree(part_info); \
+			return -EINVAL;  \
+		} \
 		for (i = 0; i < num_parts; i++) { \
 			str_pos += scnprintf(buf+str_pos, PAGE_SIZE-str_pos, "0x%x", \
 					part_info[i]); \
@@ -884,8 +894,9 @@ bool
 socinfo_get_part_info(enum subset_part_type part)
 {
 	uint32_t partinfo;
+	uint32_t num_parts = socinfo_get_num_subset_parts();
 
-	if (part >= NUM_PARTS_MAX) {
+	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
 		pr_err("Bad part number\n");
 		return false;
 	}
@@ -923,10 +934,11 @@ int
 socinfo_get_part_count(enum subset_part_type part)
 {
 	int part_count = 1;
+	uint32_t num_parts = socinfo_get_num_subset_parts();
 
 	/* TODO: part_count to be read from SMEM after firmware adds support */
 
-	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX)) {
+	if ((part <= PART_UNKNOWN) || (part >= NUM_PARTS_MAX) || (part >= num_parts)) {
 		pr_err("Bad part number\n");
 		return -EINVAL;
 	}
@@ -960,6 +972,9 @@ socinfo_get_subpart_info(enum subset_part_type part,
 	void *info = socinfo;
 	u32 i = 0, count = 0;
 	int part_count = 0;
+
+	if (!part_info)
+		return -EINVAL;
 
 	part_count = socinfo_get_part_count(part);
 	if (part_count <= 0)
@@ -1177,6 +1192,7 @@ static const struct soc_id soc_id[] = {
 	{ 341, "SDA845" },
 	{ 345, "SDM636" },
 	{ 346, "SDA636" },
+	{ 347, "QCS605" },
 	{ 349, "SDM632" },
 	{ 350, "SDA632" },
 	{ 351, "SDA450" },
@@ -1203,10 +1219,15 @@ static const struct soc_id soc_id[] = {
 	{ 471, "QMP_SCUBA" },
 	{ 473, "QCM_SCUBA" },
 	{ 474, "QCS_SCUBA" },
+	{ 475, "YUPIK" },
 	{ 481, "KONA-IOT" },
 	{ 482, "WAIPIOP" },
 	{ 486, "MONACO" },
 	{ 496, "QRB5165N" },
+	{ 497, "YUPIK-IOT" },
+	{ 498, "YUPIKP-IOT" },
+	{ 499, "YUPIKP" },
+	{ 515, "YUPIK-LTE" },
 	{ 517, "MONACOP" },
 	{ 518, "KHAJE" },
 	{ 548, "KONA-7230-IOT" },
@@ -1238,6 +1259,7 @@ static const struct soc_id soc_id[] = {
 	{ 606, "MONACOAU_IVI"},
 	{ 607, "MONACOAU_SRV1L"},
 	{ 608, "CROW" },
+	{ 644, "CROW_LTE" },
 };
 
 static struct qcom_socinfo *qsocinfo;

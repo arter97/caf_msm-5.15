@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -19,6 +19,7 @@
 
 #define REG_BASE 0x100000
 #define REG_SIZE 0x1000
+#define REG_DIRCONN 0xb8000
 #define PINGROUP(id, f1, f2, f3, f4, f5, f6, f7, f8, f9, wake_off, bit)	\
 	{					        \
 		.name = "gpio" #id,			\
@@ -42,20 +43,25 @@
 		.intr_cfg_reg = REG_BASE + 0x8 + REG_SIZE * id,		\
 		.intr_status_reg = REG_BASE + 0xc + REG_SIZE * id,	\
 		.intr_target_reg = REG_BASE + 0x8 + REG_SIZE * id,	\
+		.dir_conn_reg = REG_BASE + REG_DIRCONN,			\
 		.mux_bit = 2,			\
 		.pull_bit = 0,			\
 		.drv_bit = 6,			\
 		.oe_bit = 9,			\
 		.in_bit = 0,			\
 		.out_bit = 1,			\
+		.egpio_enable = 12,		\
+		.egpio_present = 11,		\
 		.intr_enable_bit = 0,		\
 		.intr_status_bit = 0,		\
 		.intr_target_bit = 5,		\
+		.intr_target_width = 4,		\
 		.intr_target_kpss_val = 3,	\
 		.intr_raw_status_bit = 4,	\
 		.intr_polarity_bit = 1,		\
 		.intr_detection_bit = 2,	\
 		.intr_detection_width = 2,	\
+		.dir_conn_en_bit = 9,		\
 		.wake_reg = REG_BASE + wake_off,	\
 		.wake_bit = bit,		\
 	}
@@ -606,7 +612,10 @@ enum lemans_functions {
 	msm_mux_qup1_se3,
 	msm_mux_qup1_se4,
 	msm_mux_qup1_se5,
-	msm_mux_qup1_se6,
+	msm_mux_qup1_se6_l0,
+	msm_mux_qup1_se6_l1,
+	msm_mux_qup1_se6_l2,
+	msm_mux_qup1_se6_l3,
 	msm_mux_qup2_se0,
 	msm_mux_qup2_se1,
 	msm_mux_qup2_se2,
@@ -1164,8 +1173,17 @@ static const char * const qup1_se4_groups[] = {
 static const char * const qup1_se5_groups[] = {
 	"gpio52", "gpio53", "gpio54", "gpio55",
 };
-static const char * const qup1_se6_groups[] = {
-	"gpio56", "gpio56", "gpio57", "gpio57",
+static const char *const qup1_se6_l0_groups[] = {
+	"gpio56",
+};
+static const char *const qup1_se6_l1_groups[] = {
+	"gpio57",
+};
+static const char *const qup1_se6_l2_groups[] = {
+	"gpio56",
+};
+static const char *const qup1_se6_l3_groups[] = {
+	"gpio57",
 };
 static const char * const qup2_se0_groups[] = {
 	"gpio80", "gpio81", "gpio82", "gpio83",
@@ -1411,7 +1429,10 @@ static const struct msm_function lemans_functions[] = {
 	FUNCTION(qup1_se3),
 	FUNCTION(qup1_se4),
 	FUNCTION(qup1_se5),
-	FUNCTION(qup1_se6),
+	FUNCTION(qup1_se6_l0),
+	FUNCTION(qup1_se6_l1),
+	FUNCTION(qup1_se6_l2),
+	FUNCTION(qup1_se6_l3),
 	FUNCTION(qup2_se0),
 	FUNCTION(qup2_se1),
 	FUNCTION(qup2_se2),
@@ -1543,9 +1564,9 @@ static const struct msm_pingroup lemans_groups[] = {
 			NA, 0, -1),
 	[55] = PINGROUP(55, qup1_se5, cci_timer7, cci_i2c, gcc_gp4, NA,
 			ddr_pxi2, NA, NA, NA, 0x95008, 1),
-	[56] = PINGROUP(56, qup1_se6, qup1_se6, cci_timer8, cci_i2c,
+	[56] = PINGROUP(56, qup1_se6_l0, qup1_se6_l2, cci_timer8, cci_i2c,
 			phase_flag18, ddr_bist, NA, NA, NA, 0x95008, 2),
-	[57] = PINGROUP(57, qup1_se6, qup1_se6, cci_timer9, cci_i2c,
+	[57] = PINGROUP(57, qup1_se6_l1,  qup1_se6_l3, cci_timer9, cci_i2c,
 			mdp0_vsync0, phase_flag17, ddr_bist, NA, NA, 0x95008, 3),
 	[58] = PINGROUP(58, cci_i2c, mdp0_vsync1, ddr_bist, NA, atest_usb2,
 			atest_char1, NA, NA, NA, 0x95008, 4),
@@ -1713,6 +1734,11 @@ static const struct msm_gpio_wakeirq_map lemans_pdc_map[] = {
 	{ 109, 203 }, { 145, 225 }, { 146, 226 },
 };
 
+static struct msm_dir_conn lemans_dir_conn[] = {
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}, {-1, 0},
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}
+};
+
 static const struct msm_pinctrl_soc_data lemans_pinctrl = {
 	.pins = lemans_pins,
 	.npins = ARRAY_SIZE(lemans_pins),
@@ -1725,10 +1751,49 @@ static const struct msm_pinctrl_soc_data lemans_pinctrl = {
 	.nqup_regs = ARRAY_SIZE(lemans_qup_regs),
 	.wakeirq_map = lemans_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(lemans_pdc_map),
+	.dir_conn = lemans_dir_conn,
 };
+
+static int lemans_pinctrl_dirconn_list_probe(struct platform_device *pdev)
+{
+	int ret, n, dirconn_list_count, m;
+	struct device_node *np = pdev->dev.of_node;
+
+	n = of_property_count_elems_of_size(np, "qcom,dirconn-list",sizeof(u32));
+
+	if (n <= 0 || n % 2)
+		return -EINVAL;
+
+	m = ARRAY_SIZE(lemans_dir_conn) - 1;
+	dirconn_list_count = n / 2;
+
+	for (n = 0; n < dirconn_list_count; n++) {
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+				 n * 2 + 0, &lemans_dir_conn[m].gpio);
+		if (ret)
+			return ret;
+
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+				n * 2 + 1, &lemans_dir_conn[m].irq);
+		if (ret)
+			return ret;
+		m--;
+	}
+	return 0;
+}
 
 static int lemans_pinctrl_probe(struct platform_device *pdev)
 {
+	int len, ret;
+
+	if (of_find_property(pdev->dev.of_node, "qcom,dirconn-list", &len)) {
+		ret = lemans_pinctrl_dirconn_list_probe(pdev);
+		if (ret) {
+			dev_err(&pdev->dev,"Unable to parse Direct Connect List\n");
+			return ret;
+		}
+	}
+
 	return msm_pinctrl_probe(pdev, &lemans_pinctrl);
 }
 

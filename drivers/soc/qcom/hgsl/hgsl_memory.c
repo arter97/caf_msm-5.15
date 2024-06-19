@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "hgsl_memory.h"
@@ -132,21 +132,23 @@ static int hgsl_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 
 	vma->vm_flags |= VM_DONTDUMP | VM_DONTEXPAND | VM_DONTCOPY;
 	vma->vm_private_data = mem_node;
-	cache_mode = mem_node->flags & GSL_MEMFLAGS_CACHEMODE_MASK;
-	switch (cache_mode) {
-	case GSL_MEMFLAGS_WRITECOMBINE:
-	case GSL_MEMFLAGS_UNCACHED:
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-		break;
-	case GSL_MEMFLAGS_WRITETHROUGH:
-		vma->vm_page_prot = pgprot_writethroughcache(vma->vm_page_prot);
-		break;
-	case GSL_MEMFLAGS_WRITEBACK:
-		vma->vm_page_prot = pgprot_writebackcache(vma->vm_page_prot);
-		break;
-	default:
-		LOGE("invalid cache mode");
-		return -EINVAL;
+	if (!mem_node->default_iocoherency) {
+		cache_mode = mem_node->flags & GSL_MEMFLAGS_CACHEMODE_MASK;
+		switch (cache_mode) {
+		case GSL_MEMFLAGS_WRITECOMBINE:
+		case GSL_MEMFLAGS_UNCACHED:
+			vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+			break;
+		case GSL_MEMFLAGS_WRITETHROUGH:
+			vma->vm_page_prot = pgprot_writethroughcache(vma->vm_page_prot);
+			break;
+		case GSL_MEMFLAGS_WRITEBACK:
+			vma->vm_page_prot = pgprot_writebackcache(vma->vm_page_prot);
+			break;
+		default:
+			LOGE("invalid cache mode");
+			return -EINVAL;
+		}
 	}
 
 	for (i = 0; i < page_count; i++) {
@@ -171,6 +173,10 @@ static void hgsl_free_pages(struct hgsl_mem_node *mem_node)
 		struct page *p = mem_node->pages[i];
 
 		page_order = compound_order(p);
+
+		mod_node_page_state(page_pgdat(p), NR_KERNEL_MISC_RECLAIMABLE,
+							-(1 << page_order));
+
 		__free_pages(p, page_order);
 		i += 1 << page_order;
 	}
@@ -250,16 +256,20 @@ static void hgsl_mem_dma_buf_release(struct dma_buf *dmabuf)
 static int hgsl_mem_dma_buf_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct hgsl_mem_node *mem_node = dmabuf->priv;
+	pgprot_t prot = PAGE_KERNEL;
 
 	if (mem_node->flags & GSL_MEMFLAGS_PROTECTED)
 		return -EINVAL;
 
 	mutex_lock(&hgsl_map_global_lock);
+	if (!mem_node->default_iocoherency)
+		prot = pgprot_writecombine(prot);
+
 	if (IS_ERR_OR_NULL(mem_node->vmapping))
 		mem_node->vmapping = vmap(mem_node->pages,
 			    mem_node->page_count,
 			    VM_IOREMAP,
-			    pgprot_writecombine(PAGE_KERNEL));
+			    prot);
 
 	if (!IS_ERR_OR_NULL(mem_node->vmapping))
 		mem_node->vmap_count++;
@@ -429,13 +439,9 @@ int hgsl_mem_cache_op(struct device *dev, struct hgsl_mem_node *mem_node,
 		return -EINVAL;
 
 	cache_mode = mem_node->flags & GSL_MEMFLAGS_CACHEMODE_MASK;
-	switch (cache_mode) {
-	case GSL_MEMFLAGS_WRITETHROUGH:
-	case GSL_MEMFLAGS_WRITEBACK:
-		break;
-	default:
+	if (cache_mode != GSL_MEMFLAGS_WRITETHROUGH &&
+		cache_mode != GSL_MEMFLAGS_WRITEBACK)
 		return 0;
-	}
 
 	if (sizebytes == 0 || sizebytes > UINT_MAX || offsetbytes > UINT_MAX)
 		return -ERANGE;
@@ -501,14 +507,15 @@ static int hgsl_alloc_pages(struct device *dev, uint32_t requested_pcount,
 		for (i = 0; i < pcount; i++)
 			pages[i] = nth_page(page, i);
 		_dma_cache_op(dev, page, pcount, GSL_CACHEFLAGS_FLUSH);
+		mod_node_page_state(page_pgdat(page), NR_KERNEL_MISC_RECLAIMABLE,
+						(1 << order));
 	}
 
 	return pcount;
 }
 
-static int hgsl_export_dma_buf_fd(struct hgsl_mem_node *mem_node)
+static int hgsl_export_dma_buf(struct hgsl_mem_node *mem_node)
 {
-	int fd = -1;
 	struct dma_buf *dma_buf = NULL;
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 
@@ -523,14 +530,6 @@ static int hgsl_export_dma_buf_fd(struct hgsl_mem_node *mem_node)
 		return -ENOMEM;
 	}
 	mem_node->dma_buf = dma_buf;
-
-	fd = dma_buf_fd(dma_buf, O_CLOEXEC);
-	if (fd < 0) {
-		LOGE("dma buf to fd failed");
-		return -EINVAL;
-	}
-	get_dma_buf(dma_buf);
-	mem_node->fd = fd;
 
 	return 0;
 }
@@ -569,6 +568,7 @@ int hgsl_sharedmem_alloc(struct device *dev, uint32_t sizebytes,
 	mem_node->sg_nents = nents;
 	mem_node->memtype = GSL_USER_MEM_TYPE_ASHMEM;
 	mem_node->memdesc.size = requested_size;
+	mem_node->fd = -1;
 
 	if (requested_pcount != 0)
 		return -ENOMEM;
@@ -579,7 +579,7 @@ int hgsl_sharedmem_alloc(struct device *dev, uint32_t sizebytes,
 			return ret;
 	}
 
-	return hgsl_export_dma_buf_fd(mem_node);
+	return hgsl_export_dma_buf(mem_node);
 }
 
 void hgsl_sharedmem_free(struct hgsl_mem_node *mem_node)
@@ -596,21 +596,76 @@ void hgsl_sharedmem_free(struct hgsl_mem_node *mem_node)
 
 }
 
-struct hgsl_mem_node *hgsl_mem_find_base_locked(struct list_head *head,
-	uint64_t gpuaddr, uint64_t size)
+void *hgsl_mem_node_zalloc(bool iocoherency)
 {
-	struct hgsl_mem_node *node_found = NULL;
-	struct hgsl_mem_node *tmp = NULL;
-	uint64_t end = gpuaddr + size;
+	struct hgsl_mem_node *mem_node = NULL;
 
-	list_for_each_entry(tmp, head, node) {
-		if ((tmp->memdesc.gpuaddr <= gpuaddr)
-			&& ((tmp->memdesc.gpuaddr + tmp->memdesc.size) >= end)) {
-			node_found = tmp;
-			break;
+	mem_node = hgsl_zalloc(sizeof(*mem_node));
+	if (mem_node == NULL)
+		goto out;
+
+	mem_node->default_iocoherency = iocoherency;
+
+out:
+	return mem_node;
+}
+
+int hgsl_mem_add_node(struct rb_root *rb_root,
+		struct hgsl_mem_node *mem_node)
+{
+	struct rb_node **cur;
+	struct rb_node *parent = NULL;
+	struct hgsl_mem_node *node = NULL;
+	int ret = 0;
+
+	cur = &rb_root->rb_node;
+	while (*cur) {
+		parent = *cur;
+		node = rb_entry(parent, struct hgsl_mem_node, mem_rb_node);
+		if (mem_node->memdesc.gpuaddr > node->memdesc.gpuaddr)
+			cur = &parent->rb_right;
+		else if (mem_node->memdesc.gpuaddr < node->memdesc.gpuaddr)
+			cur = &parent->rb_left;
+		else {
+			LOGE("Duplicate gpuaddr: 0x%llx",
+				mem_node->memdesc.gpuaddr);
+			ret = -EEXIST;
+			goto out;
 		}
 	}
 
-	return node_found;
+	rb_link_node(&mem_node->mem_rb_node, parent, cur);
+	rb_insert_color(&mem_node->mem_rb_node, rb_root);
+out:
+	return ret;
 }
 
+struct hgsl_mem_node *hgsl_mem_find_node_locked(
+		struct rb_root *rb_root, uint64_t gpuaddr,
+		uint64_t size, bool accurate)
+{
+	struct rb_node *cur = NULL;
+	struct hgsl_mem_node *node_found = NULL;
+
+	cur = rb_root->rb_node;
+	while (cur) {
+		node_found = rb_entry(cur, struct hgsl_mem_node, mem_rb_node);
+		if (hgsl_mem_range_inspect(
+				node_found->memdesc.gpuaddr, gpuaddr,
+				node_found->memdesc.size64, size,
+				accurate)) {
+			return node_found;
+		} else if (node_found->memdesc.gpuaddr < gpuaddr)
+			cur = cur->rb_right;
+		else if (node_found->memdesc.gpuaddr > gpuaddr)
+			cur = cur->rb_left;
+		else {
+			LOGE("Invalid addr: 0x%llx size: [0x%llx 0x%llx]",
+				gpuaddr, size, node_found->memdesc.size64);
+			goto out;
+		}
+	}
+
+out:
+	return NULL;
+}

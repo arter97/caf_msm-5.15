@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -164,11 +164,12 @@ struct qusb_phy {
 	int			tune2_efuse_correction;
 
 	bool			cable_connected;
+	bool			clocks_enabled;
+	bool			power_enabled;
 	bool			suspended;
 	bool			ulpi_mode;
 	bool			dpdm_enable;
 	bool			is_se_clk;
-	bool			scm_lvl_shifter;
 
 	struct regulator_desc	dpdm_rdesc;
 	struct regulator_dev	*dpdm_rdev;
@@ -193,29 +194,21 @@ struct qusb_phy {
 	u8			tune5;
 };
 
-static void qusb_phy_update_tcsr_level_shifter(struct qusb_phy *qphy,
-						u32 val)
-{
-	if (qphy->tcsr_clamp_dig_n) {
-		writel_relaxed(val, qphy->tcsr_clamp_dig_n);
-		dev_dbg(qphy->phy.dev, "update tcsr level shifter: %d\n", val);
-	} else if (qphy->scm_lvl_shifter) {
-		dev_dbg(qphy->phy.dev, "update scm level shifter: %d\n", val);
-		qcom_scm_phy_update_scm_level_shifter(val);
-	}
-}
-
 static void qusb_phy_enable_clocks(struct qusb_phy *qphy, bool on)
 {
-	dev_dbg(qphy->phy.dev, "%s(): on:%d\n", __func__, on);
+	dev_dbg(qphy->phy.dev, "%s(): clocks_enabled:%d on:%d\n",
+				__func__, qphy->clocks_enabled, on);
 
-	if (on) {
+	if (!qphy->clocks_enabled && on) {
 		clk_prepare_enable(qphy->ref_clk_src);
 		clk_prepare_enable(qphy->ref_clk);
 		clk_prepare_enable(qphy->iface_clk);
 		clk_prepare_enable(qphy->core_clk);
 		clk_prepare_enable(qphy->cfg_ahb_clk);
-	} else {
+		qphy->clocks_enabled = true;
+	}
+
+	if (qphy->clocks_enabled && !on) {
 		clk_disable_unprepare(qphy->cfg_ahb_clk);
 		/*
 		 * FSM depedency beween iface_clk and core_clk.
@@ -225,6 +218,7 @@ static void qusb_phy_enable_clocks(struct qusb_phy *qphy, bool on)
 		clk_disable_unprepare(qphy->iface_clk);
 		clk_disable_unprepare(qphy->ref_clk);
 		clk_disable_unprepare(qphy->ref_clk_src);
+		qphy->clocks_enabled = false;
 	}
 
 }
@@ -278,6 +272,11 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on)
 
 	dev_dbg(qphy->phy.dev, "%s turn %s regulators\n",
 			__func__, on ? "on" : "off");
+
+	if (qphy->power_enabled == on) {
+		dev_dbg(qphy->phy.dev, "Regulators are already %s.\n", on ? "ON" : " OFF");
+		return 0;
+	}
 
 	if (!on)
 		goto disable_vdda33;
@@ -336,6 +335,7 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on)
 	}
 
 	pr_debug("%s(): QUSB PHY's regulators are turned ON.\n", __func__);
+	qphy->power_enabled = true;
 	return ret;
 
 disable_vdda33:
@@ -384,6 +384,7 @@ unconfig_vdd:
 err_vdd:
 	dev_dbg(qphy->phy.dev, "QUSB PHY's regulators are turned OFF.\n");
 
+	qphy->power_enabled = false;
 	return ret;
 }
 
@@ -718,7 +719,9 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 				/* Make sure that above write is completed */
 				wmb();
 
-				qusb_phy_update_tcsr_level_shifter(qphy, 0);
+				if (qphy->tcsr_clamp_dig_n)
+					writel_relaxed(0x0,
+						qphy->tcsr_clamp_dig_n);
 			}
 
 			qusb_phy_enable_clocks(qphy, false);
@@ -744,7 +747,9 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 				qphy->base + QUSB2PHY_PORT_INTR_CTRL);
 		} else {
 			qusb_phy_enable_power(qphy, true);
-			qusb_phy_update_tcsr_level_shifter(qphy, 1);
+			if (qphy->tcsr_clamp_dig_n)
+				writel_relaxed(0x1,
+					qphy->tcsr_clamp_dig_n);
 			qusb_phy_enable_clocks(qphy, true);
 		}
 		qphy->suspended = false;
@@ -864,10 +869,19 @@ static int qusb_phy_dpdm_regulator_enable(struct regulator_dev *rdev)
 	dev_dbg(qphy->phy.dev, "%s dpdm_enable:%d\n",
 				__func__, qphy->dpdm_enable);
 
+	/* Turn on the clocks to avoid unclocked access while reading EUD_EN reg*/
+	qusb_phy_enable_clocks(qphy, true);
 	if (qphy->eud_enable_reg && readl_relaxed(qphy->eud_enable_reg)) {
 		dev_err(qphy->phy.dev, "eud is enabled\n");
-		return 0;
+		/*
+		 * Dont turn off the clocks since EUD is enabled, and return -EPERM
+		 * since we dont want chargerfw to go ahead with its APSD operation
+		 */
+		return -EPERM;
 	}
+
+	if (!qphy->cable_connected)
+		qusb_phy_enable_clocks(qphy, false);
 
 	mutex_lock(&qphy->phy_lock);
 	if (!qphy->dpdm_enable) {
@@ -880,7 +894,9 @@ static int qusb_phy_dpdm_regulator_enable(struct regulator_dev *rdev)
 		}
 		qphy->dpdm_enable = true;
 		if (qphy->put_into_high_z_state) {
-			qusb_phy_update_tcsr_level_shifter(qphy, 1);
+			if (qphy->tcsr_clamp_dig_n)
+				writel_relaxed(0x1,
+					qphy->tcsr_clamp_dig_n);
 
 			qusb_phy_gdsc(qphy, true);
 			qusb_phy_enable_clocks(qphy, true);
@@ -938,7 +954,9 @@ static int qusb_phy_dpdm_regulator_disable(struct regulator_dev *rdev)
 	if (qphy->dpdm_enable) {
 		/* If usb core is active, rely on set_suspend to clamp phy */
 		if (!qphy->cable_connected)
-			qusb_phy_update_tcsr_level_shifter(qphy, 0);
+			if (qphy->tcsr_clamp_dig_n)
+				writel_relaxed(0x0,
+					qphy->tcsr_clamp_dig_n);
 
 		ret = qusb_phy_enable_power(qphy, false);
 		if (ret < 0) {
@@ -1477,9 +1495,6 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		}
 	}
 
-	qphy->scm_lvl_shifter = of_property_read_bool(dev->of_node,
-					"qcom,secure-level-shifter");
-
 	ret = of_property_read_u32(dev->of_node, "qcom,usb-hs-ac-bitmask",
 					&qphy->usb_hs_ac_bitmask);
 	if (!ret) {
@@ -1541,8 +1556,8 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		if (IS_ERR(qphy->iface_clk)) {
 			ret = PTR_ERR(qphy->iface_clk);
 			qphy->iface_clk = NULL;
-		if (ret == -EPROBE_DEFER)
-			return ret;
+			if (ret == -EPROBE_DEFER)
+				return ret;
 			dev_err(dev, "couldn't get iface_clk(%d)\n", ret);
 		}
 	}

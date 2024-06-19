@@ -1028,6 +1028,10 @@ int usb_add_config(struct usb_composite_dev *cdev,
 		goto done;
 
 	status = bind(config);
+
+	if (status == 0)
+		status = usb_gadget_check_config(cdev->gadget);
+
 	if (status < 0) {
 		while (!list_empty(&config->functions)) {
 			struct usb_function		*f;
@@ -2446,6 +2450,10 @@ void composite_resume(struct usb_gadget *gadget)
 		if (maxpower > USB_SELF_POWER_VBUS_MAX_DRAW)
 			usb_gadget_clear_selfpowered(gadget);
 
+		usb_gadget_vbus_draw(gadget, maxpower);
+	} else {
+		maxpower = CONFIG_USB_GADGET_VBUS_DRAW;
+		maxpower = min(maxpower, 100U);
 		usb_gadget_vbus_draw(gadget, maxpower);
 	}
 

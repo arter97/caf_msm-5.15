@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -18,6 +18,7 @@
 #include "virtio_fastrpc_core.h"
 #include "virtio_fastrpc_mem.h"
 #include "virtio_fastrpc_queue.h"
+#include "virtio_fastrpc_trace.h"
 
 /* Virtio ID of FASTRPC : 0xC004 */
 #define VIRTIO_ID_FASTRPC				49156
@@ -36,8 +37,10 @@
 #define VIRTIO_FASTRPC_F_VQUEUE_SETTING			7
 /* indicates fastrpc_mmap/fastrpc_munmap is supported */
 #define VIRTIO_FASTRPC_F_MEM_MAP			8
+/* indicates signed PD control is available in config space */
+#define VIRTIO_FASTRPC_F_SIGNED_PD_CONTROL		9
 
-#define NUM_CHANNELS			4 /* adsp, mdsp, slpi, cdsp0*/
+
 #define NUM_DEVICES			2 /* adsprpc-smd, adsprpc-smd-secure */
 
 #define INIT_FILELEN_MAX		(2*1024*1024)
@@ -53,12 +56,12 @@
  * cannot work properly. It increases when fundamental protocol is
  * changed between FE and BE.
  */
-#define FE_MAJOR_VER 0x5
+#define FE_MAJOR_VER 0x6
 /* FE_MINOR_VER is used to track patches in this driver. It does not
  * need to be matched with BE_MINOR_VER. And it will return to 0 when
  * FE_MAJOR_VER is increased.
  */
-#define FE_MINOR_VER 0x4
+#define FE_MINOR_VER 0x9
 #define FE_VERSION (FE_MAJOR_VER << 16 | FE_MINOR_VER)
 #define BE_MAJOR_VER(ver) (((ver) >> 16) & 0xffff)
 
@@ -66,6 +69,7 @@ struct virtio_fastrpc_config {
 	u32 version;
 	u32 domain_num;
 	u32 max_buf_size;
+	u32 signed_pd_control;
 } __packed;
 
 
@@ -99,6 +103,12 @@ static ssize_t vfastrpc_debugfs_read(struct file *filp, char __user *buffer,
 				"\n%s %d %s %d\n", "channel =", vfl->domain,
 				"proc_attr =", vfl->procattrs);
 
+		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
+			"\n========%s %s %s========\n", title,
+			" SESSION INFO ", title);
+		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
+				"\n%s %d %s %d\n", "tgid_frpc =", fl->tgid_frpc,
+				"sessionid =", fl->sessionid);
 		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
 			"\n========%s %s %s========\n", title,
 			" LIST OF BUFS ", title);
@@ -321,7 +331,6 @@ static int vfastrpc_mmap_ioctl(struct vfastrpc_file *vfl,
 static int vfastrpc_setmode_ioctl(unsigned long ioctl_param,
 		struct vfastrpc_file *vfl)
 {
-	struct vfastrpc_apps *me = vfl->apps;
 	struct fastrpc_file *fl = to_fastrpc_file(vfl);
 	int err = 0;
 
@@ -331,8 +340,14 @@ static int vfastrpc_setmode_ioctl(unsigned long ioctl_param,
 		fl->mode = (uint32_t)ioctl_param;
 		break;
 	case FASTRPC_MODE_SESSION:
-		err = -ENOTTY;
-		dev_err(me->dev, "session mode is not supported\n");
+		if (fl->untrusted_process) {
+			err = -EPERM;
+		ADSPRPC_ERR(
+			"multiple sessions not allowed for untrusted apps\n");
+		break;
+		}
+		if (!fl->multi_session_support)
+			fl->sessionid = 1;
 		break;
 	case FASTRPC_MODE_PROFILE:
 		fl->profile = (uint32_t)ioctl_param;
@@ -469,6 +484,14 @@ int fastrpc_internal_mmap(struct fastrpc_file *fl,
 	struct vfastrpc_file *vfl = to_vfastrpc_file(fl);
 
 	return vfastrpc_internal_mmap(vfl, ud);
+}
+
+int fastrpc_internal_munmap_fd(struct fastrpc_file *fl,
+		struct fastrpc_ioctl_munmap_fd *ud)
+{
+	struct vfastrpc_file *vfl = to_vfastrpc_file(fl);
+
+	return vfastrpc_internal_munmap_fd(vfl, ud);
 }
 
 int fastrpc_init_process(struct fastrpc_file *fl,
@@ -700,16 +723,18 @@ static const struct file_operations fops = {
 static int recv_single(struct virt_msg_hdr *rsp, unsigned int len)
 {
 	struct vfastrpc_apps *me = &gfa;
-	struct virt_fastrpc_msg *msg;
+	struct virt_fastrpc_msg *msg = NULL;
+	unsigned long flags;
 
 	if (len != rsp->len) {
 		dev_err(me->dev, "msg %u len mismatch,expected %u but %d found\n",
 				rsp->cmd, rsp->len, len);
 		return -EINVAL;
 	}
-	spin_lock(&me->msglock);
+	spin_lock_irqsave(&me->msglock, flags);
+
 	msg = me->msgtable[rsp->msgid];
-	spin_unlock(&me->msglock);
+	spin_unlock_irqrestore(&me->msglock, flags);
 
 	if (!msg) {
 		dev_err(me->dev, "msg %u already free in table[%u]\n",
@@ -717,6 +742,9 @@ static int recv_single(struct virt_msg_hdr *rsp, unsigned int len)
 		return -EINVAL;
 	}
 	msg->rxbuf = (void *)rsp;
+
+	if (msg->ctx)
+		trace_recv_single_end(msg->ctx);
 
 	if (msg->ctx && msg->ctx->asyncjob.isasyncjob)
 		vfastrpc_queue_completed_async_job(msg->ctx);
@@ -735,6 +763,7 @@ static void recv_done(struct virtqueue *rvq)
 	int err;
 	unsigned long flags;
 
+	trace_recv_done_start(0);
 	spin_lock_irqsave(&me->rvq.vq_lock, flags);
 	rsp = virtqueue_get_buf(rvq, &len);
 	if (!rsp) {
@@ -843,6 +872,7 @@ static int vfastrpc_channel_init(struct vfastrpc_apps *me)
 
 	me->channel = kcalloc(me->num_channels,
 			sizeof(struct vfastrpc_channel_ctx), GFP_KERNEL);
+	me->max_sess_per_proc = DEFAULT_MAX_SESS_PER_PROC;
 	if (!me->channel)
 		return -ENOMEM;
 	for (i = 0; i < me->num_channels; i++) {
@@ -854,6 +884,7 @@ static int vfastrpc_channel_init(struct vfastrpc_apps *me)
 			me->channel[i].secure = true;
 			me->channel[i].unsigned_support = false;
 		}
+		me->channel[i].sesscount = 0;
 	}
 	return 0;
 }
@@ -889,6 +920,7 @@ static int virt_fastrpc_probe(struct virtio_device *vdev)
 
 	memset(me, 0, sizeof(*me));
 	spin_lock_init(&me->msglock);
+	spin_lock_init(&me->hlock);
 
 	if (virtio_has_feature(vdev, VIRTIO_FASTRPC_F_INVOKE_ATTR))
 		me->has_invoke_attr = true;
@@ -904,6 +936,14 @@ static int virt_fastrpc_probe(struct virtio_device *vdev)
 
 	if (virtio_has_feature(vdev, VIRTIO_FASTRPC_F_MEM_MAP))
 		me->has_mem_map = true;
+
+	if (virtio_has_feature(vdev, VIRTIO_FASTRPC_F_SIGNED_PD_CONTROL)) {
+		virtio_cread(vdev, struct virtio_fastrpc_config, signed_pd_control,
+				&config.signed_pd_control);
+		me->signed_pd_control = config.signed_pd_control;
+	} else {
+		me->signed_pd_control = 0;
+	}
 
 	vdev->priv = me;
 	me->vdev = vdev;
@@ -1075,6 +1115,7 @@ static unsigned int features[] = {
 	VIRTIO_FASTRPC_F_DOMAIN_NUM,
 	VIRTIO_FASTRPC_F_VQUEUE_SETTING,
 	VIRTIO_FASTRPC_F_MEM_MAP,
+	VIRTIO_FASTRPC_F_SIGNED_PD_CONTROL,
 };
 
 static struct virtio_driver virtio_fastrpc_driver = {

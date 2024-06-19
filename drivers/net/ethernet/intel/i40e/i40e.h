@@ -588,6 +588,7 @@ struct i40e_pf {
  *   in abilities field of i40e_aq_set_phy_config structure
  */
 #define I40E_FLAG_TOTAL_PORT_SHUTDOWN_ENABLED	BIT(27)
+#define I40E_FLAG_VF_VLAN_PRUNING		BIT(28)
 
 	struct i40e_client_instance *cinst;
 	bool stat_offsets_loaded;
@@ -1266,9 +1267,9 @@ void i40e_ptp_stop(struct i40e_pf *pf);
 int i40e_ptp_alloc_pins(struct i40e_pf *pf);
 int i40e_update_adq_vsi_queues(struct i40e_vsi *vsi, int vsi_offset);
 int i40e_is_vsi_uplink_mode_veb(struct i40e_vsi *vsi);
-i40e_status i40e_get_partition_bw_setting(struct i40e_pf *pf);
-i40e_status i40e_set_partition_bw_setting(struct i40e_pf *pf);
-i40e_status i40e_commit_partition_bw_setting(struct i40e_pf *pf);
+int i40e_get_partition_bw_setting(struct i40e_pf *pf);
+int i40e_set_partition_bw_setting(struct i40e_pf *pf);
+int i40e_commit_partition_bw_setting(struct i40e_pf *pf);
 void i40e_print_link_message(struct i40e_vsi *vsi, bool isup);
 
 void i40e_set_fec_in_flags(u8 fec_cfg, u32 *flags);

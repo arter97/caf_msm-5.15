@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include "hab.h"
 #include "hab_qvm.h"
@@ -38,7 +38,7 @@ static int hab_shmem_probe(struct platform_device *pdev)
 
 	/* hab in one GVM will not have pchans more than one VM could allowed */
 	if (qvm_priv_info.probe_cnt >= min(hab_driver.ndevices, qvm_priv_info.setting_size)) {
-		pr_err("no more channel, current %d, maximum %d\n",
+		pr_info("no more channel, current %d, maximum %d\n",
 			qvm_priv_info.probe_cnt,
 			min(hab_driver.ndevices, qvm_priv_info.setting_size));
 		return -ENODEV;
@@ -162,8 +162,7 @@ int habhyp_commdev_create_dispatcher(struct physical_channel *pchan)
 
 	pr_debug("request_irq: irq = %d, pchan name = %s\n",
 			dev->irq, pchan->name);
-	ret = request_irq(dev->irq, shm_irq_handler, IRQF_SHARED |
-			IRQF_NO_SUSPEND, pchan->name, pchan);
+	ret = request_irq(dev->irq, shm_irq_handler, IRQF_SHARED, pchan->name, pchan);
 	if (ret)
 		pr_err("request_irq for %s failed: %d\n",
 			pchan->name, ret);

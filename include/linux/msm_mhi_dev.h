@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_MHI_DEV_H
@@ -127,10 +127,34 @@ enum mhi_client_channel {
 	MHI_CLIENT_IP_SW_5_IN  = 49,
 	MHI_CLIENT_IP_SW_6_OUT = 50,
 	MHI_CLIENT_IP_SW_6_IN = 51,
+	MHI_CLIENT_IP_SW_7_OUT = 52,
+	MHI_CLIENT_IP_SW_7_IN = 53,
+	MHI_CLIENT_IP_SW_8_OUT = 54,
+	MHI_CLIENT_IP_SW_8_IN = 55,
+	MHI_CLIENT_IP_SW_9_OUT = 56,
+	MHI_CLIENT_IP_SW_9_IN = 57,
+	MHI_CLIENT_IP_SW_10_OUT = 58,
+	MHI_CLIENT_IP_SW_10_IN = 59,
+	MHI_CLIENT_IP_SW_11_OUT = 60,
+	MHI_CLIENT_IP_SW_11_IN = 61,
+	MHI_CLIENT_IP_SW_12_OUT = 62,
+	MHI_CLIENT_IP_SW_12_IN = 63,
+	MHI_CLIENT_IP_SW_13_OUT = 64,
+	MHI_CLIENT_IP_SW_13_IN = 65,
+	MHI_CLIENT_IP_SW_14_OUT = 66,
+	MHI_CLIENT_IP_SW_14_IN = 67,
+	MHI_CLIENT_IP_SW_15_OUT = 68,
+	MHI_CLIENT_IP_SW_15_IN = 69,
+	MHI_CLIENT_IP_SW_16_OUT = 70,
+	MHI_CLIENT_IP_SW_16_IN = 71,
+	MHI_CLIENT_IP_SW_17_OUT = 72,
+	MHI_CLIENT_IP_SW_17_IN = 73,
+	MHI_CLIENT_IP_SW_18_OUT = 74,
+	MHI_CLIENT_IP_SW_18_IN = 75,
 	MHI_MAX_SOFTWARE_CHANNELS,
-	MHI_CLIENT_TEST_OUT = 60,
-	MHI_CLIENT_TEST_IN = 61,
-	MHI_CLIENT_RESERVED_1_LOWER = 62,
+	MHI_CLIENT_TEST_OUT = 77,
+	MHI_CLIENT_TEST_IN = 78,
+	MHI_CLIENT_RESERVED_1_LOWER = 79,
 	MHI_CLIENT_RESERVED_1_UPPER = 99,
 	MHI_CLIENT_IP_HW_0_OUT = 100,
 	MHI_CLIENT_IP_HW_0_IN = 101,
@@ -158,7 +182,7 @@ struct mhi_dev_ready_cb_info {
 	struct mhi_dev_client_cb_data	cb_data;
 };
 
-#if defined(CONFIG_MSM_MHI_DEV)
+#if IS_ENABLED(CONFIG_MSM_MHI_DEV)
 /**
  * mhi_dev_open_channel() - Channel open for a given client done prior
  *		to read/write.
@@ -264,40 +288,41 @@ int mhi_vf_register_state_cb(void (*mhi_state_cb)
 			(struct mhi_dev_client_cb_data *cb_data), void *data,
 			enum mhi_client_channel channel,
 			unsigned int vf_id);
+
 #else
 static inline int mhi_dev_open_channel(uint32_t chan_id,
 		struct mhi_dev_client **handle_client,
 		void (*event_trigger)(struct mhi_dev_client_cb_reason *cb))
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_dev_vf_open_channel(uint32_t vf_id, uint32_t chan_id,
 		struct mhi_dev_client **handle_client,
 		void (*event_trigger)(struct mhi_dev_client_cb_reason *cb))
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_dev_close_channel(struct mhi_dev_client *handle_client)
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_dev_read_channel(struct mhi_req *mreq)
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_dev_write_channel(struct mhi_req *wreq)
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_dev_channel_isempty(struct mhi_dev_client *handle)
 {
 	return -EINVAL;
-};
+}
 
 static inline bool mhi_dev_channel_has_pending_write
 	(struct mhi_dev_client *handle)
@@ -308,28 +333,29 @@ static inline bool mhi_dev_channel_has_pending_write
 static inline int mhi_ctrl_state_info(uint32_t idx, uint32_t *info)
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_vf_ctrl_state_info(u32 vf_id, uint32_t idx, uint32_t *info)
 {
 	return -EINVAL;
-};
+}
 
 static inline int mhi_register_state_cb(void (*mhi_state_cb)
 			(struct mhi_dev_client_cb_data *cb_data), void *data,
 			enum mhi_client_channel channel)
 {
 	return -EINVAL;
-};
+}
 
-int mhi_vf_register_state_cb(void (*mhi_state_cb)
+static inline int mhi_vf_register_state_cb(void (*mhi_state_cb)
 			(struct mhi_dev_client_cb_data *cb_data), void *data,
 			enum mhi_client_channel channel,
-			unsigned int vf_id);
+			unsigned int vf_id)
 
 {
 	return -EINVAL;
-};
+}
+
 #endif
 
 #endif /* _MSM_MHI_DEV_H*/
