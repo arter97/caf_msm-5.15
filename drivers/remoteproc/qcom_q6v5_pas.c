@@ -1422,7 +1422,7 @@ static int adsp_probe(struct platform_device *pdev)
 		ret = setup_mpss_extended_mem(adsp);
 		if (ret) {
 			dev_err(adsp->dev, "failed to parse mpss extended dsm mem\n");
-			goto free_rproc;
+			goto free_dtb_firmware;
 		}
 		mpss_have_extended_mem = true;
 	}
@@ -1520,7 +1520,6 @@ free_dtb_firmware:
 	if (adsp->dtb_fw_name)
 		kfree_const(adsp->dtb_fw_name);
 free_rproc:
-	device_init_wakeup(adsp->dev, false);
 	rproc_free(rproc);
 
 	return ret;
