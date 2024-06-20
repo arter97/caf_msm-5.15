@@ -468,6 +468,15 @@ config QCOM_DS_SKIP_Q6_STOP
 
 	  If not sure, say N.
 
+config FIRMWARE_FAIL_SAFE
+	bool "Support for reboot if there is corruption in image"
+	help
+	  This option enables reboot support with reboot reason firmware
+	  auth failed when image authentication fails at kernel level due
+	  to detection of firmware image corruption.
+
+	  If not sure, say N.
+
 endif # REMOTEPROC
 
 endmenu

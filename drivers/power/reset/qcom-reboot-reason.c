@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -44,6 +44,9 @@ static struct poweroff_reason reasons[] = {
 #ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
 	{ "panic",			0x07 },
 	{ "watchdog bark",		0x08 },
+#endif
+#ifdef CONFIG_FIRMWARE_FAIL_SAFE
+	{ "firmware auth failed",       0x0E },
 #endif
 	{}
 };
