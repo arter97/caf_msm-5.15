@@ -3017,6 +3017,7 @@ static void fastrpc_init(struct fastrpc_apps *me)
 	/* Set CDSP channel to non secure */
 	me->channel[CDSP_DOMAIN_ID].secure = NON_SECURE_CHANNEL;
 	me->channel[CDSP_DOMAIN_ID].unsigned_support = true;
+	me->channel[MDSP_DOMAIN_ID].unsigned_support = true;
 }
 
 static inline void fastrpc_pm_awake(struct fastrpc_file *fl, int channel_type)
@@ -4395,10 +4396,6 @@ int fastrpc_get_info_from_dsp(struct fastrpc_file *fl,
 	remote_arg_t ra[2];
 
 	dsp_attr_buf[0] = 0;	// Capability filled in userspace
-
-	// Fastrpc to modem not supported
-	if (domain == MDSP_DOMAIN_ID)
-		goto bail;
 
 	err = fastrpc_channel_open(fl, FASTRPC_INIT_NO_CREATE);
 	if (err)
