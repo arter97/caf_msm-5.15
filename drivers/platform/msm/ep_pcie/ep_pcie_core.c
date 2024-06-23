@@ -316,7 +316,8 @@ static int ep_pcie_reset_init(struct ep_pcie_dev_t *dev)
 		while (1) {
 			if (ktime_after(ktime_get(), timeout))
 				break;
-			udelay(5);
+			udelay(1);
+			cpu_relax();
 		}
 
 		rc = reset_control_deassert(reset_info->hdl);
@@ -2152,11 +2153,12 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	u32 val = 0;
 	u32 retries = 0;
 	u32 bme = 0;
-	bool perst = true, timedout = false;
+	u32 link_in_l2 = 0;
+	bool perst = true;
 	bool ltssm_en = false;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 reg, linkup_ts;
-	ktime_t timeout;
+	int timedout = false;
 
 	EP_PCIE_DBG(dev, "PCIe V%d: options input are 0x%x\n", dev->rev, opt);
 
@@ -2219,26 +2221,36 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 						ep_pcie_dev.tcsr_perst_enable_offset));
 
 			/*
-			 * Delatch PERST_SEPARATION_ENABLE with TCSR to avoid
-			 * device reset during host reboot and hibernate case.
+			 * Delatch PERST_SEPARATION_ENABLE with TCSR, by default, to avoid
+			 * device reset during host reboot and hibernate case. This can be
+			 * enabled using command line arg but must be used for debug or
+			 * experiment purpose only.
 			 */
-			writel_relaxed(0, dev->tcsr_perst_en +
+			writel_relaxed(dev->perst_sep_en, dev->tcsr_perst_en +
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
 
 			/*
-			 * Re-enable hot reset before link up since we disable it
-			 * in pm_turnoff irq.
+			 * Re-enable hot reset before link up, by default, since we disable it
+			 * in pm_turnoff irq. This can be enabled using command line arg but
+			 * must be used for debug or experiment purpose only
 			 */
 			ep_pcie_write_reg_field(dev->tcsr_perst_en,
-					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0), BIT(0));
+					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0),
+						!dev->hot_rst_disable);
 		}
+
+		val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
+		EP_PCIE_DBG(dev, "PCIe V%d: PARF_PM_STTS value is : 0x%x.\n",
+				dev->rev, val);
+
+		link_in_l2 = !!(val & PARF_PM_LINKST_IN_L2);
+		val = !!(val & PARF_XMLH_LINK_UP);
+
+		if (link_in_l2)
+			goto trainlink;
 
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
-			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
-			val = val & PARF_XMLH_LINK_UP;
-			EP_PCIE_DBG(dev, "PCIe V%d: Link status is 0x%x.\n",
-					dev->rev, val);
 			if (val) {
 				EP_PCIE_INFO(dev,
 					"PCIe V%d: link initialized by bootloader for LE PCIe endpoint; skip link training in HLOS.\n",
@@ -2286,6 +2298,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			}
 		}
 
+trainlink:
 		ret = ep_pcie_reset_init(dev);
 		if (ret)
 			goto link_fail;
@@ -2366,23 +2379,8 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 
 	EP_PCIE_DBG(dev, "PCIe V%d: waiting for phy ready...\n", dev->rev);
 
-	timeout = ktime_add_ms(ktime_get(), PHY_READY_TIMEOUT_MS);
-	while (1) {
-		if (ep_pcie_phy_is_ready(dev)) {
-			ktime_t time = ktime_add_ms(ktime_get(), PHY_READY_TIMEOUT_MS);
-
-			EP_PCIE_DBG(dev, "pcie v%d: phy is up in =%ld us\n",
-					dev->rev, ktime_us_delta(time, timeout));
-			break;
-		}
-
-		timedout = ktime_after(ktime_get(), timeout);
-		if (timedout)
-			break;
-
-		udelay(5);
-	}
-
+	timedout = read_poll_timeout_atomic(ep_pcie_phy_is_ready,
+			val, val == true, 1, PHY_READY_TIMEOUT_MS, false, dev);
 	if (timedout) {
 		EP_PCIE_ERR(dev, "PCIe V%d: PCIe PHY  failed to come up\n",
 			dev->rev);
@@ -2520,9 +2518,9 @@ checkbme:
 			BME_TIMEOUT_US_MIN * retries / 1000);
 		ep_pcie_enumeration_complete(dev);
 
-		EP_PCIE_DBG2(dev, "PCIe V%d: Allow L1 after BME is set\n",
-				dev->rev);
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, BIT(5), 0);
+		EP_PCIE_DBG2(dev, "PCIe V%d: %s Allow L1 after BME is set\n",
+				dev->rev, ep_pcie_dev.l1_disable ? "Don't" : "");
+		ep_pcie_write_reg_field(dev->parf, PCIE20_PARF_PM_CTRL, BIT(5), dev->l1_disable);
 
 		/* expose BAR to user space to identify modem */
 		ep_pcie_bar0_address =
@@ -2711,9 +2709,9 @@ static irqreturn_t ep_pcie_handle_bme_irq(int irq, void *data)
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_LINKUP);
 		}
 
-		EP_PCIE_DBG2(dev, "PCIe V%d: Allow L1 after BME is set\n",
-				dev->rev);
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, BIT(5), 0);
+		EP_PCIE_DBG2(dev, "PCIe V%d: %s Allow L1 after BME is set\n",
+				dev->rev, ep_pcie_dev.l1_disable ? "Don't" : "");
+		ep_pcie_write_reg_field(dev->parf, PCIE20_PARF_PM_CTRL, BIT(5), dev->l1_disable);
 	} else {
 		EP_PCIE_DBG(dev,
 				"PCIe V%d:BME is still disabled\n", dev->rev);
@@ -4578,6 +4576,18 @@ static int ep_pcie_probe(struct platform_device *pdev)
 		"PCIe V%d: pcie configure hard reset is %s enabled\n",
 		ep_pcie_dev.rev, ep_pcie_dev.configure_hard_reset ? "" : "not");
 
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: EP PCIe hot reset is %s enabled\n",
+		ep_pcie_dev.rev, ep_pcie_dev.hot_rst_disable ? "not" : "");
+
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: EP PCIe L1 is %s enabled\n",
+		ep_pcie_dev.rev, ep_pcie_dev.l1_disable ? "not" : "");
+
+	EP_PCIE_DBG(&ep_pcie_dev,
+		"PCIe V%d: EP PCIe PERST Separation is %s enabled\n",
+		ep_pcie_dev.rev, ep_pcie_dev.perst_sep_en ? "" : "not");
+
 	memcpy(ep_pcie_dev.vreg, ep_pcie_vreg_info,
 				sizeof(ep_pcie_vreg_info));
 	memcpy(ep_pcie_dev.gpio, ep_pcie_gpio_info,
@@ -4740,6 +4750,33 @@ static struct platform_driver ep_pcie_driver = {
 		.of_match_table	= ep_pcie_match,
 	},
 };
+
+static int __init ep_pcie_hot_reset(char *str)
+{
+	if (!strcmp(str, "disable_hot_reset"))
+		ep_pcie_dev.hot_rst_disable = true;
+	pr_err("%s hot_rst_disable:%d\n", __func__, ep_pcie_dev.hot_rst_disable);
+	return 0;
+}
+early_param("ep_pcie_hot_rst", ep_pcie_hot_reset);
+
+static int __init ep_pcie_perst_sep(char *str)
+{
+	if (!strcmp(str, "enable_perst_sep"))
+		ep_pcie_dev.perst_sep_en = true;
+	pr_err("%s perst_sep_en:%d\n", __func__, ep_pcie_dev.perst_sep_en);
+	return 0;
+}
+early_param("ep_pcie_perst_sep", ep_pcie_perst_sep);
+
+static int __init ep_pcie_l1_disable(char *str)
+{
+	if (!strcmp(str, "disable_l1"))
+		ep_pcie_dev.l1_disable = true;
+	pr_err("%s l1_disable:%d\n", __func__, ep_pcie_dev.l1_disable);
+	return 0;
+}
+early_param("ep_pcie_l1_cfg", ep_pcie_l1_disable);
 
 static int __init ep_pcie_init(void)
 {

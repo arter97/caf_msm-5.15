@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "hvc_gunyah: " fmt
@@ -19,6 +20,8 @@
 #include <linux/gunyah/gh_rm_drv.h>
 
 #include "hvc_console.h"
+
+#include <linux/suspend.h>
 
 /*
  * Note: hvc_alloc follows first-come, first-served for assigning
@@ -46,6 +49,7 @@ struct gh_hvc_prv {
 
 static DEFINE_SPINLOCK(fifo_lock);
 static struct gh_hvc_prv gh_hvc_data[GH_VM_MAX];
+static bool suspend_in_progress;
 
 static inline int gh_vm_name_to_vtermno(enum gh_vm_names vmname)
 {
@@ -90,6 +94,34 @@ static int gh_hvc_notify_console_chars(struct notifier_block *this,
 
 	return NOTIFY_OK;
 }
+
+static struct notifier_block gh_hvc_nb = {
+	.notifier_call = gh_hvc_notify_console_chars,
+};
+
+static int notifier_handler(struct notifier_block *nb, unsigned long event, void *dummy)
+{
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		gh_rm_unregister_notifier(&gh_hvc_nb);
+		suspend_in_progress = true;
+		break;
+
+	case PM_POST_SUSPEND:
+		gh_rm_register_notifier(&gh_hvc_nb);
+		suspend_in_progress = false;
+		break;
+
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block notif_block = {
+	.notifier_call = notifier_handler,
+};
 
 static void gh_hvc_put_work_fn(struct work_struct *ws)
 {
@@ -138,6 +170,14 @@ static int gh_hvc_put_chars(uint32_t vtermno, const char *buf, int count)
 	if (vm_name < 0 || vm_name >= GH_VM_MAX)
 		return -EINVAL;
 
+	/* If VM suspend is in progress then don't
+	 * schedule gh_hvc_put_work_fn function as
+	 * it will do a rm_console_write resulting in VM
+	 * wakeup
+	 */
+	if (suspend_in_progress)
+		return 0;
+
 	ret = kfifo_in_spinlocked(&gh_hvc_data[vm_name].put_fifo,
 				   buf, count, &fifo_lock);
 	if (ret > 0)
@@ -157,6 +197,14 @@ static int gh_hvc_flush(uint32_t vtermno, bool wait)
 
 	if (vm_name < 0 || vm_name >= GH_VM_MAX)
 		return -EINVAL;
+
+	/* If VM suspend is in progress then don't
+	 * schedule gh_hvc_put_work_fn function as
+	 * it will do a rm_console_write resulting in VM
+	 * wakeup
+	 */
+	if (suspend_in_progress)
+		return 0;
 
 	ret = gh_rm_get_vmid(vm_name, &vmid);
 	if (ret)
@@ -223,10 +271,6 @@ static void gh_hvc_notify_del(struct hvc_struct *hp, int vm_name)
 	kfifo_reset(&gh_hvc_data[vm_name].get_fifo);
 }
 
-static struct notifier_block gh_hvc_nb = {
-	.notifier_call = gh_hvc_notify_console_chars,
-};
-
 static const struct hv_ops gh_hv_ops = {
 	.get_chars = gh_hvc_get_chars,
 	.put_chars = gh_hvc_put_chars,
@@ -283,9 +327,14 @@ static int __init hvc_gh_init(void)
 			goto bail;
 	}
 
+	ret = register_pm_notifier(&notif_block);
+	if (ret)
+		pr_err("%s : register_pm_notifier failed - %d\n", __func__, ret);
+
 	ret = gh_rm_register_notifier(&gh_hvc_nb);
 	if (ret)
 		goto bail;
+	suspend_in_progress = false;
 
 	return 0;
 bail:
@@ -301,6 +350,7 @@ static __exit void hvc_gh_exit(void)
 {
 	int i;
 
+	unregister_pm_notifier(&notif_block);
 	gh_rm_unregister_notifier(&gh_hvc_nb);
 
 	for (i = 0; i < GH_VM_MAX; i++)

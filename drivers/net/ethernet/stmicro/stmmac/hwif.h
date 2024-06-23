@@ -327,6 +327,8 @@ struct stmmac_ops {
 					u32 weight, u32 queue);
 	/* RX MTL queue to RX dma mapping */
 	void (*map_mtl_to_dma)(struct mac_device_info *hw, u32 queue, u32 chan);
+	void (*enable_queue_dynamic_dma_ch_selection)(struct mac_device_info *hw, u32 queue);
+	void (*disable_queue_dynamic_dma_ch_selection)(struct mac_device_info *hw, u32 queue);
 	/* Configure AV Algorithm */
 	void (*config_cbs)(struct mac_device_info *hw, u32 send_slope,
 			   u32 idle_slope, u32 high_credit, u32 low_credit,
@@ -395,6 +397,12 @@ struct stmmac_ops {
 				   __be16 proto, u16 vid);
 	void (*restore_hw_vlan_rx_fltr)(struct net_device *dev,
 					struct mac_device_info *hw);
+	int (*add_hw_vlan_rx_routing_fltr)(struct net_device *dev,
+					   struct mac_device_info *hw, u16 vid,
+					   u32 dma_ch, bool inv);
+	int (*del_hw_vlan_rx_routing_fltr)(struct net_device *dev,
+					   struct mac_device_info *hw, u16 vid,
+					   bool inv);
 	/* TX Timestamp */
 	int (*get_mac_tx_timestamp)(struct mac_device_info *hw, u64 *ts);
 	/* Source Address Insertion / Replacement */
@@ -530,6 +538,14 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, fpe_irq_status, __args)
 #define stmmac_flush_tx_mtl(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, flush_tx_mtl, __args)
+#define stmmac_enable_queue_dynamic_dma_ch_selection(__priv, __args...) \
+	stmmac_do_void_callback(__priv, mac, enable_queue_dynamic_dma_ch_selection, __args)
+#define stmmac_disable_queue_dynamic_dma_ch_selection(__priv, __args...) \
+	stmmac_do_void_callback(__priv, mac, disable_queue_dynamic_dma_ch_selection, __args)
+#define stmmac_add_hw_vlan_rx_routing_fltr(__priv, __args...) \
+	stmmac_do_callback(__priv, mac, add_hw_vlan_rx_routing_fltr, __args)
+#define stmmac_del_hw_vlan_rx_routing_fltr(__priv, __args...) \
+	stmmac_do_callback(__priv, mac, del_hw_vlan_rx_routing_fltr, __args)
 struct stmmac_priv;
 
 /* PTP and HW Timer helpers */
