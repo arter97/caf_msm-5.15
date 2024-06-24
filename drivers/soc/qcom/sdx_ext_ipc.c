@@ -28,6 +28,7 @@
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 #include <linux/panic_notifier.h>
+#include <linux/gpio/consumer.h>
 
 #define STATUS_UP 1
 #define STATUS_DOWN 0
@@ -52,16 +53,22 @@ enum gpios {
 	NUM_GPIOS,
 };
 
-static const char * const gpio_map[] = {
-	[STATUS_IN] = "qcom,status-in-gpio",
-	[STATUS_OUT] = "qcom,status-out-gpio",
-	[STATUS_OUT2] = "qcom,status-out2-gpio",
-	[WAKEUP_OUT] = "qcom,wakeup-gpio-out",
-	[WAKEUP_IN] = "qcom,wakeup-gpio-in",
+struct sb_gpio {
+	const char *name;
+	unsigned long flags;
+};
+
+static const struct sb_gpio gpiod_map[] = {
+	[STATUS_IN] = { .name = "qcom,status-in", .flags = GPIOD_IN },
+	[STATUS_OUT] = { .name = "qcom,status-out", .flags = GPIOD_OUT_HIGH },
+	[STATUS_OUT2] = { .name = "qcom,status-out2", .flags = GPIOD_OUT_HIGH },
+	[WAKEUP_OUT] = { .name = "qcom,wakeup-out", .flags = GPIOD_OUT_HIGH },
+	[WAKEUP_IN] = { .name = "qcom,wakeup-in", .flags = GPIOD_IN },
 };
 
 struct gpio_cntrl {
 	int gpios[NUM_GPIOS];
+	struct gpio_desc *gpdesc[NUM_GPIOS];
 	int status_irq;
 	int wakeup_irq;
 	int policy;
@@ -143,7 +150,7 @@ static ssize_t e911_show(struct device *dev, struct device_attribute *attr,
 		return -ENXIO;
 
 	mutex_lock(&mdm->e911_lock);
-	state = gpio_get_value(mdm->gpios[STATUS_OUT2]);
+	state = gpiod_get_value(mdm->gpdesc[STATUS_OUT2]);
 	ret = scnprintf(buf, 2, "%d\n", state);
 	mutex_unlock(&mdm->e911_lock);
 
@@ -164,9 +171,9 @@ static ssize_t e911_store(struct device *dev, struct device_attribute *attr,
 
 	mutex_lock(&mdm->e911_lock);
 	if (e911)
-		gpio_set_value(mdm->gpios[STATUS_OUT2], 1);
+		gpiod_set_value(mdm->gpdesc[STATUS_OUT2], 1);
 	else
-		gpio_set_value(mdm->gpios[STATUS_OUT2], 0);
+		gpiod_set_value(mdm->gpdesc[STATUS_OUT2], 0);
 	mutex_unlock(&mdm->e911_lock);
 
 	return count;
@@ -181,9 +188,9 @@ static int sideband_notify(struct notifier_block *nb,
 
 	switch (action) {
 	case EVENT_REQUEST_WAKE_UP:
-		gpio_set_value(mdm->gpios[WAKEUP_OUT], 1);
+		gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 1);
 		usleep_range(10000, 20000);
-		gpio_set_value(mdm->gpios[WAKEUP_OUT], 0);
+		gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 0);
 		break;
 	}
 
@@ -201,14 +208,13 @@ static irqreturn_t ap_status_change(int irq, void *dev_id)
 {
 	struct gpio_cntrl *mdm = dev_id;
 	int state, ret;
-	struct gpio_desc *gp_status = gpio_to_desc(mdm->gpios[STATUS_IN]);
 	int active_low = 0;
 	char evt;
 
-	if (gp_status)
-		active_low = gpiod_is_active_low(gp_status);
+	if (mdm->gpdesc[STATUS_IN])
+		active_low = gpiod_is_active_low(mdm->gpdesc[STATUS_IN]);
 
-	state = gpio_get_value(mdm->gpios[STATUS_IN]);
+	state = gpiod_get_value(mdm->gpdesc[STATUS_IN]);
 	if ((!active_low && !state) || (active_low && state)) {
 		if (mdm->policy) {
 			evt = '0';
@@ -246,31 +252,37 @@ static void remove_ipc(struct gpio_cntrl *mdm)
 
 	for (i = 0; i < NUM_GPIOS; ++i) {
 		if (gpio_is_valid(mdm->gpios[i]))
-			gpio_free(mdm->gpios[i]);
+			gpiod_put(mdm->gpdesc[i]);
 	}
 }
 
 static int setup_ipc(struct gpio_cntrl *mdm)
 {
-	int i, val, ret, irq;
+	int i, ret, irq;
 	struct device_node *node;
 
 	node = mdm->dev->of_node;
-	for (i = 0; i < ARRAY_SIZE(gpio_map); i++) {
-		val = of_get_named_gpio(node, gpio_map[i], 0);
-		mdm->gpios[i] = (val >= 0) ? val : -1;
+
+	for (i = 0; i < ARRAY_SIZE(gpiod_map); i++) {
+		dev_info(mdm->dev, "%s gpiod_map name[%d]=%s flag[%d]=%d\n",
+				__func__, i, gpiod_map[i].name, i, gpiod_map[i].flags);
+		mdm->gpdesc[i] = gpiod_get(mdm->dev, gpiod_map[i].name, gpiod_map[i].flags);
+		if (IS_ERR(mdm->gpdesc[i])) {
+			dev_err(mdm->dev,
+			"Failed to get GPIO from DT property info\n");
+			ret =  PTR_ERR(mdm->gpdesc[i]);
+			mdm->gpios[i] = -1;
+		} else {
+			mdm->gpios[i] = desc_to_gpio(mdm->gpdesc[i]);
+			dev_info(mdm->dev, "%s gpiod_get success & desc_to_gpio gpios[%d]=%d\n",
+					__func__, i, mdm->gpios[i]);
+		}
 	}
 
 	if (mdm->gpios[STATUS_IN] >= 0) {
-		ret = gpio_request(mdm->gpios[STATUS_IN], "STATUS_IN");
-		if (ret) {
-			dev_err(mdm->dev,
-				"Failed to configure STATUS_IN gpio\n");
-			return ret;
-		}
-		gpio_direction_input(mdm->gpios[STATUS_IN]);
+		gpiod_direction_input(mdm->gpdesc[STATUS_IN]);
 
-		irq = gpio_to_irq(mdm->gpios[STATUS_IN]);
+		irq = gpiod_to_irq(mdm->gpdesc[STATUS_IN]);
 		if (irq < 0) {
 			dev_err(mdm->dev, "bad STATUS_IN IRQ resource\n");
 			return irq;
@@ -279,48 +291,25 @@ static int setup_ipc(struct gpio_cntrl *mdm)
 	} else
 		dev_info(mdm->dev, "STATUS_IN not used\n");
 
-	if (mdm->gpios[STATUS_OUT] >= 0) {
-		ret = gpio_request(mdm->gpios[STATUS_OUT], "STATUS_OUT");
-		if (ret) {
-			dev_err(mdm->dev, "Failed to configure STATUS_OUT gpio\n");
-			return ret;
-		}
-		gpio_direction_output(mdm->gpios[STATUS_OUT], 1);
-	} else
+	if (mdm->gpios[STATUS_OUT] >= 0)
+		gpiod_direction_output(mdm->gpdesc[STATUS_OUT], 1);
+	else
 		dev_info(mdm->dev, "STATUS_OUT not used\n");
 
-	if (mdm->gpios[STATUS_OUT2] >= 0) {
-		ret = gpio_request(mdm->gpios[STATUS_OUT2],
-						"STATUS_OUT2");
-		if (ret) {
-			dev_err(mdm->dev, "Failed to configure STATUS_OUT2 gpio\n");
-			return ret;
-		}
-		gpio_direction_output(mdm->gpios[STATUS_OUT2], 0);
-	} else
+	if (mdm->gpios[STATUS_OUT2] >= 0)
+		gpiod_direction_output(mdm->gpdesc[STATUS_OUT2], 0);
+	else
 		dev_info(mdm->dev, "STATUS_OUT2 not used\n");
 
-	if (mdm->gpios[WAKEUP_OUT] >= 0) {
-		ret = gpio_request(mdm->gpios[WAKEUP_OUT], "WAKEUP_OUT");
-
-		if (ret) {
-			dev_err(mdm->dev, "Failed to configure WAKEUP_OUT gpio\n");
-			return ret;
-		}
-		gpio_direction_output(mdm->gpios[WAKEUP_OUT], 0);
-	} else
+	if (mdm->gpios[WAKEUP_OUT] >= 0)
+		gpiod_direction_output(mdm->gpdesc[WAKEUP_OUT], 0);
+	else
 		dev_info(mdm->dev, "WAKEUP_OUT not used\n");
 
 	if (mdm->gpios[WAKEUP_IN] >= 0) {
-		ret = gpio_request(mdm->gpios[WAKEUP_IN], "WAKEUP_IN");
+		gpiod_direction_input(mdm->gpdesc[WAKEUP_IN]);
 
-		if (ret) {
-			dev_warn(mdm->dev, "Failed to configure WAKEUP_IN gpio\n");
-			return ret;
-		}
-		gpio_direction_input(mdm->gpios[WAKEUP_IN]);
-
-		irq = gpio_to_irq(mdm->gpios[WAKEUP_IN]);
+		irq = gpiod_to_irq(mdm->gpdesc[WAKEUP_IN]);
 		if (irq < 0) {
 			dev_err(mdm->dev, "bad WAKEUP_IN IRQ resource\n");
 			return irq;
@@ -338,7 +327,7 @@ static int sdx_ext_ipc_panic(struct notifier_block *this,
 	struct gpio_cntrl *mdm = container_of(this,
 					struct gpio_cntrl, panic_blk);
 
-	gpio_set_value(mdm->gpios[STATUS_OUT], 0);
+	gpiod_set_value(mdm->gpdesc[STATUS_OUT], 0);
 
 	return NOTIFY_DONE;
 }
@@ -389,7 +378,7 @@ static ssize_t sb_read(struct file *filp,
 
 	if (kfifo_is_empty(&mdm->st_in_fifo)) {
 		spin_unlock(&mdm->st_in_wq.lock);
-		state = gpio_get_value(mdm->gpios[STATUS_IN]);
+		state = gpiod_get_value(mdm->gpdesc[STATUS_IN]);
 		evt[0] = state ? '1' : '0';
 		if (copy_to_user(buf, evt, 1))
 			return -EFAULT;
@@ -655,6 +644,7 @@ static const struct dev_pm_ops sdx_ext_ipc_pm_ops = {
 
 static const struct of_device_id sdx_ext_ipc_of_match[] = {
 	{ .compatible = "qcom,sdx-ext-ipc"},
+	{ .compatible = "qcom,sa525m-idp"},
 	{},
 };
 
