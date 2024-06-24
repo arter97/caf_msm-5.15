@@ -1437,7 +1437,7 @@ static int adsp_probe(struct platform_device *pdev)
 
 	ret = device_init_wakeup(adsp->dev, true);
 	if (ret)
-		goto free_dtb_firmware;
+		goto free_assigned_mem;
 
 	ret = adsp_alloc_memory_region(adsp);
 	if (ret)
@@ -1522,6 +1522,9 @@ detach_active_pds:
 	adsp_pds_detach(adsp, adsp->active_pds, adsp->active_pd_count);
 deinit_wakeup_source:
 	device_init_wakeup(adsp->dev, false);
+free_assigned_mem:
+	if (desc->needs_extended_mem_setup)
+		mpss_extended_mem_hyp_assign_control(adsp, false);
 free_dtb_firmware:
 	if (adsp->dtb_fw_name)
 		kfree_const(adsp->dtb_fw_name);
