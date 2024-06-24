@@ -634,7 +634,10 @@ static int set_ethernet_interface(char *eth_intf)
 		return 1;
 
 	ETHQOSDBG("Command Line eth interface: %s\n", eth_intf);
-	if (!strcmp("sgmii", eth_intf)) {
+	if (!strcmp("rgmii", eth_intf)) {
+		mparams.eth_intf = PHY_INTERFACE_MODE_RGMII;
+		mparams.is_valid_eth_intf = true;
+	} else if (!strcmp("sgmii", eth_intf)) {
 		mparams.eth_intf = PHY_INTERFACE_MODE_SGMII;
 		mparams.is_valid_eth_intf = true;
 	} else if (!strcmp("usxgmii", eth_intf)) {
