@@ -45,11 +45,12 @@ static const char * const policies[] = {
 };
 
 enum gpios {
-	STATUS_IN = 0,
-	STATUS_OUT,
-	STATUS_OUT2,
+	STATUS_OUT = 0,
+	STATUS_IN,
 	WAKEUP_OUT,
 	WAKEUP_IN,
+	ERRFATAL_OUT,
+	ERRFATAL_IN,
 	NUM_GPIOS,
 };
 
@@ -59,11 +60,12 @@ struct sb_gpio {
 };
 
 static const struct sb_gpio gpiod_map[] = {
-	[STATUS_IN] = { .name = "qcom,status-in", .flags = GPIOD_IN },
 	[STATUS_OUT] = { .name = "qcom,status-out", .flags = GPIOD_OUT_HIGH },
-	[STATUS_OUT2] = { .name = "qcom,status-out2", .flags = GPIOD_OUT_HIGH },
+	[STATUS_IN] = { .name = "qcom,status-in", .flags = GPIOD_IN },
 	[WAKEUP_OUT] = { .name = "qcom,wakeup-out", .flags = GPIOD_OUT_HIGH },
 	[WAKEUP_IN] = { .name = "qcom,wakeup-in", .flags = GPIOD_IN },
+	[ERRFATAL_OUT] = { .name = "qcom,errfatal-out", .flags = GPIOD_OUT_HIGH },
+	[ERRFATAL_IN] = { .name = "qcom,errfatal-in", .flags = GPIOD_IN },
 };
 
 struct gpio_cntrl {
@@ -71,17 +73,23 @@ struct gpio_cntrl {
 	struct gpio_desc *gpdesc[NUM_GPIOS];
 	int status_irq;
 	int wakeup_irq;
+	int err_irq;
 	int policy;
 	struct device *dev;
 	struct mutex policy_lock;
-	struct mutex e911_lock;
 	struct notifier_block panic_blk;
+	struct notifier_block err_panic_blk;
 	struct notifier_block sideband_nb;
 	DECLARE_KFIFO_PTR(st_in_fifo, u8);
+	DECLARE_KFIFO_PTR(err_in_fifo, u8);
 	wait_queue_head_t st_in_wq;
+	wait_queue_head_t err_in_wq;
 	struct cdev sb_cdev;
+	struct cdev sb_err_cdev;
 	dev_t sb_cdev_devid;
+	dev_t sb_err_cdev_devid;
 	struct class *sb_class;
+	struct class *sb_err_class;
 };
 
 static ssize_t set_remote_status_store(struct device *dev,
@@ -139,46 +147,6 @@ static ssize_t policy_store(struct device *dev, struct device_attribute *attr,
 	return -EPERM;
 }
 static DEVICE_ATTR_RW(policy);
-
-static ssize_t e911_show(struct device *dev, struct device_attribute *attr,
-				char *buf)
-{
-	int ret, state;
-	struct gpio_cntrl *mdm = dev_get_drvdata(dev);
-
-	if (mdm->gpios[STATUS_OUT2] < 0)
-		return -ENXIO;
-
-	mutex_lock(&mdm->e911_lock);
-	state = gpiod_get_value(mdm->gpdesc[STATUS_OUT2]);
-	ret = scnprintf(buf, 2, "%d\n", state);
-	mutex_unlock(&mdm->e911_lock);
-
-	return ret;
-}
-
-static ssize_t e911_store(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct gpio_cntrl *mdm = dev_get_drvdata(dev);
-	int e911;
-
-	if (kstrtoint(buf, 0, &e911))
-		return -EINVAL;
-
-	if (mdm->gpios[STATUS_OUT2] < 0)
-		return -ENXIO;
-
-	mutex_lock(&mdm->e911_lock);
-	if (e911)
-		gpiod_set_value(mdm->gpdesc[STATUS_OUT2], 1);
-	else
-		gpiod_set_value(mdm->gpdesc[STATUS_OUT2], 0);
-	mutex_unlock(&mdm->e911_lock);
-
-	return count;
-}
-static DEVICE_ATTR_RW(e911);
 
 static int sideband_notify(struct notifier_block *nb,
 		unsigned long action, void *dev)
@@ -246,6 +214,46 @@ static irqreturn_t sdx_ext_ipc_wakeup_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t err_in_hwirq_hdlr(int irq, void *p)
+{
+	pm_system_wakeup();
+
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t ap_err_status_change(int irq, void *dev_id)
+{
+	struct gpio_cntrl *mdm = dev_id;
+	int state, ret;
+	int active_low = 0;
+	char evt;
+
+	if (mdm->gpdesc[ERRFATAL_IN])
+		active_low = gpiod_is_active_low(mdm->gpdesc[ERRFATAL_IN]);
+
+	state = gpiod_get_value(mdm->gpdesc[ERRFATAL_IN]);
+	if ((!active_low && !state) || (active_low && state)) {
+		if (mdm->policy) {
+			evt = '0';
+			dev_info(mdm->dev, "Remote-end went down, leaving local-end as it is\n");
+			sb_notifier_call_chain(EVENT_REMOTE_STATUS_DOWN, NULL);
+		} else
+			panic("Remote-end went down, panicking local-end\n");
+	} else {
+		evt = '1';
+		dev_info(mdm->dev, "Remote-end went up\n");
+		sb_notifier_call_chain(EVENT_REMOTE_STATUS_UP, NULL);
+	}
+
+	ret = kfifo_put(&mdm->err_in_fifo, evt);
+	if (ret)
+		wake_up_interruptible_poll(&mdm->err_in_wq, POLLIN | POLLPRI);
+	else
+		pr_debug_ratelimited("errfatal-in fifo full, event dropped!\n");
+
+	return IRQ_HANDLED;
+}
+
 static void remove_ipc(struct gpio_cntrl *mdm)
 {
 	int i;
@@ -296,11 +304,6 @@ static int setup_ipc(struct gpio_cntrl *mdm)
 	else
 		dev_info(mdm->dev, "STATUS_OUT not used\n");
 
-	if (mdm->gpios[STATUS_OUT2] >= 0)
-		gpiod_direction_output(mdm->gpdesc[STATUS_OUT2], 0);
-	else
-		dev_info(mdm->dev, "STATUS_OUT2 not used\n");
-
 	if (mdm->gpios[WAKEUP_OUT] >= 0)
 		gpiod_direction_output(mdm->gpdesc[WAKEUP_OUT], 0);
 	else
@@ -318,6 +321,23 @@ static int setup_ipc(struct gpio_cntrl *mdm)
 	} else
 		dev_info(mdm->dev, "WAKEUP_IN not used\n");
 
+	if (mdm->gpios[ERRFATAL_OUT] >= 0)
+		gpiod_direction_output(mdm->gpdesc[ERRFATAL_OUT], 1);
+	else
+		dev_info(mdm->dev, "ERRFATAL_OUT not used\n");
+
+	if (mdm->gpios[ERRFATAL_IN] >= 0) {
+		gpiod_direction_input(mdm->gpdesc[ERRFATAL_IN]);
+
+		irq = gpiod_to_irq(mdm->gpdesc[ERRFATAL_IN]);
+		if (irq < 0) {
+			dev_err(mdm->dev, "bad ERRFATAL_IN IRQ resource\n");
+			return irq;
+		}
+		mdm->err_irq = irq;
+	} else
+		dev_info(mdm->dev, "ERRFATAL_IN not used\n");
+
 	return 0;
 }
 
@@ -328,6 +348,17 @@ static int sdx_ext_ipc_panic(struct notifier_block *this,
 					struct gpio_cntrl, panic_blk);
 
 	gpiod_set_value(mdm->gpdesc[STATUS_OUT], 0);
+
+	return NOTIFY_DONE;
+}
+
+static int sdx_ext_ipc_err_panic(struct notifier_block *this,
+		unsigned long event, void *ptr)
+{
+	struct gpio_cntrl *mdm = container_of(this,
+			struct gpio_cntrl, err_panic_blk);
+
+	gpiod_set_value(mdm->gpdesc[ERRFATAL_OUT], 0);
 
 	return NOTIFY_DONE;
 }
@@ -430,12 +461,104 @@ static const struct file_operations sb_fileops = {
 	.owner = THIS_MODULE,
 };
 
+static int sb_err_open(struct inode *inodp, struct file *filp)
+{
+	struct gpio_cntrl *mdm;
+
+	mdm = container_of(inodp->i_cdev, struct gpio_cntrl, sb_err_cdev);
+	filp->private_data = mdm;
+
+	return 0;
+}
+
+static int sb_err_release(struct inode *inodp, struct file *filp)
+{
+	struct gpio_cntrl *mdm = filp->private_data;
+
+	wake_up_interruptible_all(&mdm->err_in_wq);
+
+	return 0;
+}
+
+/*
+ * If the line has been toggled before user space read the gpio,
+ * return it. Otherwise return current state of the gpio. The spinlock
+ * ensures if more than one thread is reading, they observe latest
+ * status of the fifo as it is consumable.
+ */
+static ssize_t sb_err_read(struct file *filp,
+		char __user *buf, size_t count, loff_t *off)
+{
+	char evt[SB_FIFO_SIZE];
+	int ret, to_copy, available, state;
+	struct gpio_cntrl *mdm = filp->private_data;
+
+	if (!buf || count < 1)
+		return -EINVAL;
+
+	spin_lock(&mdm->err_in_wq.lock);
+
+	if (kfifo_is_empty(&mdm->err_in_fifo)) {
+		spin_unlock(&mdm->err_in_wq.lock);
+		state = gpiod_get_value(mdm->gpdesc[ERRFATAL_IN]);
+		evt[0] = state ? '1' : '0';
+		if (copy_to_user(buf, evt, 1))
+			return -EFAULT;
+		return 1;
+	}
+
+	available = SB_FIFO_SIZE - kfifo_avail(&mdm->err_in_fifo);
+	if (available < count)
+		to_copy = available;
+	else
+		to_copy = count;
+
+	ret = kfifo_out(&mdm->err_in_fifo, evt, to_copy);
+
+	spin_unlock(&mdm->err_in_wq.lock);
+
+	if (ret < to_copy)
+		return -EIO;
+
+	if (copy_to_user(buf, evt, to_copy))
+		return -EFAULT;
+
+	return to_copy;
+}
+
+static unsigned int sb_err_poll(struct file *filp,
+		struct poll_table_struct *pt)
+{
+	unsigned int events = 0;
+	struct gpio_cntrl *mdm = filp->private_data;
+
+	poll_wait(filp, &mdm->err_in_wq, pt);
+
+	spin_lock(&mdm->err_in_wq.lock);
+
+	if (!kfifo_is_empty(&mdm->err_in_fifo))
+		events = POLLIN | POLLPRI;
+
+	spin_unlock(&mdm->err_in_wq.lock);
+
+	return events;
+}
+
+static const struct file_operations sb_err_fileops = {
+	.open = sb_err_open,
+	.release = sb_err_release,
+	.read = sb_err_read,
+	.poll = sb_err_poll,
+	.owner = THIS_MODULE,
+};
+
 static int sdx_ext_ipc_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device_node *node;
 	struct gpio_cntrl *mdm;
 	struct device *sb_dev;
+	struct device *sb_err_dev;
 
 	node = pdev->dev.of_node;
 	mdm = devm_kzalloc(&pdev->dev, sizeof(*mdm), GFP_KERNEL);
@@ -455,8 +578,13 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 						&mdm->panic_blk);
 	}
 
+	if (mdm->gpios[ERRFATAL_OUT] >= 0) {
+		mdm->err_panic_blk.notifier_call = sdx_ext_ipc_err_panic;
+		atomic_notifier_chain_register(&panic_notifier_list,
+						&mdm->err_panic_blk);
+	}
+
 	mutex_init(&mdm->policy_lock);
-	mutex_init(&mdm->e911_lock);
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,default-policy-nop"))
 		mdm->policy = SUBSYS_NOP;
 	else
@@ -466,12 +594,6 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(mdm->dev, "cannot create sysfs attribute\n");
 		goto sys_fail;
-	}
-
-	ret = device_create_file(mdm->dev, &dev_attr_e911);
-	if (ret) {
-		dev_err(mdm->dev, "cannot create sysfs attribute\n");
-		goto sys_fail1;
 	}
 
 	ret = device_create_file(mdm->dev, &dev_attr_set_remote_status);
@@ -558,11 +680,65 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (mdm->gpios[ERRFATAL_IN] >= 0) {
+		ret = kfifo_alloc(&mdm->err_in_fifo, SB_FIFO_SIZE, GFP_KERNEL);
+		if (ret < 0) {
+			dev_err(mdm->dev,
+				"can't create error fatal in fifo, %d\n", ret);
+			goto irq_fail;
+		}
+
+		init_waitqueue_head(&mdm->err_in_wq);
+
+		ret = devm_request_threaded_irq(mdm->dev, mdm->err_irq,
+				err_in_hwirq_hdlr, ap_err_status_change,
+				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING |
+				IRQF_ONESHOT | IRQF_NO_SUSPEND,
+				"err fatal ap status", mdm);
+		if (ret < 0) {
+			dev_err(mdm->dev,
+				"%s: ERRFATAL_IN IRQ#%d request failed,\n",
+				__func__, mdm->err_irq);
+			goto irq_fail;
+		}
+
+		ret = alloc_chrdev_region(&mdm->sb_err_cdev_devid, 0, 1,
+					"rmt_err_sys_evt");
+		if (ret < 0) {
+			dev_err(mdm->dev,
+				"can't allocate major number, %d\n", ret);
+			goto fifo_err_fail;
+		}
+
+		cdev_init(&mdm->sb_err_cdev, &sb_err_fileops);
+		cdev_add(&mdm->sb_err_cdev, mdm->sb_err_cdev_devid, 1);
+
+		mdm->sb_err_class = class_create(THIS_MODULE, "rmt_err_sys_evt");
+		if (IS_ERR(mdm->sb_err_class)) {
+			dev_err(mdm->dev,
+				"can't create rmt_err_sys_evt class, %d\n",
+				-ENOMEM);
+			goto cdev_err_fail;
+		}
+
+		sb_err_dev = device_create(mdm->sb_err_class, &pdev->dev,
+						mdm->sb_err_cdev_devid, mdm,
+						"rmt_err_sys_evt");
+		if (IS_ERR(sb_err_dev)) {
+			dev_err(mdm->dev,
+				"can't create rmt_err_sys_evt device, %d\n",
+				-ENOMEM);
+			goto class_err_fail;
+		}
+	}
+
 	return 0;
 
 sbdev_fail:
 	if (mdm->gpios[STATUS_IN] >= 0)
 		device_destroy(mdm->sb_class, mdm->sb_cdev_devid);
+	if (mdm->gpios[ERRFATAL_IN] >= 0)
+		device_destroy(mdm->sb_err_class, mdm->sb_err_cdev_devid);
 class_fail:
 	if (mdm->gpios[STATUS_IN] >= 0)
 		class_destroy(mdm->sb_class);
@@ -574,15 +750,27 @@ cdev_fail:
 fifo_fail:
 	if (mdm->gpios[STATUS_IN] >= 0)
 		kfifo_free(&mdm->st_in_fifo);
+class_err_fail:
+	if (mdm->gpios[ERRFATAL_IN] >= 0)
+		class_destroy(mdm->sb_err_class);
+cdev_err_fail:
+	if (mdm->gpios[ERRFATAL_IN] >= 0) {
+		cdev_del(&mdm->sb_err_cdev);
+		unregister_chrdev_region(mdm->sb_err_cdev_devid, 1);
+	}
+fifo_err_fail:
+	if (mdm->gpios[ERRFATAL_IN] >= 0)
+		kfifo_free(&mdm->err_in_fifo);
 irq_fail:
 sys_fail:
 	device_remove_file(mdm->dev, &dev_attr_policy);
-sys_fail1:
-	device_remove_file(mdm->dev, &dev_attr_e911);
 sys_fail2:
 	if (mdm->gpios[STATUS_OUT] >= 0)
 		atomic_notifier_chain_unregister(&panic_notifier_list,
 						&mdm->panic_blk);
+	if (mdm->gpios[ERRFATAL_OUT] >= 0)
+		atomic_notifier_chain_unregister(&panic_notifier_list,
+						&mdm->err_panic_blk);
 	remove_ipc(mdm);
 	device_remove_file(mdm->dev, &dev_attr_set_remote_status);
 
@@ -605,6 +793,17 @@ static int sdx_ext_ipc_remove(struct platform_device *pdev)
 	if (mdm->gpios[STATUS_OUT] >= 0)
 		atomic_notifier_chain_unregister(&panic_notifier_list,
 						&mdm->panic_blk);
+	if (mdm->gpios[ERRFATAL_IN] >= 0) {
+		disable_irq_wake(mdm->err_irq);
+		device_destroy(mdm->sb_err_class, mdm->sb_err_cdev_devid);
+		class_destroy(mdm->sb_err_class);
+		cdev_del(&mdm->sb_err_cdev);
+		unregister_chrdev_region(mdm->sb_err_cdev_devid, 1);
+		kfifo_free(&mdm->err_in_fifo);
+	}
+	if (mdm->gpios[ERRFATAL_OUT] >= 0)
+		atomic_notifier_chain_unregister(&panic_notifier_list,
+						&mdm->err_panic_blk);
 	remove_ipc(mdm);
 	device_remove_file(mdm->dev, &dev_attr_policy);
 
@@ -620,6 +819,8 @@ static int sdx_ext_ipc_suspend(struct device *dev)
 		enable_irq_wake(mdm->wakeup_irq);
 	if (mdm->gpios[STATUS_IN] >= 0)
 		enable_irq_wake(mdm->status_irq);
+	if (mdm->gpios[ERRFATAL_IN] >= 0)
+		enable_irq_wake(mdm->err_irq);
 
 	return 0;
 }
@@ -632,6 +833,8 @@ static int sdx_ext_ipc_resume(struct device *dev)
 		disable_irq_wake(mdm->wakeup_irq);
 	if (mdm->gpios[STATUS_IN] >= 0)
 		disable_irq_wake(mdm->status_irq);
+	if (mdm->gpios[ERRFATAL_IN] >= 0)
+		disable_irq_wake(mdm->err_irq);
 
 	return 0;
 }
