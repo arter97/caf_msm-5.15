@@ -65,6 +65,7 @@ struct stmmac_tx_info {
 #endif
 #define STMMAC_TBS_AVAIL	BIT(0)
 #define STMMAC_TBS_EN		BIT(1)
+#define AUX_TS_CHANNEL		1
 
 /* Frequently used values are kept adjacent for cache effect */
 struct stmmac_tx_queue {

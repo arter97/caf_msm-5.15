@@ -222,6 +222,7 @@
 #define MSI_EXIT_L1SS_WAIT	              10
 #define MSI_EXIT_L1SS_WAIT_MAX_COUNT          100
 #define XMLH_LINK_UP                          0x400
+#define PARF_PM_LINKST_IN_L2                  0x00000020
 #define PARF_XMLH_LINK_UP                     0x40000000
 
 #define MAX_PROP_SIZE 32
