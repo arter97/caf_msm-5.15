@@ -144,8 +144,9 @@ static void stmmac_flush_tx_descriptors(struct stmmac_priv *priv, int queue);
 
 static int stmmac_init_ptp(struct stmmac_priv *priv);
 
-#ifdef CONFIG_DEBUG_FS
 static const struct net_device_ops stmmac_netdev_ops;
+
+#ifdef CONFIG_DEBUG_FS
 static void stmmac_init_fs(struct net_device *dev);
 static void stmmac_exit_fs(struct net_device *dev);
 #endif
