@@ -1242,6 +1242,7 @@ static int dwxgmac2_flex_pps_config(void __iomem *ioaddr, int index,
 
 	val |= XGMAC_PPSCMDx(index, XGMAC_PPSCMD_START);
 	val |= XGMAC_TRGTMODSELx(index, XGMAC_PPSCMD_START);
+	val |= XGMAC_PPSEN0;
 
 	/* XGMAC Core has 4 PPS outputs at most.
 	 *
@@ -1254,7 +1255,7 @@ static int dwxgmac2_flex_pps_config(void __iomem *ioaddr, int index,
 	 * From XGMAC Core 3.20 and later, PPSEN{0,1,2,3} are writable and must
 	 * be set, or the PPS outputs stay in Fixed PPS mode by default.
 	 */
-	//val |= XGMAC_PPSENx(index);
+	/*val |= XGMAC_PPSENx(index);*/
 
 	writel(cfg->start.tv_sec, ioaddr + XGMAC_PPSx_TARGET_TIME_SEC(index));
 
@@ -1684,6 +1685,126 @@ static void dwxgmac2_flush_tx_mtl(struct mac_device_info *hw,
 		pr_err("%s MTL Tx controller (%d) failed to flush\n", __func__, queue);
 }
 
+static void dwxgmac2_enable_queue_dynamic_dma_ch_selection(struct mac_device_info *hw, u32 queue)
+{
+	u32 reg, val;
+	void __iomem *ioaddr = hw->pcsr;
+
+	reg = (queue < 4) ? XGMAC_MTL_RXQ_DMA_MAP0 : XGMAC_MTL_RXQ_DMA_MAP1;
+
+	val = readl(ioaddr + reg);
+	val |= XGMAC_QxDDMACH(queue);
+	writel(val, ioaddr + reg);
+}
+
+static void dwxgmac2_disable_queue_dynamic_dma_ch_selection(struct mac_device_info *hw, u32 queue)
+{
+	u32 reg, val;
+	void __iomem *ioaddr = hw->pcsr;
+
+	reg = (queue < 4) ? XGMAC_MTL_RXQ_DMA_MAP0 : XGMAC_MTL_RXQ_DMA_MAP1;
+
+	val = readl(ioaddr + reg);
+	val &= ~XGMAC_QxDDMACH(queue);
+	writel(val, ioaddr + reg);
+}
+
+static int dwxgmac2_write_vlan_filter(struct net_device *dev, struct mac_device_info *hw, u8 index,
+				      u32 data, bool inv)
+{
+	void __iomem *ioaddr = (void __iomem *)dev->base_addr;
+	int ret = 0;
+	u32 val;
+
+	if (index >= hw->num_vlan)
+		return -EINVAL;
+
+	writel(data, ioaddr + XGMAC_VLAN_DATA_TAG);
+
+	val = readl(ioaddr + XGMAC_VLAN_CTRL_TAG);
+	val &= ~(XGMAC_VLAN_TAG_CTRL_OFS_MASK |
+		XGMAC_VLAN_TAG_CTRL_CT |
+		XGMAC_VLAN_TAG_CTRL_OB);
+	if (inv)
+		val |= XGMAC_VLAN_TAG_CTRL_VTIM;
+	val |= (index << XGMAC_VLAN_TAG_CTRL_OFS_SHIFT) | XGMAC_VLAN_TAG_CTRL_OB;
+
+	writel(val, ioaddr + XGMAC_VLAN_CTRL_TAG);
+
+	ret = readl_poll_timeout(ioaddr + XGMAC_VLAN_CTRL_TAG, val, !(val & XGMAC_VLAN_TAG_CTRL_OB),
+				 XGMAC_VLAN_TAG_CTRL_DELAY, XGMAC_VLAN_TAG_CTRL_TIMEOUT);
+	if (ret == -ETIMEDOUT)
+		netdev_err(dev, "Timeout accessing MAC_VLAN_Tag_Filter\n");
+
+	return ret;
+}
+
+static int dwxgmac2_add_hw_vlan_rx_routing_fltr(struct net_device *dev, struct mac_device_info *hw,
+						u16 vid, u32 dma_ch, bool inv)
+{
+	int i, ret;
+	u32 val = 0;
+	int index = -1;
+
+	if (vid >= VLAN_N_VID)
+		return -EINVAL;
+
+	if (hw->num_vlan <= 1) {
+		netdev_err(dev, "Extended Rx VLAN Filter Disabled");
+		return -EPERM;
+	}
+
+	val |= XGMAC_VLAN_TAG_DATA_ETV | XGMAC_VLAN_TAG_DATA_VEN | vid;
+	val |= XGMAC_VLAN_TAG_DATA_DOVLTC;
+	val |= XGMAC_VLAN_TAG_DATA_DMACHEN;
+	val |= (dma_ch << XGMAC_VLAN_TAG_DATA_DMACHN);
+
+	for (i = 0; i < hw->num_vlan; i++) {
+		if (hw->vlan_filter[i] == val)
+			return 0;
+		else if (!(hw->vlan_filter[i] & XGMAC_VLAN_TAG_DATA_VEN))
+			index = i;
+	}
+
+	if (index == -1) {
+		netdev_err(dev, "MAC_VLAN_Tag_Filter full (size: %0u)\n",
+			   hw->num_vlan);
+		return -EPERM;
+	}
+
+	ret = dwxgmac2_write_vlan_filter(dev, hw, index, val, inv);
+
+	if (!ret)
+		hw->vlan_filter[index] = val;
+
+	return ret;
+}
+
+int dwxgmac2_del_hw_vlan_rx_routing_fltr(struct net_device *dev, struct mac_device_info *hw,
+					 u16 vid, bool inv)
+{
+	int i, ret = 0;
+
+	if (hw->num_vlan <= 1) {
+		netdev_err(dev, "Extended Rx VLAN Filter Disabled");
+		return -EPERM;
+	}
+
+	/* Extended Rx VLAN Filter Enable */
+	for (i = 0; i < hw->num_vlan; i++) {
+		if ((hw->vlan_filter[i] & XGMAC_VLAN_TAG_DATA_VID) == vid) {
+			ret = dwxgmac2_write_vlan_filter(dev, hw, i, 0, inv);
+
+			if (!ret)
+				hw->vlan_filter[i] = 0;
+			else
+				return ret;
+		}
+	}
+
+	return ret;
+}
+
 const struct stmmac_ops dwxgmac210_ops = {
 	.core_init = dwxgmac2_core_init,
 	.set_mac = dwxgmac2_set_mac,
@@ -1732,6 +1853,10 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.est_configure = dwxgmac3_est_configure,
 	.fpe_configure = dwxgmac3_fpe_configure,
 	.flush_tx_mtl = dwxgmac2_flush_tx_mtl,
+	.enable_queue_dynamic_dma_ch_selection = dwxgmac2_enable_queue_dynamic_dma_ch_selection,
+	.disable_queue_dynamic_dma_ch_selection = dwxgmac2_disable_queue_dynamic_dma_ch_selection,
+	.add_hw_vlan_rx_routing_fltr = dwxgmac2_add_hw_vlan_rx_routing_fltr,
+	.del_hw_vlan_rx_routing_fltr = dwxgmac2_del_hw_vlan_rx_routing_fltr,
 };
 
 static void dwxlgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
@@ -1796,6 +1921,37 @@ const struct stmmac_ops dwxlgmac2_ops = {
 	.fpe_configure = dwxgmac3_fpe_configure,
 };
 
+static u32 dwxgmac2_get_num_vlan(void __iomem *ioaddr)
+{
+	u32 val, num_vlan;
+
+	val = readl(ioaddr + XGMAC_HW_FEATURE3);
+	switch (val & XGMAC_HW_FEAT_NRVF) {
+	case 0:
+		num_vlan = 1;
+		break;
+	case 1:
+		num_vlan = 4;
+		break;
+	case 2:
+		num_vlan = 8;
+		break;
+	case 3:
+		num_vlan = 16;
+		break;
+	case 4:
+		num_vlan = 24;
+		break;
+	case 5:
+		num_vlan = 32;
+		break;
+	default:
+		num_vlan = 1;
+	}
+
+	return num_vlan;
+}
+
 int dwxgmac2_setup(struct stmmac_priv *priv)
 {
 	struct mac_device_info *mac = priv->hw;
@@ -1829,6 +1985,7 @@ int dwxgmac2_setup(struct stmmac_priv *priv)
 	mac->mii.reg_mask = GENMASK(15, 0);
 	mac->mii.clk_csr_shift = 19;
 	mac->mii.clk_csr_mask = GENMASK(21, 19);
+	mac->num_vlan = dwxgmac2_get_num_vlan(priv->ioaddr);
 
 	return 0;
 }

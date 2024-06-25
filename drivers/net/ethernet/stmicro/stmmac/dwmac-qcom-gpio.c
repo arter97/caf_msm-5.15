@@ -40,9 +40,7 @@ int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet enable serdes consumers start");
-#endif
+	ETHQOSDBG("Ethernet enable serdes consumers start\n");
 
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_1p2, A_SGMII_1P2_MIN_VOLT,
 				    A_SGMII_1P2_MAX_VOLT);
@@ -86,9 +84,7 @@ int ethqos_enable_serdes_consumers(struct qcom_ethqos *ethqos)
 
 	ETHQOSDBG("Enabled <%s>\n", EMAC_VREG_A_SGMII_0P9_NAME);
 
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet enable serdes consumers end");
-#endif
+	ETHQOSDBG("Ethernet enable serdes consumers end\n");
 
 	return ret;
 }
@@ -98,9 +94,7 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet disable serdes consumers start");
-#endif
+	ETHQOSDBG("Ethernet disable serdes consumers start\n");
 
 	ret = regulator_set_voltage(ethqos->vreg_a_sgmii_0p9, 0, INT_MAX);
 	if (ret < 0) {
@@ -132,9 +126,7 @@ int ethqos_disable_serdes_consumers(struct qcom_ethqos *ethqos)
 
 	regulator_disable(ethqos->vreg_a_sgmii_1p2);
 
-#ifdef CONFIG_MSM_BOOT_TIME_MARKER
-	update_marker("M - Ethernet disable serdes consumers end");
-#endif
+	ETHQOSDBG("Ethernet disable serdes consumers end\n");
 
 	return ret;
 }
@@ -346,7 +338,7 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 	struct device_node *node;
 	int ret = 0;
 
-	if(!priv->phydev){
+	if (!priv->phydev) {
 		ETHQOSERR("phydev is NULL\n");
 		return;
 	}

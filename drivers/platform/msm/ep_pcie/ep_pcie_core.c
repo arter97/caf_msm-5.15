@@ -316,7 +316,8 @@ static int ep_pcie_reset_init(struct ep_pcie_dev_t *dev)
 		while (1) {
 			if (ktime_after(ktime_get(), timeout))
 				break;
-			udelay(5);
+			udelay(1);
+			cpu_relax();
 		}
 
 		rc = reset_control_deassert(reset_info->hdl);
@@ -2152,11 +2153,12 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	u32 val = 0;
 	u32 retries = 0;
 	u32 bme = 0;
-	bool perst = true, timedout = false;
+	u32 link_in_l2 = 0;
+	bool perst = true;
 	bool ltssm_en = false;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 reg, linkup_ts;
-	ktime_t timeout;
+	int timedout = false;
 
 	EP_PCIE_DBG(dev, "PCIe V%d: options input are 0x%x\n", dev->rev, opt);
 
@@ -2233,12 +2235,18 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0), BIT(0));
 		}
 
+		val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
+		EP_PCIE_DBG(dev, "PCIe V%d: PARF_PM_STTS value is : 0x%x.\n",
+				dev->rev, val);
+
+		link_in_l2 = !!(val & PARF_PM_LINKST_IN_L2);
+		val = !!(val & PARF_XMLH_LINK_UP);
+
+		if (link_in_l2)
+			goto trainlink;
+
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
-			val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
-			val = val & PARF_XMLH_LINK_UP;
-			EP_PCIE_DBG(dev, "PCIe V%d: Link status is 0x%x.\n",
-					dev->rev, val);
 			if (val) {
 				EP_PCIE_INFO(dev,
 					"PCIe V%d: link initialized by bootloader for LE PCIe endpoint; skip link training in HLOS.\n",
@@ -2286,6 +2294,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			}
 		}
 
+trainlink:
 		ret = ep_pcie_reset_init(dev);
 		if (ret)
 			goto link_fail;
@@ -2366,23 +2375,8 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 
 	EP_PCIE_DBG(dev, "PCIe V%d: waiting for phy ready...\n", dev->rev);
 
-	timeout = ktime_add_ms(ktime_get(), PHY_READY_TIMEOUT_MS);
-	while (1) {
-		if (ep_pcie_phy_is_ready(dev)) {
-			ktime_t time = ktime_add_ms(ktime_get(), PHY_READY_TIMEOUT_MS);
-
-			EP_PCIE_DBG(dev, "pcie v%d: phy is up in =%ld us\n",
-					dev->rev, ktime_us_delta(time, timeout));
-			break;
-		}
-
-		timedout = ktime_after(ktime_get(), timeout);
-		if (timedout)
-			break;
-
-		udelay(5);
-	}
-
+	timedout = read_poll_timeout_atomic(ep_pcie_phy_is_ready,
+			val, val == true, 1, PHY_READY_TIMEOUT_MS, false, dev);
 	if (timedout) {
 		EP_PCIE_ERR(dev, "PCIe V%d: PCIe PHY  failed to come up\n",
 			dev->rev);
