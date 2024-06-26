@@ -6667,6 +6667,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		 * gadget will be set to HS only.
 		 */
 		mdwc->in_host_mode = false;
+		mdwc->resume_pending = false;
 
 		if (!mdwc->ss_release_called) {
 			dwc3_msm_host_ss_powerup(mdwc);
