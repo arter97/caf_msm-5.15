@@ -1194,6 +1194,9 @@ static int dwc3_core_init(struct dwc3 *dwc)
 		if (dwc->parkmode_disable_hs_quirk)
 			reg |= DWC3_GUCTL1_PARKMODE_DISABLE_HS;
 
+		if (dwc->parkmode_disable_fsls_quirk)
+			reg |= DWC3_GUCTL1_PARKMODE_DISABLE_FSLS;
+
 		dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
 	}
 
@@ -1554,6 +1557,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 				"snps,parkmode-disable-ss-quirk");
 	dwc->parkmode_disable_hs_quirk = device_property_read_bool(dev,
 				"snps,parkmode-disable-hs-quirk");
+	dwc->parkmode_disable_fsls_quirk = device_property_read_bool(dev,
+				"snps,parkmode-disable-fsls-quirk");
 	dwc->tx_de_emphasis_quirk = device_property_read_bool(dev,
 				"snps,tx_de_emphasis_quirk");
 	device_property_read_u8(dev, "snps,tx_de_emphasis",
