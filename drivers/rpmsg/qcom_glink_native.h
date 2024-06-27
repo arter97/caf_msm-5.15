@@ -32,7 +32,7 @@ struct qcom_glink_pipe {
 struct qcom_glink;
 extern const struct dev_pm_ops glink_native_pm_ops;
 
-#if IS_ENABLED(CONFIG_DEEPSLEEP) && IS_ENABLED(CONFIG_RPMSG_QCOM_GLINK_RPM)
+#if IS_ENABLED(CONFIG_RPMSG_QCOM_GLINK_RPM)
 void glink_rpm_ready_wait(void);
 #endif
 
