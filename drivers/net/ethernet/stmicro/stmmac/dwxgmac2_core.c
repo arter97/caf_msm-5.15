@@ -376,7 +376,10 @@ static void dwxgmac2_flow_ctrl(struct mac_device_info *hw, unsigned int duplex,
 {
 	void __iomem *ioaddr = hw->pcsr;
 	u32 i;
+	u32 flow = readl(ioaddr + XGMAC_RX_FLOW_CTRL);
 
+	if (!fc)
+		writel(flow & (~XGMAC_RFE), ioaddr + XGMAC_RX_FLOW_CTRL);
 	if (fc & FLOW_RX)
 		writel(XGMAC_RFE, ioaddr + XGMAC_RX_FLOW_CTRL);
 	if (fc & FLOW_TX) {
