@@ -1287,10 +1287,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
+#endif
+
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
 
 	if (priv->hw->qxpcs) {

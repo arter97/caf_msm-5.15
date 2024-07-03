@@ -902,11 +902,8 @@ static void rgmii_dump(void *priv)
 #define GMII_EEE_CLK_FREQ			(100000 * 1000UL)
 
 static void
-ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
-			      unsigned int speed, int interface)
+ethqos_update_rgmii_clk(struct qcom_ethqos *ethqos, unsigned int speed, int interface)
 {
-	int ret = 0;
-
 	if (interface == PHY_INTERFACE_MODE_RGMII ||
 	    interface == PHY_INTERFACE_MODE_RGMII_ID ||
 	    interface == PHY_INTERFACE_MODE_RGMII_RXID ||
@@ -929,12 +926,17 @@ ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
 			break;
 
 		default:
-			dev_err(&ethqos->pdev->dev,
-				"Invalid speed %d\n", ethqos->speed);
+			dev_err(&ethqos->pdev->dev, "Invalid speed %d\n", speed);
 			return;
 		}
 		clk_set_rate(ethqos->rgmii_clk, ethqos->rgmii_clk_rate);
 	}
+}
+
+static void
+ethqos_update_bus_cfg(struct qcom_ethqos *ethqos, unsigned int speed)
+{
+	int ret = 0;
 
 	switch (speed) {
 	case SPEED_10000:
@@ -966,15 +968,9 @@ ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
 		break;
 
 	default:
-		dev_err(&ethqos->pdev->dev,
-			"Invalid speed %d\n", ethqos->speed);
+		dev_err(&ethqos->pdev->dev, "Invalid speed %d\n", speed);
 		return;
 	}
-
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (ethqos->clk_eee)
-		clk_set_rate(ethqos->clk_eee, GMII_EEE_CLK_FREQ);
-#endif
 
 	if (ethqos->axi_icc_path && ethqos->emac_axi_icc) {
 		ret = icc_set_bw(ethqos->axi_icc_path,
@@ -991,6 +987,20 @@ ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
 		if (ret)
 			ETHQOSERR("Interconnect set BW failed for Emac->Apb path\n");
 	}
+}
+
+static void
+ethqos_update_clk_and_bus_cfg(struct qcom_ethqos *ethqos,
+			      unsigned int speed, int interface)
+{
+	ethqos_update_rgmii_clk(ethqos, speed, interface);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (ethqos->clk_eee)
+		clk_set_rate(ethqos->clk_eee, GMII_EEE_CLK_FREQ);
+#endif
+
+	ethqos_update_bus_cfg(ethqos, speed);
 }
 
 static void ethqos_read_iomacro_por_values(struct qcom_ethqos *ethqos)
@@ -6486,6 +6496,8 @@ static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 	int ret = 0;
 	struct qcom_ethqos *ethqos = priv->plat->bsp_priv;
 
+	ethqos_update_bus_cfg(ethqos, SPEED_10);
+
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
 
@@ -6527,6 +6539,8 @@ static int __ethqos_emac_power_up(struct stmmac_priv *priv)
 			goto err;
 		}
 	}
+
+	ethqos_update_bus_cfg(ethqos, ethqos->speed);
 
 	ethqos->clk_active = true;
 
