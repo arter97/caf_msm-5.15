@@ -8044,6 +8044,10 @@ static int fastrpc_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int ret = 0;
 	uint32_t secure_domains = 0;
+	struct device_node *node;
+	struct smq_phy_page range;
+	size_t mem_size;
+	struct reserved_mem *rmem;
 
 	if (of_device_is_compatible(dev->of_node,
 					"qcom,msm-fastrpc-compute")) {
@@ -8100,8 +8104,36 @@ static int fastrpc_probe(struct platform_device *pdev)
 		me->dev[MDSP_DOMAIN_ID] = dev;
 		ret = of_reserved_mem_device_init_by_idx(dev, dev->of_node, 0);
 		if (ret) {
-			pr_err("adsprpc: Error: %s: initialization of memory region mdsp_mem failed with %d\n",
+			pr_warn("adsprpc: Error: %s: initialization of memory region mdsp_mem failed with %d\n",
 				__func__, ret);
+		}
+		range.addr = 0;
+		node = of_parse_phandle(dev->of_node, "memory-region", 0);
+		if (!node)
+			return -EINVAL;
+		rmem = of_reserved_mem_lookup(node);
+		of_node_put(node);
+		range.addr = rmem->base;
+		range.size = (unsigned long)rmem->size;
+		mem_size = range.size;
+
+		if (range.addr) {
+			int srcVM[1] = {VMID_HLOS};
+			int destVM[4] = {VMID_HLOS, VMID_MSS_MSA};
+			int destVMperm[4] = {PERM_READ | PERM_WRITE | PERM_EXEC,
+				PERM_READ | PERM_WRITE | PERM_EXEC};
+			int hyp_err = 0;
+
+			hyp_err = hyp_assign_phys(rmem->base, mem_size,
+						srcVM, 1, destVM, destVMperm, 2);
+			if (hyp_err) {
+				ADSPRPC_ERR(
+					"rh hyp assign failed with %d for phys 0x%llx, size %zu\n",
+					hyp_err, rmem->base, mem_size);
+				goto bail;
+			}
+			me->range.addr = range.addr;
+			me->range.size = range.size;
 		}
 	}
 
