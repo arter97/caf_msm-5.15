@@ -47,6 +47,9 @@ static void dwmac4_core_init(struct mac_device_info *hw,
 		}
 	}
 
+	if (hw->crc_strip_en)
+		value |= GMAC_CONFIG_CST;
+
 	writel(value, ioaddr + GMAC_CONFIG);
 
 	/* Configure LPI 1us counter to number of CSR clock ticks in 1us - 1 */
