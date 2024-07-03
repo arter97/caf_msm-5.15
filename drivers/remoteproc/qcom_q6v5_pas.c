@@ -1989,7 +1989,7 @@ static const struct adsp_data sdxpinn_mpss_resource = {
 	.ssr_name = "mpss",
 	.sysmon_name = "modem",
 	.qmp_name = "modem",
-	.ssctl_id = 0x12,
+	.ssctl_id = 0x22,
 	.dma_phys_below_32b = true,
 };
 
