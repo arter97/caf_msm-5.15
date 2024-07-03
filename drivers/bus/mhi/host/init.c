@@ -119,47 +119,9 @@ static ssize_t oem_pk_hash_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(oem_pk_hash);
 
-static ssize_t force_edl_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct mhi_device *mhi_dev = to_mhi_device(dev);
-	struct mhi_controller *mhi_cntrl = mhi_dev->mhi_cntrl;
-	unsigned long val;
-	int ret;
-
-	ret = kstrtoul(buf, 10, &val);
-	if (ret < 0) {
-		dev_err(dev, "Could not parse string: %d\n", ret);
-		return ret;
-	}
-
-	if (!val)
-		return count;
-
-	ret = mhi_device_get_sync(mhi_cntrl->mhi_dev);
-	if (ret)
-		return ret;
-
-	pm_wakeup_event(&mhi_cntrl->mhi_dev->dev, 0);
-	mhi_cntrl->runtime_get(mhi_cntrl);
-
-	mhi_write_db(mhi_cntrl, mhi_cntrl->edl_db, MHI_EDL_COOKIE);
-
-	if (mhi_cntrl->dev_reset_support)
-		mhi_soc_reset(mhi_cntrl);
-
-	mhi_cntrl->runtime_put(mhi_cntrl);
-	mhi_device_put(mhi_cntrl->mhi_dev);
-
-	return count;
-}
-static DEVICE_ATTR_WO(force_edl);
-
 static struct attribute *mhi_dev_attrs[] = {
 	&dev_attr_serial_number.attr,
 	&dev_attr_oem_pk_hash.attr,
-	&dev_attr_force_edl.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(mhi_dev);
@@ -568,8 +530,6 @@ int mhi_init_mmio(struct mhi_controller *mhi_cntrl)
 
 	/* Setup wake db */
 	mhi_cntrl->wake_db = base + val + (8 * MHI_DEV_WAKE_DB);
-	/* Setup edl db */
-	mhi_cntrl->edl_db = base + val + (8 * MHI_EDL_DB);
 	mhi_cntrl->wake_set = false;
 
 	/* Setup channel db address for each channel in tre_ring */

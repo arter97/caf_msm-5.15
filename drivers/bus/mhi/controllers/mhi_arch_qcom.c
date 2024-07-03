@@ -506,8 +506,6 @@ int mhi_arch_pcie_init(struct mhi_controller *mhi_cntrl)
 			return ret;
 		}
 
-		mhi_cntrl->dev_reset_support = dev_info->dev_reset_support;
-
 		/* register with pcie rc for WAKE# or link state events */
 		reg_event = &arch_info->pcie_reg_event;
 		reg_event->events = dev_info->allow_m1 ?
