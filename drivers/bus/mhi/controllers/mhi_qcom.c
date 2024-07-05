@@ -402,7 +402,6 @@ static const struct mhi_pci_dev_info mhi_qcom_sdx65_info = {
 	.timesync = true,
 	.drv_support = false,
 	.reboot_notify_support = false,
-	.dev_reset_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_lemans_info = {
@@ -417,7 +416,6 @@ static const struct mhi_pci_dev_info mhi_qcom_lemans_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = false,
-	.dev_reset_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sdx75_info = {
@@ -434,7 +432,6 @@ static const struct mhi_pci_dev_info mhi_qcom_sdx75_info = {
 	.timesync = true,
 	.drv_support = false,
 	.reboot_notify_support = false,
-	.dev_reset_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
@@ -451,7 +448,6 @@ static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = true,
-	.dev_reset_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
@@ -468,7 +464,6 @@ static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = false,
-	.dev_reset_support = false,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_sxr_info = {
@@ -483,9 +478,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sxr_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = false,
-	.dev_reset_support = false,
 };
-
 static const struct pci_device_id mhi_pcie_device_id[] = {
 	{ PCI_DEVICE(MHI_PCIE_VENDOR_ID, 0x0308),
 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx65_info },
