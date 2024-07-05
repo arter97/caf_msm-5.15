@@ -105,4 +105,6 @@ obj-$(CONFIG_IPC_LOGGING) += qcom_ipc_logging.o
 qcom_ipc_logging-y := ipc_logging.o
 qcom_ipc_logging-$(CONFIG_DEBUG_FS) += ipc_logging_debug.o
 qcom_ipc_logging-$(CONFIG_IPC_LOGGING_PROCFS) += ipc_logging_proc.o
+qcom_ipc_logging-$(CONFIG_IPC_LOGGING_BOOTPARAM) += ipc_logging_bootparam.o
+
 libftrace-y := ftrace.o

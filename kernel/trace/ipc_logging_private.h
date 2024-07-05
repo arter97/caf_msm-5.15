@@ -179,4 +179,13 @@ static inline void create_ctx_procfs(struct ipc_log_context *ctxt, const char *m
 }
 #endif
 
+#if (defined(CONFIG_IPC_LOGGING_BOOTPARAM))
+bool ipc_logging_enabled(void);
+#else
+static inline bool ipc_logging_enabled(void)
+{
+	return true;
+}
+#endif
+
 #endif

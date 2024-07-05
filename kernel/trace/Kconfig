@@ -149,6 +149,18 @@ config IPC_LOGGING_PROCFS
 	  dump the logs in a live fashion. This is equivalent to the debugfs
 	  interface but can be enabled on targets that don't support debugfs.
 
+config IPC_LOGGING_BOOTPARAM
+        bool "IPC Logging boot parameter"
+        depends on IPC_LOGGING
+        default n
+        help
+          This option adds a kernel parameter 'qcom_ipc_logging.enabled', which
+          allows IPC Logging to be enabled at boot.  If this option is selected,
+          IPC Logging functionality is disabled by default and can be enabled
+          with qcom_ipc_logging.enabled=1 on the kernel command line. The
+          purpose of this option is to allow a single kernel image to be
+          distributed with IPC Logging built in, but not necessarily enabled.
+
 # All tracer options should select GENERIC_TRACER. For those options that are
 # enabled by all tracers (context switch and event tracer) they select TRACING.
 # This allows those options to appear when no other tracer is selected. But the
