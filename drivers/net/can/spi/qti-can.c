@@ -374,6 +374,8 @@ static void qti_canfd_receive_frame(struct qti_can *priv_data,
 	s64 ts_offset_corrected;
 	static u16 buff_frames_disc_cntr;
 	static u8 disp_disc_cntr = 1;
+	s64 system_ts_ns;
+	u64 mstime;
 
 	dev = &priv_data->spidev->dev;
 	if (frame->can_if >= priv_data->max_can_channels) {
@@ -403,6 +405,10 @@ static void qti_canfd_receive_frame(struct qti_can *priv_data,
 	ts_offset_corrected = le64_to_cpu(frame->ts)
 		+ priv_data->time_diff;
 
+	if (priv_data->use_qtimer)
+		system_ts_ns = qtimer_time();
+	else
+		system_ts_ns = ktime_to_ns(ktime_get_boottime());
 	/* CAN frames which are received before SOC powers up are discarded */
 	if (ts_offset_corrected > 0) {
 		if (disp_disc_cntr == 1) {
@@ -411,11 +417,52 @@ static void qti_canfd_receive_frame(struct qti_can *priv_data,
 				 buff_frames_disc_cntr);
 			disp_disc_cntr = 0;
 		}
-
-		if (priv_data->ts_conf == 0)
+		nsec = ms_to_ktime(ts_offset_corrected);
+		if (priv_data->ts_conf == 0) {
 			nsec = ms_to_ktime(frame->ts);
-		else
+		} else {
+			if (priv_data->time_diff == 0) {
+				if (priv_data->ts_conf == 1) {
+					if (priv_data->use_qtimer)
+						mstime = div_u64(qtimer_time(), NSEC_PER_MSEC);
+					else
+						mstime = ktime_to_ms(ktime_get_boottime());
+					dev_err(&priv_data->spidev->dev,
+						"time-diff 0: system time: %lld\n", mstime);
+				} else if (priv_data->ts_conf == 2) {
+					/* PTP time is in nano second.*/
+					/* Need to convert it in millisecond*/
+					mstime = (qti_can_get_ptp_time(priv_data) / 1000000uL);
+				} else {
+					dev_err(&priv_data->spidev->dev,
+						"Incorrect timestamp source\n");
+					mstime = 0;
+				}
+				priv_data->time_diff = mstime - (le64_to_cpu(frame->ts));
+				ts_offset_corrected = le64_to_cpu(frame->ts)
+						+ priv_data->time_diff;
+				dev_err(&priv_data->spidev->dev,
+					"time-diff 0: ts_offset_corrected : %lld\n",
+					ts_offset_corrected);
+			}
+
+			if (priv_data->ts_conf == 1) {
+				if (nsec > system_ts_ns) {
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds sys-time %lld\r\n");
+					priv_data->time_diff = ktime_to_ms(system_ts_ns)
+						- (le64_to_cpu(frame->ts));
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds system time: %lld\n", mstime);
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds MCU time: %lld\n",
+						le64_to_cpu(frame->ts));
+					ts_offset_corrected = le64_to_cpu(frame->ts)
+						+ priv_data->time_diff;
+				}
+			}
 			nsec = ms_to_ktime(ts_offset_corrected);
+		}
 		skt = skb_hwtstamps(skb);
 		skt->hwtstamp = nsec;
 		skb->tstamp = nsec;
@@ -443,7 +490,8 @@ static void qti_can_receive_frame(struct qti_can *priv_data,
 	s64 ts_offset_corrected;
 	static u16 buff_frames_disc_cntr;
 	static u8 disp_disc_cntr = 1;
-
+	s64 system_ts_ns;
+	u64 mstime;
 	dev = &priv_data->spidev->dev;
 	if (frame->can_if >= priv_data->max_can_channels) {
 		dev_err(&priv_data->spidev->dev, "qti_can rcv error. Channel is %d\n",
@@ -472,6 +520,11 @@ static void qti_can_receive_frame(struct qti_can *priv_data,
 	ts_offset_corrected = le64_to_cpu(frame->ts)
 		+ priv_data->time_diff;
 
+	if (priv_data->use_qtimer)
+		system_ts_ns = qtimer_time();
+	else
+		system_ts_ns = ktime_to_ns(ktime_get_boottime());
+
 	/* CAN frames which are received before SOC powers up are discarded */
 	if (ts_offset_corrected > 0) {
 		if (disp_disc_cntr == 1) {
@@ -481,10 +534,53 @@ static void qti_can_receive_frame(struct qti_can *priv_data,
 			disp_disc_cntr = 0;
 		}
 
-		if (priv_data->ts_conf == 0)
+		nsec = ms_to_ktime(ts_offset_corrected);
+		if (priv_data->ts_conf == 0) {
 			nsec = ms_to_ktime(frame->ts);
-		else
+		} else {
+			if (priv_data->time_diff == 0) {
+				if (priv_data->ts_conf == 1) {
+					if (priv_data->use_qtimer)
+						mstime = div_u64(qtimer_time(), NSEC_PER_MSEC);
+					else
+						mstime = ktime_to_ms(ktime_get_boottime());
+					dev_err(&priv_data->spidev->dev,
+						"time-diff 0: system time: %lld\n", mstime);
+				} else if (priv_data->ts_conf == 2) {
+					/* PTP time is in nano second.*/
+					/* Need to convert it in millisecond*/
+					mstime = (qti_can_get_ptp_time(priv_data) / 1000000uL);
+				} else {
+					dev_err(&priv_data->spidev->dev,
+						"Incorrect timestamp source\n");
+					mstime = 0;
+				}
+				priv_data->time_diff = mstime - (le64_to_cpu(frame->ts));
+				ts_offset_corrected = le64_to_cpu(frame->ts)
+						+ priv_data->time_diff;
+				dev_err(&priv_data->spidev->dev,
+					"time-diff 0: ts_offset_corrected : %lld\n",
+					ts_offset_corrected);
+			}
+
+			if (priv_data->ts_conf == 1) {
+				if (nsec > system_ts_ns) {
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds sys-time %lld\r\n");
+					priv_data->time_diff = ktime_to_ms(system_ts_ns)
+						- (le64_to_cpu(frame->ts));
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds system time: %lld\n",
+						ktime_to_ms(system_ts_ns));
+					dev_err(&priv_data->spidev->dev,
+						"CAN time exceeds MCU time: %lld\n",
+						le64_to_cpu(frame->ts));
+					ts_offset_corrected = le64_to_cpu(frame->ts)
+						+ priv_data->time_diff;
+				}
+			}
 			nsec = ms_to_ktime(ts_offset_corrected);
+		}
 		skt = skb_hwtstamps(skb);
 		skt->hwtstamp = nsec;
 		skb->tstamp = nsec;
@@ -546,8 +642,6 @@ static int qti_can_process_response(struct qti_can *priv_data,
 	u64 mstime;
 	static s64 prev_time_diff;
 	static u8 first_offset_est = 1;
-	s64 offset_variation = 0;
-	static u8 offset_print_cntr;
 	struct canfd_receive_frame *frame;
 
 	dev_dbg(&priv_data->spidev->dev, "<%x %2d [%d]\n", resp->cmd, resp->len, resp->seq);
@@ -596,7 +690,6 @@ static int qti_can_process_response(struct qti_can *priv_data,
 		}
 	} else if (resp->cmd  == CMD_GET_FW_VERSION) {
 		struct can_fw_resp *fw_resp = (struct can_fw_resp *)resp->data;
-
 		if (fw_resp->maj == 4) {
 			if (fw_resp->min == 0) {
 				if (fw_resp->sub_min == 5 || fw_resp->sub_min == 6) {
@@ -658,7 +751,6 @@ static int qti_can_process_response(struct qti_can *priv_data,
 	} else if (resp->cmd == CMD_UPDATE_TIME_INFO) {
 		if (priv_data->ts_conf != 0) {
 			struct can_time_info *time_data = (struct can_time_info *)resp->data;
-
 			if (priv_data->ts_conf == 1) {
 				if (priv_data->use_qtimer)
 					mstime = div_u64(qtimer_time(), NSEC_PER_MSEC);
@@ -677,30 +769,6 @@ static int qti_can_process_response(struct qti_can *priv_data,
 			if (first_offset_est == 1) {
 				prev_time_diff = priv_data->time_diff;
 				first_offset_est = 0;
-			}
-
-			offset_variation = priv_data->time_diff -
-						prev_time_diff;
-
-			if (offset_variation > TIME_OFFSET_MAX_THD ||
-			    offset_variation < TIME_OFFSET_MIN_THD) {
-				if (offset_print_cntr < TIMESTAMP_PRINT_CNTR) {
-					dev_info(&priv_data->spidev->dev,
-						 "Off Exceeded: Curr off is %lld\n",
-						priv_data->time_diff);
-					dev_info(&priv_data->spidev->dev,
-						 "Prev off is %lld\n",
-					prev_time_diff);
-					offset_print_cntr++;
-				}
-				/* Set curr off to prev off if */
-				/* variation is beyond threshold */
-				priv_data->time_diff = prev_time_diff;
-
-			} else {
-				/* Set prev off to curr off if */
-				/* variation is within threshold */
-				prev_time_diff = priv_data->time_diff;
 			}
 		}
 	}
@@ -1973,11 +2041,20 @@ static int qti_can_probe(struct spi_device *spi)
 	err = of_property_read_u32(spi->dev.of_node,
 				   "qcom,rem-all-buffering-timeout-ms",
 				   &priv_data->rem_all_buffering_timeout_ms);
+
 	if (err)
 		priv_data->rem_all_buffering_timeout_ms = 0;
 
 	priv_data->reset = of_get_named_gpio(spi->dev.of_node,
 					     "qcom,reset-gpio", 0);
+
+	err = of_property_read_u32(spi->dev.of_node,
+				   "qcom,timestamp-conf", &priv_data->ts_conf);
+	if (err)
+		priv_data->ts_conf = 0;
+
+	dev_info(&priv_data->spidev->dev, "Time stamp Configuration: %d\n",
+		 priv_data->ts_conf);
 
 	if (of_get_property(spi->dev.of_node, "gpio-activelow", NULL))
 		priv_data->active_low = true; /* Active_Low */
@@ -2067,8 +2144,6 @@ static int qti_can_probe(struct spi_device *spi)
 	/* Initializing wake_irq_en with false to recive SPI data on IRQ */
 	priv_data->wake_irq_en = false;
 
-	/*By default MCU timestamp is configured*/
-	priv_data->ts_conf = 0;
 	return 0;
 
 free_irq:
