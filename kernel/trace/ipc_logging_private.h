@@ -113,6 +113,7 @@ struct ipc_log_context {
 	struct completion read_avail;
 	struct kref refcount;
 	bool destroyed;
+	struct proc_dir_entry *proc_dent;
 };
 
 struct dfunc_info {
@@ -154,11 +155,26 @@ void check_and_create_debugfs(void);
 void create_ctx_debugfs(struct ipc_log_context *ctxt,
 			const char *mod_name);
 #else
-void check_and_create_debugfs(void)
+static inline void check_and_create_debugfs(void)
 {
 }
 
-void create_ctx_debugfs(struct ipc_log_context *ctxt, const char *mod_name)
+static inline void create_ctx_debugfs(struct ipc_log_context *ctxt, const char *mod_name)
+{
+}
+#endif
+
+#if (defined(CONFIG_IPC_LOGGING_PROCFS))
+void check_and_create_procfs(void);
+
+void create_ctx_procfs(struct ipc_log_context *ctxt,
+			const char *mod_name);
+#else
+static inline void check_and_create_procfs(void)
+{
+}
+
+static inline void create_ctx_procfs(struct ipc_log_context *ctxt, const char *mod_name)
 {
 }
 #endif

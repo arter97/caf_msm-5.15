@@ -125,7 +125,6 @@ config QCOM_RTB_SEPARATE_CPUS
 
 config IPC_LOGGING
 	tristate "Debug Logging for IPC Drivers"
-	depends on DEBUG_FS
 	help
 	  IPC Logging driver provides a logging option for IPC Drivers.
 	  This provides a cyclic buffer based logging support in a driver
@@ -141,6 +140,14 @@ config IPC_LOG_MINIDUMP_BUFFERS
         help
           This option is used to configure maximum number of ipc log
           buffers that can be dumped by minidump.
+
+config IPC_LOGGING_PROCFS
+	bool "IPC Logging procfs interface"
+	depends on IPC_LOGGING
+	help
+	  When enabled, the IPC Logging driver provides a procfs interface to
+	  dump the logs in a live fashion. This is equivalent to the debugfs
+	  interface but can be enabled on targets that don't support debugfs.
 
 # All tracer options should select GENERIC_TRACER. For those options that are
 # enabled by all tracers (context switch and event tracer) they select TRACING.
