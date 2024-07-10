@@ -571,6 +571,7 @@ struct mac_params {
 	phy_interface_t eth_intf;
 	bool is_valid_eth_intf;
 	unsigned int link_speed;
+	char qoscfg_name[4];
 };
 
 int ethqos_init_sgmii_regulators(struct qcom_ethqos *ethqos);

@@ -105,6 +105,17 @@ static int dwxgmac2_rx_ipc(struct mac_device_info *hw)
 	return !!(readl(ioaddr + XGMAC_RX_CONFIG) & XGMAC_CONFIG_IPC);
 }
 
+static void dwxgmac2_rx_queue_disable(struct mac_device_info *hw, u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+
+	value = readl(ioaddr + XGMAC_RXQ_CTRL0);
+	value &= ~(XGMAC_RXQEN(queue));
+
+	writel(value, ioaddr + XGMAC_RXQ_CTRL0);
+}
+
 static void dwxgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
 				     u32 queue)
 {
@@ -1343,6 +1354,96 @@ static int dwxgmac2_filter_write(struct mac_device_info *hw, u32 filter_no,
 	return dwxgmac2_filter_wait(hw);
 }
 
+static int dwxgmac2_config_l3_filter_with_mask(struct mac_device_info *hw, u32 filter_no,
+					       bool en, bool ipv6, bool sa, bool inv,
+					       u32 match, char *ipv6_char, u16 mask, u16 dma_ch)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+	int ret;
+	u32 ipv6_match[4];
+	int i;
+
+	u32 *ipv6_addr = (u32 *)ipv6_char;
+
+	value = readl(ioaddr + XGMAC_PACKET_FILTER);
+	value |= XGMAC_FILTER_IPFE;
+	writel(value, ioaddr + XGMAC_PACKET_FILTER);
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3L4_CTRL, &value);
+	if (ret)
+		return ret;
+
+	/* For IPv6 not both SA/DA filters can be active */
+	if (ipv6) {
+		value |= XGMAC_L3PEN0;
+		value &= ~(XGMAC_L3SAM0 | XGMAC_L3SAIM0);
+		value &= ~(XGMAC_L3DAM0 | XGMAC_L3DAIM0);
+		if (sa) {
+			value |= XGMAC_L3SAM0;
+			if (inv)
+				value |= XGMAC_L3SAIM0;
+		} else {
+			value |= XGMAC_L3DAM0;
+			if (inv)
+				value |= XGMAC_L3DAIM0;
+		}
+		mask = 128 - mask;
+	} else {
+		value &= ~XGMAC_L3PEN0;
+		if (sa) {
+			value |= XGMAC_L3SAM0;
+			if (inv)
+				value |= XGMAC_L3SAIM0;
+		} else {
+			value |= XGMAC_L3DAM0;
+			if (inv)
+				value |= XGMAC_L3DAIM0;
+		}
+		mask = 32 - mask;
+	}
+
+	/*program mask*/
+	if (sa)
+		value = (value | (mask << 6));
+	else
+		value = (value | (mask << 11));
+
+	/*dma chan routing*/
+	value = (value | (dma_ch << 24));
+	value = value | XGMAC_DMACHEN;
+
+	ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L3L4_CTRL, value);
+	if (ret)
+		return ret;
+
+	if (!ipv6) {
+		if (sa) {
+			ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L3_ADDR0, match);
+			if (ret)
+				return ret;
+		} else {
+			ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L3_ADDR1, match);
+			if (ret)
+				return ret;
+		}
+	} else {
+		for (i = 0; i < 4; i++)
+			ipv6_match[i] = htonl((u32)ipv6_addr[i]);
+
+		for (i = 0; i < 4; i++) {
+			ret = dwxgmac2_filter_write(hw, filter_no, i + XGMAC_L3_ADDR0,
+						    ipv6_match[3 - i]);
+			if (ret)
+				return ret;
+		}
+	}
+	if (!en)
+		return dwxgmac2_filter_write(hw, filter_no, XGMAC_L3L4_CTRL, 0);
+
+	return 0;
+}
+
 static int dwxgmac2_config_l3_filter(struct mac_device_info *hw, u32 filter_no,
 				     bool en, bool ipv6, bool sa, bool inv,
 				     u32 match, char *ipv6_char)
@@ -1418,6 +1519,66 @@ static int dwxgmac2_config_l3_filter(struct mac_device_info *hw, u32 filter_no,
 				return ret;
 		}
 	}
+	if (!en)
+		return dwxgmac2_filter_write(hw, filter_no, XGMAC_L3L4_CTRL, 0);
+
+	return 0;
+}
+
+static int dwxgmac2_config_l4_filter_with_route(struct mac_device_info *hw, u32 filter_no,
+						bool en, bool udp, bool sa, bool inv,
+						u32 match, u16 dma_ch)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+	int ret;
+
+	value = readl(ioaddr + XGMAC_PACKET_FILTER);
+	value |= XGMAC_FILTER_IPFE;
+	writel(value, ioaddr + XGMAC_PACKET_FILTER);
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3L4_CTRL, &value);
+	if (ret)
+		return ret;
+
+	if (udp)
+		value |= XGMAC_L4PEN0;
+	else
+		value &= ~XGMAC_L4PEN0;
+
+	value &= ~(XGMAC_L4SPM0 | XGMAC_L4SPIM0);
+	value &= ~(XGMAC_L4DPM0 | XGMAC_L4DPIM0);
+	if (sa) {
+		value |= XGMAC_L4SPM0;
+		if (inv)
+			value |= XGMAC_L4SPIM0;
+	} else {
+		value |= XGMAC_L4DPM0;
+		if (inv)
+			value |= XGMAC_L4DPIM0;
+	}
+
+	value = value | (dma_ch << 24);
+	value = value | XGMAC_DMACHEN;
+
+	ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L3L4_CTRL, value);
+	if (ret)
+		return ret;
+
+	if (sa) {
+		value = match & XGMAC_L4SP0;
+
+		ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L4_ADDR, value);
+		if (ret)
+			return ret;
+	} else {
+		value = (match << XGMAC_L4DP0_SHIFT) & XGMAC_L4DP0;
+
+		ret = dwxgmac2_filter_write(hw, filter_no, XGMAC_L4_ADDR, value);
+		if (ret)
+			return ret;
+	}
+
 	if (!en)
 		return dwxgmac2_filter_write(hw, filter_no, XGMAC_L3L4_CTRL, 0);
 
@@ -1827,6 +1988,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.qcom_set_vlan = dwxgmac2_set_vlan_filter_rx_queue,
 	.rx_ipc = dwxgmac2_rx_ipc,
 	.rx_queue_enable = dwxgmac2_rx_queue_enable,
+	.rx_queue_disable = dwxgmac2_rx_queue_disable,
 	.rx_queue_prio = dwxgmac2_rx_queue_prio,
 	.tx_queue_prio = dwxgmac2_tx_queue_prio,
 	.rx_queue_routing = dxgmac2_rx_queue_routing,
@@ -1864,7 +2026,9 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.sarc_configure = dwxgmac2_sarc_configure,
 	.enable_vlan = dwxgmac2_enable_vlan,
 	.config_l3_filter_xgmac = dwxgmac2_config_l3_filter,
+	.config_l3_filter_with_mask = dwxgmac2_config_l3_filter_with_mask,
 	.config_l4_filter = dwxgmac2_config_l4_filter,
+	.config_l4_filter_with_route = dwxgmac2_config_l4_filter_with_route,
 	.set_arp_offload = dwxgmac2_set_arp_offload,
 	.est_configure = dwxgmac3_est_configure,
 	.fpe_configure = dwxgmac3_fpe_configure,

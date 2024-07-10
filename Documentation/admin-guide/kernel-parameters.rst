@@ -233,3 +233,5 @@ eipv6=	[KNL] Sets ipv6 address at boot up for early ethernet.
 ermac=	[KNL] Sets mac address at boot up for early ethernet.
 
 eiface=	[KNL] Sets ethernet interface type at boot.
+
+eqos=	[KNL] Sets qos config at boot.

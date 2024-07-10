@@ -388,6 +388,9 @@ struct stmmac_priv {
 	bool en_wol;
 	u32 avb_vlan_id;
 	gh_vmid_t v2x_vm_id;
+	int unique_filter;
+	u16 qos_l3_l4_filter_start;
+	u16 qos_l3_l4_filter_end;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
@@ -431,6 +434,8 @@ int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt);
 int stmmac_reinit_ringparam(struct net_device *dev, u32 rx_size, u32 tx_size);
 int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
 void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable);
+int stmmac_release_dma_resources(struct net_device *ndev);
+int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt);
 
 static inline bool stmmac_xdp_is_enabled(struct stmmac_priv *priv)
 {

@@ -320,6 +320,9 @@ MODULE_PARM_DESC(ermac, "mac address from ethernet partition");
 static char *eiface;
 module_param(eiface, charp, 0660);
 MODULE_PARM_DESC(eiface, "Interface type from ethernet partition");
+static char *eqos;
+module_param(eqos, charp, 0600);
+MODULE_PARM_DESC(eqos, "QOS Config support from ethernet partition");
 #endif
 
 inline void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos)
@@ -372,10 +375,22 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	struct stmmac_priv *priv = netdev_priv(dev);
 	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv->plat->bsp_priv;
 	s8 eprio;
+	int i = 0, tc_prio = 0;
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
-	if (eth_type == ETH_P_TSN) {
+	if (priv->plat->qos_enabled && skb->priority) {
+		/* TODO: IF qos ie enabled and IPA offload is disabled, we need to handle*/
+		tc_prio = 1 << (skb->priority - 1);
+		for (i = 2; i < priv->plat->tx_qos_queues_to_use; i++) {
+			if (priv->plat->qos_ch_map.tc_tx_info[i]) {
+				if (priv->plat->qos_ch_map.ch_to_tc_map_tx[i] & tc_prio) {
+					txqueue_select = i;
+					break;
+				}
+			}
+		}
+	} else if (eth_type == ETH_P_TSN) {
 		/* Read VLAN priority field from skb->data */
 		priority = dwmac_qcom_get_vlan_ucp(skb->data);
 
@@ -682,6 +697,19 @@ fail:
 	return 1;
 }
 
+static int set_ethernet_qos_cfg(char *qoscfg)
+{
+	if (!qoscfg)
+		return 1;
+
+	if ((strlen(qoscfg) == 0) || (strlen(qoscfg) > 4))
+		return 1;
+
+	strscpy(mparams.qoscfg_name, qoscfg, sizeof(mparams.qoscfg_name));
+
+	return 0;
+}
+
 #ifndef MODULE
 static int __init set_early_ethernet_ipv4_static(char *ipv4_addr_in)
 {
@@ -742,6 +770,19 @@ static int __init set_ethernet_speed_static(char *eth_speed)
 }
 
 __setup("espeed=", set_ethernet_speed_static);
+
+static int __init set_ethernet_qoscfg_static(char *eth_qos)
+{
+	int ret = 1;
+
+	ret = set_ethernet_qos_cfg(eth_qos);
+	if (ret)
+		mparams.qoscfg_name[0] = '\0';
+
+	return 0;
+}
+
+__setup("eqos=", set_ethernet_qoscfg_static);
 
 #endif
 
@@ -7215,6 +7256,76 @@ static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
 	dev_info(&ethqos->pdev->dev, "ext_snapshot_num = %d\n", plat_dat->ext_snapshot_num);
 }
 
+static void ethqos_get_dt_qos_config(struct device_node *np)
+{
+	const char *qoscfg;
+	int err;
+
+	err = of_property_read_string(np, "config-qos", &qoscfg);
+	if (err < 0) {
+		mparams.qoscfg_name[0] = '\0';
+		return;
+	}
+
+	strscpy(mparams.qoscfg_name, qoscfg, sizeof(mparams.qoscfg_name));
+}
+
+#ifdef MODULE
+static int ethqos_set_early_eth_params(void)
+{
+	int ret = 0;
+
+	if (eipv4)
+		ret = set_early_ethernet_ipv4(eipv4);
+
+	if (eipv6)
+		ret = set_early_ethernet_ipv6(eipv6);
+
+	if (ermac)
+		ret = set_early_ethernet_mac(ermac);
+
+	if (eiface)
+		ret = set_ethernet_interface(eiface);
+
+	if (eqos)
+		ret = set_ethernet_qos_cfg(eqos);
+
+	return ret;
+}
+#endif
+
+static int qcom_ethqos_probe_config_dt(struct platform_device *pdev,
+				       struct stmmac_resources stmmac_res)
+{
+	int ret = 0;
+
+	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
+	if (IS_ERR(plat_dat)) {
+		dev_err(&pdev->dev, "dt configuration failed\n");
+		return PTR_ERR(plat_dat);
+	}
+
+	if (strlen(mparams.qoscfg_name) != 0) {
+		strscpy(plat_dat->qoscfg, mparams.qoscfg_name, sizeof(mparams.qoscfg_name));
+		memset(plat_dat->rx_queues_cfg, 0,
+		       (plat_dat->rx_queues_to_use * sizeof(struct stmmac_rxq_cfg)));
+		memset(plat_dat->tx_queues_cfg, 0,
+		       (plat_dat->tx_queues_to_use * sizeof(struct stmmac_txq_cfg)));
+		ret = stmmac_mtl_setup(pdev, plat_dat);
+		if (ret) {
+			stmmac_remove_config_dt(pdev, plat_dat);
+			return ret;
+		}
+	}
+
+	ETHQOSINFO("RX QOS queues = %d, TX QOS queues = %d RX queues = %d TX queues = %d\n",
+		   plat_dat->rx_qos_queues_to_use,
+		   plat_dat->tx_qos_queues_to_use,
+		   plat_dat->rx_queues_to_use,
+		   plat_dat->tx_queues_to_use);
+	return ret;
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -7235,18 +7346,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet probe start");
 #endif
+
 #ifdef MODULE
-	if (eipv4)
-		ret = set_early_ethernet_ipv4(eipv4);
-
-	if (eipv6)
-		ret = set_early_ethernet_ipv6(eipv6);
-
-	if (ermac)
-		ret = set_early_ethernet_mac(ermac);
-
-	if (eiface)
-		ret = set_ethernet_interface(eiface);
+	ethqos_set_early_eth_params();
 #endif
 
 	ipc_stmmac_log_ctxt = ipc_log_context_create(IPCLOG_STATE_PAGES,
@@ -7285,11 +7387,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 			goto err_mem;
 	}
 
-	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
-	if (IS_ERR(plat_dat)) {
-		dev_err(&pdev->dev, "dt configuration failed\n");
-		return PTR_ERR(plat_dat);
-	}
+	if (!(strlen(mparams.qoscfg_name) != 0))
+		ethqos_get_dt_qos_config(np);
+
+	qcom_ethqos_probe_config_dt(pdev, stmmac_res);
 
 	if (mparams.is_valid_eth_intf) {
 		plat_dat->interface = mparams.eth_intf;

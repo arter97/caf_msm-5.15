@@ -311,6 +311,8 @@ struct stmmac_ops {
 	int (*rx_ipc)(struct mac_device_info *hw);
 	/* Enable RX Queues */
 	void (*rx_queue_enable)(struct mac_device_info *hw, u8 mode, u32 queue);
+	/* Disable RX queues */
+	void (*rx_queue_disable)(struct mac_device_info *hw, u32 queue);
 	/* RX Queues Priority */
 	void (*rx_queue_prio)(struct mac_device_info *hw, u32 prio, u32 queue);
 	/* TX Queues Priority */
@@ -415,9 +417,15 @@ struct stmmac_ops {
 	int (*config_l3_filter_xgmac)(struct mac_device_info *hw, u32 filter_no,
 				      bool en, bool ipv6, bool sa, bool inv,
 				      u32 match, char *ipv6_addr);
+	int (*config_l3_filter_with_mask)(struct mac_device_info *hw, u32 filter_no,
+					  bool en, bool ipv6, bool sa, bool inv,
+					  u32 match, char *ipv6_addr, u16 mask, u16 dma_ch);
 	int (*config_l4_filter)(struct mac_device_info *hw, u32 filter_no,
 				bool en, bool udp, bool sa, bool inv,
 				u32 match);
+	int (*config_l4_filter_with_route)(struct mac_device_info *hw, u32 filter_no,
+					   bool en, bool udp, bool sa, bool inv,
+					   u32 match, u16 dma_ch);
 	void (*set_arp_offload)(struct mac_device_info *hw, bool en, u32 addr);
 	/* Enable the VLAN MAC configuration for DMA Queue*/
 	void (*qcom_set_vlan)(struct vlan_filter_info *vlan, void __iomem *ioaddr);
@@ -443,6 +451,8 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, rx_ipc, __args)
 #define stmmac_rx_queue_enable(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, rx_queue_enable, __args)
+#define stmmac_rx_queue_disable(__priv, __args...) \
+		stmmac_do_void_callback(__priv, mac, rx_queue_disable, __args)
 #define stmmac_rx_queue_prio(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, rx_queue_prio, __args)
 #define stmmac_tx_queue_prio(__priv, __args...) \
