@@ -379,7 +379,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
-	if (priv->plat->qos_enabled && skb->priority) {
+	if (priv->plat->qos_active && skb->priority) {
 		/* TODO: IF qos ie enabled and IPA offload is disabled, we need to handle*/
 		tc_prio = 1 << (skb->priority - 1);
 		for (i = 2; i < priv->plat->tx_qos_queues_to_use; i++) {
@@ -7524,6 +7524,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
+	plat_dat->enable_pfc = of_property_read_bool(np, "enable-pfc");
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII ||

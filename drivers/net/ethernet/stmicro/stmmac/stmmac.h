@@ -242,6 +242,52 @@ enum ptp_l4_dst_port {
 	PTP_UDP_PORT2 = 320,
 };
 
+enum idx_action {
+	IDX_UNUSED,
+	IDX_USED,
+	IDX_CLEAR,
+};
+
+enum ip_protocol {
+	IP_PROTO_TCP = 0,
+	IP_PROTO_UDP = 1,
+	IP_PROTO_TCP_UDP = 2,
+	IP_INVALID_PROTO = 3
+};
+
+struct src_ip_addr {
+	unsigned char ipv6_src_addr[16];
+	u32 ipv4_src_addr;
+	u8 src_mask_length;
+	bool ipv6_src;
+};
+
+struct dest_ip_addr {
+	unsigned char ipv6_dst_addr[16];
+	u32 ipv4_dst_addr;
+	u8 dst_mask_length;
+	bool ipv6_dst;
+};
+
+struct ip_port {
+	u32 port_num;
+	enum ip_protocol proto;
+};
+
+struct dma_flt {
+	enum idx_action action;
+	u8 dma_ch;
+
+	union  {
+		u16 vlan_id;
+		struct src_ip_addr ip_src;
+		struct dest_ip_addr ip_dest;
+
+		struct ip_port src_port;
+		struct ip_port dst_port;
+	};
+};
+
 struct stmmac_priv {
 	/* Frequently used values are kept adjacent for cache effect */
 	u32 tx_coal_frames[MTL_MAX_TX_QUEUES];
@@ -388,9 +434,17 @@ struct stmmac_priv {
 	bool en_wol;
 	u32 avb_vlan_id;
 	gh_vmid_t v2x_vm_id;
-	int unique_filter;
+	int unique_filter_new;
+	int unique_filter_old;
 	u16 qos_l3_l4_filter_start;
 	u16 qos_l3_l4_filter_end;
+	bool queue_dis[MTL_MAX_RX_QUEUES];
+	struct dma_flt app_filters[32];
+	bool is_rx_sw[MTL_MAX_RX_QUEUES];
+	bool is_tx_sw[MTL_MAX_TX_QUEUES];
+	u8 queue_pcp_map[MTL_MAX_RX_QUEUES];
+	u32 tx_ch_bw[MTL_MAX_TX_QUEUES];
+
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
@@ -436,6 +490,10 @@ int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
 void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable);
 int stmmac_release_dma_resources(struct net_device *ndev);
 int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt);
+void stmmac_mac_config_pfc(struct stmmac_priv *priv);
+void stmmac_pfc_tx_flow_ctrl(struct stmmac_priv *priv, u32 queue);
+int stmmac_config_rx_queue(struct net_device *ndev, u32 queue, bool skip_sw);
+int stmmac_config_tx_queue(struct net_device *ndev, u32 queue, bool skip_sw);
 
 static inline bool stmmac_xdp_is_enabled(struct stmmac_priv *priv)
 {
