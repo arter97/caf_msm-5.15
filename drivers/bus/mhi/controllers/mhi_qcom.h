@@ -81,6 +81,7 @@ struct mhi_pci_dev_info {
 	bool timesync;
 	bool drv_support;
 	bool reboot_notify_support;
+	bool dev_reset_support;
 };
 
 struct mhi_qcom_priv {
