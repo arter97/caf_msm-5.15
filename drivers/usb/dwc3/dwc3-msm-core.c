@@ -1170,14 +1170,6 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		cmd |= DWC3_DEPCMD_CMDACT;
 
 	dwc3_msm_ep_writel(dep->regs, DWC3_DEPCMD, cmd);
-
-	if (!(cmd & DWC3_DEPCMD_CMDACT) ||
-		(DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_ENDTRANSFER &&
-		!(cmd & DWC3_DEPCMD_CMDIOC))) {
-		ret = 0;
-		goto skip_status;
-	}
-
 	do {
 		reg = dwc3_msm_ep_readl(dep->regs, DWC3_DEPCMD);
 		if (!(reg & DWC3_DEPCMD_CMDACT)) {
@@ -1219,7 +1211,6 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		cmd_status = -ETIMEDOUT;
 	}
 
-skip_status:
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
 		if (ret == 0) {
 			if (mdwc->hw_eps[dep->number].mode == USB_EP_GSI)
@@ -1296,9 +1287,8 @@ static void dwc3_core_stop_active_transfer(struct dwc3_ep *dep, bool force)
 	WARN_ON_ONCE(ret);
 	dep->resource_index = 0;
 
-	/* Wait for EndXfer to complete since IOC is not set */
-	mdelay(1);
-
+	if (DWC3_IP_IS(DWC31) || DWC3_VER_IS_PRIOR(DWC3, 310A))
+		udelay(100);
 	/*
 	 * The END_TRANSFER command will cause the controller to generate a
 	 * NoStream Event, and it's not due to the host DP NoStream rejection.
