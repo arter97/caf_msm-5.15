@@ -6197,33 +6197,38 @@ static void msm_handle_error_source(struct pci_dev *dev,
 			panic("AER error severity %d\n", info->severity);
 	}
 
-	if (info->severity == AER_CORRECTABLE && !rdev->suspending &&
-		rdev->link_status == MSM_PCIE_LINK_ENABLED) {
-		/*
-		 * Correctable error does not need software intervention.
-		 * No need to go through error recovery process.
-		 */
-		if (aer)
-			pci_write_config_dword(dev, aer + PCI_ERR_COR_STATUS,
-					info->status);
-		pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVSTA, 0,
-						   PCI_EXP_DEVSTA_CED |
-						   PCI_EXP_DEVSTA_NFED |
-						   PCI_EXP_DEVSTA_FED);
-	} else if (info->severity == AER_NONFATAL && !rdev->suspending &&
-				rdev->link_status == MSM_PCIE_LINK_ENABLED) {
-		if (aer) {
-			/* Clear status bits for ERR_NONFATAL errors only */
-			pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
-			pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, &sev);
-			status &= ~sev;
-			if (status)
-				pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, status);
+	if (info->severity == AER_CORRECTABLE) {
+		if (!rdev->suspending &&
+			rdev->link_status == MSM_PCIE_LINK_ENABLED) {
+			/*
+			 * Correctable error does not need software intervention.
+			 * No need to go through error recovery process.
+			 */
+			if (aer)
+				pci_write_config_dword(dev, aer + PCI_ERR_COR_STATUS,
+							info->status);
+			pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVSTA, 0,
+							PCI_EXP_DEVSTA_CED |
+							PCI_EXP_DEVSTA_NFED |
+							PCI_EXP_DEVSTA_FED);
 		}
-		pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVSTA, 0,
-					PCI_EXP_DEVSTA_CED |
-					PCI_EXP_DEVSTA_NFED |
-					PCI_EXP_DEVSTA_FED);
+	} else if (info->severity == AER_NONFATAL) {
+		if (!rdev->suspending &&
+				rdev->link_status == MSM_PCIE_LINK_ENABLED) {
+			if (aer) {
+				/* Clear status bits for ERR_NONFATAL errors only */
+				pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
+				pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, &sev);
+				status &= ~sev;
+				if (status)
+					pci_write_config_dword(dev, aer +
+							PCI_ERR_UNCOR_STATUS, status);
+			}
+			pcie_capability_clear_and_set_word(dev, PCI_EXP_DEVSTA, 0,
+							PCI_EXP_DEVSTA_CED |
+							PCI_EXP_DEVSTA_NFED |
+							PCI_EXP_DEVSTA_FED);
+		}
 	} else {
 		/* AER_FATAL */
 		panic("AER error severity %d\n", info->severity);
