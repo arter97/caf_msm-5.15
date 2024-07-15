@@ -472,7 +472,12 @@ struct qcom_ethqos {
 	bool early_eth_enabled;
 	/* Key Performance Indicators */
 	bool print_kpi;
+	/* Debug nodes*/
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct dentry *debugfs_dir;
+#endif
+	struct kobject *sysfs_kobj;
+
 	int curr_serdes_speed;
 	unsigned int emac_phy_off_suspend;
 	int loopback_speed;
