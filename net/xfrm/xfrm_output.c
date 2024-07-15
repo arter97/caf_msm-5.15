@@ -586,9 +586,23 @@ int xfrm_output_resume(struct sk_buff *skb, int err)
 	while (likely((err = xfrm_output_one(skb, err)) == 0)) {
 		nf_reset_ct(skb);
 
-		err = skb_dst(skb)->ops->local_out(net, skb->sk, skb);
-		if (unlikely(err != 1))
-			goto out;
+		if (skb_dst(skb)->ops->family != AF_INET && ip_hdr(skb)->version == 4) {
+			memset(IPCB(skb), 0, sizeof(*IPCB(skb)));
+			IPCB(skb)->flags |= IPSKB_XFRM_TRANSFORMED;
+			err = ip_output(net, skb->sk, skb);
+			if (unlikely(err != 1))
+				goto out;
+		} else if (skb_dst(skb)->ops->family != AF_INET6 && ip_hdr(skb)->version == 6) {
+			memset(IP6CB(skb), 0, sizeof(*IP6CB(skb)));
+			IP6CB(skb)->flags |= IP6SKB_XFRM_TRANSFORMED;
+			err = ip6_output(net, skb->sk, skb);
+			if (unlikely(err != 1))
+				goto out;
+		} else {
+			err = skb_dst(skb)->ops->local_out(net, skb->sk, skb);
+			if (unlikely(err != 1))
+				goto out;
+		}
 
 		if (!skb_dst(skb)->xfrm)
 			return dst_output(net, skb->sk, skb);
