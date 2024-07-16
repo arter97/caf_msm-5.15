@@ -7372,6 +7372,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	u32 err = 0;
 #endif
 
+	ret = pinctrl_pm_select_default_state(&pdev->dev);
+	if (ret)
+		ETHQOSERR("pinctrl default select state failed %d\n", ret);
+
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,emac-smmu-embedded"))
 		return emac_emb_smmu_cb_probe(pdev, plat_dat);
@@ -8024,6 +8028,10 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	of_platform_depopulate(&pdev->dev);
+
+	ret = pinctrl_select_state(pdev->dev.pins->p, pdev->dev.pins->init_state);
+	if (ret)
+		ETHQOSERR("pinctrl inactive select state failed %d\n", ret);
 
 	return ret;
 }
