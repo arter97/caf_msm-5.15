@@ -375,6 +375,7 @@ int stmmac_mtl_setup(struct platform_device *pdev,
 	if (qos_config_found) {
 		plat->rx_qos_queues_to_use = plat->rx_queues_to_use;
 		plat->tx_qos_queues_to_use = plat->tx_queues_to_use;
+		plat->qos_supported = true;
 	}
 
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
