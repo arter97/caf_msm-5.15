@@ -37,6 +37,8 @@ struct qcom_dload {
 
 #define QCOM_DOWNLOAD_BOTHDUMP (QCOM_DOWNLOAD_FULLDUMP | QCOM_DOWNLOAD_MINIDUMP)
 
+#define QCOM_FULLDUMP_COMPRESS	0x0100
+
 static bool enable_dump =
 	IS_ENABLED(CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_DEFAULT);
 static enum qcom_download_mode current_download_mode = QCOM_DOWNLOAD_NODUMP;
@@ -51,6 +53,13 @@ static int set_download_mode(enum qcom_download_mode mode)
 			return -ENODEV;
 	}
 	current_download_mode = mode;
+
+/* Enable fulldump compression when emmc_dload cookie is set */
+#ifdef CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE_COMPRESS
+	if (current_download_mode == QCOM_DOWNLOAD_FULLDUMP)
+		mode |= QCOM_FULLDUMP_COMPRESS;
+#endif
+
 	qcom_scm_set_download_mode(mode, 0);
 	return 0;
 }
@@ -61,8 +70,11 @@ static int set_dump_mode(enum qcom_download_mode mode)
 
 	if (enable_dump) {
 		ret = set_download_mode(mode);
-		if (likely(!ret))
+		if (likely(!ret)) {
 			dump_mode = qcom_scm_get_download_mode(&temp, 0) ? dump_mode : temp;
+			if (current_download_mode == QCOM_DOWNLOAD_FULLDUMP)
+				dump_mode &= ~QCOM_FULLDUMP_COMPRESS;
+		}
 	} else
 		dump_mode = mode;
 
@@ -344,6 +356,10 @@ static int qcom_dload_probe(struct platform_device *pdev)
 	poweroff->dload_dest_addr = map_prop_mem("qcom,msm-imem-dload-type");
 	msm_enable_dump_mode(enable_dump);
 	dump_mode = qcom_scm_get_download_mode(&temp, 0) ? dump_mode : temp;
+
+	/* Reset the value of current_download_mode to it's initial value */
+	if (current_download_mode == QCOM_DOWNLOAD_FULLDUMP)
+		dump_mode &= ~QCOM_FULLDUMP_COMPRESS;
 	pr_info("%s: Current dump mode: 0x%x\n", __func__, dump_mode);
 
 	if (!enable_dump)

@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2015 Sony Mobile Communications Inc
  * Copyright (c) 2012-2013, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/firmware.h>
@@ -305,6 +305,18 @@ static void glink_subdev_unprepare(struct rproc_subdev *subdev)
 	qcom_glink_ssr_notify(glink->ssr_name);
 }
 
+static int glink_subdev_suspend(struct rproc_subdev *subdev)
+{
+	glink_subdev_stop(subdev, false);
+	return 0;
+}
+
+static int glink_subdev_suspend_unprepare(struct rproc_subdev *subdev)
+{
+	glink_subdev_unprepare(subdev);
+	return 0;
+}
+
 /**
  * qcom_add_glink_subdev() - try to add a GLINK subdevice to rproc
  * @rproc:	rproc handle to parent the subdevice
@@ -329,6 +341,10 @@ void qcom_add_glink_subdev(struct rproc *rproc, struct qcom_rproc_glink *glink,
 	glink->subdev.prepare = glink_subdev_prepare;
 	glink->subdev.stop = glink_subdev_stop;
 	glink->subdev.unprepare = glink_subdev_unprepare;
+	glink->subdev.resume = glink_subdev_start;
+	glink->subdev.resume_prepare = glink_subdev_prepare;
+	glink->subdev.suspend = glink_subdev_suspend;
+	glink->subdev.suspend_unprepare = glink_subdev_suspend_unprepare;
 
 	rproc_add_subdev(rproc, &glink->subdev);
 }

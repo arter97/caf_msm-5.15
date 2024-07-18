@@ -93,6 +93,8 @@
 #define XGMAC_VLAN_CSVL			BIT(19)
 #define XGMAC_VLAN_VLC			GENMASK(17, 16)
 #define XGMAC_VLAN_VLC_SHIFT		16
+#define XGMAC_TXQ_FLOW_CTRL(x)         ((x) * 4 + 0x70)
+#define XGMAC_SET_TXQ_FLOW_CTRL		0x1000032
 #define XGMAC_RXQ_CTRL0			0x000000a0
 #define XGMAC_RXQEN(x)			GENMASK((x) * 2 + 1, (x) * 2)
 #define XGMAC_RXQEN_SHIFT(x)		((x) * 2)
@@ -118,6 +120,7 @@
 #define XGMAC_TFE			BIT(1)
 #define XGMAC_RX_FLOW_CTRL		0x00000090
 #define XGMAC_RFE			BIT(0)
+#define XGMAC_PFCE                     BIT(8)
 #define XGMAC_PMT			0x000000c0
 #define XGMAC_GLBLUCAST			BIT(9)
 #define XGMAC_RWKPKTEN			BIT(2)
@@ -240,6 +243,7 @@
 #define XGMAC_MTL_RXQ_DMACH		BIT(7)
 #define XGMAC_L3L4_DATA			0x00000c04
 #define XGMAC_L3L4_CTRL			0x0
+#define XGMAC_DMACHEN			BIT(31)
 #define XGMAC_L4DPIM0			BIT(21)
 #define XGMAC_L4DPM0			BIT(20)
 #define XGMAC_L4SPIM0			BIT(19)
@@ -294,7 +298,6 @@
 #define XGMAC_PPSEN0			BIT(4)
 #define XGMAC_PPSx_TARGET_TIME_SEC(x)		(XGMAC_PPS_BASE_ADDR(x) + 0x80)
 #define XGMAC_PPSx_TARGET_TIME_NSEC(x)		(XGMAC_PPS_BASE_ADDR(x) + 0x84)
-#define XGMAC_PPSENx(x)			BIT(4 + (x) * 8)
 #define XGMAC_TRGTBUSY0			BIT(31)
 #define XGMAC_PPSx_INTERVAL(x)		(XGMAC_PPS_BASE_ADDR(x) + 0x88)
 #define XGMAC_PPSx_WIDTH(x)			(XGMAC_PPS_BASE_ADDR(x) + 0x8c)
