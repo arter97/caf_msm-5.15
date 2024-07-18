@@ -7328,11 +7328,11 @@ static int ethqos_set_early_eth_params(void)
 #endif
 
 static int qcom_ethqos_probe_config_dt(struct platform_device *pdev,
-				       struct stmmac_resources stmmac_res)
+				       struct stmmac_resources *stmmac_res)
 {
 	int ret = 0;
 
-	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
+	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res->mac);
 	if (IS_ERR(plat_dat)) {
 		dev_err(&pdev->dev, "dt configuration failed\n");
 		return PTR_ERR(plat_dat);
@@ -7427,7 +7427,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (!(strlen(mparams.qoscfg_name) != 0))
 		ethqos_get_dt_qos_config(np);
 
-	qcom_ethqos_probe_config_dt(pdev, stmmac_res);
+	qcom_ethqos_probe_config_dt(pdev, &stmmac_res);
 
 	if (mparams.is_valid_eth_intf) {
 		plat_dat->interface = mparams.eth_intf;
