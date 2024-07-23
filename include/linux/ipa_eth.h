@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_ETH_H_
@@ -11,7 +11,7 @@
 #include <linux/msm_ipa.h>
 #include <linux/msm_gsi.h>
 
-#define IPA_ETH_MAX_DMA_CH 6
+#define IPA_ETH_MAX_DMA_CH 12
 #define IPA_ETH_CONFIG_LEN 20
 
 /* New architecture prototypes */
@@ -58,7 +58,22 @@ enum ipa_eth_pipe_traffic_type {
 	IPA_ETH_PIPE_BEST_EFFORT,
 	IPA_ETH_PIPE_LOW_LATENCY,
 	IPA_ETH_PIPE_BEST_EFFORT_VLAN,
+	IPA_ETH_PIPE_TRAFFIC_TYPE_QOS,
 	IPA_ETH_PIPE_TRAFFIC_TYPE_MAX,
+};
+
+/**
+ * struct ipa_eth_qos_info - ETH QOS Info.
+ * client_type: client info.
+ * @tc_bmap: bitmap associated with the client.
+ * @pipe_idx: Pipe index.
+ * @priority: Relative priority of the pipe.
+ */
+struct ipa_eth_qos_info {
+	enum ipa_client_type client_type;
+	u32 tc_bmap;
+	u8 pipe_idx;
+	u8 priority;
 };
 
 /**
@@ -203,6 +218,8 @@ struct ipa_eth_pipe_setup_info {
  * @dir: TX or RX direction
  * @info: tx/rx pipe setup info
  * @client_info: client the pipe belongs to
+ * @traffic_type: traffic type
+ * @tc_bmap: Bit map indicating the traffic classes associated to the pipe
  * @pipe_hdl: output params, pipe handle
  */
 struct ipa_eth_client_pipe_info {
@@ -211,7 +228,7 @@ struct ipa_eth_client_pipe_info {
 	struct ipa_eth_pipe_setup_info info;
 	struct ipa_eth_client *client_info;
 	enum ipa_eth_pipe_traffic_type traffic_type;
-
+	u32 tc_bmap;
 	/* output params */
 	ipa_eth_hdl_t pipe_hdl;
 };
@@ -299,5 +316,11 @@ bool ipa_eth_client_exist(
 	enum ipa_eth_client_type eth_client_type, int inst_id);
 int ipa_eth_get_config_type(
 	enum ipa_eth_client_type client_type, int inst_id, struct ipa_eth_config *eth_config);
-
+int ipa_eth_qos_get_num_pipes(
+	u8 inst_id, u8 *num_pipes, enum ipa_eth_pipe_direction dir);
+int ipa_eth_qos_get_qos_info(
+	u8 inst_id,
+	u8 idx,
+	struct ipa_eth_qos_info *info,
+	enum ipa_eth_pipe_direction dir);
 #endif // _IPA_ETH_H_

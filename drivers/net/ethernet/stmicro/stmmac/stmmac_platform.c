@@ -126,19 +126,56 @@ static struct stmmac_axi *stmmac_axi_setup(struct platform_device *pdev)
 	return axi;
 }
 
+static struct device_node *get_mtl_queue_config(struct device_node *node,
+						char *mtl_queue_str,
+						char *qoscfg_str,
+						bool *qos_config_found)
+{
+	const char *config_name;
+	u32 count = 0, i;
+	int ret = 0;
+
+	count = of_property_count_elems_of_size(node, mtl_queue_str,
+						sizeof(u32)) - 1;
+
+	if (count < 0)
+		return NULL;
+
+	if (count == 0)
+		return of_parse_phandle(node, mtl_queue_str, 0);
+
+	for (i = count; i >= 0; i--) {
+		node = of_parse_phandle(node, mtl_queue_str, i);
+		if (!node)
+			return NULL;
+
+		ret = of_property_read_string(node, "qcom,config-name", &config_name);
+		if (ret < 0)
+			continue;
+
+		if (!strcasecmp(config_name, qoscfg_str)) {
+			*qos_config_found = true;
+			return node;
+		}
+	}
+
+	return node;
+}
+
 /**
  * stmmac_mtl_setup - parse DT parameters for multiple queues configuration
  * @pdev: platform device
  * @plat: enet data
  */
-static int stmmac_mtl_setup(struct platform_device *pdev,
-			    struct plat_stmmacenet_data *plat)
+int stmmac_mtl_setup(struct platform_device *pdev,
+		     struct plat_stmmacenet_data *plat)
 {
 	struct device_node *q_node;
 	struct device_node *rx_node;
 	struct device_node *tx_node;
 	u8 queue = 0;
 	int ret = 0;
+	bool qos_config_found = false;
 
 	/* For backwards-compatibility with device trees that don't have any
 	 * snps,mtl-rx-config or snps,mtl-tx-config properties, we fall back
@@ -154,11 +191,28 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 	plat->rx_queues_cfg[0].mode_to_use = MTL_QUEUE_DCB;
 	plat->tx_queues_cfg[0].mode_to_use = MTL_QUEUE_DCB;
 
-	rx_node = of_parse_phandle(pdev->dev.of_node, "snps,mtl-rx-config", 0);
+	if (strlen(plat->qoscfg) != 0)
+		rx_node = get_mtl_queue_config(pdev->dev.of_node,
+					       "snps,mtl-rx-config",
+					       plat->qoscfg,
+					       &qos_config_found);
+	else
+		rx_node = of_parse_phandle(pdev->dev.of_node,
+					   "snps,mtl-rx-config",
+					   0);
+
 	if (!rx_node)
 		return ret;
 
-	tx_node = of_parse_phandle(pdev->dev.of_node, "snps,mtl-tx-config", 0);
+	if (strlen(plat->qoscfg) != 0)
+		tx_node = get_mtl_queue_config(pdev->dev.of_node,
+					       "snps,mtl-tx-config",
+					       plat->qoscfg,
+					       &qos_config_found);
+	else
+		tx_node = of_parse_phandle(pdev->dev.of_node,
+					   "snps,mtl-tx-config", 0);
+
 	if (!tx_node) {
 		of_node_put(rx_node);
 		return ret;
@@ -317,6 +371,12 @@ static int stmmac_mtl_setup(struct platform_device *pdev,
 
 		queue++;
 	}
+
+	if (qos_config_found) {
+		plat->rx_qos_queues_to_use = plat->rx_queues_to_use;
+		plat->tx_qos_queues_to_use = plat->tx_queues_to_use;
+	}
+
 #if !IS_ENABLED(CONFIG_DWMAC_QCOM_ETHQOS)
 	if (queue != plat->tx_queues_to_use) {
 		ret = -EINVAL;
@@ -717,9 +777,18 @@ void stmmac_remove_config_dt(struct platform_device *pdev,
 			     struct plat_stmmacenet_data *plat)
 {
 }
+
+int stmmac_mtl_setup(struct platform_device *pdev,
+		     struct plat_stmmacenet_data *plat)
+{
+	return -EINVAL;
+}
+
 #endif /* CONFIG_OF */
 EXPORT_SYMBOL_GPL(stmmac_probe_config_dt);
 EXPORT_SYMBOL_GPL(stmmac_remove_config_dt);
+EXPORT_SYMBOL_GPL(stmmac_mtl_setup);
+
 
 int stmmac_get_platform_resources(struct platform_device *pdev,
 				  struct stmmac_resources *stmmac_res)
