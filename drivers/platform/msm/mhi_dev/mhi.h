@@ -452,16 +452,11 @@ struct event_req {
 	u32			num_events;
 	dma_addr_t		dma;
 	u32			dma_len;
-	dma_addr_t		event_rd_dma;
 	void			*context;
 	enum mhi_dev_tr_compl_evt_type event_type;
-	u32			event_ring;
-	void			(*client_cb)(void *req);
-	void			(*rd_offset_cb)(void *req);
-	void			(*msi_cb)(void *req);
 	struct list_head	list;
 	u32			flush_num;
-	u32			snd_cmpl;
+	bool			snd_cmpl;
 	bool		is_cmd_cpl;
 	bool		is_stale;
 };

@@ -61,7 +61,7 @@ struct mhi_req {
 	u32				chain;
 	void                            *buf;
 	dma_addr_t                      dma;
-	u32                             snd_cmpl;
+	bool                             snd_cmpl;
 	void                            *context;
 	size_t                          len;
 	size_t                          transfer_len;
