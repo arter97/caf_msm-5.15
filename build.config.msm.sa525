@@ -7,7 +7,7 @@
 ## Variant setup
 HERMETIC_TOOLCHAIN=0
 MSM_ARCH=sa525
-VARIANTS=(perf_defconfig debug_defconfig hostvm_perf_defconfig hostvm_debug_defconfig )
+VARIANTS=(perf_defconfig debug_defconfig hostvm_perf_defconfig hostvm_debug_defconfig minimal_perf_defconfig minimal_debug_defconfig)
 [ -z "${VARIANT}" ] && VARIANT=debug_defconfig
 
 KERNEL_DIR="msm-kernel"
