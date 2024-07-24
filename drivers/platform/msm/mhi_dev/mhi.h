@@ -598,9 +598,7 @@ struct mhi_dev {
 	u32				mhi_version;
 	u32				mhi_chan_hw_base;
 	u32				mhi_num_ipc_pages_dev_fac;
-	void				*dma_cache;
 	/* Physical scratch buffer for writing control data to the host */
-	dma_addr_t			cache_dma_handle;
 	bool				mhi_dma_ready;
 
 	/* Use  PCI eDMA for data transfer */

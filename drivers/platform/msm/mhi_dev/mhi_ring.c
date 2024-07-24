@@ -333,6 +333,7 @@ int mhi_dev_add_element(struct mhi_dev_ring *ring,
 		/* We're adding only a single ring element */
 		host_addr.virt_addr = element;
 		host_addr.size = sizeof(union mhi_dev_ring_element_type);
+		host_addr.phy_addr = 0;
 
 		mhi_log(mhi_ctx->vf_id, MHI_MSG_VERBOSE, "adding element to ring_id:%d\n",
 					ring->id);
@@ -371,6 +372,7 @@ int mhi_dev_add_element(struct mhi_dev_ring *ring,
 		host_addr.virt_addr = element;
 		host_addr.size = (ring->ring_size - old_offset) *
 			sizeof(union mhi_dev_ring_element_type);
+		host_addr.phy_addr = 0;
 
 		if (mhi_ctx->use_mhi_dma) {
 			mhi_ctx->write_to_host(ring->mhi_dev, &host_addr,
