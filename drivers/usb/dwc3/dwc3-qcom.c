@@ -1053,6 +1053,23 @@ static int dwc3_qcom_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void dwc3_qcom_shutdown(struct platform_device *pdev)
+{
+	struct dwc3_qcom *qcom = platform_get_drvdata(pdev);
+	int i;
+
+	for (i = qcom->num_clocks - 1; i >= 0; i--) {
+		clk_disable_unprepare(qcom->clks[i]);
+		clk_put(qcom->clks[i]);
+	}
+
+	qcom->num_clocks = 0;
+
+	dwc3_qcom_config_gdsc(qcom, 0);
+
+	return;
+}
+
 static int __maybe_unused dwc3_qcom_pm_suspend(struct device *dev)
 {
 	struct dwc3_qcom *qcom = dev_get_drvdata(dev);
@@ -1148,6 +1165,7 @@ MODULE_DEVICE_TABLE(acpi, dwc3_qcom_acpi_match);
 static struct platform_driver dwc3_qcom_driver = {
 	.probe		= dwc3_qcom_probe,
 	.remove		= dwc3_qcom_remove,
+	.shutdown	= dwc3_qcom_shutdown,
 	.driver		= {
 		.name	= "dwc3-qcom",
 		.pm	= &dwc3_qcom_dev_pm_ops,
