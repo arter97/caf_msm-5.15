@@ -6388,7 +6388,8 @@ drain_data:
 			skb_set_hash(skb, hash, hash_type);
 
 		skb_record_rx_queue(skb, queue);
-		if (priv->plat->qos_active && priv->plat->qos_ch_map.tc_rx_info[queue]) {
+		if (priv->plat->qos_active && priv->plat->qos_use_skprio &&
+		    priv->plat->qos_ch_map.tc_rx_info[queue]) {
 			c2t_map = priv->plat->qos_ch_map.ch_to_tc_map_rx[queue];
 			while (c2t_map) {
 				c2t_map = c2t_map >> 1;

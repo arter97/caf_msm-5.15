@@ -368,5 +368,6 @@ struct plat_stmmacenet_data {
 	bool qos_active;
 	struct ch_to_tc_map qos_ch_map;
 	bool enable_pfc;
+	bool qos_use_skprio;
 };
 #endif

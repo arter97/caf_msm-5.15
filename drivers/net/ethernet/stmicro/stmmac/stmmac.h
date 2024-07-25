@@ -444,6 +444,7 @@ struct stmmac_priv {
 	bool is_tx_sw[MTL_MAX_TX_QUEUES];
 	u8 queue_pcp_map[MTL_MAX_RX_QUEUES];
 	u32 tx_ch_bw[MTL_MAX_TX_QUEUES];
+	u8 tx_queue_pcp_map[MTL_MAX_TX_QUEUES];
 
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 
