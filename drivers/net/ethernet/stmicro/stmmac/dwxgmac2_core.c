@@ -277,6 +277,12 @@ static void dwxgmac2_map_mtl_to_dma(struct mac_device_info *hw, u32 queue,
 	if (queue >= 4)
 		queue -= 4;
 
+	value = readl(ioaddr + reg);
+	value &= ~XGMAC_QxMDMACH(queue);
+	value |= (chan << XGMAC_QxMDMACH_SHIFT(queue)) & XGMAC_QxMDMACH(queue);
+
+	writel(value, ioaddr + reg);
+
 	/* if L3 & L4 filtering is enabled, do a dynamic mapping */
 	if (queue == 0 && chan == 0) {
 		dwxgmac2_filter_read(hw, 0, XGMAC_L3L4_CTRL, &value);
@@ -289,12 +295,6 @@ static void dwxgmac2_map_mtl_to_dma(struct mac_device_info *hw, u32 queue,
 			return;
 		}
 	}
-
-	value = readl(ioaddr + reg);
-	value &= ~XGMAC_QxMDMACH(queue);
-	value |= (chan << XGMAC_QxMDMACH_SHIFT(queue)) & XGMAC_QxMDMACH(queue);
-
-	writel(value, ioaddr + reg);
 }
 
 static void dwxgmac2_config_cbs(struct mac_device_info *hw,
