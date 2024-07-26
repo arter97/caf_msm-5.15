@@ -13,11 +13,11 @@
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 {
-	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES3_PCS_TX_MID_TERM_CTRL2);
-	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES3_PCS_SW_RESET);
+	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
 	usleep_range(100, 200);
-	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES3_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES3_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
 	writel_relaxed(0x0, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/* Set current speed to 0 so that serdes will be reprogrammed on next link up. */
@@ -1096,7 +1096,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x3B, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH3);
 	writel_relaxed(0xB7, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH4);
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
-	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES3_PCS_LINE_RESET_TIME);
+	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
 	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
 	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
