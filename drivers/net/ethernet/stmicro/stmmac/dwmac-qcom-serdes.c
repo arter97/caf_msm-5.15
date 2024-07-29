@@ -13,12 +13,12 @@
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 {
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
 	usleep_range(100, 200);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
-	writel_relaxed(0x0, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
+	writel_relaxed(0x0, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/* Set current speed to 0 so that serdes will be reprogrammed on next link up. */
 	ethqos->curr_serdes_speed = 0;
@@ -31,10 +31,10 @@ void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 	int retry = 500;
 	unsigned int val;
 
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
 	usleep_range(3000, 5000);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -68,7 +68,7 @@ void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -83,7 +83,7 @@ void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
@@ -466,12 +466,12 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 		return qcom_ethqos_serdes3_sgmii_1Gb(ethqos);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
-	writel_relaxed(0x0E, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_BG_TIMER);
-	writel_relaxed(0x0F, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_PLL_IVCO);
+	writel_relaxed(0x0E, ethqos->sgmii_base + QSERDES_COM_BG_TIMER);
+	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_COM_PLL_IVCO);
 
 	writel_relaxed(0x06, ethqos->sgmii_base + QSERDES_COM_CP_CTRL_MODE0);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_PLL_RCTRL_MODE0);
@@ -552,19 +552,19 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
-	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_DRV_LVL);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
-	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x83, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL1);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL2_AND_CDR_LOCK_EDGE);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL7);
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL7);
+	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL8);
 
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -602,7 +602,7 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -619,7 +619,7 @@ static int qcom_ethqos_serdes_sgmii_1Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
@@ -650,12 +650,12 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 		return qcom_ethqos_serdes3_sgmii_2_5Gb(ethqos);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
-	writel_relaxed(0x0E, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_BG_TIMER);
-	writel_relaxed(0x0F, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_PLL_IVCO);
+	writel_relaxed(0x0E, ethqos->sgmii_base + QSERDES_COM_BG_TIMER);
+	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_COM_PLL_IVCO);
 	writel_relaxed(0x06, ethqos->sgmii_base + QSERDES_COM_CP_CTRL_MODE0);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_PLL_RCTRL_MODE0);
 	writel_relaxed(0x36, ethqos->sgmii_base + QSERDES_COM_PLL_CCTRL_MODE0);
@@ -733,20 +733,20 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
-	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_DRV_LVL);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
-	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x83, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL1);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL2_AND_CDR_LOCK_EDGE);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL7);
-	writel_relaxed(0x8c, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL7);
+	writel_relaxed(0x8c, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL8);
 
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -784,7 +784,7 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -801,7 +801,7 @@ static int qcom_ethqos_serdes_sgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
@@ -829,14 +829,14 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	unsigned int val;
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
-	writel_relaxed(0x0E, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_BG_TIMER);
+	writel_relaxed(0x0E, ethqos->sgmii_base + QSERDES_COM_BG_TIMER);
 	writel_relaxed(0x07, ethqos->sgmii_base + QSERDES_COM_BIAS_EN_CLKBUFLR_EN);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_COM_CLK_ENABLE1);
-	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_PLL_IVCO);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_COM_PLL_IVCO);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_COM_CP_CTRL_MODE0);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_PLL_RCTRL_MODE0);
 	writel_relaxed(0x36, ethqos->sgmii_base + QSERDES_COM_PLL_CCTRL_MODE0);
@@ -916,21 +916,21 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
-	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_DRV_LVL);
+	writel_relaxed(0x1A, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
-	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x83, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL1);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL2_AND_CDR_LOCK_EDGE);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL7);
-	writel_relaxed(0x14, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL7);
+	writel_relaxed(0x14, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL8);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -964,7 +964,7 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -979,7 +979,7 @@ static int qcom_ethqos_serdes_usxgmii_2p5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
@@ -1006,14 +1006,14 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	unsigned int val;
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
-	writel_relaxed(0x0E, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_BG_TIMER);
+	writel_relaxed(0x0E, ethqos->sgmii_base + QSERDES_COM_BG_TIMER);
 	writel_relaxed(0x07, ethqos->sgmii_base + QSERDES_COM_BIAS_EN_CLKBUFLR_EN);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_COM_CLK_ENABLE1);
-	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_PLL_IVCO);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_COM_PLL_IVCO);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_COM_CP_CTRL_MODE0);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_PLL_RCTRL_MODE0);
 	writel_relaxed(0x36, ethqos->sgmii_base + QSERDES_COM_PLL_CCTRL_MODE0);
@@ -1096,23 +1096,23 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x3B, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH3);
 	writel_relaxed(0xB7, ethqos->sgmii_base + QSERDES_RX0_RX_MODE_10_HIGH4);
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
-	writel_relaxed(0x0C, ethqos->sgmii_base + SGMII_PHY_PCS_LINE_RESET_TIME);
+	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_PCS_LINE_RESET_TIME);
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
-	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_DRV_LVL);
+	writel_relaxed(0x1A, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
-	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x83, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL1);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL2_AND_CDR_LOCK_EDGE);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL7);
-	writel_relaxed(0x14, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL7);
+	writel_relaxed(0x14, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL8);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -1146,7 +1146,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -1161,7 +1161,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
@@ -1187,14 +1187,14 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 	unsigned int val;
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_POWER_DOWN_CONTROL);
 
 	/***************** MODULE: QSERDES_COM_SGMII_QMP_PLL*********/
-	writel_relaxed(0x0E, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_BG_TIMER);
+	writel_relaxed(0x0E, ethqos->sgmii_base + QSERDES_COM_BG_TIMER);
 	writel_relaxed(0x07, ethqos->sgmii_base + QSERDES_COM_BIAS_EN_CLKBUFLR_EN);
 	writel_relaxed(0x0F, ethqos->sgmii_base + QSERDES_COM_CLK_ENABLE1);
-	writel_relaxed(0x1F, ethqos->sgmii_base + SGMII_PHY_0_QSERDES_COM_PLL_IVCO);
+	writel_relaxed(0x1F, ethqos->sgmii_base + QSERDES_COM_PLL_IVCO);
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_COM_CP_CTRL_MODE0);
 	writel_relaxed(0x16, ethqos->sgmii_base + QSERDES_COM_PLL_RCTRL_MODE0);
 	writel_relaxed(0x36, ethqos->sgmii_base + QSERDES_COM_PLL_CCTRL_MODE0);
@@ -1279,21 +1279,21 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 	writel_relaxed(0x0C, ethqos->sgmii_base + QSERDES_RX0_DCC_CTRL1);
 
 	/****************MODULE: SGMII_PHY_SGMII_PCS**********************************/
-	writel_relaxed(0x03, ethqos->sgmii_base + SGMII_PHY_PCS_TX_SMALL_AMP_DRV_LVL);
-	writel_relaxed(0x1A, ethqos->sgmii_base + SGMII_PHY_PCS_TX_LARGE_AMP_DRV_LVL);
+	writel_relaxed(0x03, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_DRV_LVL);
+	writel_relaxed(0x1A, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_DRV_LVL);
 	writel_relaxed(0x0B, ethqos->sgmii_base + QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL);
 	writel_relaxed(0x2F, ethqos->sgmii_base + QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL);
-	writel_relaxed(0x83, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL1);
-	writel_relaxed(0x08, ethqos->sgmii_base + SGMII_PHY_PCS_TX_MID_TERM_CTRL2);
+	writel_relaxed(0x83, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL1);
+	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
 
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL1);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_RX0_SIGDET_CAL_CTRL2_AND_CDR_LOCK_EDGE);
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL7);
-	writel_relaxed(0x14, ethqos->sgmii_base + SGMII_PHY_PCS_SGMII_MISC_CTRL8);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL7);
+	writel_relaxed(0x14, ethqos->sgmii_base + QSERDES_PCS_SGMII_MISC_CTRL8);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_RETIME_BUFFER_EN);
 
-	writel_relaxed(0x00, ethqos->sgmii_base + SGMII_PHY_PCS_SW_RESET);
-	writel_relaxed(0x01, ethqos->sgmii_base + SGMII_PHY_PCS_PHY_START);
+	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
@@ -1327,7 +1327,7 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(7);
 		if (val)
 			break;
@@ -1342,7 +1342,7 @@ static int qcom_ethqos_serdes_usxgmii_10Gb_1Gb(struct qcom_ethqos *ethqos)
 
 	retry = 500;
 	do {
-		val = readl_relaxed(ethqos->sgmii_base + SGMII_PHY_PCS_READY_STATUS);
+		val = readl_relaxed(ethqos->sgmii_base + QSERDES_PCS_READY_STATUS);
 		val &= BIT(0);
 		if (val)
 			break;
