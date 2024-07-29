@@ -194,6 +194,16 @@ enum WMSlateCtrlChnlOpcode {
 	GMI_MGR_SSR_ADSP_UP_PRE_INDICATION = 24,
 
 	/*
+	 * Notification to slate About Entry to Hibernate
+	 */
+	GMI_WEAR_MGR_ENTER_HIBERNATE = 25,
+
+	/*
+	 * Notification to slate About Exit to Hibernate
+	 */
+	GMI_WEAR_MGR_EXIT_HIBERNATE = 26,
+
+	/*
 	 * DEBUG Opcodes
 	 */
 	GMI_MGR_ENABLE_QCLI = 91,		/* Enable QCLI */
