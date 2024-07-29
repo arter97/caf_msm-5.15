@@ -707,7 +707,7 @@ int qmi_handle_init(struct qmi_handle *qmi, size_t recv_buf_size,
 		recv_buf_size = sizeof(struct qrtr_ctrl_pkt);
 
 	qmi->recv_buf_size = recv_buf_size;
-	qmi->recv_buf = kzalloc(recv_buf_size, GFP_KERNEL);
+	qmi->recv_buf = vmalloc(recv_buf_size);
 	if (!qmi->recv_buf)
 		return -ENOMEM;
 
@@ -736,7 +736,7 @@ int qmi_handle_init(struct qmi_handle *qmi, size_t recv_buf_size,
 err_destroy_wq:
 	destroy_workqueue(qmi->wq);
 err_free_recv_buf:
-	kfree(qmi->recv_buf);
+	vfree(qmi->recv_buf);
 
 	return ret;
 }
@@ -777,7 +777,7 @@ void qmi_handle_release(struct qmi_handle *qmi)
 	mutex_unlock(&qmi->txn_lock);
 	idr_destroy(&qmi->txns);
 
-	kfree(qmi->recv_buf);
+	vfree(qmi->recv_buf);
 
 	/* Free registered lookup requests */
 	list_for_each_entry_safe(svc, tmp, &qmi->lookups, list_node) {

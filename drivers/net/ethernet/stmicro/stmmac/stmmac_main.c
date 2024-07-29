@@ -1287,10 +1287,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
+#endif
+
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
 
 	if (priv->hw->qxpcs) {
@@ -4011,6 +4014,7 @@ static int stmmac_request_irq_multi_msi(struct net_device *dev)
 	/* Request the Wake IRQ in case of another line
 	 * is used for WoL
 	 */
+	priv->wol_irq_disabled = true;
 	if (priv->wol_irq > 0 && priv->wol_irq != dev->irq) {
 		int_name = priv->int_name_wol;
 		sprintf(int_name, "%s:%s", dev->name, "wol");
@@ -7806,6 +7810,8 @@ static void stmmac_flush_mtl_tx(struct stmmac_priv *priv)
 
 static void stmmac_reset_subtask(struct stmmac_priv *priv)
 {
+	u32 tx_cnt = priv->plat->tx_queues_to_use;
+
 	if (!test_and_clear_bit(STMMAC_RESET_REQUESTED, &priv->state))
 		return;
 	if (test_bit(STMMAC_DOWN, &priv->state))
@@ -7819,6 +7825,8 @@ static void stmmac_reset_subtask(struct stmmac_priv *priv)
 		usleep_range(1000, 2000);
 
 	set_bit(STMMAC_DOWN, &priv->state);
+	/* Disabling Receive FC to allow DMA stop and MTL flush to complete. */
+	stmmac_flow_ctrl(priv, priv->hw, 0, 0, priv->pause, tx_cnt);
 	stmmac_stop_all_dma(priv);
 	stmmac_flush_mtl_tx(priv);
 	dev_close(priv->dev);
