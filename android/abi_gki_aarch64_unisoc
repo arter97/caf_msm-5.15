@@ -33,6 +33,7 @@
   atomic_notifier_chain_register
   atomic_notifier_chain_unregister
   available_idle_cpu
+  avenrun
   balance_push_callback
   bio_add_page
   bio_alloc_bioset
@@ -2972,6 +2973,9 @@
   watchdog_init_timeout
 
 # required by sprd_wlan_combo.ko
+  crypto_default_rng
+  crypto_get_default_rng
+  crypto_put_default_rng
   __netdev_alloc_frag_align
   printk_timed_ratelimit
 
@@ -3354,3 +3358,8 @@
   set_blocksize
   submit_bio_wait
 
+# required inode_info.ko
+  __traceiter_mm_filemap_delete_from_page_cache
+  __traceiter_mm_filemap_add_to_page_cache
+  __tracepoint_mm_filemap_delete_from_page_cache
+  __tracepoint_mm_filemap_add_to_page_cache
