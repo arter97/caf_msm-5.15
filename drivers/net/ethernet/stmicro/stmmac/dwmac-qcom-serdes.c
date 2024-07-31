@@ -1123,6 +1123,7 @@ static int qcom_ethqos_serdes_usxgmii_5Gb(struct qcom_ethqos *ethqos)
 
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES_PCS_SW_RESET);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
+	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES_PCS_PHY_START);
 	usleep_range(3000, 5000);
 
 	do {
