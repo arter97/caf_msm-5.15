@@ -141,6 +141,11 @@ static ssize_t txn_id_show(struct device *dev, struct device_attribute *attr, ch
 }
 static DEVICE_ATTR_RO(txn_id);
 
+static inline bool is_mss_ssr_hyp_assign_en(const struct adsp_data *desc)
+{
+	return (desc->needs_dsm_mem_setup && !strcmp(desc->firmware_name, "modem.mdt"));
+}
+
 void adsp_segment_dump(struct rproc *rproc, struct rproc_dump_segment *segment,
 		     void *dest, size_t offset, size_t size)
 {
@@ -1089,6 +1094,43 @@ static int setup_mpss_dsm_mem(struct platform_device *pdev)
 	return 0;
 }
 
+static int qcom_rproc_adsp_driver_freeze(struct device *dev)
+{
+	const struct adsp_data *desc;
+
+	desc = of_device_get_match_data(dev);
+
+	if (is_mss_ssr_hyp_assign_en(desc) && mpss_dsm_mem_setup)
+		mpss_dsm_mem_setup = false;
+
+	return 0;
+}
+
+static int qcom_rproc_adsp_driver_restore(struct device *dev)
+{
+	const struct adsp_data *desc;
+	int ret;
+
+	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
+
+	desc = of_device_get_match_data(dev);
+
+	if (is_mss_ssr_hyp_assign_en(desc) && !mpss_dsm_mem_setup) {
+		ret = setup_mpss_dsm_mem(pdev);
+		if (ret) {
+			dev_err(dev, "failed to setup mpss dsm mem\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops rproc_adsp_pm_ops = {
+	.freeze = qcom_rproc_adsp_driver_freeze,
+	.restore = qcom_rproc_adsp_driver_restore,
+};
+
 static int adsp_probe(struct platform_device *pdev)
 {
 	const struct adsp_data *desc;
@@ -1113,8 +1155,7 @@ static int adsp_probe(struct platform_device *pdev)
 	if (ret < 0 && ret != -EINVAL)
 		return ret;
 
-	if (desc->needs_dsm_mem_setup && !mpss_dsm_mem_setup &&
-			!strcmp(fw_name, "modem.mdt")) {
+	if (is_mss_ssr_hyp_assign_en(desc)) {
 		ret = setup_mpss_dsm_mem(pdev);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to setup mpss dsm mem\n");
@@ -1455,6 +1496,18 @@ static const struct adsp_data qcs605_adsp_resource = {
 	.ssctl_id = 0x14,
 };
 
+static const struct adsp_data scuba_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.has_xo_clk = true,
+	.minidump_id = 5,
+	.uses_elf64 = false,
+	.ssr_name = "lpass",
+	.sysmon_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
 static const struct adsp_data msm8998_adsp_resource = {
 		.crash_reason_smem = 423,
 		.firmware_name = "adsp.mdt",
@@ -1731,6 +1784,19 @@ static const struct adsp_data khaje_mpss_resource = {
 };
 
 static const struct adsp_data bengal_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.free_after_auth_reset = true,
+	.minidump_id = 3,
+	.uses_elf64 = true,
+	.has_xo_clk = true,
+	.ssr_name = "mpss",
+	.sysmon_name = "modem",
+	.ssctl_id = 0x12,
+};
+
+static const struct adsp_data scuba_mpss_resource = {
 	.crash_reason_smem = 421,
 	.firmware_name = "modem.mdt",
 	.pas_id = 4,
@@ -2262,6 +2328,8 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,bengal-adsp-pas", .data = &bengal_adsp_resource},
 	{ .compatible = "qcom,bengal-cdsp-pas", .data = &bengal_cdsp_resource},
 	{ .compatible = "qcom,bengal-modem-pas", .data = &bengal_mpss_resource},
+	{ .compatible = "qcom,scuba-adsp-pas", .data = &scuba_adsp_resource},
+	{ .compatible = "qcom,scuba-modem-pas", .data = &scuba_mpss_resource},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
@@ -2272,6 +2340,7 @@ static struct platform_driver adsp_driver = {
 	.driver = {
 		.name = "qcom_q6v5_pas",
 		.of_match_table = adsp_of_match,
+		.pm = &rproc_adsp_pm_ops,
 	},
 };
 
