@@ -841,10 +841,7 @@ static int fastrpc_mmap_find(struct fastrpc_file *fl, int fd,
 
 	if ((va + len) < va)
 		return -EFAULT;
-	if (mflags == ADSP_MMAP_HEAP_ADDR ||
-				 mflags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
-		return -EFAULT;
-	} else if (mflags == ADSP_MMAP_DMA_BUFFER) {
+	if (mflags == ADSP_MMAP_DMA_BUFFER) {
 		hlist_for_each_entry_safe(map, n, &fl->maps, hn) {
 			if (map->buf == buf) {
 				if (refs) {
@@ -1407,6 +1404,10 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 	else
 		fl->mem_snap.nonheap_bufs_size += map->size;
 	spin_unlock(&fl->hlock);
+<<<<<<< HEAD   (cf04f0 msm: adsprpc: Avoid taking reference for group_info)
+=======
+
+>>>>>>> CHANGE (210e76 msm: adsprpc: use-after-free (UAF) in global maps)
 	if ((mflags != ADSP_MMAP_HEAP_ADDR) &&
 			(mflags != ADSP_MMAP_REMOTE_HEAP_ADDR))
 		fastrpc_mmap_add(map);
@@ -5008,7 +5009,7 @@ static int fastrpc_mmap_dump(struct fastrpc_mmap *map, struct fastrpc_file *fl, 
 						match->size, match->flags, 0);
 			else {
 				pr_err("Cannot communicate with DSP, ADSP is down\n");
-				fastrpc_mmap_add(match);
+				fastrpc_mmap_add_global(match);
 			}
 		}
 		if (err)
