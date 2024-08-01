@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2262,7 +2263,7 @@ static void mdss_dsi_parse_dfps_config(struct device_node *pan_node,
 	pinfo->current_fps = pinfo->mipi.frame_rate;
 }
 
-int mdss_panel_parse_bl_settings(struct device_node *np,
+int mdss_panel_parse_bl_settings(struct device *dev, struct device_node *np,
 			struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	const char *data;
@@ -2291,7 +2292,7 @@ int mdss_panel_parse_bl_settings(struct device_node *np,
 			}
 			ctrl_pdata->pwm_period = tmp;
 			if (ctrl_pdata->pwm_pmi) {
-				ctrl_pdata->pwm_bl = of_pwm_get(np, NULL);
+				ctrl_pdata->pwm_bl = of_pwm_get(dev, np, NULL);
 				if (IS_ERR(ctrl_pdata->pwm_bl)) {
 					pr_err("%s: Error, pwm device\n",
 								__func__);

@@ -1,4 +1,5 @@
 /* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,7 +37,7 @@ static int mdss_spi_get_img(struct spi_panel_data *ctrl_pdata,
 {
 	struct msmfb_data image;
 	struct dma_buf *dmabuf;
-	void *vaddr;
+	void *vaddr = NULL;
 
 	memset(&image, 0, sizeof(image));
 	image.memory_id = commit->input_layers[0].buffer.planes[0].fd;
@@ -60,7 +61,7 @@ static int mdss_spi_get_img(struct spi_panel_data *ctrl_pdata,
 
 	dma_buf_begin_cpu_access(dmabuf, DMA_TO_DEVICE);
 
-	vaddr  = dma_buf_kmap(dmabuf, 0);
+	dma_buf_vmap(dmabuf, vaddr);
 	if (!vaddr) {
 		pr_err("%s:ion memory mapping failed\n", __func__);
 		goto err_unmap;
@@ -87,7 +88,7 @@ static void mdss_spi_put_img(struct spi_panel_data *ctrl_pdata)
 {
 	if (!ctrl_pdata->image_data.mapped)
 		return;
-	dma_buf_kunmap(ctrl_pdata->image_data.srcp_dma_buf, 0,
+	dma_buf_vunmap(ctrl_pdata->image_data.srcp_dma_buf,
 				ctrl_pdata->image_data.addr);
 	dma_buf_end_cpu_access(ctrl_pdata->image_data.srcp_dma_buf,
 				DMA_BIDIRECTIONAL);

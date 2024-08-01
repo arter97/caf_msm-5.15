@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -388,7 +389,7 @@ static int pp_hist_lut_get_config(char __iomem *base_addr, void *cfg_data,
 		return -EINVAL;
 	}
 	sz = ENHIST_LUT_ENTRIES * sizeof(u32);
-	if (!access_ok(VERIFY_WRITE, lut_data->data, sz)) {
+	if (!access_ok(lut_data->data, sz)) {
 		pr_err("invalid lut address for hist_lut sz %d\n", sz);
 		return -EFAULT;
 	}
@@ -727,20 +728,20 @@ static int pp_gamut_get_config(char __iomem *base_addr, void *cfg_data,
 	gamut_data.map_en = mode & GAMUT_MAP_EN;
 	sz_scale = MDP_GAMUT_SCALE_OFF_SZ * sizeof(u32);
 	for (i = 0; i < MDP_GAMUT_TABLE_NUM_V1_7; i++) {
-		if (!access_ok(VERIFY_WRITE, gamut_data.c0_data[i], sz)) {
+		if (!access_ok(gamut_data.c0_data[i], sz)) {
 			pr_err("invalid c0 address for sz %d table index %d\n",
 				sz, (i+1));
 			return -EFAULT;
 		}
-		if (!access_ok(VERIFY_WRITE, gamut_data.c1_c2_data[i], sz)) {
+		if (!access_ok(gamut_data.c1_c2_data[i], sz)) {
 			pr_err("invalid c1c2 address for sz %d table index %d\n",
 				sz, (i+1));
 			return -EFAULT;
 		}
 		gamut_data.tbl_size[i] = tbl_sz;
 		if (i < MDP_GAMUT_SCALE_OFF_TABLE_NUM) {
-			if (!access_ok(VERIFY_WRITE,
-			     gamut_data.scale_off_data[i], sz_scale)) {
+			if (!access_ok(gamut_data.scale_off_data[i],
+					sz_scale)) {
 				pr_err("invalid scale address for sz %d color c%d\n",
 					sz_scale, i);
 				return -EFAULT;
@@ -1490,13 +1491,13 @@ static int pp_pa_get_six_zone(char __iomem *base_addr,
 	}
 	six_zone_sz = pa_data->six_zone_len * sizeof(uint32_t);
 
-	if (!access_ok(VERIFY_WRITE, pa_data->six_zone_curve_p0,
+	if (!access_ok(pa_data->six_zone_curve_p0,
 			six_zone_sz)) {
 		pr_err("invalid six_zone_curve_p0 addr for sz %d\n",
 			six_zone_sz);
 		return -EFAULT;
 	}
-	if (!access_ok(VERIFY_WRITE, pa_data->six_zone_curve_p1,
+	if (!access_ok(pa_data->six_zone_curve_p1,
 			six_zone_sz)) {
 		pr_err("invalid six_zone_curve_p1 addr for sz %d\n",
 			six_zone_sz);
@@ -1825,8 +1826,8 @@ static int pp_igc_get_config(char __iomem *base_addr, void *cfg_data,
 		goto exit;
 	}
 	sz = IGC_LUT_ENTRIES * sizeof(u32);
-	if (!access_ok(VERIFY_WRITE, lut_data->c0_c1_data, sz) ||
-	    (!access_ok(VERIFY_WRITE, lut_data->c2_data, sz))) {
+	if (!access_ok(lut_data->c0_c1_data, sz) ||
+	    (!access_ok(lut_data->c2_data, sz))) {
 		pr_err("invalid lut address for sz %d\n", sz);
 		ret = -EFAULT;
 		goto exit;
@@ -1985,9 +1986,9 @@ static int pp_pgc_get_config(char __iomem *base_addr, void *cfg_data,
 		return -EINVAL;
 	}
 	sz = PGC_LUT_ENTRIES * sizeof(u32);
-	if (!access_ok(VERIFY_WRITE, pgc_data_v17->c0_data, sz) ||
-	    !access_ok(VERIFY_WRITE, pgc_data_v17->c1_data, sz) ||
-	    !access_ok(VERIFY_WRITE, pgc_data_v17->c2_data, sz)) {
+	if (!access_ok(pgc_data_v17->c0_data, sz) ||
+	    !access_ok(pgc_data_v17->c1_data, sz) ||
+	    !access_ok(pgc_data_v17->c2_data, sz)) {
 		pr_err("incorrect payload for PGC read size %d\n",
 			PGC_LUT_ENTRIES);
 		return -EFAULT;

@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
  * Copyright (C) 1994 Martin Schaller
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * 2001 - Documented with DocBook
  * - Brad Douglas <brad@neruo.com>
@@ -54,6 +55,16 @@
 
 #define MSMFB_ASYNC_POSITION_UPDATE_32 _IOWR(MDP_IOCTL_MAGIC, 129, \
 		struct mdp_position_update32)
+
+static int copy_in_user(void *ptr, void *src, int size)
+{
+	char __user **bufptr = ptr;
+
+	if (copy_to_user(*bufptr, src, size))
+		return -EFAULT;
+	*bufptr += size;
+	return 0;
+}
 
 static int __copy_layer_pp_info_params(struct mdp_input_layer *layer,
 				struct mdp_input_layer32 *layer32);
@@ -511,7 +522,7 @@ static int mdss_fb_compat_buf_sync(struct fb_info *info, unsigned int cmd,
 	u32 data;
 	int ret;
 
-	buf_sync = compat_alloc_user_space(sizeof(*buf_sync));
+	buf_sync = kmalloc(sizeof(*buf_sync), GFP_KERNEL);
 	if (!buf_sync) {
 		pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 			 __func__, __LINE__, sizeof(*buf_sync));
@@ -622,7 +633,7 @@ static int mdss_fb_compat_cursor(struct fb_info *info, unsigned int cmd,
 	__u32 data;
 	int ret;
 
-	cursor = compat_alloc_user_space(sizeof(*cursor));
+	cursor = kmalloc(sizeof(*cursor), GFP_KERNEL);
 	if (!cursor) {
 		pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 			 __func__, __LINE__, sizeof(*cursor));
@@ -655,7 +666,12 @@ static int mdss_fb_compat_set_lut(struct fb_info *info, unsigned long arg,
 	__u32 data;
 	int ret;
 
-	cmap = compat_alloc_user_space(sizeof(*cmap));
+	cmap = kmalloc(sizeof(*cmap), GFP_KERNEL);
+	if (!cmap) {
+		pr_err("%s:%u: compat alloc error [%zu] bytes\n",
+			 __func__, __LINE__, sizeof(*cmap));
+		return -EINVAL;
+	}
 	cmap32 = compat_ptr(arg);
 
 	if (copy_in_user(&cmap->start, &cmap32->start, 2 * sizeof(__u32)))
@@ -2877,7 +2893,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 				sizeof(struct mdp_ar_gc_lut_data);
 			alloc_size += __pp_compat_size_pgc();
 
-			*pp = compat_alloc_user_space(alloc_size);
+			*pp = kmalloc(alloc_size, GFP_KERNEL);
 			if (*pp == NULL)
 				return -ENOMEM;
 			if (clear_user(*pp, alloc_size))
@@ -2905,7 +2921,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 			break;
 		case mdp_lut_igc:
 			alloc_size += __pp_compat_size_igc();
-			*pp = compat_alloc_user_space(alloc_size);
+			*pp = kmalloc(alloc_size, GFP_KERNEL);
 			if (*pp == NULL) {
 				pr_err("failed to alloc from user size %d for igc\n",
 					alloc_size);
@@ -2921,7 +2937,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 			break;
 		case mdp_lut_hist:
 			alloc_size += __pp_compat_size_hist_lut();
-			*pp = compat_alloc_user_space(alloc_size);
+			*pp = kmalloc(alloc_size, GFP_KERNEL);
 			if (*pp == NULL) {
 				pr_err("failed to alloc from user size %d for hist lut\n",
 					alloc_size);
@@ -2936,7 +2952,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 				return -EFAULT;
 			break;
 		default:
-			*pp = compat_alloc_user_space(alloc_size);
+			*pp = kmalloc(alloc_size, GFP_KERNEL);
 			if (*pp == NULL) {
 				pr_err("failed to alloc from user size %d for lut_type %d\n",
 					alloc_size, lut_type);
@@ -2949,7 +2965,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 		break;
 	case mdp_op_pcc_cfg:
 		alloc_size += __pp_compat_size_pcc();
-		*pp = compat_alloc_user_space(alloc_size);
+		*pp = kmalloc(alloc_size, GFP_KERNEL);
 		if (*pp == NULL) {
 			pr_err("alloc from user size %d for pcc fail\n",
 				alloc_size);
@@ -2964,7 +2980,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 		break;
 	case mdp_op_gamut_cfg:
 		alloc_size += __pp_compat_size_gamut();
-		*pp = compat_alloc_user_space(alloc_size);
+		*pp = kmalloc(alloc_size, GFP_KERNEL);
 		if (*pp == NULL) {
 			pr_err("alloc from user size %d for pcc fail\n",
 				alloc_size);
@@ -2979,7 +2995,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 		break;
 	case mdp_op_pa_v2_cfg:
 		alloc_size += __pp_compat_size_pa();
-		*pp = compat_alloc_user_space(alloc_size);
+		*pp = kmalloc(alloc_size, GFP_KERNEL);
 		if (*pp == NULL) {
 			pr_err("alloc from user size %d for pcc fail\n",
 				alloc_size);
@@ -2993,7 +3009,7 @@ static int __pp_compat_alloc(struct msmfb_mdp_pp32 __user *pp32,
 			return -EFAULT;
 		break;
 	default:
-		*pp = compat_alloc_user_space(alloc_size);
+		*pp = kmalloc(alloc_size, GFP_KERNEL);
 		if (*pp == NULL)
 			return -ENOMEM;
 		if (clear_user(*pp, alloc_size))
@@ -3407,8 +3423,7 @@ static int mdss_histo_compat_ioctl(struct fb_info *info, unsigned int cmd,
 	switch (cmd) {
 	case MSMFB_HISTOGRAM_START:
 		hist_req32 = compat_ptr(arg);
-		hist_req = compat_alloc_user_space(
-				sizeof(struct mdp_histogram_start_req));
+		hist_req = kmalloc(sizeof(struct mdp_histogram_start_req), GFP_KERNEL);
 		if (!hist_req) {
 			pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 				 __func__, __LINE__,
@@ -3429,8 +3444,7 @@ static int mdss_histo_compat_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 	case MSMFB_HISTOGRAM:
 		hist32 = compat_ptr(arg);
-		hist = compat_alloc_user_space(
-				sizeof(struct mdp_histogram_data));
+		hist = kmalloc(sizeof(struct mdp_histogram_data), GFP_KERNEL);
 		if (!hist) {
 			pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 				 __func__, __LINE__,
@@ -4179,7 +4193,7 @@ int mdss_compat_overlay_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 	case MSMFB_OVERLAY_GET:
 		alloc_size += sizeof(*ov) + __pp_sspp_size();
-		ov = compat_alloc_user_space(alloc_size);
+		ov = kmalloc(alloc_size, GFP_KERNEL);
 		if (!ov) {
 			pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 				 __func__, __LINE__, sizeof(*ov));
@@ -4201,7 +4215,7 @@ int mdss_compat_overlay_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 	case MSMFB_OVERLAY_SET:
 		alloc_size += sizeof(*ov) + __pp_sspp_size();
-		ov = compat_alloc_user_space(alloc_size);
+		ov = kmalloc(alloc_size, GFP_KERNEL);
 		if (!ov) {
 			pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 				 __func__, __LINE__, sizeof(*ov));
@@ -4238,8 +4252,8 @@ int mdss_compat_overlay_ioctl(struct fb_info *info, unsigned int cmd,
 		prepare_sz = sizeof(struct mdp_overlay_list);
 		layers_refs_sz = num_overlays * sizeof(struct mdp_overlay *);
 
-		total_mem_chunk = compat_alloc_user_space(
-			prepare_sz + layers_refs_sz + layers_sz);
+		total_mem_chunk = kmalloc(prepare_sz + layers_refs_sz
+						+ layers_sz, GFP_KERNEL);
 		if (!total_mem_chunk) {
 			pr_err("%s:%u: compat alloc error [%zu] bytes\n",
 				 __func__, __LINE__,

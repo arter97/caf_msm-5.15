@@ -1,4 +1,5 @@
 /* Copyright (c) 2009-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -334,7 +335,7 @@ int panel_debug_register_base(const char *name, void __iomem *base,
 	struct mdss_data_type *mdata = mdss_res;
 	struct mdss_debug_data *mdd;
 	struct mdss_debug_base *dbg;
-	struct dentry *ent_off, *ent_reg, *ent_type;
+	struct dentry *ent_off, *ent_reg;
 	char dn[PANEL_DATA_NODE_LEN] = "";
 	int prefix_len = 0;
 
@@ -357,13 +358,8 @@ int panel_debug_register_base(const char *name, void __iomem *base,
 		prefix_len = snprintf(dn, sizeof(dn), "%s_", name);
 
 	strlcpy(dn + prefix_len, "cmd_data_type", sizeof(dn) - prefix_len);
-	ent_type = debugfs_create_x8(dn, 0644, mdd->root,
+	debugfs_create_x8(dn, 0644, mdd->root,
 		(u8 *)&dbg->cmd_data_type);
-
-	if (IS_ERR_OR_NULL(ent_type)) {
-		pr_err("debugfs_create_file: data_type fail\n");
-		goto type_fail;
-	}
 
 	strlcpy(dn + prefix_len, "off", sizeof(dn) - prefix_len);
 	ent_off = debugfs_create_file(dn, 0644, mdd->root,
@@ -392,8 +388,6 @@ int panel_debug_register_base(const char *name, void __iomem *base,
 reg_fail:
 	debugfs_remove(ent_off);
 off_fail:
-	debugfs_remove(ent_type);
-type_fail:
 	kfree(dbg);
 	return -ENODEV;
 }

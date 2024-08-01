@@ -1,5 +1,6 @@
 /* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -36,7 +37,6 @@
 #include <linux/file.h>
 #include <linux/msm_kgsl.h>
 #include <linux/major.h>
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 #include <linux/iopoll.h>
 #include <linux/clk/msm-clk.h>

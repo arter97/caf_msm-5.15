@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2007-2018,2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -31,7 +32,7 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
-#include <linux/regulator/rpm-smd-regulator.h>
+#include <dt-bindings/regulator/qcom,rpm-smd-regulator.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
@@ -43,6 +44,7 @@
 #include <linux/clk/qcom.h>
 #include <linux/irqdomain.h>
 #include <linux/irq.h>
+#include <linux/qcom_scm.h>
 
 #include <linux/msm-bus.h>
 #include <dt-bindings/arm/msm/msm-bus-ids.h>
@@ -1498,41 +1500,41 @@ static void mdss_mdp_memory_retention_ctrl(bool mem_ctrl, bool periph_ctrl)
 	if (mdp_vote_clk) {
 		mdss_mdp_clk = clk_get_parent(mdp_vote_clk);
 		if (mdss_mdp_clk) {
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_MEM);
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_SET);
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_PERIPH);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_MEM);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_SET);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_PERIPH);
 		}
 	}
 
 	__mdss_mdp_reg_access_clk_enable(mdata, true);
 	if (mdss_mdp_clk) {
 		if (mem_ctrl)
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_MEM);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_MEM);
 		else
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_MEM);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_MEM);
 
 		if (periph_ctrl) {
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_PERIPH);
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_CLEAR);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_RETAIN_PERIPH);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_CLEAR);
 		} else {
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_SET);
-			clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_PERIPH);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_PERIPH_OFF_SET);
+			qcom_clk_set_flags(mdss_mdp_clk, CLKFLAG_NORETAIN_PERIPH);
 		}
 	}
 
 	if (mdss_mdp_lut_clk) {
 		if (mem_ctrl)
-			clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_RETAIN_MEM);
+			qcom_clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_RETAIN_MEM);
 		else
-			clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_NORETAIN_MEM);
+			qcom_clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_NORETAIN_MEM);
 
 		if (periph_ctrl) {
-			clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_RETAIN_PERIPH);
-			clk_set_flags(mdss_mdp_lut_clk,
+			qcom_clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_RETAIN_PERIPH);
+			qcom_clk_set_flags(mdss_mdp_lut_clk,
 				CLKFLAG_PERIPH_OFF_CLEAR);
 		} else {
-			clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_PERIPH_OFF_SET);
-			clk_set_flags(mdss_mdp_lut_clk,
+			qcom_clk_set_flags(mdss_mdp_lut_clk, CLKFLAG_PERIPH_OFF_SET);
+			qcom_clk_set_flags(mdss_mdp_lut_clk,
 				CLKFLAG_NORETAIN_PERIPH);
 		}
 	}
@@ -1600,13 +1602,13 @@ static int mdss_mdp_retention_init(struct mdss_data_type *mdata)
 		return -EINVAL;
 	}
 
-	rc = clk_set_flags(mdss_axi_clk, CLKFLAG_NORETAIN_MEM);
+	rc = qcom_clk_set_flags(mdss_axi_clk, CLKFLAG_NORETAIN_MEM);
 	if (rc) {
 		pr_err("failed to set AXI no memory retention %d\n", rc);
 		return rc;
 	}
 
-	rc = clk_set_flags(mdss_axi_clk, CLKFLAG_NORETAIN_PERIPH);
+	rc = qcom_clk_set_flags(mdss_axi_clk, CLKFLAG_NORETAIN_PERIPH);
 	if (rc) {
 		pr_err("failed to set AXI no periphery retention %d\n", rc);
 		return rc;
@@ -1718,7 +1720,7 @@ static inline int mdss_mdp_irq_clk_register(struct mdss_data_type *mdata,
 	}
 
 	tmp = devm_clk_get(&mdata->pdev->dev, clk_name);
-	if (IS_ERR(tmp)) {
+	if (IS_ERR_OR_NULL(tmp)) {
 		pr_err("unable to get clk: %s\n", clk_name);
 		return PTR_ERR(tmp);
 	}
@@ -1731,7 +1733,7 @@ static inline int mdss_mdp_irq_clk_register(struct mdss_data_type *mdata,
 
 static void __mdss_restore_sec_cfg(struct mdss_data_type *mdata)
 {
-	int ret, scm_ret = 0;
+	int scm_ret = 0;
 
 	if (test_bit(MDSS_CAPS_SCM_RESTORE_NOT_REQUIRED, mdata->mdss_caps_map))
 		return;
@@ -1740,10 +1742,9 @@ static void __mdss_restore_sec_cfg(struct mdss_data_type *mdata)
 
 	__mdss_mdp_reg_access_clk_enable(mdata, true);
 
-	ret = scm_restore_sec_cfg(SEC_DEVICE_MDSS, 0, &scm_ret);
-	if (ret || scm_ret)
-		pr_warn("scm_restore_sec_cfg failed %d %d\n",
-				ret, scm_ret);
+	scm_ret = qcom_scm_restore_sec_cfg(SEC_DEVICE_MDSS, 0);
+	if (scm_ret)
+		pr_warn("qcom_scm_restore_sec_cfg failed %d\n", scm_ret);
 
 	__mdss_mdp_reg_access_clk_enable(mdata, false);
 }
@@ -1819,7 +1820,7 @@ static int mdss_mdp_irq_clk_setup(struct mdss_data_type *mdata)
 				"vdd-cx");
 	if (IS_ERR_OR_NULL(mdata->vdd_cx)) {
 		pr_debug("unable to get CX reg. rc=%d\n",
-					PTR_RET(mdata->vdd_cx));
+					PTR_ERR_OR_ZERO(mdata->vdd_cx));
 		mdata->vdd_cx = NULL;
 	}
 
@@ -1830,10 +1831,10 @@ static int mdss_mdp_irq_clk_setup(struct mdss_data_type *mdata)
 	}
 
 	if (mdss_mdp_irq_clk_register(mdata, "bus_clk", MDSS_CLK_AXI) ||
-	    mdss_mdp_irq_clk_register(mdata, "iface_clk", MDSS_CLK_AHB) ||
-	    mdss_mdp_irq_clk_register(mdata, "core_clk", MDSS_CLK_MDP_CORE))
+		mdss_mdp_irq_clk_register(mdata, "iface_clk", MDSS_CLK_AHB))
 		return -EINVAL;
 
+	mdss_mdp_irq_clk_register(mdata, "core_clk", MDSS_CLK_MDP_CORE);
 	/* lut_clk is not present on all MDSS revisions */
 	mdss_mdp_irq_clk_register(mdata, "lut_clk", MDSS_CLK_MDP_LUT);
 
@@ -4616,7 +4617,7 @@ void mdss_mdp_batfet_ctrl(struct mdss_data_type *mdata, int enable)
 				"batfet");
 			if (IS_ERR_OR_NULL(mdata->batfet)) {
 				pr_debug("unable to get batfet reg. rc=%d\n",
-					PTR_RET(mdata->batfet));
+					PTR_ERR_OR_ZERO(mdata->batfet));
 				mdata->batfet = NULL;
 				return;
 			}
@@ -4899,8 +4900,8 @@ static int mdss_mdp_cx_ctrl(struct mdss_data_type *mdata, int enable)
 	if (enable) {
 		rc = regulator_set_voltage(
 				mdata->vdd_cx,
-				RPM_REGULATOR_CORNER_SVS_SOC,
-				RPM_REGULATOR_CORNER_SUPER_TURBO);
+				RPM_SMD_REGULATOR_LEVEL_SVS,
+				RPM_SMD_REGULATOR_LEVEL_SUPER_TURBO);
 		if (rc < 0)
 			goto vreg_set_voltage_fail;
 
@@ -4919,8 +4920,8 @@ static int mdss_mdp_cx_ctrl(struct mdss_data_type *mdata, int enable)
 		}
 		rc = regulator_set_voltage(
 				mdata->vdd_cx,
-				RPM_REGULATOR_CORNER_NONE,
-				RPM_REGULATOR_CORNER_SUPER_TURBO);
+				RPM_SMD_REGULATOR_LEVEL_NONE,
+				RPM_SMD_REGULATOR_LEVEL_SUPER_TURBO);
 		if (rc < 0)
 			goto vreg_set_voltage_fail;
 	}
@@ -5089,9 +5090,10 @@ int mdss_mdp_secure_session_ctrl(unsigned int enable, u64 flags)
 			/* let the driver think smmu is still attached */
 			mdata->iommu_attached = true;
 
-			dmac_flush_range(&sid_info, &sid_info + 1);
-			ret = scm_call2(SCM_SIP_FNID(SCM_SVC_MP,
-				mem_protect_sd_ctrl_id), &desc);
+			flush_icache_range((unsigned long)(&sid_info),
+						(unsigned long) (&sid_info + 1));
+			ret = qcom_scm_mem_protect_sd_ctrl(desc.args[0], desc.args[1],
+						desc.args[2], desc.args[3]);
 			if (ret) {
 				pr_err("Error scm_call MEM_PROTECT_SD_CTRL(%u) ret=%dm resp=%x\n",
 						enable, ret, resp);
@@ -5109,9 +5111,10 @@ int mdss_mdp_secure_session_ctrl(unsigned int enable, u64 flags)
 			else if (flags & MDP_SECURE_CAMERA_OVERLAY_SESSION)
 				mdata->sec_cam_en = 0;
 
-			dmac_flush_range(&sid_info, &sid_info + 1);
-			ret = scm_call2(SCM_SIP_FNID(SCM_SVC_MP,
-				mem_protect_sd_ctrl_id), &desc);
+			flush_icache_range((unsigned long)(&sid_info),
+					(unsigned long)(&sid_info + 1));
+			ret = qcom_scm_mem_protect_sd_ctrl(desc.args[0], desc.args[1],
+						desc.args[2], desc.args[3]);
 			if (ret)
 				MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl",
 						"dsi0_phy", "dsi1_ctrl",
@@ -5138,8 +5141,8 @@ int mdss_mdp_secure_session_ctrl(unsigned int enable, u64 flags)
 		desc.args[0] = request.enable = enable;
 		desc.arginfo = SCM_ARGS(1);
 
-		ret = scm_call2(SCM_SIP_FNID(SCM_SVC_MP,
-				mem_protect_sd_ctrl_id), &desc);
+		ret = qcom_scm_mem_protect_sd_ctrl(desc.args[0], desc.args[1],
+					desc.args[2], desc.args[3]);
 		resp = desc.ret[0];
 
 		pr_debug("scm_call MEM_PROTECT_SD_CTRL(%u): ret=%d, resp=%x\n",

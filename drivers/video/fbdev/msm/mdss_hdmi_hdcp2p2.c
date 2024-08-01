@@ -1,4 +1,5 @@
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -110,7 +111,7 @@ static int hdmi_hdcp2p2_copy_buf(struct hdmi_hdcp2p2_ctrl *ctrl,
 
 	ctrl->buf_len = data->buf_len;
 
-	kzfree(ctrl->buf);
+	kfree(ctrl->buf);
 
 	ctrl->buf = kzalloc(data->buf_len, GFP_KERNEL);
 

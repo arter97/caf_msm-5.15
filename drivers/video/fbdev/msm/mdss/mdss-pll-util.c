@@ -1,4 +1,5 @@
 /* Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,6 +21,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/vmalloc.h>
 #include <linux/memblock.h>
+#include <linux/mdss_io_util.h>
 
 #include "mdss-pll.h"
 
@@ -390,7 +392,7 @@ static int mdss_pll_util_parse_dt_dfps_sub(struct platform_device *pdev,
 
 addr_err:
 	if (virt_add)
-		unmap_kernel_range(virt_add, (unsigned long) size);
+		vunmap_range(virt_add, (unsigned long) (size + virt_add));
 ioremap_err:
 	if (area)
 		vfree(area->addr);
@@ -401,8 +403,7 @@ dfps_mem_err:
 pnode_err:
 	if (pnode)
 		of_node_put(pnode);
-
-	dma_release_declared_memory(&pdev->dev);
+	pr_err("Memory region Missing!\n");
 	return rc;
 }
 

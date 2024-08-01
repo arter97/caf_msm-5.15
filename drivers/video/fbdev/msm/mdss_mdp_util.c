@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,7 +13,7 @@
  */
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
-#include <linux/dma-mapping.h>
+#include <linux/qcom-dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/file.h>
 #include <linux/ion.h>

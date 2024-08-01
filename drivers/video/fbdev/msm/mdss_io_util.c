@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2015, 2017-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -38,7 +39,6 @@ void dss_reg_w(struct dss_io_data *io, u32 offset, u32 value, u32 debug)
 		in_val = readl_relaxed(io->base + offset);
 		DEV_DBG("[%08x] => %08x [%08x]\n",
 			(u32)(unsigned long)(io->base + offset),
-
 			value, in_val);
 	}
 } /* dss_reg_w */
@@ -78,7 +78,7 @@ void dss_reg_dump(void __iomem *base, u32 length, const char *prefix,
 } /* dss_reg_dump */
 EXPORT_SYMBOL(dss_reg_dump);
 
-static struct resource *msm_mdss_get_res_byname(struct platform_device *pdev,
+struct resource *msm_mdss_get_res_byname(struct platform_device *pdev,
 	unsigned int type, const char *name)
 {
 	struct resource *res = NULL;
@@ -152,7 +152,8 @@ int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 			curr_vreg = &in_vreg[i];
 			curr_vreg->vreg = regulator_get(dev,
 				curr_vreg->vreg_name);
-			rc = PTR_RET(curr_vreg->vreg);
+			if (IS_ERR_OR_NULL(curr_vreg->vreg))
+				rc = PTR_ERR_OR_ZERO(curr_vreg->vreg);
 			if (rc) {
 				DEV_ERR("%pS->%s: %s get failed. rc=%d\n",
 					 __builtin_return_address(0), __func__,
@@ -226,7 +227,8 @@ int msm_dss_config_vreg_opt_mode(struct dss_vreg *in_vreg, int num_vreg,
 	}
 
 	for (i = 0; i < num_vreg; i++) {
-		rc = PTR_RET(in_vreg[i].vreg);
+		if (IS_ERR_OR_NULL(in_vreg[i].vreg))
+			rc = PTR_ERR(in_vreg[i].vreg);
 		if (rc) {
 			DEV_ERR("%pS->%s: %s regulator error. rc=%d\n",
 				__builtin_return_address(0), __func__,
@@ -266,7 +268,8 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 
 	if (enable) {
 		for (i = 0; i < num_vreg; i++) {
-			rc = PTR_RET(in_vreg[i].vreg);
+			if (IS_ERR_OR_NULL(in_vreg[i].vreg))
+				rc = PTR_ERR(in_vreg[i].vreg);
 			if (rc) {
 				DEV_ERR("%pS->%s: %s regulator error. rc=%d\n",
 					__builtin_return_address(0), __func__,
@@ -393,7 +396,8 @@ int msm_dss_get_clk(struct device *dev, struct dss_clk *clk_arry, int num_clk)
 
 	for (i = 0; i < num_clk; i++) {
 		clk_arry[i].clk = clk_get(dev, clk_arry[i].clk_name);
-		rc = PTR_RET(clk_arry[i].clk);
+		if (IS_ERR_OR_NULL(clk_arry[i].clk))
+			rc = PTR_ERR(clk_arry[i].clk);
 		if (rc) {
 			DEV_ERR("%pS->%s: '%s' get failed. rc=%d\n",
 				__builtin_return_address(0), __func__,

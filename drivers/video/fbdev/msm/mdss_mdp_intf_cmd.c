@@ -1,4 +1,5 @@
 /* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1342,7 +1343,7 @@ static void mdss_mdp_cmd_pingpong_done(void *arg)
 	struct mdss_mdp_ctl *ctl = arg;
 	struct mdss_mdp_cmd_ctx *ctx = ctl->intf_ctx[MASTER_CTX];
 	struct mdss_mdp_vsync_handler *tmp;
-	ktime_t vsync_time;
+	ktime_t vsync_time = 0;
 	bool sync_ppdone;
 
 	if (!ctx) {

@@ -1,5 +1,6 @@
 /* Copyright (c) 2007, 2013-2014, 2016-2018, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -23,6 +24,7 @@
 #include "linux/proc_fs.h"
 #include <linux/delay.h>
 
+#include "mdp3_ctrl.h"
 #include "mdss_fb.h"
 #include "mdp3_ppp.h"
 #include "mdp3_hwio.h"
