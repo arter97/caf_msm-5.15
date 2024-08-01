@@ -47,6 +47,9 @@ static void dwmac4_core_init(struct mac_device_info *hw,
 		}
 	}
 
+	if (hw->crc_strip_en)
+		value |= GMAC_CONFIG_CST;
+
 	writel(value, ioaddr + GMAC_CONFIG);
 
 	/* Configure LPI 1us counter to number of CSR clock ticks in 1us - 1 */
@@ -334,7 +337,7 @@ static void dwmac4_pmt(struct mac_device_info *hw, unsigned long mode)
 }
 
 static void dwmac4_set_umac_addr(struct mac_device_info *hw,
-				 unsigned char *addr, unsigned int reg_n)
+				 const unsigned char *addr, unsigned int reg_n)
 {
 	void __iomem *ioaddr = hw->pcsr;
 

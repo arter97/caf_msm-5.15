@@ -597,7 +597,7 @@ int dwmac4_setup(struct stmmac_priv *priv);
 int dwxgmac2_setup(struct stmmac_priv *priv);
 int dwxlgmac2_setup(struct stmmac_priv *priv);
 
-void stmmac_set_mac_addr(void __iomem *ioaddr, u8 addr[6],
+void stmmac_set_mac_addr(void __iomem *ioaddr, const u8 addr[6],
 			 unsigned int high, unsigned int low);
 void stmmac_get_mac_addr(void __iomem *ioaddr, unsigned char *addr,
 			 unsigned int high, unsigned int low);
@@ -607,7 +607,7 @@ void dwmac4_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
 				     void __iomem *ioaddr);
 void dwxgmac2_set_vlan_filter_rx_queue(struct vlan_filter_info *vlan,
 				       void __iomem *ioaddr);
-void stmmac_dwmac4_set_mac_addr(void __iomem *ioaddr, u8 addr[6],
+void stmmac_dwmac4_set_mac_addr(void __iomem *ioaddr, const u8 addr[6],
 				unsigned int high, unsigned int low);
 void stmmac_dwmac4_get_mac_addr(void __iomem *ioaddr, unsigned char *addr,
 				unsigned int high, unsigned int low);

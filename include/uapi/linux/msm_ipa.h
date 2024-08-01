@@ -158,7 +158,8 @@
 #define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
 #define IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING      103
 #define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       104
-
+#define IPA_IOCTL_QOS_PARAM                     105
+#define IPA_IOCTL_FLUSH_QOS_PARAM               106
 /**
  * max size of the header to be inserted
  */
@@ -556,28 +557,37 @@ enum ipa_client_type {
 	IPA_CLIENT_IPSEC_APPS_WAN_CONS		= 135,
 
 	IPA_CLIENT_APPS_WAN_ETH_PROD            = 136,
-	/* RESERVED CONS			            = 137, */
+	/* RESERVED CONS			= 137, */
 
-	IPA_CLIENT_APPS_WAN_V2X_PROD			= 138,
-	IPA_CLIENT_APPS_WAN_V2X_CONS			= 139,
+	IPA_CLIENT_APPS_WAN_V2X_PROD		= 138,
+	IPA_CLIENT_APPS_WAN_V2X_CONS		= 139,
 
 	IPA_CLIENT_Q6_V2X_BROADCAST_PROD        = 140,
-	/* RESERVED CONS			            = 141, */
+	/* RESERVED CONS			= 141, */
 
 	IPA_CLIENT_Q6_V2X_UNICAST_PROD          = 142,
-	/* RESERVED CONS			            = 143, */
+	/* RESERVED CONS			= 143, */
 
-	/* RESERVED PROD			            = 144, */
-	IPA_CLIENT_Q6_CV2X_DECIPHER_CONS		= 145,
+	/* RESERVED PROD			= 144, */
+	IPA_CLIENT_Q6_CV2X_DECIPHER_CONS	= 145,
 
 	IPA_CLIENT_ETHERNET_PROD1		= 146,
-	/* RESERVED CONS				= 147, */
+	IPA_CLIENT_ETHERNET_CONS1		= 147,
 
-	/* RESERVED PROD			            = 148, */
-	IPA_CLIENT_ETHERNET_LOW_LAT_CONS		= 149,
+	/* RESERVED PROD			= 148, */
+	IPA_CLIENT_ETHERNET_LOW_LAT_CONS	= 149,
+
+	IPA_CLIENT_ETHERNET_PROD2		= 150,
+	IPA_CLIENT_ETHERNET_CONS2		= 151,
+
+	IPA_CLIENT_ETHERNET_PROD3		= 152,
+	IPA_CLIENT_ETHERNET_CONS3		= 153,
+
+	IPA_CLIENT_ETHERNET_PROD4		= 154,
+	IPA_CLIENT_ETHERNET_CONS4		= 155
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_ETHERNET_LOW_LAT_CONS + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_ETHERNET_CONS4 + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -616,6 +626,7 @@ enum ipa_client_type {
 #define IPA_CLIENT_IPSEC_DECAP_NON_RECOVERABLE_ERR_CONS \
 	IPA_CLIENT_IPSEC_DECAP_NON_RECOVERABLE_ERR_CONS
 #define IPA_CLIENT_IPSEC_ENCAP_ERR_CONS IPA_CLIENT_IPSEC_ENCAP_ERR_CONS
+#define IPA_CLIENT_ETHERNET_CONS4 IPA_CLIENT_ETHERNET_CONS4
 
 #define IPA_CLIENT_IS_APPS_CONS(client) \
 	((client) == IPA_CLIENT_APPS_LAN_CONS || \
@@ -1079,7 +1090,15 @@ enum ipa_pdn_dscp_evt {
 #define IPA_PDN_DSCP_EVENT_MAX IPA_PDN_DSCP_EVENT_MAX
 };
 
-#define IPA_EVENT_MAX_NUM (IPA_PDN_DSCP_EVENT_MAX)
+enum ipa_qos_param_evt {
+	IPA_QOS_PARAM_ADD_EVENT = IPA_PDN_DSCP_EVENT_MAX,
+	IPA_QOS_PARAM_DELETE_EVENT,
+	IPA_QOS_PARAM_FLUSH_EVENT,
+	IPA_QOS_PARAM_EVENT_MAX
+#define IPA_QOS_PARAM_EVENT_MAX IPA_QOS_PARAM_EVENT_MAX
+};
+
+#define IPA_EVENT_MAX_NUM (IPA_QOS_PARAM_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -2677,6 +2696,7 @@ struct ipa_ioc_query_intf {
  * @alt_dst_pipe: alternate routing output pipe
  * @hdr_name: name of associated header if any, empty string when no header
  * @hdr_l2_type: type of associated header if any, use NONE when no header
+ * @tc_bmap: Bit map indicating the traffic classes associated to the pipe
  */
 struct ipa_ioc_tx_intf_prop {
 	enum ipa_ip_type ip;
@@ -2685,6 +2705,7 @@ struct ipa_ioc_tx_intf_prop {
 	enum ipa_client_type alt_dst_pipe;
 	char hdr_name[IPA_RESOURCE_NAME_MAX];
 	enum ipa_hdr_l2_type hdr_l2_type;
+	uint32_t tc_bmap;
 };
 
 /**
@@ -2741,12 +2762,14 @@ struct ipa_ioc_query_intf_ext_props {
  * @attrib: filtering rule
  * @src_pipe: input pipe
  * @hdr_l2_type: type of associated header if any, use NONE when no header
+ * @tc_bmap: Bit map indicating the traffic classes associated to the pipe
  */
 struct ipa_ioc_rx_intf_prop {
 	enum ipa_ip_type ip;
 	struct ipa_rule_attrib attrib;
 	enum ipa_client_type src_pipe;
 	enum ipa_hdr_l2_type hdr_l2_type;
+	uint32_t tc_bmap;
 };
 
 /**
@@ -3792,6 +3815,45 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 	struct ipa_rule_attrib attr;
 };
 
+enum ipa_qos_iface_category {
+	IPA_QOS_IFACE_WAN,
+	IPA_QOS_IFACE_LAN
+};
+
+
+struct ipa_ioc_qos_config {
+	char dev_name[IPA_RESOURCE_NAME_MAX];
+	enum ipa_qos_param_evt qos_param_evt_type;
+	enum ipa_qos_iface_category iface_cat;
+	uint8_t dir;
+	uint8_t ip_type;
+	uint8_t traffic_class;
+
+	uint32_t src_ip_addr;
+	uint32_t src_subnet;
+	uint32_t dst_ip_addr;
+	uint32_t dst_subnet;
+	uint16_t src_port_start;
+	uint16_t src_port_end;
+	uint16_t dst_port_start;
+	uint16_t dst_port_end;
+	uint8_t protocol;
+
+	uint32_t src_v6_ip_addr[4];
+	uint32_t src_v6_ip_subnet[4];
+	uint32_t dst_v6_ip_addr[4];
+	uint32_t dst_v6_ip_subnet[4];
+
+	uint8_t src_mac_addr[IPA_MAC_ADDR_SIZE];
+	uint8_t dst_mac_addr[IPA_MAC_ADDR_SIZE];
+	uint16_t vlan_count;
+	uint16_t vlan_ids[30];
+	uint8_t dscp;
+	uint8_t pcp;
+	uint8_t dscp_mark_val;
+};
+
+
 /**
  *   actual IOCTLs supported by IPA driver
  */
@@ -4148,6 +4210,14 @@ struct ipa_ioc_ipsec_ul_flt_attr {
 #define IPA_IOC_UPDATE_L2TP_CONFIG _IOW(IPA_IOC_MAGIC, \
 				IPA_IOCTL_UPDATE_L2TP_CONFIG, \
 				uint32_t)
+
+#define IPA_IOC_QOS_PARAM _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_QOS_PARAM, \
+				struct ipa_ioc_qos_config)
+
+#define IPA_IOC_FLUSH_QOS_PARAM _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_FLUSH_QOS_PARAM, \
+				struct ipa_ioc_qos_config)
 
 /*
  * unique magic number of the Tethering bridge ioctls

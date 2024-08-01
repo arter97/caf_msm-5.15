@@ -1075,14 +1075,17 @@ static void mhi_netdev_remove(struct mhi_device *mhi_dev)
 
 	MSG_LOG("Remove notification received\n");
 
-	/* rsc parent takes cares of the cleanup except buffer pool */
+	/* rsc parent takes cares of the device cleanup except buffer pool.
+	 * buffer pool is cleaned as part of rsc child cleanup.
+	 */
 	if (mhi_netdev->is_rsc_dev) {
 		mhi_netdev_free_pool(mhi_netdev);
 		return;
 	}
 
 	sysfs_remove_group(&mhi_dev->dev.kobj, &mhi_netdev_group);
-	kthread_stop(mhi_netdev->alloc_task);
+	if (!mhi_netdev->ethernet_interface)
+		kthread_stop(mhi_netdev->alloc_task);
 	netif_stop_queue(mhi_netdev->ndev);
 	napi_disable(mhi_netdev->napi);
 	unregister_netdev(mhi_netdev->ndev);
@@ -1093,7 +1096,10 @@ static void mhi_netdev_remove(struct mhi_device *mhi_dev)
 	if (!IS_ERR_OR_NULL(mhi_netdev->dentry))
 		debugfs_remove_recursive(mhi_netdev->dentry);
 
-	if (!mhi_netdev->rsc_parent)
+	/* For non rsc-channels, we need to explicitly clean the
+	 *  buffer pool.
+	 */
+	if (!mhi_netdev->ethernet_interface && !mhi_netdev->rsc_parent)
 		mhi_netdev_free_pool(mhi_netdev);
 }
 

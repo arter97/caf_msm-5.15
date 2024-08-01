@@ -231,6 +231,7 @@ enum power_event {
 #define GMAC_CONFIG_IPG			GENMASK(26, 24)
 #define GMAC_CONFIG_IPG_SHIFT		24
 #define GMAC_CONFIG_2K			BIT(22)
+#define GMAC_CONFIG_CST			BIT(21)
 #define GMAC_CONFIG_ACS			BIT(20)
 #define GMAC_CONFIG_BE			BIT(18)
 #define GMAC_CONFIG_JD			BIT(17)
