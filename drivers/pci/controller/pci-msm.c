@@ -8666,9 +8666,9 @@ static int __maybe_unused msm_pcie_pm_suspend_noirq(struct device *dev)
 			if (pcie_dev->pipe_clk_mux && pcie_dev->ref_clk_src)
 				clk_set_parent(pcie_dev->pipe_clk_mux, pcie_dev->ref_clk_src);
 
-		/* disable the controller GDSC*/
-		if (!pcie_dev->nogdsc_retention)
-			regulator_disable(pcie_dev->gdsc_core);
+			/* disable the controller GDSC*/
+			if (!pcie_dev->nogdsc_retention)
+				regulator_disable(pcie_dev->gdsc_core);
 
 			/* Disable the pipe clock*/
 			msm_pcie_pipe_clk_deinit(pcie_dev);
