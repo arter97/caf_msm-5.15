@@ -5187,6 +5187,7 @@ static int msm_geni_serial_port_init(struct platform_device *pdev,
 		dev_port->handle_rx = handle_rx_hs;
 		dev_port->rx_fifo =
 		devm_kzalloc(uport->dev, sizeof(dev_port->rx_fifo_depth * sizeof(u32)),	GFP_KERNEL);
+		writel(DMA_IF_EN, uport->membase + SE_DMA_IF_EN);
 		if (dev_port->pm_auto_suspend_disable) {
 			pm_runtime_set_active(&pdev->dev);
 			pm_runtime_forbid(&pdev->dev);
