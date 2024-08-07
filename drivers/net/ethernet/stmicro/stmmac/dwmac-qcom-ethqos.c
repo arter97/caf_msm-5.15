@@ -370,8 +370,9 @@ static inline unsigned int dwmac_qcom_get_vlan_ucp(unsigned char  *buf)
 		 | buf[QTAG_UCP_FIELD_OFFSET + 1]);
 }
 
-static bool is_skprio_routing_set(struct stmmac_priv *priv)
+static bool is_skprio_routing_set(void *_priv)
 {
+	struct stmmac_priv *priv = _priv;
 	return (qos_use_skprio || priv->plat->qos_use_skprio);
 }
 
@@ -7599,6 +7600,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	plat_dat->set_skb_prio = dwmac_qcom_set_skb_prio;
+	plat_dat->is_skprio_routing = is_skprio_routing_set;
 #endif
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
 	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
