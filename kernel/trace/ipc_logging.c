@@ -831,6 +831,9 @@ void *ipc_log_context_create(int max_num_pages,
 	unsigned long flags;
 	int enable_minidump;
 
+	if (!ipc_logging_enabled())
+		return NULL;
+
 	write_lock_irqsave(&context_list_lock_lha1, flags);
 	if (!ipc_log_context_list) {
 		ipc_log_context_list = kzalloc(sizeof(struct list_head), GFP_ATOMIC);
