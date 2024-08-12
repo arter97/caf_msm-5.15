@@ -876,6 +876,7 @@
   gro_cells_destroy
   gro_cells_init
   gro_cells_receive
+  groups_free
   handle_bad_irq
   handle_edge_irq
   handle_fasteoi_ack_irq
@@ -2111,6 +2112,7 @@
   sock_unregister
   sort
   __spi_alloc_controller
+  spi_add_device
   spi_register_controller
   spi_unregister_controller
   spmi_controller_add
