@@ -1106,6 +1106,7 @@
   io_schedule_timeout
   iounmap
   iov_iter_bvec
+  iov_iter_kvec
   ip_send_check
   iput
   __irq_alloc_descs
@@ -1321,6 +1322,7 @@
   __netdev_alloc_skb
   netdev_err
   netdev_info
+  netdev_refcnt_read
   netdev_set_default_ethtool_ops
   netdev_state_change
   netdev_update_features
@@ -1835,8 +1837,11 @@
   __seq_open_private
   seq_printf
   seq_putc
+  seq_put_decimal_ll
+  seq_put_decimal_ull_width
   seq_puts
   seq_read
+  seq_read_iter
   seq_release
   seq_release_private
   seq_write

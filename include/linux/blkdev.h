@@ -328,6 +328,11 @@ struct queue_limits {
 	unsigned char		misaligned;
 	unsigned char		discard_misaligned;
 	unsigned char		raid_partial_stripes_expensive;
+
+#ifndef __GENKSYMS__
+	bool			sub_page_limits;
+#endif
+
 	enum blk_zoned_model	zoned;
 
 	ANDROID_KABI_RESERVE(1);
@@ -1401,10 +1406,11 @@ static inline bool bdev_is_partition(struct block_device *bdev)
 enum blk_default_limits {
 	BLK_MAX_SEGMENTS	= 128,
 	BLK_SAFE_MAX_SECTORS	= 255,
-	BLK_DEF_MAX_SECTORS	= 2560,
 	BLK_MAX_SEGMENT_SIZE	= 65536,
 	BLK_SEG_BOUNDARY_MASK	= 0xFFFFFFFFUL,
 };
+
+#define BLK_DEF_MAX_SECTORS 2560u
 
 static inline unsigned long queue_segment_boundary(const struct request_queue *q)
 {
