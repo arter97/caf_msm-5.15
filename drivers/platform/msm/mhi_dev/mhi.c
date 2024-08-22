@@ -112,6 +112,8 @@ static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx);
 static inline struct mhi_dev *mhi_get_dev_ctx(struct mhi_dev_ctx *mhi_hw_ctx, enum mhi_id id);
 
 static struct mhi_dev_uevent_info channel_state_info[MHI_MAX_NUM_INSTANCES][MHI_MAX_CHANNELS];
+static void mhi_dev_event_buf_completion_cb(void *req);
+static void mhi_dev_event_rd_offset_completion_cb(void *req);
 static DECLARE_COMPLETION(read_from_host);
 static DECLARE_COMPLETION(write_to_host);
 static DECLARE_COMPLETION(transfer_host_to_device);
@@ -442,19 +444,18 @@ void mhi_dev_write_to_host_mhi_dma(struct mhi_dev *mhi, struct mhi_addr *transfe
 		if (ereq->event_type == SEND_EVENT_BUFFER) {
 			ereq->dma = dma;
 			ereq->dma_len = transfer->size;
-			cb_func = ereq->client_cb;
+			cb_func = mhi_dev_event_buf_completion_cb;
 		} else if (ereq->event_type == SEND_EVENT_RD_OFFSET) {
 			/*
 			 * Event read pointer memory is dma_alloc_coherent
 			 * memory. Don't need to dma_unmap.
 			 */
-			if (transfer->phy_addr)
-				ereq->event_rd_dma = 0;
-			else
-				ereq->event_rd_dma = dma;
-			cb_func = ereq->rd_offset_cb;
+			cb_func = mhi_dev_event_rd_offset_completion_cb;
 		} else {
-			cb_func = ereq->msi_cb;
+			if (!ereq->is_cmd_cpl)
+				cb_func = mhi_dev_event_msi_cb;
+			else
+				cb_func = mhi_dev_cmd_event_msi_cb;
 		}
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Async: device 0x%llx --> host 0x%llx, size %d\n",
@@ -471,23 +472,32 @@ void mhi_dev_write_to_host_mhi_dma(struct mhi_dev *mhi, struct mhi_addr *transfe
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"error while writing to host:%d\n", rc);
 	} else if (tr_type == MHI_DEV_DMA_SYNC) {
-		/* Copy the device content to a local device
-		 * physical address.
-		 */
-		memcpy(mhi->dma_cache, transfer->virt_addr,
-				transfer->size);
+		if (transfer->phy_addr) {
+			dma = transfer->phy_addr;
+		} else {
+			dma = map_single(mhi,
+					transfer->virt_addr, transfer->size,
+					DMA_TO_DEVICE);
+			if (dma_mapping_error(&mhi->mhi_hw_ctx->pdev->dev, dma)) {
+				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+						"dma mapping failed\n");
+				return;
+			}
+		}
 
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Sync: device 0x%llx --> host 0x%llx, size %d\n",
-				(uint64_t) mhi->cache_dma_handle, host_addr_pa,
+				(uint64_t) dma, host_addr_pa,
 				(int) transfer->size);
 		rc = mhi_dma_fun_ops->mhi_dma_sync_memcpy(host_addr_pa,
-				(u64) mhi->cache_dma_handle,
+				(u64) dma,
 				(int) transfer->size,
 				mhi->mhi_dma_fun_params);
 		if (rc)
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR,
 					"error while writing to host:%d\n", rc);
+		if (!transfer->phy_addr)
+			unmap_single(mhi, dma, transfer->size, DMA_TO_DEVICE);
 	}
 }
 
@@ -513,10 +523,11 @@ static void mhi_dev_event_buf_completion_cb(void *req)
 		ch = ereq->context;
 		mhi = ch->ring->mhi_dev;
 	}
-	ereq->snd_cmpl = 0;
+	ereq->snd_cmpl = false;
 
 	if (ereq->dma && ereq->dma_len)
-		unmap_single(mhi, ereq->dma, ereq->dma_len, DMA_TO_DEVICE);
+		unmap_single(mhi, ereq->dma, ereq->dma_len,
+				DMA_TO_DEVICE);
 
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 		"Event buf dma completed for flush req %d\n", ereq->flush_num);
@@ -527,9 +538,10 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 	struct ep_pcie_msi_config cfg;
 	struct mhi_addr msi_addr;
 	struct mhi_dev_channel *ch;
-	uint64_t evnt_ring_idx = mhi->ev_ring_start + ereq->event_ring;
-	struct mhi_dev_ring *ring = mhi->ring[evnt_ring_idx];
+	uint64_t evnt_ring_idx;
+	struct mhi_dev_ring *ring;
 	union mhi_dev_ring_ctx *ctx;
+	uint32_t event_ring;
 	int rc;
 
 	rc = mhi_dev_get_msi_config(mhi->mhi_hw_ctx->phandle, &cfg, mhi->vf_id);
@@ -542,18 +554,18 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 	if (mhi->msi_disable)
 		return 0;
 
-	ctx = (union mhi_dev_ring_ctx *)&mhi->ev_ctx_cache[ereq->event_ring];
-
 	msi_addr.size = sizeof(uint32_t);
 	msi_addr.host_pa = (uint64_t)((uint64_t)cfg.upper << 32) |
 					(uint64_t)cfg.lower;
-	*ring->msi_buf = cfg.data + ctx->ev.msivec;
-	msi_addr.phy_addr = ring->msi_buf_dma_handle;
 
 	ereq->event_type = SEND_MSI;
 	if (!ereq->is_cmd_cpl) {
 		ch = ereq->context;
-		ereq->msi_cb = mhi_dev_event_msi_cb;
+		event_ring =  mhi->ch_ctx_cache[ch->ch_id].err_indx;
+		evnt_ring_idx = mhi->ev_ring_start + event_ring;
+		ring = mhi->ring[evnt_ring_idx];
+		ctx = (union mhi_dev_ring_ctx *)&mhi->ev_ctx_cache[event_ring];
+		*ring->msi_buf = cfg.data + ctx->ev.msivec;
 		ch->msi_cnt++;
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 			"Sending MSI %d to 0x%llx as data = 0x%x for ch_id:%d\t"
@@ -562,7 +574,12 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 			*ring->msi_buf, ch->ch_id,
 			ch->msi_cnt, ereq->flush_num);
 	} else {
-		ereq->msi_cb = mhi_dev_cmd_event_msi_cb;
+		/* ring 0 is for command ring, command ring's event ring is always 1 */
+		event_ring = 0;
+		evnt_ring_idx = mhi->ev_ring_start + event_ring;
+		ring = mhi->ring[evnt_ring_idx];
+		ctx = (union mhi_dev_ring_ctx *)&mhi->ev_ctx_cache[event_ring];
+		*ring->msi_buf = cfg.data + ctx->ev.msivec;
 		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 			"Sending MSI %d to 0x%llx as data = 0x%x for cmd ack\t"
 			"ereq flush_num %d\n",
@@ -570,6 +587,7 @@ static int mhi_dev_schedule_msi_mhi_dma(struct mhi_dev *mhi, struct event_req *e
 			ereq->flush_num);
 	}
 
+	msi_addr.phy_addr = ring->msi_buf_dma_handle;
 	mhi->write_to_host(mhi, &msi_addr, ereq, MHI_DEV_DMA_ASYNC);
 
 	return 0;
@@ -599,9 +617,6 @@ static void mhi_dev_event_rd_offset_completion_cb(void *req)
 
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "Rd offset dma completed for flush req %d\n",
 		ereq->flush_num);
-
-	if (ereq->event_rd_dma)
-		unmap_single(mhi, ereq->event_rd_dma, sizeof(uint64_t), DMA_TO_DEVICE);
 
 	/*
 	 * The mhi_dev_cmd_event_msi_cb and mhi_dev_event_msi_cb APIs does
@@ -794,7 +809,6 @@ static int mhi_dev_send_multiple_tr_events(struct mhi_dev *mhi, int evnt_ring,
 	mutex_lock(&ring->event_lock);
 
 	/* add the events */
-	ereq->client_cb = mhi_dev_event_buf_completion_cb;
 	ereq->is_cmd_cpl = (event_type == SEND_CMD_CMP) ? true:false;
 	ereq->event_type = SEND_EVENT_BUFFER;
 
@@ -860,8 +874,6 @@ static int mhi_dev_send_multiple_tr_events(struct mhi_dev *mhi, int evnt_ring,
 	transfer_addr.virt_addr = &ring->evt_rp_cache[ring->rd_offset];
 	transfer_addr.size = sizeof(uint64_t);
 	ereq->event_type = SEND_EVENT_RD_OFFSET;
-	ereq->rd_offset_cb = mhi_dev_event_rd_offset_completion_cb;
-	ereq->event_ring = evnt_ring;
 
 	/* Schedule DMA for event ring RP*/
 	mhi->write_to_host(mhi, &transfer_addr, ereq, MHI_DEV_DMA_ASYNC);
@@ -935,7 +947,7 @@ static int mhi_dev_flush_cmd_completion_events(struct mhi_dev *mhi,
 }
 
 static int mhi_dev_flush_transfer_completion_events(struct mhi_dev *mhi,
-		struct mhi_dev_channel *ch, u32 snd_cmpl_num)
+		struct mhi_dev_channel *ch, bool snd_cmpl_num)
 {
 	int rc = 0;
 	struct event_req *flush_ereq = NULL;
@@ -1215,7 +1227,7 @@ int mhi_transfer_host_to_device_mhi_dma(void *dev, uint64_t host_pa, uint32_t le
 			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Setting snd_cmpl to 1 for ch_id:%d\n",
 				ch->ch_id);
-			mreq->snd_cmpl = 1;
+			mreq->snd_cmpl = true;
 		}
 
 		/* Queue the completion event for the current transfer */
@@ -1264,7 +1276,7 @@ int mhi_transfer_device_to_host_mhi_dma(uint64_t host_addr, void *dev, uint32_t 
 	struct mhi_dev_ring *ring = NULL;
 	bool flush;
 	struct mhi_dev_channel *ch;
-	u32 snd_cmpl;
+	bool snd_cmpl;
 	int rc;
 
 	if (WARN_ON(!mhi || !dev || !req  || !host_addr))
@@ -1302,7 +1314,7 @@ int mhi_transfer_device_to_host_mhi_dma(uint64_t host_addr, void *dev, uint32_t 
 		ring = ch->ring;
 		mhi_dev_ring_inc_index(ring, ring->rd_offset);
 		if (ring->rd_offset == ring->wr_offset)
-			req->snd_cmpl = 1;
+			req->snd_cmpl = true;
 		snd_cmpl = req->snd_cmpl;
 
 		/* Queue the completion event for the current transfer */
@@ -1408,10 +1420,6 @@ void mhi_dev_write_to_host_edma(struct mhi_dev *mhi, struct mhi_addr *transfer,
 		host_addr_pa = transfer->host_pa;
 	}
 
-	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
-		"device 0x%llx --> host 0x%llx, size %d, type = %d\n",
-		mhi->cache_dma_handle, host_addr_pa,
-		(int) transfer->size, tr_type);
 	if (tr_type == MHI_DEV_DMA_ASYNC) {
 		/*
 		 * Event read pointer memory is dma_alloc_coherent memory
@@ -1434,20 +1442,23 @@ void mhi_dev_write_to_host_edma(struct mhi_dev *mhi, struct mhi_addr *transfer,
 		if (ereq->event_type == SEND_EVENT_BUFFER) {
 			ereq->dma = dma;
 			ereq->dma_len = transfer->size;
-			cb_func = ereq->client_cb;
+			cb_func = mhi_dev_event_buf_completion_cb;
 		} else if (ereq->event_type == SEND_EVENT_RD_OFFSET) {
 			/*
 			 * Event read pointer memory is dma_alloc_coherent
 			 * memory. Don't need to dma_unmap.
 			 */
-			if (transfer->phy_addr)
-				ereq->event_rd_dma = 0;
-			else
-				ereq->event_rd_dma = dma;
-			cb_func = ereq->rd_offset_cb;
+			cb_func = mhi_dev_event_rd_offset_completion_cb;
 		} else {
-			cb_func = ereq->msi_cb;
+			if (!ereq->is_cmd_cpl)
+				cb_func = mhi_dev_event_msi_cb;
+			else
+				cb_func = mhi_dev_cmd_event_msi_cb;
 		}
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Async: device 0x%llx --> host 0x%llx, size %d, type = %d\n",
+				dma, host_addr_pa,
+				(int) transfer->size, tr_type);
 
 		descriptor = dmaengine_prep_dma_memcpy(
 				mhi->mhi_hw_ctx->tx_dma_chan, host_addr_pa,
@@ -1466,16 +1477,32 @@ void mhi_dev_write_to_host_edma(struct mhi_dev *mhi, struct mhi_addr *transfer,
 	} else if (tr_type == MHI_DEV_DMA_SYNC) {
 		reinit_completion(&write_to_host);
 
-		/* Copy the device content to local device physical address */
-		memcpy(mhi->dma_cache, transfer->virt_addr, transfer->size);
+		if (transfer->phy_addr) {
+			dma = transfer->phy_addr;
+		} else {
+			dma = map_single(mhi,
+				transfer->virt_addr, transfer->size,
+				DMA_TO_DEVICE);
+			if (dma_mapping_error(&mhi->mhi_hw_ctx->pdev->dev, dma)) {
+				mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+						"dma mapping failed\n");
+				return;
+			}
+		}
+
+		mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
+				"Sync: device 0x%llx --> host 0x%llx, size %d, type = %d\n",
+				dma, host_addr_pa,
+				(int) transfer->size, tr_type);
 
 		descriptor = dmaengine_prep_dma_memcpy(
 				mhi->mhi_hw_ctx->tx_dma_chan, host_addr_pa,
-				mhi->cache_dma_handle,
-				(int)transfer->size,
+				dma, (int)transfer->size,
 				DMA_PREP_INTERRUPT);
 		if (!descriptor) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "descriptor is null\n");
+			if (!transfer->phy_addr)
+				unmap_single(mhi, dma, transfer->size, DMA_TO_DEVICE);
 			return;
 		}
 
@@ -1485,6 +1512,8 @@ void mhi_dev_write_to_host_edma(struct mhi_dev *mhi, struct mhi_addr *transfer,
 		if (!wait_for_completion_timeout
 			(&write_to_host, msecs_to_jiffies(1000)))
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "write to host timed out\n");
+		if (!transfer->phy_addr)
+			unmap_single(mhi, dma, transfer->size, DMA_TO_DEVICE);
 	}
 }
 
@@ -1563,7 +1592,7 @@ int mhi_transfer_host_to_device_edma(void *dev, uint64_t host_pa, uint32_t len,
 			mhi_log(mhi->vf_id, MHI_MSG_VERBOSE,
 				"Setting snd_cmpl to 1 for ch_id:%d\n",
 				ch->ch_id);
-			mreq->snd_cmpl = 1;
+			mreq->snd_cmpl = true;
 		}
 
 		/* Queue the completion event for the current transfer */
@@ -1613,7 +1642,7 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 	struct mhi_dev_ring *ring;
 	struct dma_async_tx_descriptor *descriptor;
 	bool flush;
-	u32 snd_cmpl;
+	bool snd_cmpl;
 	struct mhi_dev_channel *ch;
 	int rc;
 
@@ -1672,7 +1701,7 @@ int mhi_transfer_device_to_host_edma(uint64_t host_addr, void *dev,
 		ring = ch->ring;
 		mhi_dev_ring_inc_index(ring, ring->rd_offset);
 		if (ring->rd_offset == ring->wr_offset)
-			req->snd_cmpl = 1;
+			req->snd_cmpl = true;
 		snd_cmpl = req->snd_cmpl;
 
 		/* Queue the completion event for the current transfer */
@@ -2149,9 +2178,13 @@ int mhi_dev_send_event(struct mhi_dev *mhi, int evnt_ring,
 			evnt_ring) + (size_t) &ring->ring_ctx->ev.rp -
 			(size_t) ring->ring_ctx;
 
+	ring->evt_rp_cache[ring->rd_offset] = ring->ring_ctx_shadow->ev.rp;
+	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "Caching rp %llx for rd offset %d\n",
+			ring->evt_rp_cache[ring->rd_offset], ring->rd_offset);
 	transfer_addr.virt_addr = &ring->ring_ctx_shadow->ev.rp;
 	transfer_addr.size = sizeof(uint64_t);
-	transfer_addr.phy_addr = 0;
+	transfer_addr.phy_addr = ring->evt_rp_cache_dma_handle +
+			(sizeof(uint64_t) * ring->rd_offset);
 
 	mhi->write_to_host(mhi, &transfer_addr, NULL, MHI_DEV_DMA_SYNC);
 	/*
@@ -2187,7 +2220,7 @@ static int mhi_dev_send_completion_event_async(struct mhi_dev_channel *ch,
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "Ch %d\n", ch->ch_id);
 
 	/* Queue the completion event for the current transfer */
-	mreq->snd_cmpl = 1;
+	mreq->snd_cmpl = true;
 	rc = mhi_dev_queue_transfer_completion(mreq, NULL);
 	if (rc) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -2211,41 +2244,60 @@ static int mhi_dev_send_completion_event(struct mhi_dev_channel *ch,
 			size_t rd_ofst, uint32_t len,
 			enum mhi_dev_cmd_completion_code code)
 {
-	union mhi_dev_ring_element_type compl_event;
+	int rc;
+
+	union mhi_dev_ring_element_type *compl_event =
+					kzalloc(sizeof(union mhi_dev_ring_element_type),
+						GFP_KERNEL);
 	struct mhi_dev *mhi = ch->ring->mhi_dev;
 
-	compl_event.evt_tr_comp.chid = ch->ch_id;
-	compl_event.evt_tr_comp.type =
+	compl_event->evt_tr_comp.chid = ch->ch_id;
+	compl_event->evt_tr_comp.type =
 				MHI_DEV_RING_EL_TRANSFER_COMPLETION_EVENT;
-	compl_event.evt_tr_comp.len = len;
-	compl_event.evt_tr_comp.code = code;
-	compl_event.evt_tr_comp.ptr = ch->ring->ring_ctx->generic.rbase +
+	compl_event->evt_tr_comp.len = len;
+	compl_event->evt_tr_comp.code = code;
+	compl_event->evt_tr_comp.ptr = ch->ring->ring_ctx->generic.rbase +
 			rd_ofst * sizeof(struct mhi_dev_transfer_ring_element);
 
-	return mhi_dev_send_event(mhi,
-			mhi->ch_ctx_cache[ch->ch_id].err_indx, &compl_event);
+	rc = mhi_dev_send_event(mhi,
+			mhi->ch_ctx_cache[ch->ch_id].err_indx, compl_event);
+	kfree(compl_event);
+
+	return rc;
 }
 
 int mhi_dev_send_state_change_event(struct mhi_dev *mhi,
 						enum mhi_dev_state state)
 {
-	union mhi_dev_ring_element_type event;
+	int rc;
 
-	event.evt_state_change.type = MHI_DEV_RING_EL_MHI_STATE_CHG;
-	event.evt_state_change.mhistate = state;
+	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
+						GFP_KERNEL);
 
-	return mhi_dev_flush_cmd_completion_events(mhi, &event);
+	event->evt_state_change.type = MHI_DEV_RING_EL_MHI_STATE_CHG;
+	event->evt_state_change.mhistate = state;
+
+	rc = mhi_dev_flush_cmd_completion_events(mhi, event);
+	kfree(event);
+
+	return rc;
 }
 EXPORT_SYMBOL(mhi_dev_send_state_change_event);
 
 int mhi_dev_send_ee_event(struct mhi_dev *mhi, enum mhi_dev_execenv exec_env)
 {
-	union mhi_dev_ring_element_type event;
+	int rc;
 
-	event.evt_ee_state.type = MHI_DEV_RING_EL_EE_STATE_CHANGE_NOTIFY;
-	event.evt_ee_state.execenv = exec_env;
+	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
+						GFP_KERNEL);
 
-	return mhi_dev_flush_cmd_completion_events(mhi, &event);
+	event->evt_ee_state.type = MHI_DEV_RING_EL_EE_STATE_CHANGE_NOTIFY;
+	event->evt_ee_state.execenv = exec_env;
+
+	rc = mhi_dev_flush_cmd_completion_events(mhi, event);
+	kfree(event);
+
+	return rc;
 }
 EXPORT_SYMBOL(mhi_dev_send_ee_event);
 
@@ -2287,7 +2339,10 @@ EXPORT_SYMBOL(mhi_dev_trigger_hw_acc_wakeup);
 static int mhi_dev_send_cmd_comp_event(struct mhi_dev *mhi,
 				enum mhi_dev_cmd_completion_code code)
 {
-	union mhi_dev_ring_element_type event;
+	int rc;
+
+	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
+						GFP_KERNEL);
 
 	if (code > MHI_CMD_COMPL_CODE_RES) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -2296,14 +2351,17 @@ static int mhi_dev_send_cmd_comp_event(struct mhi_dev *mhi,
 	}
 
 	/* send the command completion event to the host */
-	event.evt_cmd_comp.ptr = mhi->cmd_ctx_cache->rbase
+	event->evt_cmd_comp.ptr = mhi->cmd_ctx_cache->rbase
 			+ (mhi->ring[MHI_RING_CMD_ID]->rd_offset *
 			(sizeof(union mhi_dev_ring_element_type)));
 	mhi_log(mhi->vf_id, MHI_MSG_VERBOSE, "evt cmd comp ptr :%lx\n",
-			(size_t) event.evt_cmd_comp.ptr);
-	event.evt_cmd_comp.type = MHI_DEV_RING_EL_CMD_COMPLETION_EVT;
-	event.evt_cmd_comp.code = code;
-	return mhi_dev_flush_cmd_completion_events(mhi, &event);
+			(size_t) event->evt_cmd_comp.ptr);
+	event->evt_cmd_comp.type = MHI_DEV_RING_EL_CMD_COMPLETION_EVT;
+	event->evt_cmd_comp.code = code;
+	rc = mhi_dev_flush_cmd_completion_events(mhi, event);
+	kfree(event);
+
+	return rc;
 }
 
 static int mhi_dev_process_stop_cmd(struct mhi_dev_ring *ring, uint32_t ch_id,
@@ -2338,6 +2396,8 @@ static int mhi_dev_process_stop_cmd(struct mhi_dev_ring *ring, uint32_t ch_id,
 	}
 	data_transfer.size = sizeof(enum mhi_dev_ch_ctx_state);
 	data_transfer.virt_addr = &mhi->ch_ctx_cache[ch_id].ch_state;
+	data_transfer.phy_addr = mhi->ch_ctx_cache_dma_handle +
+			sizeof(struct mhi_dev_ch_ctx) * ch_id;
 
 	/* update the channel state in the host */
 	mhi->write_to_host(mhi, &data_transfer, NULL, MHI_DEV_DMA_SYNC);
@@ -2398,6 +2458,8 @@ static void mhi_dev_process_reset_cmd(struct mhi_dev *mhi, int ch_id)
 	host_addr.virt_addr =
 			&mhi->ch_ctx_cache[ch_id].ch_state;
 	host_addr.size = sizeof(enum mhi_dev_ch_ctx_state);
+	host_addr.phy_addr = mhi->ch_ctx_cache_dma_handle +
+			sizeof(struct mhi_dev_ch_ctx) * ch_id;
 
 	/* update the channel state in the host */
 	mhi->write_to_host(mhi, &host_addr, NULL,
@@ -2522,6 +2584,8 @@ static int mhi_dev_process_cmd_ring(struct mhi_dev *mhi,
 
 		host_addr.virt_addr = &mhi->ch_ctx_cache[ch_id].ch_state;
 		host_addr.size = sizeof(enum mhi_dev_ch_ctx_state);
+		host_addr.phy_addr = mhi->ch_ctx_cache_dma_handle +
+				sizeof(struct mhi_dev_ch_ctx) * ch_id;
 
 		mhi->write_to_host(mhi, &host_addr, NULL, MHI_DEV_DMA_SYNC);
 
@@ -3023,7 +3087,7 @@ static void mhi_dev_transfer_completion_cb(void *mreq)
 	int rc = 0;
 	struct mhi_req *req = mreq;
 	struct mhi_dev_channel *ch;
-	u32 snd_cmpl = req->snd_cmpl;
+	bool snd_cmpl = req->snd_cmpl;
 	bool inbound = false;
 	struct mhi_dev *mhi_ctx;
 
@@ -3512,6 +3576,8 @@ int mhi_dev_suspend(struct mhi_dev *mhi)
 
 		data_transfer.size = sizeof(enum mhi_dev_ch_ctx_state);
 		data_transfer.virt_addr = &mhi->ch_ctx_cache[ch_id].ch_state;
+		data_transfer.phy_addr = mhi->ch_ctx_cache_dma_handle +
+				sizeof(struct mhi_dev_ch_ctx) * ch_id;
 
 		/* update the channel state in the host */
 		mhi->write_to_host(mhi, &data_transfer, NULL,
@@ -3548,6 +3614,8 @@ int mhi_dev_resume(struct mhi_dev *mhi)
 
 		data_transfer.size = sizeof(enum mhi_dev_ch_ctx_state);
 		data_transfer.virt_addr = &mhi->ch_ctx_cache[ch_id].ch_state;
+		data_transfer.phy_addr = mhi->ch_ctx_cache_dma_handle +
+				sizeof(struct mhi_dev_ch_ctx) * ch_id;
 
 		/* update the channel state in the host */
 		mhi->write_to_host(mhi, &data_transfer, NULL,
@@ -5219,14 +5287,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 	if (rc) {
 		mutex_unlock(&mhi_ctx->mhi_lock);
 		return rc;
-	}
-
-	mhi_ctx->dma_cache = alloc_coherent(mhi_ctx,
-			(TRB_MAX_DATA_SIZE * 4),
-			&mhi_ctx->cache_dma_handle, GFP_KERNEL);
-	if (!mhi_ctx->dma_cache) {
-		mutex_unlock(&mhi_ctx->mhi_lock);
-		return -ENOMEM;
 	}
 
 	rc = mhi_dev_mmio_write(mhi_ctx, MHIVER, mhi_ctx->mhi_version);

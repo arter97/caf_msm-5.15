@@ -6142,8 +6142,6 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit, u32 queue)
 	int xdp_status = 0;
 	int buf_sz;
 	unsigned int eth_type;
-	u32 c2t_map = 0;
-	u32 priority = 0;
 
 	dma_dir = page_pool_get_dma_dir(rx_q->page_pool);
 	buf_sz = DIV_ROUND_UP(priv->dma_buf_sz, PAGE_SIZE) * PAGE_SIZE;
@@ -6388,14 +6386,10 @@ drain_data:
 			skb_set_hash(skb, hash, hash_type);
 
 		skb_record_rx_queue(skb, queue);
-		if (priv->plat->qos_active && priv->plat->qos_ch_map.tc_rx_info[queue]) {
-			c2t_map = priv->plat->qos_ch_map.ch_to_tc_map_rx[queue];
-			while (c2t_map) {
-				c2t_map = c2t_map >> 1;
-				priority++;
-			}
-			skb->priority = priority;
-		}
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		if (priv->plat->set_skb_prio)
+			priv->plat->set_skb_prio(priv->plat->bsp_priv, skb, queue);
+#endif
 
 		napi_gro_receive(&ch->rx_napi, skb);
 		skb = NULL;
@@ -8218,6 +8212,9 @@ int stmmac_dvr_probe(struct device *device,
 	if (ret == -ENOTSUPP)
 		dev_err(priv->device, "unable to bring out of ahb reset: %pe\n",
 			ERR_PTR(ret));
+
+	/* Wait a bit for the reset to take effect */
+	udelay(10);
 
 	/* Init MAC and get the capabilities */
 	ret = stmmac_hw_init(priv);
