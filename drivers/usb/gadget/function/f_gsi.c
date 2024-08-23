@@ -1119,6 +1119,8 @@ static void ipa_work_handler(struct work_struct *w)
 			log_event_dbg("%s: get = %d", __func__,
 				atomic_read(&gad_dev->power.usage_count));
 
+			msm_ep_set_mode(d_port->in_ep, USB_EP_GSI);
+			msm_ep_set_mode(d_port->out_ep, USB_EP_GSI);
 			ret = ipa_connect_channels(d_port);
 			if (ret) {
 				log_event_err("%s: ipa_connect_channels failed\n",
