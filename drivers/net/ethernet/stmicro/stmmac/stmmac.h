@@ -302,6 +302,7 @@ struct stmmac_priv {
 	int sph;
 	int sph_cap;
 	u32 sarc_type;
+	unsigned int aux_ts_num_pins;
 
 	unsigned int dma_buf_sz;
 	unsigned int rx_copybreak;
