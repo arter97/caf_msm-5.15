@@ -18,6 +18,7 @@ void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 	usleep_range(100, 200);
 	writel_relaxed(0x00, ethqos->sgmii_base + QSERDES3_PCS_SW_RESET);
 	writel_relaxed(0x01, ethqos->sgmii_base + QSERDES3_PCS_PHY_START);
+	writel_relaxed(0x0, ethqos->sgmii_base + SGMII_PHY_PCS_POWER_DOWN_CONTROL);
 
 	/* Set current speed to 0 so that serdes will be reprogrammed on next link up. */
 	ethqos->curr_serdes_speed = 0;

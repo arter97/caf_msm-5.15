@@ -325,6 +325,10 @@ module_param(eqos, charp, 0600);
 MODULE_PARM_DESC(eqos, "QOS Config support from ethernet partition");
 #endif
 
+static bool qos_use_skprio;
+module_param(qos_use_skprio, bool, 0644);
+MODULE_PARM_DESC(qos_use_skprio, "Use SKPRIO for Tx Routing");
+
 inline void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos)
 {
 	struct platform_device *pdev = ethqos->pdev;
@@ -366,6 +370,34 @@ static inline unsigned int dwmac_qcom_get_vlan_ucp(unsigned char  *buf)
 		 | buf[QTAG_UCP_FIELD_OFFSET + 1]);
 }
 
+static bool is_skprio_routing_set(void *_priv)
+{
+	struct stmmac_priv *priv = _priv;
+	return (qos_use_skprio || priv->plat->qos_use_skprio);
+}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+void dwmac_qcom_set_skb_prio(void *priv_n, struct sk_buff *skb, u32 queue)
+{
+	u32 priority = 0;
+	u32 c2t_map = 0;
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!is_skprio_routing_set(priv))
+		return;
+
+	if (priv->plat->qos_active && priv->plat->qos_ch_map.tc_rx_info[queue]) {
+		c2t_map = priv->plat->qos_ch_map.ch_to_tc_map_rx[queue];
+		while (c2t_map) {
+			c2t_map = c2t_map >> 1;
+			priority++;
+		}
+		skb->priority = priority;
+	}
+}
+#endif
+
 u16 dwmac_qcom_select_queue(struct net_device *dev,
 			    struct sk_buff *skb,
 			    struct net_device *sb_dev)
@@ -379,7 +411,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
-	if (priv->plat->qos_active && !priv->plat->qos_use_skprio && skb_vlan_tag_present(skb)) {
+	if (priv->plat->qos_active && !is_skprio_routing_set(priv) && skb_vlan_tag_present(skb)) {
 		priority =  skb_vlan_tag_get_prio(skb);
 		tc_prio = 1 << priority;
 		for (i = priv->plat->tx_qos_queues_to_use - 1; i > 1; i--) {
@@ -388,7 +420,7 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 				break;
 			}
 		}
-	} else if (priv->plat->qos_active && priv->plat->qos_use_skprio && skb->priority) {
+	} else if (priv->plat->qos_active && is_skprio_routing_set(priv) && skb->priority) {
 		/* TODO: IF qos ie enabled and IPA offload is disabled, we need to handle*/
 		tc_prio = 1 << (skb->priority - 1);
 		for (i = 2; i < priv->plat->tx_qos_queues_to_use; i++) {
@@ -7566,6 +7598,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->phy_irq_enable = ethqos_phy_irq_enable;
 	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	plat_dat->set_skb_prio = dwmac_qcom_set_skb_prio;
+	plat_dat->is_skprio_routing = is_skprio_routing_set;
+#endif
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
 	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
