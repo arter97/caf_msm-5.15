@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(msg) "slatecom: %s: " msg, __func__
@@ -44,7 +44,7 @@
 #define HED_EVENT_DATA_STRT_LEN (0x05)
 #define CMA_BFFR_POOL_SIZE (128*1024)
 #define TX_AHB_BUF_SIZE 1024
-
+#define SLATE_HEALTH_CHECK     BIT(23)
 #define SLATE_OK_SLP_RBSC      BIT(24)
 #define SLATE_OK_SLP_S2R       BIT(25)
 #define SLATE_OK_SLP_S2D      (BIT(25) | BIT(24))
@@ -146,6 +146,7 @@ static void *slate_com_drv;
 static uint32_t g_slav_status_reg;
 static uint32_t g_slave_status_auto_clear_reg;
 static bool is_hibernate;
+static bool s2a_status;
 
 /* SLATECOM client callbacks set-up */
 static void send_input_events(struct work_struct *work);
@@ -352,7 +353,7 @@ static int slatecom_transfer(void *handle, uint8_t *tx_buf,
 	struct spi_transfer *tx_xfer;
 	struct slate_spi_priv *slate_spi;
 	struct slate_context *cntx;
-	struct spi_device *spi;
+	struct spi_device *spi = NULL;
 	int ret = 0;
 
 	if (!handle || !tx_buf)
@@ -428,8 +429,11 @@ void send_event(enum slatecom_event_type event,
 
 void slatecom_slatedown_handler(void)
 {
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
+	if (!is_slatecom_ready())
+		return;
+	spi = get_spi_device();
 	g_slav_status_reg = 0;
 	atomic_set(&ok_to_sleep, 0);
 	pm_runtime_get_sync(&spi->dev);
@@ -753,6 +757,12 @@ static int is_slate_resume(void *handle, uint32_t *slav_status_reg,
 	return ((*slav_status_reg) & BIT(31));
 }
 
+void update_s2a_status(bool s2a_status_value)
+{
+	s2a_status = s2a_status_value;
+}
+EXPORT_SYMBOL_GPL(update_s2a_status);
+
 static int slatecom_resume_l(void *handle)
 {
 	struct slate_context *cntx;
@@ -760,6 +770,7 @@ static int slatecom_resume_l(void *handle)
 	uint32_t slav_status_auto_clear_reg = 0;
 	int retry = 0;
 	int ret = 0;
+	uint32_t cmnd_reg = 0;
 
 	if (handle == NULL) {
 		SLATECOM_ERR("slatecom handle null\n");
@@ -790,7 +801,7 @@ static int slatecom_resume_l(void *handle)
 		goto unlock;
 	}
 
-	if (!(g_slav_status_reg & BIT(31))) {
+	if (!(g_slav_status_reg & BIT(31)) || !s2a_status) {
 		SLATECOM_ERR("Slate boot is not complete, skip SPI resume\n");
 		goto unlock;
 	}
@@ -820,6 +831,18 @@ static int slatecom_resume_l(void *handle)
 		retry++;
 	} while (retry < MAX_RETRY);
 
+	reinit_completion(&slate_resume_wait);
+	cmnd_reg |= SLATE_HEALTH_CHECK;
+	ret = slatecom_reg_write_cmd(cntx,
+	SLATE_CMND_REG, 1, &cmnd_reg, false);
+	if (ret < 0)
+		SLATECOM_ERR("SLATE_HEALTH_CHECK write cmd failed\n");
+	ret = wait_for_completion_timeout(&slate_resume_wait,
+	msecs_to_jiffies(SLATE_RESUME_IRQ_TIMEOUT));
+	SLATECOM_INFO("slate health check ret:%d\n", ret);
+
+	if (atomic_read(&ok_to_sleep) == 0)
+		goto complete;
 	if (retry == MAX_RETRY) {
 		mutex_unlock(&slate_resume_mutex);
 		/* SLATE failed to resume. Trigger watchdog. */
@@ -863,7 +886,7 @@ int slatecom_ahb_read(void *handle, uint32_t ahb_start_addr,
 	int ret = 0;
 	uint8_t cmnd = 0;
 	uint32_t ahb_addr = 0;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
 	if (!handle || !read_buf || num_words == 0
 		|| num_words > SLATE_SPI_MAX_WORDS) {
@@ -877,7 +900,7 @@ int slatecom_ahb_read(void *handle, uint32_t ahb_start_addr,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -928,7 +951,7 @@ int slatecom_ahb_write_bytes(void *handle, uint32_t ahb_start_addr,
 	uint8_t cmnd = 0;
 	uint32_t ahb_addr = 0;
 	uint32_t curr_num_bytes;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
 	if (!handle || !write_buf || num_bytes == 0
 		|| num_bytes > (SLATE_SPI_MAX_WORDS * sizeof(int))) {
@@ -943,7 +966,7 @@ int slatecom_ahb_write_bytes(void *handle, uint32_t ahb_start_addr,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -998,7 +1021,7 @@ int slatecom_ahb_write(void *handle, uint32_t ahb_start_addr,
 	uint32_t ahb_addr = 0;
 	uint32_t curr_num_words;
 	uint32_t curr_num_bytes;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
 	if (!handle || !write_buf || num_words == 0
 		|| num_words > SLATE_SPI_MAX_WORDS) {
@@ -1013,7 +1036,7 @@ int slatecom_ahb_write(void *handle, uint32_t ahb_start_addr,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -1062,12 +1085,10 @@ int slatecom_fifo_write(void *handle, uint32_t num_words,
 	uint32_t size;
 	int ret = 0;
 	uint8_t cmnd = 0;
-	struct spi_device *spi;
+	struct spi_device *spi = NULL;
 
 	if (!is_slatecom_ready())
 		return -ENODEV;
-
-	spi = get_spi_device();
 
 	if (!handle || !write_buf || num_words == 0
 		|| num_words > SLATE_SPI_MAX_WORDS) {
@@ -1079,7 +1100,7 @@ int slatecom_fifo_write(void *handle, uint32_t num_words,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -1116,7 +1137,7 @@ int slatecom_fifo_read(void *handle, uint32_t num_words,
 	uint32_t size;
 	uint8_t cmnd = 0;
 	int ret =  0;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
 	if (!handle || !read_buf || num_words == 0
 		|| num_words > SLATE_SPI_MAX_WORDS) {
@@ -1131,7 +1152,7 @@ int slatecom_fifo_read(void *handle, uint32_t num_words,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -1216,8 +1237,9 @@ int slatecom_reg_write(void *handle, uint8_t reg_start_addr,
 	uint8_t num_regs, void *write_buf)
 {
 	int ret =  0;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 
@@ -1294,7 +1316,7 @@ int slatecom_reg_read(void *handle, uint8_t reg_start_addr,
 	uint32_t size;
 	int ret = 0;
 	uint8_t cmnd = 0;
-	struct spi_device *spi = get_spi_device();
+	struct spi_device *spi = NULL;
 
 	if (!handle || !read_buf || num_regs == 0
 		|| num_regs > SLATE_SPI_MAX_REGS) {
@@ -1309,7 +1331,7 @@ int slatecom_reg_read(void *handle, uint8_t reg_start_addr,
 		SLATECOM_ERR("Device busy\n");
 		return -EBUSY;
 	}
-
+	spi = get_spi_device();
 	pm_runtime_get_sync(&spi->dev);
 	mutex_lock(&slate_task_mutex);
 

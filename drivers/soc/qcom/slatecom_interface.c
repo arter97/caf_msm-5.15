@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(msg) "slatecom_dev:" msg
 
@@ -229,6 +229,7 @@ void slatecom_intf_notify_glink_channel_state(bool state)
 
 	pr_debug("%s: slate_ctrl channel state: %d\n", __func__, state);
 	dev->slatecom_rpmsg = state;
+	wake_up(&dev->link_state_wait);
 }
 
 void slatecom_rx_msg(void *data, int len)
@@ -612,6 +613,11 @@ static int send_slate_boot_status(enum boot_status event)
 	int rc;
 	char *event_buf;
 	unsigned int event_buf_size;
+
+	if (event == SLATE_UPDATE_START)
+		set_slate_bt_state(false);
+	else if (event == SLATE_UPDATE_DONE)
+		set_slate_bt_state(true);
 
 	event_buf_size = sizeof(enum boot_status);
 
@@ -1051,10 +1057,15 @@ static ssize_t slatecom_char_write(struct file *f, const char __user *buf,
 	unsigned char qcli_cmnd;
 	uint32_t opcode;
 	int ret = 0;
-	struct slatedaemon_priv *dev = container_of(slatecom_intf_drv,
+	struct slatedaemon_priv *dev = NULL;
+
+	if (!slatecom_intf_drv) {
+		pr_err("Invalid use-case, slatecom driver is not ready\n");
+		return -EINVAL;
+	}
+	dev = container_of(slatecom_intf_drv,
 					struct slatedaemon_priv,
 					lhndl);
-
 	if (copy_from_user(&qcli_cmnd, buf, sizeof(unsigned char)))
 		return -EFAULT;
 
@@ -1264,12 +1275,13 @@ static int ssr_slate_cb(struct notifier_block *this,
 		break;
 	case QCOM_SSR_AFTER_POWERUP:
 		pr_debug("Slate after powerup\n");
+		twm_exit = false;
 		slatee.e_type = SLATE_AFTER_POWER_UP;
 		slatecom_set_spi_state(SLATECOM_SPI_FREE);
-		send_uevent(&slatee);
 		if (dev->slatecom_current_state == SLATECOM_STATE_INIT ||
 			dev->slatecom_current_state == SLATECOM_STATE_SLATE_SSR)
 			queue_work(dev->slatecom_wq, &dev->slatecom_up_work);
+		send_uevent(&slatee);
 		if (dev->rf_clk_2)
 			rf_clk_disable(dev->rf_clk_2);
 		break;
@@ -1377,7 +1389,6 @@ static int ssr_adsp_cb(struct notifier_block *this,
 bool is_twm_exit(void)
 {
 	if (twm_exit) {
-		twm_exit = false;
 		return true;
 	}
 	return false;
