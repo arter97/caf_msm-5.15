@@ -1,4 +1,5 @@
 /* Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,12 +19,12 @@
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/regmap.h>
-#include "../clk-regmap.h"
-#include "../clk-regmap-divider.h"
-#include "../clk-regmap-mux.h"
+#include "../../../../clk/qcom/clk-regmap.h"
+#include "../../../../clk/qcom/clk-regmap-divider.h"
+#include "../../../../clk/qcom/clk-regmap-mux.h"
 
 #if defined(CONFIG_DRM)
-#include <linux/sde_io_util.h>
+#include <linux/mdss_io_util.h>
 #else
 #include <linux/mdss_io_util.h>
 #endif

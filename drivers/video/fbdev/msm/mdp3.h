@@ -1,5 +1,6 @@
 /* Copyright (c) 2013-2014, 2016-2018, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -47,7 +48,6 @@
 
 #define BITS_PER_BYTE 8
 #define MDP_IMGTYPE_LIMIT1 0x100
-#define BITS_TO_BYTES(x) DIV_ROUND_UP(x, BITS_PER_BYTE)
 
 enum  {
 	MDP3_CLK_AHB,

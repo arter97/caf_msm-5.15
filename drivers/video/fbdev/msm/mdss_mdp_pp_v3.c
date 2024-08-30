@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -285,7 +286,7 @@ static int pp_hist_lut_get_config(char __iomem *base_addr, void *cfg_data,
 		return -EINVAL;
 	}
 	sz = ENHIST_LUT_ENTRIES * sizeof(u32);
-	if (!access_ok(VERIFY_WRITE, lut_data->data, sz)) {
+	if (!access_ok(lut_data->data, sz)) {
 		pr_err("invalid lut address for hist_lut sz %d\n", sz);
 		return -EFAULT;
 	}

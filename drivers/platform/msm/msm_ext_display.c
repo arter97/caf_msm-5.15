@@ -1,4 +1,5 @@
 /* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,6 +22,7 @@
 #include <linux/types.h>
 #include <linux/of_platform.h>
 #include <linux/msm_ext_display.h>
+#include <linux/extcon-provider.h>
 
 struct msm_ext_disp_list {
 	struct msm_ext_disp_init_data *data;
@@ -53,7 +55,7 @@ static int msm_ext_disp_extcon_register(struct msm_ext_disp *ext_disp, int id)
 		return -EINVAL;
 	}
 
-	ext_disp->audio_sdev[id] = devm_extcon_dev_allocate(
+	ext_disp->audio_sdev[id] = (struct extcon_dev *)devm_extcon_dev_allocate(
 			&ext_disp->pdev->dev,
 			msm_ext_disp_supported_cable);
 	if (IS_ERR(ext_disp->audio_sdev[id]))

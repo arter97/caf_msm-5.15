@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1164,10 +1165,11 @@ static void mdss_dsi_phy_regulator_ctrl(struct mdss_dsi_ctrl_pdata *ctrl,
 			 * regulator if the other dsi controller is still
 			 * active.
 			 */
-			if (!mdss_dsi_is_hw_config_dual(sdata) ||
-				(other_ctrl && (!other_ctrl->is_phyreg_enabled
+				if (!mdss_dsi_is_hw_config_dual(sdata) ||
+					(other_ctrl && (!other_ctrl->is_phyreg_enabled
 						|| other_ctrl->mmss_clamp)))
-				mdss_dsi_28nm_phy_regulator_enable(ctrl);
+					mdss_dsi_28nm_phy_regulator_enable(ctrl);
+
 				break;
 			}
 		}

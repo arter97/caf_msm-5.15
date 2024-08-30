@@ -1,5 +1,6 @@
 /* Copyright (c) 2010-2018, 2020-2021,
  * The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -67,10 +68,8 @@
 #define HDMI_TX_3_MAX_PCLK_RATE            297000
 #define HDMI_TX_4_MAX_PCLK_RATE            600000
 
-#define hdmi_tx_get_fd(x) ((x && (ffs(x) > 0))  ? \
-			hdmi_ctrl->feature_data[ffs(x) - 1] : NULL)
-#define hdmi_tx_set_fd(x, y) {if (x && (ffs(x) > 0)) \
-			hdmi_ctrl->feature_data[ffs(x) - 1] = y; }
+#define hdmi_tx_get_fd(x) (x ? hdmi_ctrl->feature_data[ffs(x) - 1] : 0)
+#define hdmi_tx_set_fd(x, y) {if (x) hdmi_ctrl->feature_data[ffs(x) - 1] = y; }
 
 #define MAX_EDID_READ_RETRY	5
 #define HPD_STRING_SIZE		30
@@ -82,6 +81,8 @@
 #define HDMI_TX_VERSION_403	0x40000003
 #define HDMI_GET_MSB(x)		(x >> 8)
 #define HDMI_GET_LSB(x)		(x & 0xff)
+
+#define CHAR_TO_NIB	3
 
 /* Enable HDCP by default */
 static bool hdcp_feature_on;
@@ -662,7 +663,7 @@ static ssize_t hdmi_tx_sysfs_wta_edid(struct device *dev,
 	memset(hdmi_ctrl->edid_buf, 0, hdmi_ctrl->edid_buf_size);
 
 	while (edid_size--) {
-		char t[char_to_nib + 1];
+		char t[CHAR_TO_NIB + 1];
 		int d;
 
 		memcpy(t, buf_t, sizeof(char) * char_to_nib);
@@ -1020,7 +1021,6 @@ static ssize_t hdmi_tx_sysfs_wta_hpd(struct device *dev,
 			hpd ? "enable" : "disable", rc);
 		ret = rc;
 	}
-
 end:
 	mutex_unlock(&hdmi_ctrl->tx_lock);
 	return ret;

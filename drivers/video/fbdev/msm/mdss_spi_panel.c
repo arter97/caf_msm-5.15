@@ -1,4 +1,5 @@
 /* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -762,7 +763,7 @@ static void mdss_spi_parse_esd_params(struct device_node *np,
 	}
 }
 
-static int mdss_spi_panel_parse_dt(struct device_node *np,
+static int mdss_spi_panel_parse_dt(struct device *dev, struct device_node *np,
 		struct spi_panel_data	*ctrl_pdata)
 {
 	u32 tmp;
@@ -837,7 +838,7 @@ static int mdss_spi_panel_parse_dt(struct device_node *np,
 			}
 			ctrl_pdata->pwm_period = tmp;
 			if (ctrl_pdata->pwm_pmi) {
-				ctrl_pdata->pwm_bl = of_pwm_get(np, NULL);
+				ctrl_pdata->pwm_bl = of_pwm_get(dev, np, NULL);
 				if (IS_ERR(ctrl_pdata->pwm_bl)) {
 					pr_err("%s: Error, pwm device\n",
 							__func__);
@@ -960,7 +961,7 @@ void mdss_spi_panel_bl_ctrl_update(struct mdss_panel_data *pdata,
 	}
 }
 
-static int mdss_spi_panel_init(struct device_node *node,
+static int mdss_spi_panel_init(struct device_node *node, struct device_node *node,
 	struct spi_panel_data *ctrl_pdata)
 {
 	int rc = 0;
@@ -979,7 +980,7 @@ static int mdss_spi_panel_init(struct device_node *node,
 		pr_debug("%s: Panel Name = %s\n", __func__, panel_name);
 		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
 	}
-	rc = mdss_spi_panel_parse_dt(node, ctrl_pdata);
+	rc = mdss_spi_panel_parse_dt(dev, node, ctrl_pdata);
 	if (rc) {
 		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
 		return rc;
@@ -1281,7 +1282,7 @@ static int mdss_spi_panel_probe(struct platform_device *pdev)
 		goto error_pan_node;
 	}
 
-	rc = mdss_spi_panel_init(spi_pan_node, ctrl_pdata);
+	rc = mdss_spi_panel_init(&pdev->dev, spi_pan_node, ctrl_pdata);
 	if (rc) {
 		pr_err("%s: spi panel init failed\n", __func__);
 		goto error_pan_node;

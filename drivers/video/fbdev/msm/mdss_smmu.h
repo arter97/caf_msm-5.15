@@ -1,4 +1,5 @@
 /* Copyright (c) 2007-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,6 +27,11 @@
 #define MDSS_SMMU_COMPAT_STR_LEN 10
 #define SMMU_CBN_FSYNR1		0x6c
 
+/* to be used alternate */
+enum mdds_iommu_attr {
+	MDSS_DOMAIN_ATTR_EARLY_MAP
+};
+
 struct mdss_iommu_map_type {
 	char *client_name;
 	char *ctx_name;
@@ -36,8 +42,6 @@ struct mdss_iommu_map_type {
 struct mdss_smmu_domain {
 	char *ctx_name;
 	int domain;
-	unsigned long start;
-	unsigned long size;
 };
 
 struct mdss_smmu_private {

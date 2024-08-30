@@ -1,4 +1,5 @@
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -699,7 +700,7 @@ static int adv7533_gpio_configure(struct adv7533 *pdata, bool on)
 			msleep(ADV7533_RESET_DELAY);
 		}
 
-		return 0;
+		goto err_none;
 	}
 	if (gpio_is_valid(pdata->irq_gpio))
 		gpio_free(pdata->irq_gpio);
@@ -707,9 +708,6 @@ static int adv7533_gpio_configure(struct adv7533 *pdata, bool on)
 		gpio_free(pdata->hpd_irq_gpio);
 	if (gpio_is_valid(pdata->switch_gpio))
 		gpio_free(pdata->switch_gpio);
-
-	return 0;
-	}
 
 err_switch_gpio:
 	if (gpio_is_valid(pdata->switch_gpio))

@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -61,10 +62,8 @@ static void mdss_dsi_pm_qos_add_request(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	if (!ctrl_pdata->shared_data->pm_qos_req_cnt) {
 		pr_debug("%s: add request irq\n", __func__);
 
-		mdss_dsi_pm_qos_request.type = PM_QOS_REQ_AFFINE_IRQ;
-		mdss_dsi_pm_qos_request.irq = irq_info->irq;
-		pm_qos_add_request(&mdss_dsi_pm_qos_request,
-			PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+		cpu_latency_qos_add_request(&mdss_dsi_pm_qos_request,
+			PM_QOS_DEFAULT_VALUE);
 	}
 	ctrl_pdata->shared_data->pm_qos_req_cnt++;
 	mutex_unlock(&ctrl_pdata->shared_data->pm_qos_lock);
@@ -80,7 +79,7 @@ static void mdss_dsi_pm_qos_remove_request(struct dsi_shared_data *sdata)
 		sdata->pm_qos_req_cnt--;
 		if (!sdata->pm_qos_req_cnt) {
 			pr_debug("%s: remove request", __func__);
-			pm_qos_remove_request(&mdss_dsi_pm_qos_request);
+			cpu_latency_qos_remove_request(&mdss_dsi_pm_qos_request);
 		}
 	} else {
 		pr_warn("%s: unbalanced pm_qos ref count\n", __func__);
@@ -91,7 +90,7 @@ static void mdss_dsi_pm_qos_remove_request(struct dsi_shared_data *sdata)
 static void mdss_dsi_pm_qos_update_request(int val)
 {
 	pr_debug("%s: update request %d", __func__, val);
-	pm_qos_update_request(&mdss_dsi_pm_qos_request, val);
+	cpu_latency_qos_update_request(&mdss_dsi_pm_qos_request, val);
 }
 
 static int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
@@ -3245,7 +3244,7 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 	if (!mdss_dsi_is_hw_config_split(ctrl_pdata->shared_data) ||
 		(mdss_dsi_is_hw_config_split(ctrl_pdata->shared_data) &&
 		(ctrl_pdata->panel_data.panel_info.pdest == DISPLAY_1))) {
-		rc = mdss_panel_parse_bl_settings(dsi_pan_node, ctrl_pdata);
+		rc = mdss_panel_parse_bl_settings(&pdev->dev, dsi_pan_node, ctrl_pdata);
 		if (rc) {
 			pr_warn("%s: dsi bl settings parse failed\n", __func__);
 			/* Panels like AMOLED and dsi2hdmi chip

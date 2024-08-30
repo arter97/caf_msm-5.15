@@ -1,4 +1,5 @@
 /* Copyright (c) 2013-2015, 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,11 +18,12 @@
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/memblock.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/iommu.h>
 #include <linux/of_address.h>
 #include <linux/fb.h>
 #include <linux/dma-buf.h>
+#include <linux/dma-heap.h>
 
 #include "mdss_fb.h"
 #include "mdss_mdp.h"
@@ -39,6 +41,7 @@ static int mdss_mdp_splash_alloc_memory(struct msm_fb_data_type *mfd,
 	struct msm_fb_splash_info *sinfo;
 	unsigned long buf_size = size;
 	struct mdss_data_type *mdata;
+	struct dma_heap *heap;
 
 	if (!mfd || !size)
 		return -EINVAL;
@@ -49,10 +52,16 @@ static int mdss_mdp_splash_alloc_memory(struct msm_fb_data_type *mfd,
 	if (!mdata || sinfo->splash_buffer)
 		return -EINVAL;
 
-	sinfo->dma_buf = ion_alloc(size, ION_HEAP(ION_SYSTEM_HEAP_ID), 0);
+	heap = dma_heap_find("qcom,system");
+	if (!heap) {
+		pr_err("Invalid heap - no heap found\n");
+		return -EINVAL;
+	}
+
+	sinfo->dma_buf = dma_heap_buffer_alloc(heap, size, O_RDWR | O_CLOEXEC, 0);
 	if (IS_ERR_OR_NULL(sinfo->dma_buf)) {
 		pr_err("ion memory allocation failed\n");
-		rc = PTR_RET(sinfo->dma_buf);
+		rc = PTR_ERR(sinfo->dma_buf);
 		goto end;
 	}
 
@@ -80,10 +89,9 @@ static int mdss_mdp_splash_alloc_memory(struct msm_fb_data_type *mfd,
 	sinfo->size = buf_size;
 
 	dma_buf_begin_cpu_access(sinfo->dma_buf, DMA_BIDIRECTIONAL);
-	sinfo->splash_buffer = dma_buf_kmap(sinfo->dma_buf, 0);
-	if (IS_ERR(sinfo->splash_buffer)) {
+	rc = dma_buf_vmap(sinfo->dma_buf, NULL);
+	if (rc) {
 		pr_err("ion kernel memory mapping failed\n");
-		rc = IS_ERR(sinfo->splash_buffer);
 		goto kmap_err;
 	}
 
@@ -119,7 +127,7 @@ static void mdss_mdp_splash_free_memory(struct msm_fb_data_type *mfd)
 		return;
 
 	dma_buf_end_cpu_access(sinfo->dma_buf, DMA_BIDIRECTIONAL);
-	dma_buf_kunmap(sinfo->dma_buf, 0, sinfo->splash_buffer);
+	dma_buf_vunmap(sinfo->dma_buf, NULL);
 
 	mdss_smmu_unmap_dma_buf(sinfo->table, MDSS_IOMMU_DOMAIN_UNSECURE, 0,
 				sinfo->dma_buf);

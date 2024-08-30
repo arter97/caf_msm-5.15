@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2018,2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -215,7 +216,8 @@ struct reg_bus_client {
 
 struct mdss_smmu_client {
 	struct mdss_smmu_intf base;
-	struct dma_iommu_mapping *mmu_mapping;
+	struct device *dev;
+	struct iommu_domain *mmu_mapping;
 	struct dss_module_power mp;
 	struct reg_bus_client *reg_bus_clt;
 	bool domain_attached;

@@ -1,4 +1,5 @@
 /* Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -407,7 +408,7 @@ static void mdss_hdcp_2x_msg_sent(struct mdss_hdcp_2x_ctrl *hdcp)
 	switch (hdcp->app_data.response.data[0]) {
 	case SKE_SEND_TYPE_ID:
 		if (!hdcp2_app_comm(hdcp->hdcp2_ctx,
-				HDCP2_CMD_SET_HW_KEY, &hdcp->app_data)) {
+				HDCP2_CMD_EN_ENCRYPTION, &hdcp->app_data)) {
 			hdcp->authenticated = true;
 
 			cdata.cmd = HDCP_TRANSPORT_CMD_STATUS_SUCCESS;
@@ -587,7 +588,7 @@ static void mdss_hdcp_2x_msg_recvd(struct mdss_hdcp_2x_ctrl *hdcp)
 	if (msg[0] == REP_STREAM_READY) {
 		if (!hdcp->authenticated) {
 			rc = hdcp2_app_comm(hdcp->hdcp2_ctx,
-					HDCP2_CMD_SET_HW_KEY,
+					HDCP2_CMD_EN_ENCRYPTION,
 					&hdcp->app_data);
 			if (!rc) {
 				hdcp->authenticated = true;
@@ -782,7 +783,7 @@ int mdss_hdcp_2x_register(struct mdss_hdcp_2x_register_data *data)
 
 	return 0;
 error:
-	kzfree(hdcp);
+	kfree(hdcp);
 	hdcp = NULL;
 unlock:
 	return rc;
@@ -798,5 +799,5 @@ void mdss_hdcp_2x_deregister(void *data)
 	kthread_stop(hdcp->thread);
 	mutex_destroy(&hdcp->wakeup_mutex);
 	hdcp2_deinit(hdcp->hdcp2_ctx);
-	kzfree(hdcp);
+	kfree(hdcp);
 }

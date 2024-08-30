@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2018,2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -93,8 +94,6 @@
 /* hw cursor can only be setup in highest mixer stage */
 #define HW_CURSOR_STAGE(mdata) \
 	(((mdata)->max_target_zorder + MDSS_MDP_STAGE_0) - 1)
-
-#define BITS_TO_BYTES(x) DIV_ROUND_UP(x, BITS_PER_BYTE)
 
 #define PP_PROGRAM_PA		0x1
 #define PP_PROGRAM_PCC		0x2

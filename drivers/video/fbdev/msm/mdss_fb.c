@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2007 Google Incorporated
  * Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -17,7 +18,7 @@
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
 #include <linux/videodev2.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/console.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -46,6 +47,8 @@
 #include <linux/file.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-heap.h>
 #include <uapi/linux/sched/types.h>
 #include "mdss_fb.h"
 #include "mdss_mdp_splash_logo.h"
@@ -123,9 +126,9 @@ static int mdss_fb_send_panel_event(struct msm_fb_data_type *mfd,
 static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
 		int type);
 
-void mdss_fb_no_update_notify_timer_cb(unsigned long data)
+void mdss_fb_no_update_notify_timer_cb(struct timer_list *list_data)
 {
-	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)data;
+	struct msm_fb_data_type *mfd = from_timer(mfd, list_data, no_update.timer);
 
 	if (!mfd) {
 		pr_err("%s mfd NULL\n", __func__);
@@ -2111,6 +2114,7 @@ end:
 
 void mdss_fb_free_fb_ion_memory(struct msm_fb_data_type *mfd)
 {
+	struct dma_buf_map map;
 	if (!mfd) {
 		pr_err("no mfd\n");
 		return;
@@ -2124,10 +2128,11 @@ void mdss_fb_free_fb_ion_memory(struct msm_fb_data_type *mfd)
 		return;
 	}
 
+	map.vaddr = mfd->fbi->screen_base;
 	mfd->fbi->screen_base = NULL;
 	mfd->fbi->fix.smem_start = 0;
 
-	dma_buf_kunmap(mfd->fbmem_buf, 0, mfd->fbi->screen_base);
+	dma_buf_vunmap(mfd->fbmem_buf, &map);
 
 	dma_buf_end_cpu_access(mfd->fbmem_buf, DMA_BIDIRECTIONAL);
 
@@ -2151,20 +2156,26 @@ void mdss_fb_free_fb_ion_memory(struct msm_fb_data_type *mfd)
 int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 {
 	int rc = 0;
-	void *vaddr;
+	void *vaddr = NULL;
 	int domain;
-
+	struct dma_buf_map map;
+	struct dma_heap *heap;
 	if (!mfd) {
 		pr_err("Invalid input param - no mfd\n");
 		return -EINVAL;
 	}
 
 	pr_debug("size for mmap = %zu\n", fb_size);
-	mfd->fbmem_buf = ion_alloc(fb_size,
-			ION_HEAP(ION_SYSTEM_HEAP_ID), 0);
+	heap = dma_heap_find("qcom,system");
+	if (!heap) {
+		pr_err("Invalid heap - no heap found\n");
+		return -EINVAL;
+	}
+
+	mfd->fbmem_buf = dma_heap_buffer_alloc(heap, fb_size, O_RDWR | O_CLOEXEC, 0);
 	if (IS_ERR_OR_NULL(mfd->fbmem_buf)) {
 		pr_err("unable to alloc fbmem from ion - %ld\n",
-				PTR_ERR(mfd->fbmem_buf));
+			PTR_ERR(mfd->fbmem_buf));
 		return PTR_ERR(mfd->fbmem_buf);
 	}
 
@@ -2206,7 +2217,8 @@ int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 
 	dma_buf_begin_cpu_access(mfd->fbmem_buf, DMA_BIDIRECTIONAL);
 
-	vaddr  = dma_buf_kmap(mfd->fbmem_buf, 0);
+	dma_buf_vmap(mfd->fbmem_buf, &map);
+	vaddr = map.vaddr;
 	if (IS_ERR_OR_NULL(vaddr)) {
 		pr_err("ION memory mapping failed - %ld\n", PTR_ERR(vaddr));
 		rc = PTR_ERR(vaddr);
@@ -2695,9 +2707,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	atomic_set(&mfd->ioctl_ref_cnt, 0);
 	atomic_set(&mfd->kickoff_pending, 0);
 
-	init_timer(&mfd->no_update.timer);
-	mfd->no_update.timer.function = mdss_fb_no_update_notify_timer_cb;
-	mfd->no_update.timer.data = (unsigned long)mfd;
+	timer_setup(&mfd->no_update.timer, mdss_fb_no_update_notify_timer_cb, 0);
 	mfd->update.ref_count = 0;
 	mfd->no_update.ref_count = 0;
 	mfd->update.init_done = false;
@@ -2955,7 +2965,7 @@ static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
 			if (wait_jf < 0)
 				break;
 
-				wait_ms = min_t(long, WAIT_FENCE_FINAL_TIMEOUT,
+			wait_ms = min_t(long, WAIT_FENCE_FINAL_TIMEOUT,
 						wait_ms);
 
 			pr_warn("%s: timed out! Waiting %ld.%ld more seconds\n",
@@ -4809,22 +4819,6 @@ static int __ioctl_wait_idle(struct msm_fb_data_type *mfd, u32 cmd)
 	return ret;
 }
 
-#ifdef TARGET_HW_MDSS_MDP3
-static bool check_not_supported_ioctl(u32 cmd)
-{
-	return false;
-}
-#else
-static bool check_not_supported_ioctl(u32 cmd)
-{
-	return((cmd == MSMFB_OVERLAY_SET) || (cmd == MSMFB_OVERLAY_UNSET) ||
-		(cmd == MSMFB_OVERLAY_GET) || (cmd == MSMFB_OVERLAY_PREPARE) ||
-		(cmd == MSMFB_DISPLAY_COMMIT) || (cmd == MSMFB_OVERLAY_PLAY) ||
-		(cmd == MSMFB_BUFFER_SYNC) || (cmd == MSMFB_OVERLAY_QUEUE) ||
-		(cmd == MSMFB_NOTIFY_UPDATE));
-}
-#endif
-
 /*
  * mdss_fb_do_ioctl() - MDSS Framebuffer ioctl function
  * @info:	pointer to framebuffer info
@@ -4858,11 +4852,6 @@ int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
 	pdata = dev_get_platdata(&mfd->pdev->dev);
 	if (!pdata || pdata->panel_info.dynamic_switch_pending)
 		return -EPERM;
-
-	if (check_not_supported_ioctl(cmd)) {
-		pr_err("Unsupported ioctl\n");
-		return -EINVAL;
-	}
 
 	atomic_inc(&mfd->ioctl_ref_cnt);
 
