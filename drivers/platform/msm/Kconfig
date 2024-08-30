@@ -76,4 +76,13 @@ config IPA3
 	  Kernel and user-space processes can call the IPA driver
 	  to configure IPA core.
 
+config MSM_EXT_DISPLAY
+        bool "MSM External Display Driver"
+        help
+        Enabling this option adds MSM External Display Driver.
+        External Display driver was added to support the communication
+        between external display driver and its counterparts.
+        This should be enabled to support audio & video over HDMI or
+        DP for hot pluggable sink devices.
+
 endmenu
