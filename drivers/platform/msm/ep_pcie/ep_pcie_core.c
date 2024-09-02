@@ -2737,7 +2737,7 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		"PCIe V%d: No. %ld linkdown IRQ\n",
 		dev->rev, dev->linkdown_counter);
 
-	if (!dev->enumerated || dev->link_status == EP_PCIE_LINK_DISABLED) {
+	if (dev->link_status == EP_PCIE_LINK_DISABLED) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d:Linkdown IRQ happened when the link is disabled\n",
 			dev->rev);
@@ -2754,7 +2754,8 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		EP_PCIE_DBG(dev, "PCIe V%d:PCIe link is down for %ld times\n",
 			dev->rev, dev->linkdown_counter);
 		ep_pcie_reg_dump(dev, BIT(EP_PCIE_RES_PHY) |
-				BIT(EP_PCIE_RES_PARF), true);
+				BIT(EP_PCIE_RES_PARF) | BIT(EP_PCIE_RES_MMIO) |
+				BIT(EP_PCIE_RES_DM_CORE), true);
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_LINKDOWN);
 	}
 

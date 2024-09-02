@@ -75,16 +75,14 @@ static int __xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 	if (x->props.mode != XFRM_MODE_TUNNEL)
 		goto skip_frag;
 
-	if (skb->protocol == htons(ETH_P_IPV6))
-		if (x->xso.type == XFRM_DEV_OFFLOAD_PACKET)
-			mtu = xfrm_state_mtu(x, ip6_skb_dst_mtu(skb));
-		else
-			mtu = ip6_skb_dst_mtu(skb);
-	else
-		if (x->xso.type == XFRM_DEV_OFFLOAD_PACKET)
-			mtu = xfrm_state_mtu(x, dst_mtu(skb_dst(skb)));
-		else
-			mtu = dst_mtu(skb_dst(skb));
+	if (x->xso.type == XFRM_DEV_OFFLOAD_PACKET) {
+		mtu = xfrm_state_mtu(x, dst_mtu(skb_dst(skb)));
+		IP6CB(skb)->frag_max_size = mtu;
+	} else if (skb->protocol == htons(ETH_P_IPV6)) {
+		mtu = ip6_skb_dst_mtu(skb);
+	} else {
+		mtu = dst_mtu(skb_dst(skb));
+	}
 
 	toobig = skb->len > mtu && !skb_is_gso(skb);
 
@@ -101,11 +99,9 @@ static int __xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 		return -EMSGSIZE;
 	}
 
-	if (toobig || dst_allfrag(skb_dst(skb))) {
-		IPCB(skb)->frag_max_size = mtu;
+	if (toobig || dst_allfrag(skb_dst(skb)))
 		return ip6_fragment(net, sk, skb,
 				    __xfrm6_output_finish);
-	}
 
 skip_frag:
 	return xfrm_output(sk, skb);

@@ -29,10 +29,13 @@
 #include <linux/poll.h>
 #include <linux/panic_notifier.h>
 #include <linux/gpio/consumer.h>
+#include <uapi/linux/sb_cfg.h>
 
 #define STATUS_UP 1
 #define STATUS_DOWN 0
 #define SB_FIFO_SIZE 8
+#define SLEEP_MIN 10000
+#define SLEEP_MAX 20000
 
 enum subsys_policies {
 	SUBSYS_PANIC = 0,
@@ -90,6 +93,7 @@ struct gpio_cntrl {
 	dev_t sb_err_cdev_devid;
 	struct class *sb_class;
 	struct class *sb_err_class;
+	struct mutex wakeup_out_lock;
 };
 
 static ssize_t set_remote_status_store(struct device *dev,
@@ -148,21 +152,33 @@ static ssize_t policy_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(policy);
 
+static int sb_request_remote_wakeup(struct gpio_cntrl *mdm)
+{
+	mutex_lock(&mdm->wakeup_out_lock);
+	gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 1);
+	usleep_range(SLEEP_MIN, SLEEP_MAX);
+	gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 0);
+	mutex_unlock(&mdm->wakeup_out_lock);
+
+	return 0;
+}
+
 static int sideband_notify(struct notifier_block *nb,
 		unsigned long action, void *dev)
 {
+	int ret = 0;
 	struct gpio_cntrl *mdm = container_of(nb,
 					struct gpio_cntrl, sideband_nb);
 
 	switch (action) {
 	case EVENT_REQUEST_WAKE_UP:
-		gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 1);
-		usleep_range(10000, 20000);
-		gpiod_set_value(mdm->gpdesc[WAKEUP_OUT], 0);
+		ret = sb_request_remote_wakeup(mdm);
+		if (ret == 0)
+			ret = NOTIFY_OK;
 		break;
 	}
 
-	return NOTIFY_OK;
+	return ret;
 }
 
 static irqreturn_t status_in_hwirq_hdlr(int irq, void *p)
@@ -544,11 +560,43 @@ static unsigned int sb_err_poll(struct file *filp,
 	return events;
 }
 
+/**
+ * sb_notify_ioctl() - ioctl() syscall for the sideband notifier device
+ * file:        Pointer to the file structure.
+ * cmd:         IOCTL command.
+ * arg:         Arguments to the ioctl call.
+ *
+ * This function is used to ioctl on the sideband notifier device when
+ * userspace client do a ioctl() system call. All input arguments are
+ * validated by the virtual file system before calling this function.
+ */
+static long sb_notify_ioctl(struct file *file, unsigned int cmd,
+		unsigned long arg)
+{
+	int ret = 0;
+	struct gpio_cntrl *mdm = file->private_data;
+
+	switch (cmd) {
+	case SIDEBAND_REQUEST_REMOTE_WAKEUP:
+		ret = sb_request_remote_wakeup(mdm);
+		if (ret == 0)
+			ret = NOTIFY_OK;
+		break;
+	default:
+		dev_info(mdm->dev, "%s: invalid  cmd\n", __func__);
+		break;
+	}
+
+	return ret;
+}
+
 static const struct file_operations sb_err_fileops = {
 	.open = sb_err_open,
 	.release = sb_err_release,
 	.read = sb_err_read,
 	.poll = sb_err_poll,
+	.unlocked_ioctl = sb_notify_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
 	.owner = THIS_MODULE,
 };
 
@@ -585,6 +633,7 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 	}
 
 	mutex_init(&mdm->policy_lock);
+	mutex_init(&mdm->wakeup_out_lock);
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,default-policy-nop"))
 		mdm->policy = SUBSYS_NOP;
 	else
@@ -773,6 +822,8 @@ sys_fail2:
 						&mdm->err_panic_blk);
 	remove_ipc(mdm);
 	device_remove_file(mdm->dev, &dev_attr_set_remote_status);
+	mutex_destroy(&mdm->policy_lock);
+	mutex_destroy(&mdm->wakeup_out_lock);
 
 	return ret;
 }
@@ -806,6 +857,8 @@ static int sdx_ext_ipc_remove(struct platform_device *pdev)
 						&mdm->err_panic_blk);
 	remove_ipc(mdm);
 	device_remove_file(mdm->dev, &dev_attr_policy);
+	mutex_destroy(&mdm->policy_lock);
+	mutex_destroy(&mdm->wakeup_out_lock);
 
 	return 0;
 }
