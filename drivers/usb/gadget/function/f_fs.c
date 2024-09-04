@@ -30,7 +30,6 @@
 #include <linux/usb/ccid.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/functionfs.h>
-#include <linux/usb/dwc3-msm.h>
 
 #include <linux/aio.h>
 #include <linux/kthread.h>
@@ -3326,7 +3325,6 @@ static int ffs_func_set_alt(struct usb_function *f,
 {
 	struct ffs_function *func = ffs_func_from_usb(f);
 	struct ffs_data *ffs = func->ffs;
-	struct f_fs_opts *opts = container_of(f->fi, struct f_fs_opts, func_inst);
 	int ret = 0, intf;
 
 	if (alt != (unsigned)-1) {
@@ -3335,11 +3333,8 @@ static int ffs_func_set_alt(struct usb_function *f,
 			return intf;
 	}
 
-	if (ffs->func) {
+	if (ffs->func)
 		ffs_func_eps_disable(ffs->func);
-		if (!strcmp(opts->dev->name, "adb"))
-			usb_gadget_autopm_put_async(ffs->gadget);
-	}
 
 	if (ffs->state == FFS_DEACTIVATED) {
 		ffs->state = FFS_CLOSING;
@@ -3359,11 +3354,8 @@ static int ffs_func_set_alt(struct usb_function *f,
 
 	ffs->func = func;
 	ret = ffs_func_eps_enable(func);
-	if (ret >= 0) {
+	if (ret >= 0)
 		ffs_event_add(ffs, FUNCTIONFS_ENABLE);
-		if (!strcmp(opts->dev->name, "adb"))
-			usb_gadget_autopm_get_async(ffs->gadget);
-	}
 	return ret;
 }
 
@@ -3456,7 +3448,6 @@ static bool ffs_func_req_match(struct usb_function *f,
 
 static void ffs_func_suspend(struct usb_function *f)
 {
-	pr_err("prashk %s", __func__);
 	ENTER();
 	ffs_event_add(ffs_func_from_usb(f)->ffs, FUNCTIONFS_SUSPEND);
 }
