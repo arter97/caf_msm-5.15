@@ -1773,11 +1773,11 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 	struct fastrpc_ioctl_invoke *invoke = &invokefd->inv;
 	struct fastrpc_channel_ctx *chan = NULL;
 	unsigned long irq_flags = 0;
-	uint32_t kernel_msg = ((kernel == COMPAT_MSG) ? USER_MSG : kernel);
+	uint32_t is_kernel_memory = 0;
 
 	spin_lock(&fl->hlock);
 	if (fl->clst.num_active_ctxs > MAX_PENDING_CTX_PER_SESSION &&
-		!(kernel_msg || invoke->handle < FASTRPC_STATIC_HANDLE_MAX)) {
+		!(kernel || invoke->handle < FASTRPC_STATIC_HANDLE_MAX)) {
 		err = -EDQUOT;
 		spin_unlock(&fl->hlock);
 		goto bail;
@@ -1808,7 +1808,12 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 	ctx->overs = (struct overlap *)(&ctx->attrs[bufs]);
 	ctx->overps = (struct overlap **)(&ctx->overs[bufs]);
 
-	K_COPY_FROM_USER(err, kernel, (void *)ctx->lpra, invoke->pra,
+	/* If user message, do not use copy_from_user to copy buffers for
+	 * compat driver,as memory is already copied to kernel memory
+	 * for compat driver
+	 */
+	is_kernel_memory = ((kernel == USER_MSG) ? (fl->is_compat) : kernel);
+	K_COPY_FROM_USER(err, is_kernel_memory, (void *)ctx->lpra, invoke->pra,
 							bufs * sizeof(*ctx->lpra));
 	if (err) {
 		ADSPRPC_ERR(
@@ -1893,15 +1898,7 @@ static int context_alloc(struct fastrpc_file *fl, uint32_t kernel,
 
 	spin_lock_irqsave(&chan->ctxlock, irq_flags);
 	me->jobid[cid]++;
-
-	/*
-	 * To prevent user invocations from exhausting all entries in context
-	 * table, it is necessary to reserve a few context table entries for
-	 * critical kernel and static RPC calls. The index will begin at 0 for
-	 * static handles, while user handles start from
-	 * NUM_KERNEL_AND_STATIC_ONLY_CONTEXTS.
-	 */
-	for (ii = ((kernel_msg || ctx->handle < FASTRPC_STATIC_HANDLE_MAX)
+	for (ii = ((kernel || ctx->handle < FASTRPC_STATIC_HANDLE_MAX)
 				? 0 : NUM_KERNEL_AND_STATIC_ONLY_CONTEXTS);
 				ii < FASTRPC_CTX_MAX; ii++) {
 		if (!chan->ctxtable[ii]) {
@@ -3219,7 +3216,7 @@ static void fastrpc_update_invoke_count(uint32_t handle, uint64_t *perf_counter,
 }
 
 int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
-				   uint32_t msg_type,
+				   uint32_t kernel,
 				   struct fastrpc_ioctl_invoke_async *inv)
 {
 	struct smq_invoke_ctx *ctx = NULL;
@@ -3228,7 +3225,6 @@ int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
 	struct timespec64 invoket = {0};
 	uint64_t *perf_counter = NULL;
 	bool isasyncinvoke = false, isworkdone = false;
-	uint32_t kernel = (msg_type == COMPAT_MSG) ? USER_MSG : msg_type;
 
 	cid = fl->cid;
 	VERIFY(err, VALID_FASTRPC_CID(cid) &&
@@ -3265,7 +3261,9 @@ int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
 			&& (invoke->handle == FASTRPC_STATIC_HANDLE_CURRENT_PROCESS)
 			&& (mid == FASTRPC_STATIC_MID_ENABLE_NOTIF))
 			fl->init_notif = true;
+	}
 
+	if (!kernel) {
 		VERIFY(err, 0 == (err = context_restore_interrupted(fl,
 		inv, &ctx)));
 		if (err)
@@ -3283,7 +3281,7 @@ int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
 	}
 
 	trace_fastrpc_msg("context_alloc: begin");
-	VERIFY(err, 0 == (err = context_alloc(fl, msg_type, inv, &ctx)));
+	VERIFY(err, 0 == (err = context_alloc(fl, kernel, inv, &ctx)));
 	trace_fastrpc_msg("context_alloc: end");
 	if (err)
 		goto bail;
@@ -3688,7 +3686,7 @@ bail:
 }
 
 int fastrpc_internal_invoke2(struct fastrpc_file *fl,
-				struct fastrpc_ioctl_invoke2 *inv2, bool is_compat)
+				struct fastrpc_ioctl_invoke2 *inv2)
 {
 	union {
 		struct fastrpc_ioctl_invoke_async inv;
@@ -3700,7 +3698,7 @@ int fastrpc_internal_invoke2(struct fastrpc_file *fl,
 		struct fastrpc_proc_sess_info sess_info;
 	} p;
 	struct fastrpc_dsp_capabilities *dsp_cap_ptr = NULL;
-	uint32_t size = 0, kernel = 0;
+	uint32_t size = 0;
 	int err = 0, domain = fl->cid;
 
 	if (inv2->req == FASTRPC_INVOKE2_ASYNC ||
@@ -3727,20 +3725,19 @@ int fastrpc_internal_invoke2(struct fastrpc_file *fl,
 			goto bail;
 		}
 		if (size > inv2->size) {
-			K_COPY_FROM_USER(err, is_compat, &p.inv3, (void *)inv2->invparam,
+			K_COPY_FROM_USER(err, fl->is_compat, &p.inv3, (void *)inv2->invparam,
 				sizeof(struct fastrpc_ioctl_invoke_async_no_perf));
 			if (err)
 				goto bail;
 			memcpy(&p.inv, &p.inv3, sizeof(struct fastrpc_ioctl_invoke_crc));
 			memcpy(&p.inv.job, &p.inv3.job, sizeof(p.inv.job));
 		} else {
-			K_COPY_FROM_USER(err, is_compat, &p.inv, (void *)inv2->invparam, size);
+			K_COPY_FROM_USER(err, fl->is_compat, &p.inv, (void *)inv2->invparam, size);
 			if (err)
 				goto bail;
 		}
-		kernel = (is_compat) ? COMPAT_MSG : USER_MSG;
 		VERIFY(err, 0 == (err = fastrpc_internal_invoke(fl, fl->mode,
-					kernel, &p.inv)));
+					USER_MSG, &p.inv)));
 		if (err)
 			goto bail;
 		break;
@@ -3760,7 +3757,7 @@ int fastrpc_internal_invoke2(struct fastrpc_file *fl,
 			err = -EBADE;
 			goto bail;
 		}
-		K_COPY_FROM_USER(err, is_compat, &p.user_concurrency,
+		K_COPY_FROM_USER(err, 0, &p.user_concurrency,
 				(void *)inv2->invparam, size);
 		if (err)
 			goto bail;
@@ -3784,7 +3781,7 @@ int fastrpc_internal_invoke2(struct fastrpc_file *fl,
 			err = -EBADE;
 			goto bail;
 		}
-		K_COPY_FROM_USER(err, 0, &p.buff_info,
+		K_COPY_FROM_USER(err, fl->is_compat, &p.buff_info,
 					 (void *)inv2->invparam, inv2->size);
 		if (err)
 			goto bail;
@@ -3799,7 +3796,7 @@ int fastrpc_internal_invoke2(struct fastrpc_file *fl,
 			err = -EBADE;
 			goto bail;
 		}
-		K_COPY_FROM_USER(err, is_compat, &p.sess_info,
+		K_COPY_FROM_USER(err, fl->is_compat, &p.sess_info,
 					 (void *)inv2->invparam, inv2->size);
 		if (err)
 			goto bail;
@@ -6300,6 +6297,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->is_ramdump_pend = false;
 	fl->dsp_process_state = PROCESS_CREATE_DEFAULT;
 	fl->is_unsigned_pd = false;
+	fl->is_compat = false;
 	fl->exit_notif = false;
 	fl->exit_async = false;
 	fl->multi_session_support = false;
@@ -7289,7 +7287,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int ioctl_num,
 			err = -EFAULT;
 			goto bail;
 		}
-		VERIFY(err, 0 == (err = fastrpc_internal_invoke2(fl, &p.inv2, false)));
+		VERIFY(err, 0 == (err = fastrpc_internal_invoke2(fl, &p.inv2)));
 		if (err)
 			goto bail;
 		break;
