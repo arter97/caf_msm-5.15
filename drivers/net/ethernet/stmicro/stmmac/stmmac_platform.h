@@ -30,4 +30,7 @@ static inline void *get_stmmac_bsp_priv(struct device *dev)
 	return priv->plat->bsp_priv;
 }
 
+int stmmac_mtl_setup(struct platform_device *pdev,
+		     struct plat_stmmacenet_data *plat);
+
 #endif /* __STMMAC_PLATFORM_H__ */

@@ -144,8 +144,9 @@ static void stmmac_flush_tx_descriptors(struct stmmac_priv *priv, int queue);
 
 static int stmmac_init_ptp(struct stmmac_priv *priv);
 
-#ifdef CONFIG_DEBUG_FS
 static const struct net_device_ops stmmac_netdev_ops;
+
+#ifdef CONFIG_DEBUG_FS
 static void stmmac_init_fs(struct net_device *dev);
 static void stmmac_exit_fs(struct net_device *dev);
 #endif
@@ -6385,6 +6386,11 @@ drain_data:
 			skb_set_hash(skb, hash, hash_type);
 
 		skb_record_rx_queue(skb, queue);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		if (priv->plat->set_skb_prio)
+			priv->plat->set_skb_prio(priv->plat->bsp_priv, skb, queue);
+#endif
+
 		napi_gro_receive(&ch->rx_napi, skb);
 		skb = NULL;
 
@@ -8207,6 +8213,9 @@ int stmmac_dvr_probe(struct device *device,
 		dev_err(priv->device, "unable to bring out of ahb reset: %pe\n",
 			ERR_PTR(ret));
 
+	/* Wait a bit for the reset to take effect */
+	udelay(10);
+
 	/* Init MAC and get the capabilities */
 	ret = stmmac_hw_init(priv);
 	if (ret)
@@ -8696,6 +8705,163 @@ int stmmac_resume(struct device *dev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(stmmac_resume);
+
+int stmmac_release_dma_resources(struct net_device *ndev)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int chan = 0;
+
+	netif_tx_disable(ndev);
+	stmmac_disable_all_queues(priv);
+
+	if (!priv->tx_coal_timer_disable) {
+		for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
+			hrtimer_cancel(&priv->tx_queue[chan].txtimer);
+	}
+
+	/* Stop TX/RX DMA and clear the descriptors */
+	stmmac_stop_all_dma(priv);
+
+	/* Release and free the Rx/Tx resources */
+	free_dma_desc_resources(priv);
+
+	/* Disable the MAC Rx/Tx */
+	stmmac_mac_set(priv, priv->ioaddr, false);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_release_dma_resources);
+
+int stmmac_request_dma_resources(struct net_device *ndev, u32 queue_cnt)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int ret = 0;
+	u32 queue;
+	u32 rx_queues = priv->plat->rx_queues_to_use - 1;
+	int i = 0;
+
+	ret = alloc_dma_desc_resources(priv);
+	if (ret < 0)
+		netdev_err(priv->dev, "%s: DMA descriptors allocation failed\n",
+			   __func__);
+
+	ret = init_dma_desc_rings(ndev, GFP_KERNEL);
+	if (ret < 0)
+		netdev_err(priv->dev, "%s: DMA descriptors initialization failed\n",
+			   __func__);
+
+	ret = stmmac_init_dma_engine(priv);
+	if (ret < 0) {
+		netdev_err(priv->dev, "%s: DMA engine initialization failed\n",
+			   __func__);
+		return ret;
+	}
+
+	/* set TX and RX rings length */
+	 stmmac_set_rings_length(priv);
+
+	/* Initialize the MAC Core */
+	stmmac_core_init(priv, priv->hw, ndev);
+
+	/* Initialize MTL*/
+	stmmac_mtl_configuration(priv);
+
+	/* Disable unused RX queues*/
+	for (i = (rx_queues - queue_cnt); i > 0; i--) {
+		stmmac_rx_queue_disable(priv, priv->hw, i);
+		pr_info("disable queue %d\n", i);
+	}
+
+	/* Enable the MAC Rx/Tx */
+	stmmac_mac_set(priv, priv->ioaddr, true);
+
+	/* Set the HW DMA mode and the COE */
+	stmmac_dma_operation_mode(priv);
+
+	if (priv->use_riwt) {
+		for (queue = 0; queue < priv->plat->rx_queues_to_use; queue++) {
+			if (!priv->rx_riwt[queue])
+				priv->rx_riwt[queue] = DEF_DMA_RIWT;
+				stmmac_rx_watchdog(priv, priv->ioaddr,
+						   priv->rx_riwt[queue], queue);
+		}
+	}
+
+	/* Start the ball rolling... */
+	stmmac_start_all_dma(priv);
+	stmmac_enable_all_queues(priv);
+	netif_tx_start_all_queues(priv->dev);
+	stmmac_enable_all_dma_irq(priv);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(stmmac_request_dma_resources);
+
+void stmmac_mac_config_pfc(struct stmmac_priv *priv)
+{
+	priv->hw->mac->config_pfc(priv->hw);
+}
+EXPORT_SYMBOL_GPL(stmmac_mac_config_pfc);
+
+void stmmac_pfc_tx_flow_ctrl(struct stmmac_priv *priv, u32 queue)
+{
+	priv->hw->mac->configure_pfc_tx_flow_ctrl(priv->hw, queue);
+}
+EXPORT_SYMBOL_GPL(stmmac_pfc_tx_flow_ctrl);
+
+int stmmac_config_rx_queue(struct net_device *ndev, u32 queue, bool skip_sw)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct stmmac_channel *ch = &priv->channel[queue];
+
+	if (skip_sw) {
+		napi_disable(&ch->rx_napi);
+		stmmac_disable_rx_queue(priv, queue);
+		pr_info("napi disable for ch %d\n", queue);
+	}
+
+	priv->plat->rx_queues_cfg[queue].skip_sw = skip_sw;
+
+	if (!skip_sw) {
+		pr_info("napi enable for ch %d\n", queue);
+		stmmac_enable_rx_queue(priv, queue);
+		napi_enable(&ch->rx_napi);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_config_rx_queue);
+
+int stmmac_config_tx_queue(struct net_device *ndev, u32 queue, bool skip_sw)
+{
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct stmmac_channel *ch = &priv->channel[queue];
+	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
+
+	if (skip_sw) {
+		pr_info("napi disable for ch %d\n", queue);
+		napi_disable(&ch->tx_napi);
+		if (!priv->tx_coal_timer_disable)
+			hrtimer_cancel(&priv->tx_queue[queue].txtimer);
+		stmmac_disable_tx_queue(priv, queue);
+	}
+
+	priv->plat->tx_queues_cfg[queue].skip_sw = skip_sw;
+
+	if (!skip_sw) {
+		stmmac_enable_tx_queue(priv, queue);
+		pr_info("napi enable for ch %d\n", queue);
+		napi_enable(&ch->tx_napi);
+		priv->tx_coal_frames[queue] = STMMAC_TX_FRAMES;
+		priv->tx_coal_timer[queue] = STMMAC_COAL_TX_TIMER;
+
+		hrtimer_init(&tx_q->txtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		tx_q->txtimer.function = stmmac_tx_timer;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(stmmac_config_tx_queue);
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)

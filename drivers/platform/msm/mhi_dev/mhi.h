@@ -452,16 +452,11 @@ struct event_req {
 	u32			num_events;
 	dma_addr_t		dma;
 	u32			dma_len;
-	dma_addr_t		event_rd_dma;
 	void			*context;
 	enum mhi_dev_tr_compl_evt_type event_type;
-	u32			event_ring;
-	void			(*client_cb)(void *req);
-	void			(*rd_offset_cb)(void *req);
-	void			(*msi_cb)(void *req);
 	struct list_head	list;
 	u32			flush_num;
-	u32			snd_cmpl;
+	bool			snd_cmpl;
 	bool		is_cmd_cpl;
 	bool		is_stale;
 };
@@ -559,9 +554,9 @@ struct mhi_dev {
 	struct mhi_addr			cmd_ctx_shadow;
 	struct mhi_dev_ch_ctx		*cmd_ctx_cache;
 	dma_addr_t			cmd_ctx_cache_dma_handle;
-	struct mhi_dev_ring		*ring;
+	struct mhi_dev_ring		**ring;
 	int				mhi_irq;
-	struct mhi_dev_channel		*ch;
+	struct mhi_dev_channel		**ch;
 	struct mhi_cmd_cmpl_ctx			*cmd_ctx;
 
 	int				ctrl_int;
@@ -603,9 +598,7 @@ struct mhi_dev {
 	u32				mhi_version;
 	u32				mhi_chan_hw_base;
 	u32				mhi_num_ipc_pages_dev_fac;
-	void				*dma_cache;
 	/* Physical scratch buffer for writing control data to the host */
-	dma_addr_t			cache_dma_handle;
 	bool				mhi_dma_ready;
 
 	/* Use  PCI eDMA for data transfer */

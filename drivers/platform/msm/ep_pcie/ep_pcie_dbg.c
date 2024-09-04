@@ -19,7 +19,7 @@
 #include "ep_pcie_phy.h"
 
 #define PCIE_PHYSICAL_DEVICE 0
-#define EP_PCIE_MAX_DEBUGFS_OPTION 28
+#define EP_PCIE_MAX_DEBUGFS_OPTION 29
 
 #define EYE_HEIGHT_STEP                         3
 #define MAX_EYE_HEIGHT                          128
@@ -69,13 +69,40 @@ static const char * const
 	"Dump clock CBCR registers",
 	"Dump ASPM stats",
 	"Positive eye sequence",
-	"Negative eye sequence"
+	"Negative eye sequence",
+	"PCIe Link Status"
 	};
 
 static struct dentry *dent_ep_pcie;
 static struct dentry *dfile_case;
 static struct ep_pcie_dev_t *dev;
 
+static void ep_pcie_check_link_state(struct ep_pcie_dev_t *dev)
+{
+	u32 val = 0;
+
+	if (!dev->power_on) {
+		EP_PCIE_ERR(dev,
+			"PCIe V%d: the power is already down; can't dump registers\n",
+			dev->rev);
+		return;
+	}
+	EP_PCIE_DBG_FS("********** PCIe LTSSM State **********", NULL);
+	val = readl_relaxed(dev->parf + PCIE20_PARF_LTSSM);
+	EP_PCIE_DBG_FS("PARF_LTSSM: 0x%x\n", val);
+	EP_PCIE_DBG_FS("LTSSM State: %s\n",
+		ep_pcie_ltssm_str[val & PCIE20_PARF_LTSSM_STATE_MASK]);
+
+	EP_PCIE_DBG_FS("*********** PCIe PM Status ***********", NULL);
+	val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);
+	EP_PCIE_DBG_FS("PARF_PM_STTS: 0x%x\n", val);
+	EP_PCIE_DBG_FS("Device State: %s\n",
+		ep_pcie_dsate_str[val & PCIE20_PARF_PM_STTS_PM_DSTATE_0_MASK
+		>> PCIE20_PARF_PM_STTS_PM_DSTATE_0_SHIFT]);
+	EP_PCIE_DBG_FS("L1 Sub State: %s\n",
+		ep_pcie_l1ss_str[(val & PCIE20_PARF_PM_STTS_PM_LINKST_IN_L1SUB_MASK)
+		>> PCIE20_PARF_PM_STTS_PM_LINKST_IN_L1SUB_SHIFT]);
+}
 
 static void ep_ep_pcie_phy_dump_pcs_debug_bus(struct ep_pcie_dev_t *dev,
 					u32 cntrl4, u32 cntrl5,
@@ -696,6 +723,9 @@ static ssize_t ep_pcie_cmd_debug(struct file *file,
 	case 27: /* negative eye sequence */
 		ep_pcie_eom_eye_seq(dev, NEGATIVE_SEQUENCE);
 		EP_PCIE_DBG_FS("Run complete %d\n", testcase);
+		break;
+	case 28:
+		ep_pcie_check_link_state(dev);
 		break;
 	default:
 		EP_PCIE_DBG_FS("PCIe: Invalid testcase: %d\n", testcase);

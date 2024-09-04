@@ -311,6 +311,8 @@ struct stmmac_ops {
 	int (*rx_ipc)(struct mac_device_info *hw);
 	/* Enable RX Queues */
 	void (*rx_queue_enable)(struct mac_device_info *hw, u8 mode, u32 queue);
+	/* Disable RX queues */
+	void (*rx_queue_disable)(struct mac_device_info *hw, u32 queue);
 	/* RX Queues Priority */
 	void (*rx_queue_prio)(struct mac_device_info *hw, u32 prio, u32 queue);
 	/* TX Queues Priority */
@@ -415,9 +417,15 @@ struct stmmac_ops {
 	int (*config_l3_filter_xgmac)(struct mac_device_info *hw, u32 filter_no,
 				      bool en, bool ipv6, bool sa, bool inv,
 				      u32 match, char *ipv6_addr);
+	int (*config_l3_filter_with_mask)(struct mac_device_info *hw, u32 filter_no,
+					  bool en, bool ipv6, bool sa, bool inv,
+					  u32 match, char *ipv6_addr, u16 mask, u16 dma_ch);
 	int (*config_l4_filter)(struct mac_device_info *hw, u32 filter_no,
 				bool en, bool udp, bool sa, bool inv,
 				u32 match);
+	int (*config_l4_filter_with_route)(struct mac_device_info *hw, u32 filter_no,
+					   bool en, bool udp, bool sa, bool inv,
+					   u32 match, u16 dma_ch);
 	void (*set_arp_offload)(struct mac_device_info *hw, bool en, u32 addr);
 	/* Enable the VLAN MAC configuration for DMA Queue*/
 	void (*qcom_set_vlan)(struct vlan_filter_info *vlan, void __iomem *ioaddr);
@@ -433,6 +441,8 @@ struct stmmac_ops {
 				 enum stmmac_mpacket_type type);
 	int (*fpe_irq_status)(void __iomem *ioaddr, struct net_device *dev);
 	void (*flush_tx_mtl)(struct mac_device_info *hw, u32 chan);
+	void (*config_pfc)(struct mac_device_info *hw);
+	void (*configure_pfc_tx_flow_ctrl)(struct mac_device_info *hw, u32 queue);
 };
 
 #define stmmac_core_init(__priv, __args...) \
@@ -443,6 +453,8 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, rx_ipc, __args)
 #define stmmac_rx_queue_enable(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, rx_queue_enable, __args)
+#define stmmac_rx_queue_disable(__priv, __args...) \
+		stmmac_do_void_callback(__priv, mac, rx_queue_disable, __args)
 #define stmmac_rx_queue_prio(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, rx_queue_prio, __args)
 #define stmmac_tx_queue_prio(__priv, __args...) \
@@ -547,6 +559,11 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, add_hw_vlan_rx_routing_fltr, __args)
 #define stmmac_del_hw_vlan_rx_routing_fltr(__priv, __args...) \
 	stmmac_do_callback(__priv, mac, del_hw_vlan_rx_routing_fltr, __args)
+#define stmmac_configure_pfc(__priv, __args...) \
+	stmmac_do_void_callback(__priv, mac, config_pfc, __args)
+#define stmmac_configure_pfc_tx_flow_ctrl(__priv, __args...) \
+		stmmac_do_void_callback(__priv, mac, configure_pfc_tx_flow_ctrl, __args)
+
 struct stmmac_priv;
 
 /* PTP and HW Timer helpers */

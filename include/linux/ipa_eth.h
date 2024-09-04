@@ -63,6 +63,20 @@ enum ipa_eth_pipe_traffic_type {
 };
 
 /**
+ * struct ipa_eth_qos_info - ETH QOS Info.
+ * client_type: client info.
+ * @tc_bmap: bitmap associated with the client.
+ * @pipe_idx: Pipe index.
+ * @priority: Relative priority of the pipe.
+ */
+struct ipa_eth_qos_info {
+	enum ipa_client_type client_type;
+	u32 tc_bmap;
+	u8 pipe_idx;
+	u8 priority;
+};
+
+/**
  * enum ipa_eth_pipe_direction - pipe direcitons for same
  * ethernet client.
  */
@@ -302,5 +316,11 @@ bool ipa_eth_client_exist(
 	enum ipa_eth_client_type eth_client_type, int inst_id);
 int ipa_eth_get_config_type(
 	enum ipa_eth_client_type client_type, int inst_id, struct ipa_eth_config *eth_config);
-
+int ipa_eth_qos_get_num_pipes(
+	u8 inst_id, u8 *num_pipes, enum ipa_eth_pipe_direction dir);
+int ipa_eth_qos_get_qos_info(
+	u8 inst_id,
+	u8 idx,
+	struct ipa_eth_qos_info *info,
+	enum ipa_eth_pipe_direction dir);
 #endif // _IPA_ETH_H_

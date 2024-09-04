@@ -1089,6 +1089,10 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 	ep_pcie_write_mask(dev->parf + PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT,
 			0, BIT(31));
 
+	/* Dont ignore BME & block outbound traffic when BME is de-asserted */
+	ep_pcie_write_mask(dev->parf + PCIE20_PARF_LINK_DOWN_ECAM_BLOCK,
+			BIT(6), 0);
+
 	/* Q2A flush disable */
 	writel_relaxed(0, dev->parf + PCIE20_PARF_Q2A_FLUSH);
 
@@ -2833,7 +2837,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: No. %ld change to D3 state\n",
 			dev->rev, dev->d3_counter);
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(1));
 
 		if (dev->enumerated) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_HOT);
@@ -2857,13 +2860,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 	} else if (dstate == 0) {
 		dev->l23_ready = false;
 		dev->d0_counter++;
-		/*
-		 * When device is trasistion back to D0 from D3hot
-		 * (without D3cold), REQ_EXIT_L1 bit won't get cleared.
-		 * And L1 would get blocked till next D3cold.
-		 * So clear it explicitly during D0.
-		 */
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, BIT(1), 0);
 
 		atomic_set(&dev->host_wake_pending, 0);
 		EP_PCIE_DBG(dev,
