@@ -65,7 +65,7 @@ static int mhi_shutdown_handler(struct notifier_block *nb, unsigned long action,
 	struct mhi_controller *mhi_cntrl =
 		container_of(nb, struct mhi_controller, mhi_shutdown_notifier);
 
-	if (action == SYS_DOWN)
+	if (action == SYS_DOWN || action == SYS_POWER_OFF)
 		mhi_arch_esoc_ops_power_off(mhi_cntrl, GRACEFUL_SHUTDOWN);
 
 	return NOTIFY_DONE;

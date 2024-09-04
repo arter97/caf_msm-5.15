@@ -213,6 +213,13 @@ enum ch_owner {
 	USE_IN_OFFLOADER = 2,
 };
 
+struct ch_to_tc_map {
+	bool tc_rx_info[MTL_MAX_TX_QUEUES];
+	bool tc_tx_info[MTL_MAX_RX_QUEUES];
+	u32 ch_to_tc_map_tx[MTL_MAX_TX_QUEUES];
+	u32 ch_to_tc_map_rx[MTL_MAX_RX_QUEUES];
+};
+
 struct plat_stmmacenet_data {
 	int bus_id;
 	int phy_addr;
@@ -269,7 +276,13 @@ struct plat_stmmacenet_data {
 			   void *ctx);
 	void (*dump_debug_regs)(void *priv);
 	unsigned int (*get_eth_type)(unsigned char *buf);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	void (*set_skb_prio)(void *priv_n, struct sk_buff *skb, u32 queue);
+	bool (*is_skprio_routing)(void *priv);
+#endif
 	int (*enable_wol)(struct net_device *ndev, struct ethtool_wolinfo *wol);
+	int (*release_dma_resources)(struct net_device *ndev);
+	int (*request_dma_resources)(struct net_device *ndev);
 	void *bsp_priv;
 	struct clk *stmmac_clk;
 	struct clk *pclk;
@@ -352,5 +365,14 @@ struct plat_stmmacenet_data {
 	bool separate_wol_pin;
 	bool mka_mcbcq_filtering;
 	bool probe_invoke_if_up;
+	int rx_qos_queues_to_use;
+	int tx_qos_queues_to_use;
+	bool is_config_supp;
+	char qoscfg[4];
+	bool qos_active;
+	struct ch_to_tc_map qos_ch_map;
+	bool enable_pfc;
+	bool qos_use_skprio;
+	bool qos_supported;
 };
 #endif

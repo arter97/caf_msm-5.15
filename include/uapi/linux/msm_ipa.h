@@ -47,7 +47,7 @@
  */
 #define IPAHAL_NAT_INVALID_PROTOCOL   0xFF
 
-#define IPA_ETH_API_VER 3
+#define IPA_ETH_API_VER 4
 
 /**
  * commands supported by IPA driver
@@ -160,6 +160,8 @@
 #define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       104
 #define IPA_IOCTL_QOS_PARAM                     105
 #define IPA_IOCTL_FLUSH_QOS_PARAM               106
+#define IPA_IOCTL_GET_QOS_PARAMS                107
+
 /**
  * max size of the header to be inserted
  */
@@ -245,6 +247,11 @@
  *  Max number of delegated IDUs for prefix delegation FR
  */
 #define IPA_PREFIX_MAPPING_MAX 16
+
+/**
+ *  Max number of qos params that can be saved
+ */
+#define IPA_QOS_PARAMS_MAX 64
 
 /**
  * the attributes of the rule (routing or filtering)
@@ -3851,8 +3858,13 @@ struct ipa_ioc_qos_config {
 	uint8_t dscp;
 	uint8_t pcp;
 	uint8_t dscp_mark_val;
+	uint32_t qos_rule_hdl;
 };
 
+struct ipa_ioc_get_qos_config {
+	uint32_t num_qos_configs;
+	struct ipa_ioc_qos_config qos_config[IPA_QOS_PARAMS_MAX];
+};
 
 /**
  *   actual IOCTLs supported by IPA driver
@@ -4218,6 +4230,10 @@ struct ipa_ioc_qos_config {
 #define IPA_IOC_FLUSH_QOS_PARAM _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_FLUSH_QOS_PARAM, \
 				struct ipa_ioc_qos_config)
+
+#define IPA_IOC_GET_QOS_PARAMS _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_GET_QOS_PARAMS, \
+				struct ipa_ioc_get_qos_config)
 
 /*
  * unique magic number of the Tethering bridge ioctls

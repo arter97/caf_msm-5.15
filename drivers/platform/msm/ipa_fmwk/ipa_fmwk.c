@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/ipa_fmwk.h>
@@ -505,6 +505,16 @@ struct ipa_fmwk_contex {
 
 	int (*ipa_add_socksv5_conn)(struct ipa_socksv5_info *info);
 	int (*ipa_del_socksv5_conn)(uint32_t handle);
+
+	int (*ipa_eth_qos_get_num_pipes)(
+		u8 inst_id, u8 *num_pipes, enum ipa_eth_pipe_direction dir);
+	int (*ipa_eth_qos_get_qos_info)
+	(
+		u8 inst_id,
+		u8 idx,
+		struct ipa_eth_qos_info *info,
+		enum ipa_eth_pipe_direction dir
+	);
 };
 
 static struct ipa_fmwk_contex *ipa_fmwk_ctx;
@@ -2595,7 +2605,9 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 		|| ipa_fmwk_ctx->ipa_eth_client_set_perf_profile
 		|| ipa_fmwk_ctx->ipa_eth_get_ipa_client_type_from_eth_type
 		|| ipa_fmwk_ctx->ipa_eth_client_exist
-		|| ipa_fmwk_ctx->ipa_eth_get_config_type) {
+		|| ipa_fmwk_ctx->ipa_eth_get_config_type
+		|| ipa_fmwk_ctx->ipa_eth_qos_get_num_pipes
+		|| ipa_fmwk_ctx->ipa_eth_qos_get_qos_info) {
 		pr_err("ipa_eth APIs were already initialized\n");
 		return -EPERM;
 	}
@@ -2616,6 +2628,10 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 		in->ipa_eth_client_exist;
 	ipa_fmwk_ctx->ipa_eth_get_config_type =
 		in->ipa_eth_get_config_type;
+	ipa_fmwk_ctx->ipa_eth_qos_get_num_pipes =
+		in->ipa_eth_qos_get_num_pipes;
+	ipa_fmwk_ctx->ipa_eth_qos_get_qos_info =
+		in->ipa_eth_qos_get_qos_info;
 
 	pr_info("ipa_eth registered successfully\n");
 
@@ -2762,6 +2778,31 @@ int ipa_eth_get_config_type(
 	return ret;
 }
 EXPORT_SYMBOL_GPL(ipa_eth_get_config_type);
+
+int ipa_eth_qos_get_num_pipes(
+	u8 inst_id, u8 *num_pipes, enum ipa_eth_pipe_direction dir)
+{
+	int ret;
+
+	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_qos_get_num_pipes,
+		inst_id, num_pipes, dir);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ipa_eth_qos_get_num_pipes);
+
+int ipa_eth_qos_get_qos_info(
+	u8 inst_id, u8 idx, struct ipa_eth_qos_info *info,
+	enum ipa_eth_pipe_direction dir)
+{
+	int ret;
+
+	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_qos_get_qos_info,
+		inst_id, idx, info, dir);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ipa_eth_qos_get_qos_info);
 
 /* module functions */
 static int __init ipa_fmwk_init(void)
