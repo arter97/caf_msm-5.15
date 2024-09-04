@@ -127,13 +127,13 @@ int vfastrpc_internal_munmap(struct vfastrpc_file *vfl,
 int vfastrpc_internal_munmap_fd(struct vfastrpc_file *vfl,
 				struct fastrpc_ioctl_munmap_fd *ud);
 int vfastrpc_internal_invoke(struct vfastrpc_file *vfl,
-		uint32_t mode, struct fastrpc_ioctl_invoke_async *inv, uint32_t msg_type);
+		uint32_t mode, struct fastrpc_ioctl_invoke_async *inv);
 
 int vfastrpc_internal_get_dsp_info(struct fastrpc_ioctl_capability *cap,
 		void *param, struct vfastrpc_file *vfl);
 
 int vfastrpc_internal_invoke2(struct vfastrpc_file *vfl,
-				struct fastrpc_ioctl_invoke2 *inv2, bool is_compat);
+				struct fastrpc_ioctl_invoke2 *inv2);
 
 void vfastrpc_queue_completed_async_job(struct vfastrpc_invoke_ctx *ctx);
 
