@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -2316,6 +2316,32 @@ static void spi_get_dt_property(struct platform_device *pdev,
 	geni_mas->slave_cross_connected =
 	of_property_read_bool(pdev->dev.of_node, "slv-cross-connected");
 }
+/**
+ * geni_se_handle_common_resources: Load common resources.
+ * @pdev: structure to platform driver.
+ * @spi_rsc: structure to geni_se.
+ *
+ * This function will read clock read the clock vote values from
+ * the DTSI file and configure and initialize the resources
+ * accordingly. If the resources are not explicitly mentioned
+ * in the DTSI, they will be initialized with default values.
+ *
+ * return: 0 on success else error code on failure.
+ */
+static int geni_se_handle_common_resources(struct platform_device *pdev, struct geni_se *spi_rsc)
+{
+	int ret;
+
+	ret = geni_se_get_common_resources(pdev, spi_rsc);
+	if (ret) {
+		/*error in loading vote values from dts, try loading default vote values*/
+		ret = geni_se_common_resources_init(spi_rsc,
+							SPI_CORE2X_VOTE,
+							APPS_PROC_TO_QUP_VOTE,
+							DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH);
+	}
+	return ret;
+}
 static int spi_geni_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -2371,11 +2397,9 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (!geni_mas->is_le_vm) {
 		/* set voting values for path: core, config and DDR */
 		spi_rsc = &geni_mas->spi_rsc;
-		ret = geni_se_common_resources_init(spi_rsc,
-			SPI_CORE2X_VOTE, APPS_PROC_TO_QUP_VOTE,
-			(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
+		ret = geni_se_handle_common_resources(pdev, spi_rsc);
 		if (ret) {
-			dev_err(&pdev->dev, "Error geni_se_resources_init\n");
+			dev_err(&pdev->dev, "Could not load common resource ret: %d\n", ret);
 			goto spi_geni_probe_err;
 		}
 
@@ -2821,7 +2845,6 @@ static int spi_geni_suspend(struct device *dev)
 		}
 	}
 #endif
-
 	if (!pm_runtime_status_suspended(dev)) {
 		if (list_empty(&spi->queue) && !spi->cur_msg) {
 			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
@@ -2840,6 +2863,67 @@ static int spi_geni_suspend(struct device *dev)
 		}
 	}
 
+	return ret;
+}
+
+static int spi_geni_hib_suspend(struct device *dev)
+{
+	int ret = 0;
+	struct spi_master *spi = get_spi_master(dev);
+	struct spi_geni_master *geni_mas = spi_master_get_devdata(spi);
+	bool force_resume = false;
+
+	if (geni_mas->is_xfer_in_progress) {
+		if (!pm_runtime_status_suspended(dev)) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+				    ":%s: runtime PM is active\n", __func__);
+			ret = -EBUSY;
+			return ret;
+		}
+		return ret;
+	}
+
+	/* for GSI mode, GSI channels re-config required for Hibernation */
+	if (geni_mas->gsi_mode) {
+		SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+			    "%s: GSI channels re-config required for hibernation", __func__);
+
+		if (pm_runtime_status_suspended(dev)) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					    "%s: Force Resume", __func__);
+
+			if (!spi_geni_runtime_resume(dev))
+				force_resume = true;
+		}
+		geni_mas->is_deep_sleep = true;
+
+		if (force_resume) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+				    "%s: Force Suspend", __func__);
+			if (spi_geni_runtime_suspend(dev)) {
+				SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					    "%s: Force Suspend Failed", __func__);
+			}
+		}
+	}
+
+	if (!pm_runtime_status_suspended(dev)) {
+		if (list_empty(&spi->queue) && !spi->cur_msg) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					"%s: Force suspend", __func__);
+			ret = spi_geni_runtime_suspend(dev);
+			if (ret) {
+				SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+					"Force suspend Failed:%d", ret);
+			} else {
+				pm_runtime_disable(dev);
+				pm_runtime_set_suspended(dev);
+				pm_runtime_enable(dev);
+			}
+		} else {
+			ret = -EBUSY;
+		}
+	}
 	return ret;
 }
 #else
@@ -2862,12 +2946,22 @@ static int spi_geni_suspend(struct device *dev)
 {
 	return 0;
 }
+
+static int spi_geni_hib_suspend(struct device *dev)
+{
+	return 0;
+}
 #endif
 
 static const struct dev_pm_ops spi_geni_pm_ops = {
 	SET_RUNTIME_PM_OPS(spi_geni_runtime_suspend,
 					spi_geni_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(spi_geni_suspend, spi_geni_resume)
+	.suspend	= spi_geni_suspend,
+	.resume		= spi_geni_resume,
+	.freeze		= spi_geni_hib_suspend,
+	.thaw		= spi_geni_resume,
+	.poweroff	= spi_geni_suspend,
+	.restore	= spi_geni_resume,
 };
 
 static const struct of_device_id spi_geni_dt_match[] = {

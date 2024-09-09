@@ -119,6 +119,7 @@ def define_monaco():
         "drivers/soc/qcom/msm_performance.ko",
         "drivers/soc/qcom/panel_event_notifier.ko",
         "drivers/soc/qcom/pdr_interface.ko",
+        "drivers/soc/qcom/power_state.ko",
         "drivers/soc/qcom/qcom_aoss.ko",
         "drivers/soc/qcom/qcom_cpu_vendor_hooks.ko",
         "drivers/soc/qcom/qcom_logbuf_vh.ko",
