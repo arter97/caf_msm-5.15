@@ -325,6 +325,10 @@ module_param(eqos, charp, 0600);
 MODULE_PARM_DESC(eqos, "QOS Config support from ethernet partition");
 #endif
 
+static bool qos_use_skprio;
+module_param(qos_use_skprio, bool, 0644);
+MODULE_PARM_DESC(qos_use_skprio, "Use SKPRIO for Tx Routing");
+
 inline void *qcom_ethqos_get_priv(struct qcom_ethqos *ethqos)
 {
 	struct platform_device *pdev = ethqos->pdev;
@@ -366,6 +370,34 @@ static inline unsigned int dwmac_qcom_get_vlan_ucp(unsigned char  *buf)
 		 | buf[QTAG_UCP_FIELD_OFFSET + 1]);
 }
 
+static bool is_skprio_routing_set(void *_priv)
+{
+	struct stmmac_priv *priv = _priv;
+	return (qos_use_skprio || priv->plat->qos_use_skprio);
+}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+void dwmac_qcom_set_skb_prio(void *priv_n, struct sk_buff *skb, u32 queue)
+{
+	u32 priority = 0;
+	u32 c2t_map = 0;
+	struct qcom_ethqos *ethqos = priv_n;
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!is_skprio_routing_set(priv))
+		return;
+
+	if (priv->plat->qos_active && priv->plat->qos_ch_map.tc_rx_info[queue]) {
+		c2t_map = priv->plat->qos_ch_map.ch_to_tc_map_rx[queue];
+		while (c2t_map) {
+			c2t_map = c2t_map >> 1;
+			priority++;
+		}
+		skb->priority = priority;
+	}
+}
+#endif
+
 u16 dwmac_qcom_select_queue(struct net_device *dev,
 			    struct sk_buff *skb,
 			    struct net_device *sb_dev)
@@ -379,7 +411,16 @@ u16 dwmac_qcom_select_queue(struct net_device *dev,
 	/* Retrieve ETH type */
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
 
-	if (priv->plat->qos_active && skb->priority) {
+	if (priv->plat->qos_active && !is_skprio_routing_set(priv) && skb_vlan_tag_present(skb)) {
+		priority =  skb_vlan_tag_get_prio(skb);
+		tc_prio = 1 << priority;
+		for (i = priv->plat->tx_qos_queues_to_use - 1; i > 1; i--) {
+			if (priv->tx_queue_pcp_map[i] & tc_prio) {
+				txqueue_select = i;
+				break;
+			}
+		}
+	} else if (priv->plat->qos_active && is_skprio_routing_set(priv) && skb->priority) {
 		/* TODO: IF qos ie enabled and IPA offload is disabled, we need to handle*/
 		tc_prio = 1 << (skb->priority - 1);
 		for (i = 2; i < priv->plat->tx_qos_queues_to_use; i++) {
@@ -482,7 +523,9 @@ void dwmac_qcom_program_avb_algorithm(struct stmmac_priv *priv,
 
 unsigned int dwmac_qcom_get_plat_tx_coal_frames(struct sk_buff *skb)
 {
+#ifdef CONFIG_PTPSUPPORT_OBJ
 	bool is_udp;
+#endif
 	unsigned int eth_type;
 
 	eth_type = dwmac_qcom_get_eth_type(skb->data);
@@ -7254,37 +7297,12 @@ static void qcom_ethqos_init_aux_ts(struct qcom_ethqos *ethqos,
 				    struct stmmac_priv *priv)
 {
 	struct device_node *np = ethqos->pdev->dev.of_node;
-	const char *name;
 	int i = 0;
 
-	int num_names = of_property_count_strings(np, "pinctrl-names");
+	of_property_read_u32(np, "qcom,aux_ts_num_pins", &priv->aux_ts_num_pins);
 
-	if (num_names < 0) {
-		dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names: %d\n",
-			num_names);
-		return;
-	}
-
-	for (i = 0; i < num_names; i++) {
-		int ret = of_property_read_string_index(np,
-							"pinctrl-names",
-							i, &name);
-		if (ret < 0) {
-			dev_err(&ethqos->pdev->dev, "Cannot parse pinctrl-names by index: %d\n",
-				ret);
-			return;
-		}
-
-		if (strnstr(name, "emac0_ptp_aux_ts_i", strlen(name))) {
-			char *pos = strrchr(name, '_');
-
-			if (pos && (pos + 1)) {
-				int index = *(pos + 1) - 48;
-
-				plat_dat->ext_snapshot_num |= (1 << (index + 4));
-			}
-		}
-	}
+	for (i = 0; i < priv->aux_ts_num_pins; i++)
+		plat_dat->ext_snapshot_num |= (1 << (i + 4));
 
 	dev_info(&ethqos->pdev->dev, "ext_snapshot_num = %d\n", plat_dat->ext_snapshot_num);
 }
@@ -7328,11 +7346,11 @@ static int ethqos_set_early_eth_params(void)
 #endif
 
 static int qcom_ethqos_probe_config_dt(struct platform_device *pdev,
-				       struct stmmac_resources stmmac_res)
+				       struct stmmac_resources *stmmac_res)
 {
 	int ret = 0;
 
-	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
+	plat_dat = stmmac_probe_config_dt(pdev, stmmac_res->mac);
 	if (IS_ERR(plat_dat)) {
 		dev_err(&pdev->dev, "dt configuration failed\n");
 		return PTR_ERR(plat_dat);
@@ -7427,7 +7445,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (!(strlen(mparams.qoscfg_name) != 0))
 		ethqos_get_dt_qos_config(np);
 
-	qcom_ethqos_probe_config_dt(pdev, stmmac_res);
+	qcom_ethqos_probe_config_dt(pdev, &stmmac_res);
 
 	if (mparams.is_valid_eth_intf) {
 		plat_dat->interface = mparams.eth_intf;
@@ -7557,11 +7575,16 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->phy_irq_enable = ethqos_phy_irq_enable;
 	plat_dat->phy_irq_disable = ethqos_phy_irq_disable;
 	plat_dat->get_eth_type = dwmac_qcom_get_eth_type;
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	plat_dat->set_skb_prio = dwmac_qcom_set_skb_prio;
+	plat_dat->is_skprio_routing = is_skprio_routing_set;
+#endif
 	plat_dat->mac_err_rec = of_property_read_bool(np, "mac_err_rec");
 	plat_dat->probe_invoke_if_up = of_property_read_bool(np, "probe_invoke_if_up");
 	if (plat_dat->mac_err_rec)
 		plat_dat->handle_mac_err = dwmac_qcom_handle_mac_err;
 	plat_dat->enable_pfc = of_property_read_bool(np, "enable-pfc");
+	plat_dat->qos_use_skprio = of_property_read_bool(np, "qos-use-skprio");
 
 	if (plat_dat->interface == PHY_INTERFACE_MODE_SGMII ||
 	    plat_dat->interface == PHY_INTERFACE_MODE_USXGMII ||

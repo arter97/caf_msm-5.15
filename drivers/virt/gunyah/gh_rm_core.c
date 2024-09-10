@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -689,6 +689,7 @@ void *gh_rm_call(gh_rm_msgid_t message_id,
 					req_buff, req_buff_size,
 					connection, true);
 	if (req_ret < 0) {
+		pr_err("gh_rm_send_request ret=  %d\n", req_ret);
 		ret = ERR_PTR(req_ret);
 		goto out;
 	}

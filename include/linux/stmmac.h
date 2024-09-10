@@ -276,6 +276,10 @@ struct plat_stmmacenet_data {
 			   void *ctx);
 	void (*dump_debug_regs)(void *priv);
 	unsigned int (*get_eth_type)(unsigned char *buf);
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	void (*set_skb_prio)(void *priv_n, struct sk_buff *skb, u32 queue);
+	bool (*is_skprio_routing)(void *priv);
+#endif
 	int (*enable_wol)(struct net_device *ndev, struct ethtool_wolinfo *wol);
 	int (*release_dma_resources)(struct net_device *ndev);
 	int (*request_dma_resources)(struct net_device *ndev);
@@ -368,5 +372,7 @@ struct plat_stmmacenet_data {
 	bool qos_active;
 	struct ch_to_tc_map qos_ch_map;
 	bool enable_pfc;
+	bool qos_use_skprio;
+	bool qos_supported;
 };
 #endif

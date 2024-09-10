@@ -302,6 +302,7 @@ struct stmmac_priv {
 	int sph;
 	int sph_cap;
 	u32 sarc_type;
+	unsigned int aux_ts_num_pins;
 
 	unsigned int dma_buf_sz;
 	unsigned int rx_copybreak;
@@ -444,6 +445,7 @@ struct stmmac_priv {
 	bool is_tx_sw[MTL_MAX_TX_QUEUES];
 	u8 queue_pcp_map[MTL_MAX_RX_QUEUES];
 	u32 tx_ch_bw[MTL_MAX_TX_QUEUES];
+	u8 tx_queue_pcp_map[MTL_MAX_TX_QUEUES];
 
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv_old);
 

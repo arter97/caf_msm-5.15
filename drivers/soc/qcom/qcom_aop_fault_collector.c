@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:%s " fmt, KBUILD_MODNAME, __func__
@@ -314,8 +314,8 @@ static irqreturn_t aop_fc_intr(int irq, void *data)
 	struct qmi_aop_fc_instance *aop_fc = data;
 	uint32_t count = 0, len;
 
-	AOP_FC_DBG(aop_fc, "%s count : %d\n", __func__, count);
 	count = readl_relaxed(aop_fc->msgram);
+	AOP_FC_DBG(aop_fc, "%s count : %d\n", __func__, count);
 	aop_fc->fault_count = count;
 	len = count * sizeof(struct aop_fault_data);
 

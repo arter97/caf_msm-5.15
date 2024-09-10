@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -131,7 +131,7 @@ static void gh_vm_cleanup(struct gh_vm *vm)
 		if (!ret) {
 			gh_wait_for_vm_status(vm, GH_RM_VM_STATUS_RESET);
 		} else
-			pr_warn("Reset is unsuccessful for VM:%d\n", vmid);
+			pr_err("Reset is unsuccessful for VM:%d\n", vmid);
 
 		ret = gh_virtio_mmio_exit(vmid, vm->fw_name);
 		if (ret)
@@ -452,7 +452,6 @@ int gh_reclaim_mem(struct gh_vm *vm, phys_addr_t phys,
 			pr_err("Failed to reclaim memory for %d, %d\n",
 						vm->vmid, ret);
 	}
-
 	ret = hyp_assign_phys(phys, size, srcVM, 1, destVM, destVMperm, 1);
 	if (ret)
 		pr_err("failed hyp_assign for %pa address\t"
@@ -469,7 +468,7 @@ int gh_reclaim_mem(struct gh_vm *vm, phys_addr_t phys,
 		ret |= hyp_assign_phys(vm->ext_region->ext_phys,
 					vm->ext_region->ext_size, srcVM, 1, destVM, destVMperm, 1);
 		if (ret)
-			pr_err("failed hyp_assign for %pa address\t"
+			pr_err("vm->ext_region_support failed in hyp_assign for %pa address\t"
 				" of size %zx - subsys VMid %d rc:%d\n",
 					&vm->ext_region->ext_phys,
 					vm->ext_region->ext_size, vmid, ret);

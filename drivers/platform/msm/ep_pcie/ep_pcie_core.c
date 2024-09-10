@@ -2737,7 +2737,7 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		"PCIe V%d: No. %ld linkdown IRQ\n",
 		dev->rev, dev->linkdown_counter);
 
-	if (!dev->enumerated || dev->link_status == EP_PCIE_LINK_DISABLED) {
+	if (dev->link_status == EP_PCIE_LINK_DISABLED) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d:Linkdown IRQ happened when the link is disabled\n",
 			dev->rev);
@@ -2754,7 +2754,8 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		EP_PCIE_DBG(dev, "PCIe V%d:PCIe link is down for %ld times\n",
 			dev->rev, dev->linkdown_counter);
 		ep_pcie_reg_dump(dev, BIT(EP_PCIE_RES_PHY) |
-				BIT(EP_PCIE_RES_PARF), true);
+				BIT(EP_PCIE_RES_PARF) | BIT(EP_PCIE_RES_MMIO) |
+				BIT(EP_PCIE_RES_DM_CORE), true);
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_LINKDOWN);
 	}
 
@@ -2837,7 +2838,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: No. %ld change to D3 state\n",
 			dev->rev, dev->d3_counter);
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(1));
 
 		if (dev->enumerated) {
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_HOT);
@@ -2861,13 +2861,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 	} else if (dstate == 0) {
 		dev->l23_ready = false;
 		dev->d0_counter++;
-		/*
-		 * When device is trasistion back to D0 from D3hot
-		 * (without D3cold), REQ_EXIT_L1 bit won't get cleared.
-		 * And L1 would get blocked till next D3cold.
-		 * So clear it explicitly during D0.
-		 */
-		ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, BIT(1), 0);
 
 		atomic_set(&dev->host_wake_pending, 0);
 		EP_PCIE_DBG(dev,

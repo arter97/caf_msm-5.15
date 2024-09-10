@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _LINUX_QCOM_GENI_SE_COMMON
@@ -71,6 +71,7 @@ if (print) { \
 #define SE_DMA_RX_LEN			(0xD3C)
 #define SE_DMA_RX_IRQ_EN                (0xD48)
 #define SE_DMA_RX_LEN_IN                (0xD54)
+#define SE_DMA_IF_EN			(0x2004)
 
 #define SE_DMA_TX_IRQ_EN_SET	(0xC4C)
 #define SE_DMA_TX_IRQ_EN_CLR	(0xC50)
@@ -136,6 +137,9 @@ if (print) { \
 #define IO_MACRO_IO3_SEL	(GENMASK(7, 6))
 #define IO_MACRO_IO2_SEL	BIT(5)
 #define IO_MACRO_IO0_SEL_BIT	BIT(0)
+
+/* SE_DMA_IF_EN Register fields */
+#define DMA_IF_EN			BIT(0)
 
 /**
  * struct kpi_time - Help to capture KPI information

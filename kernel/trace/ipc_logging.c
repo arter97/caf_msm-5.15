@@ -12,6 +12,7 @@
 #include <linux/errno.h>
 #include <linux/jiffies.h>
 #include <linux/debugfs.h>
+#include <linux/proc_fs.h>
 #include <linux/io.h>
 #include <linux/idr.h>
 #include <linux/string.h>
@@ -830,6 +831,9 @@ void *ipc_log_context_create(int max_num_pages,
 	unsigned long flags;
 	int enable_minidump;
 
+	if (!ipc_logging_enabled())
+		return NULL;
+
 	write_lock_irqsave(&context_list_lock_lha1, flags);
 	if (!ipc_log_context_list) {
 		ipc_log_context_list = kzalloc(sizeof(struct list_head), GFP_ATOMIC);
@@ -912,6 +916,7 @@ void *ipc_log_context_create(int max_num_pages,
 	kref_init(&ctxt->refcount);
 	ctxt->destroyed = false;
 	create_ctx_debugfs(ctxt, mod_name);
+	create_ctx_procfs(ctxt, mod_name);
 
 	/* set magic last to signal context init is complete */
 	ctxt->magic = IPC_LOG_CONTEXT_MAGIC_NUM;
@@ -967,6 +972,7 @@ int ipc_log_context_destroy(void *ctxt)
 		return 0;
 
 	debugfs_remove_recursive(ilctxt->dent);
+	proc_remove(ilctxt->proc_dent);
 
 	spin_lock(&ilctxt->context_lock_lhb1);
 	ilctxt->destroyed = true;
@@ -990,6 +996,7 @@ EXPORT_SYMBOL(ipc_log_context_destroy);
 static int __init ipc_logging_init(void)
 {
 	check_and_create_debugfs();
+	check_and_create_procfs();
 
 	return 0;
 }

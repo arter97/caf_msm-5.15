@@ -974,6 +974,18 @@ static inline struct dst_entry *xfrm_dst_child(const struct dst_entry *dst)
 	return NULL;
 }
 
+static inline struct rt6_info *xfrm_dst_rt6(const struct dst_entry *dst)
+{
+#ifdef CONFIG_XFRM
+	if (dst->xfrm || (dst->flags & DST_XFRM_QUEUE)) {
+		struct xfrm_dst *xdst = (struct xfrm_dst *) dst;
+
+		return &xdst->u.rt6;
+	}
+#endif
+	return NULL;
+}
+
 #ifdef CONFIG_XFRM
 static inline void xfrm_dst_set_child(struct xfrm_dst *xdst, struct dst_entry *child)
 {

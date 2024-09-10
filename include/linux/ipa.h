@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_H_
@@ -1282,12 +1282,14 @@ struct ipa_wdi_db_params {
  * @is_uC_ready: uC loaded or not
  * @priv : callback cookie
  * @notify:	callback
+ * @inst_id: instance id of wifi instance
  */
 typedef void (*ipa_uc_ready_cb)(void *priv);
 struct ipa_wdi_uc_ready_params {
 	bool is_uC_ready;
 	void *priv;
 	ipa_uc_ready_cb notify;
+	uint8_t inst_id;
 };
 
 /**

@@ -973,6 +973,13 @@ struct sk_buff {
 #ifdef CONFIG_KCOV
 	u64			kcov_handle;
 #endif
+#ifdef CONFIG_IPA3
+	struct {
+		__u32 magic	:24;
+		__u32 sa_dir	:2;
+		__u32 sa_idx	:6;
+	} ipa_skb_cb;
+#endif
 
 	/* private: */
 	__u32			headers_end[0];

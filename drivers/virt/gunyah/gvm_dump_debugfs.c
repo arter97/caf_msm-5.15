@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -109,8 +109,6 @@ static int gvm_debugfs_release(struct inode *inode, struct file *file)
 	if (gvm_prv_ctx->mapped_addr)
 		iounmap(gvm_prv_ctx->mapped_addr);
 
-	mutex_unlock(&gvm_prv_ctx->lock);
-
 	return 0;
 }
 
@@ -119,9 +117,15 @@ static ssize_t gvm_debugfs_read(struct file *file, char __user *ubuf,
 {
 	struct inode *in = file->f_inode;
 	struct gvm_dump_ctx *gvm_prv_ctx = (struct gvm_dump_ctx *)in->i_private;
+	ssize_t ret;
 
-	return simple_read_from_buffer(ubuf, count, ppos, gvm_prv_ctx->mapped_addr,
+	mutex_lock(&gvm_prv_ctx->lock);
+
+	ret = simple_read_from_buffer(ubuf, count, ppos, gvm_prv_ctx->mapped_addr,
 				       gvm_prv_ctx->dump_size);
+
+	mutex_unlock(&gvm_prv_ctx->lock);
+	return ret;
 }
 
 static int gvm_debugfs_open(struct inode *inode, struct file *file)
@@ -132,6 +136,8 @@ static int gvm_debugfs_open(struct inode *inode, struct file *file)
 	mutex_lock(&gvm_prv_ctx->lock);
 
 	gvm_prv_ctx->mapped_addr = ioremap(gvm_prv_ctx->dump_start_addr, gvm_prv_ctx->dump_size);
+
+	mutex_unlock(&gvm_prv_ctx->lock);
 
 	if (!gvm_prv_ctx->mapped_addr) {
 		pr_err("gvm_dump: %s: ioremap failed\n", __func__);

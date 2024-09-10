@@ -4622,6 +4622,7 @@ static void console_unregister(struct uart_driver *drv)
 }
 #endif /* (CONFIG_SERIAL_MSM_GENI_CONSOLE) || defined(CONFIG_CONSOLE_POLL) */
 
+#if IS_ENABLED(CONFIG_IPC_LOGGING)
 static void msm_geni_serial_debug_init(struct uart_port *uport, bool console)
 {
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
@@ -4700,6 +4701,11 @@ static void msm_geni_serial_debug_init(struct uart_port *uport, bool console)
 		}
 	}
 }
+#else
+static void msm_geni_serial_debug_init(struct uart_port *uport, bool console)
+{
+}
+#endif /* (CONFIG_IPC_LOGGING) */
 
 static void msm_geni_serial_cons_pm(struct uart_port *uport,
 		unsigned int new_state, unsigned int old_state)
@@ -5187,6 +5193,7 @@ static int msm_geni_serial_port_init(struct platform_device *pdev,
 		dev_port->handle_rx = handle_rx_hs;
 		dev_port->rx_fifo =
 		devm_kzalloc(uport->dev, sizeof(dev_port->rx_fifo_depth * sizeof(u32)),	GFP_KERNEL);
+		writel(DMA_IF_EN, uport->membase + SE_DMA_IF_EN);
 		if (dev_port->pm_auto_suspend_disable) {
 			pm_runtime_set_active(&pdev->dev);
 			pm_runtime_forbid(&pdev->dev);

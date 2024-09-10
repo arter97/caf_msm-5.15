@@ -799,10 +799,15 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	[NL80211_ATTR_MBSSID_ELEMS] = { .type = NLA_NESTED },
 	[NL80211_ATTR_RADAR_BACKGROUND] = { .type = NLA_FLAG },
 	[NL80211_ATTR_AP_SETTINGS_FLAGS] = { .type = NLA_U32 },
+#ifndef CFG80211_PROP_MULTI_LINK_EXT_SUPPORT
 	[NL80211_ATTR_EHT_CAPABILITY] =
 		NLA_POLICY_RANGE(NLA_BINARY,
 				 NL80211_EHT_MIN_CAPABILITY_LEN,
 				 NL80211_EHT_MAX_CAPABILITY_LEN),
+#else /* CFG80211_PROP_MULTI_LINK_EXT_SUPPORT */
+	[NL80211_ATTR_EHT_CAPABILITY] = { .type = NLA_BINARY,
+					  .len = NL80211_EHT_MAX_CAPABILITY_LEN },
+#endif /* CFG80211_PROP_MULTI_LINK_EXT_SUPPORT */
 	[NL80211_ATTR_DISABLE_EHT] = { .type = NLA_FLAG },
 	[NL80211_ATTR_MLO_LINKS] =
 		NLA_POLICY_NESTED_ARRAY(nl80211_policy),
@@ -1558,16 +1563,13 @@ static int nl80211_key_allowed(struct wireless_dev *wdev)
 	case NL80211_IFTYPE_AP_VLAN:
 	case NL80211_IFTYPE_P2P_GO:
 	case NL80211_IFTYPE_MESH_POINT:
-		break;
 	case NL80211_IFTYPE_ADHOC:
 		if (wdev->u.ibss.current_bss)
 			return 0;
 		return -ENOLINK;
 	case NL80211_IFTYPE_STATION:
 	case NL80211_IFTYPE_P2P_CLIENT:
-		if (wdev->connected)
-			return 0;
-		return -ENOLINK;
+		break;
 	case NL80211_IFTYPE_NAN:
 		if (wiphy_ext_feature_isset(wdev->wiphy,
 					    NL80211_EXT_FEATURE_SECURE_NAN))
@@ -5483,8 +5485,11 @@ nl80211_parse_mbssid_elems(struct wiphy *wiphy, struct nlattr *attrs)
 	if (!wiphy->mbssid_max_interfaces)
 		return ERR_PTR(-EINVAL);
 
-	nla_for_each_nested(nl_elems, attrs, rem_elems)
+	nla_for_each_nested(nl_elems, attrs, rem_elems) {
+		if (num_elems >= 255)
+			return ERR_PTR(-EINVAL);
 		num_elems++;
+	}
 
 	elems = kzalloc(struct_size(elems, elem, num_elems), GFP_KERNEL);
 	if (!elems)
@@ -17445,8 +17450,13 @@ static const struct genl_small_ops nl80211_small_ops[] = {
 		.cmd = NL80211_CMD_ADD_LINK_STA,
 		.doit = nl80211_add_link_station,
 		.flags = GENL_UNS_ADMIN_PERM,
+#ifndef CFG80211_PROP_MULTI_LINK_EXT_SUPPORT
 		.internal_flags = IFLAGS(NL80211_FLAG_NEED_NETDEV_UP |
 					 NL80211_FLAG_MLO_VALID_LINK_ID),
+#else /* CFG80211_PROP_MULTI_LINK_EXT_SUPPORT */
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+		.internal_flags = IFLAGS(NL80211_FLAG_NEED_NETDEV_UP),
+#endif /* CFG80211_PROP_MULTI_LINK_EXT_SUPPORT */
 	},
 	{
 		.cmd = NL80211_CMD_MODIFY_LINK_STA,

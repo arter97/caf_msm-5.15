@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -407,22 +407,21 @@ static int msm_hsphy_enable_power(struct msm_hsphy *phy, bool on)
 
 	ret = vdda18_phy_enable_disable(phy, on);
 	if (ret < 0)
-		goto err_hs_reg;
+		goto err_vdda18_reg;
 
 	ret = vdda33_phy_enable_disable(phy, on);
 	if (ret < 0)
-		goto err_hs_reg;
+		goto err_vdda33_reg;
 
-	if (on)
-		phy->power_enabled = true;
-	else
-		phy->power_enabled = false;
-
+	phy->power_enabled = on;
 	return ret;
 
+err_vdda33_reg:
+	vdda18_phy_enable_disable(phy, !on);
+err_vdda18_reg:
+	vdd_phy_enable_disable(phy, !on);
 err_hs_reg:
-	dev_err(phy->phy.dev, "HSUSB PHY's regulators set/unset failed\n");
-	dev_err(phy->phy.dev, "Some or all HSUSB PHY's regulators are turned OFF\n");
+	dev_err(phy->phy.dev, "HSUSB PHY's regulators %s failed\n", on ? "ON" : "OFF");
 	return ret;
 }
 

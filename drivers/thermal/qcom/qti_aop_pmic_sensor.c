@@ -16,8 +16,7 @@
 #define MSG_FORMAT "{class: pmic_data, dbu_id: %d, val: %s}"
 #define MSG_MAX_LEN 64
 #define MBOX_TOUT_MS 1000
-#define PMIC_RAIL_NAME_LENGTH 10
-#define IDX_OFFSET 2
+#define PMIC_RAIL_NAME_LENGTH 20
 #define KEY_LEN 5
 
 struct pmic_rails {
@@ -60,8 +59,8 @@ struct aop_pmic_sensor_hwmon_state {
 	int num_channels;
 	struct attribute_group attr_group;
 	const struct attribute_group *groups[2];
-	struct aop_pmic_sensor_peripheral_data *aop_psens_perph;
 	struct attribute **attrs;
+	struct aop_pmic_sensor_peripheral_data aop_psens_perph[0];
 };
 
 struct aop_msg {
@@ -183,29 +182,30 @@ static int aop_psens_probe_temp(struct platform_device *pdev,
 static ssize_t aop_psens_volt_curr_read(struct device *dev, struct device_attribute *attr,
 				char *buf)
 {
-	int pmic_id, ret, data = 0;
+	int ret, data = 0, idx = 0;
 	char key[KEY_LEN] = {0};
 	int *last = 0;
 	int offset;
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
 	struct aop_pmic_sensor_hwmon_state *state = dev_get_drvdata(dev);
 
-	pmic_id = ((sattr->index) % 3 == 0) ? 3 : (sattr->index)%3;
-	state->aop_psens_perph->pmic_rail->pmic_id = pmic_id;
+	if (sattr->index <= 0)
+		return -EINVAL;
+	idx = sattr->index - 1;
 
-	if (state->aop_psens_perph->dev->pmic_rail[sattr->index + IDX_OFFSET].type ==
+	if (state->aop_psens_perph[idx].pmic_rail->type ==
 					VOLT_TYPE) {
 		ret = scnprintf(key, KEY_LEN, "volt");
-		last = &(state->aop_psens_perph->last_volt_reading);
+		last = &(state->aop_psens_perph[idx].last_volt_reading);
 		offset = offsetof(struct pmic_stats, volt);
 	} else {
 		ret = scnprintf(key, KEY_LEN, "curr");
-		last = &(state->aop_psens_perph->last_curr_reading);
+		last = &(state->aop_psens_perph[idx].last_curr_reading);
 		offset = offsetof(struct pmic_stats, curr);
 	}
 
 
-	data = qmp_read_data(state->aop_psens_perph, key, offset);
+	data = qmp_read_data(&state->aop_psens_perph[idx], key, offset);
 	*last = data;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", *last);
@@ -221,7 +221,7 @@ static int aop_psens_probe_volt_and_curr(struct platform_device *pdev,
 	struct sensor_device_attribute *a;
 	struct device *hwmon_dev;
 
-	st = devm_kzalloc(dev, sizeof(*st), GFP_KERNEL);
+	st = devm_kzalloc(dev, struct_size(st, aop_psens_perph, channels), GFP_KERNEL);
 	if (!st)
 		return -ENOMEM;
 
@@ -233,7 +233,7 @@ static int aop_psens_probe_volt_and_curr(struct platform_device *pdev,
 	if (st->attrs == NULL)
 		return -ENOMEM;
 
-	for (i = 0; i < aop_psens_dev->ss_count; i++) {
+	for (i = 0; i < aop_psens_dev->ss_count && idx < channels; i++) {
 		if (aop_psens_dev->pmic_rail[i].type != TEMP_TYPE) {
 			a = devm_kzalloc(dev, sizeof(*a), GFP_KERNEL);
 			if (a == NULL)
@@ -241,13 +241,8 @@ static int aop_psens_probe_volt_and_curr(struct platform_device *pdev,
 
 			sysfs_attr_init(&a->dev_attr.attr);
 
-			st->aop_psens_perph = devm_kzalloc(dev, sizeof(*st->aop_psens_perph),
-							GFP_KERNEL);
-			if (st->aop_psens_perph == NULL)
-				return -ENOMEM;
-
-			st->aop_psens_perph->dev = aop_psens_dev;
-			st->aop_psens_perph->pmic_rail = &aop_psens_dev->pmic_rail[i];
+			st->aop_psens_perph[idx].dev = aop_psens_dev;
+			st->aop_psens_perph[idx].pmic_rail = &aop_psens_dev->pmic_rail[i];
 
 			a->dev_attr.attr.name = devm_kasprintf(dev, GFP_KERNEL, "%s",
 						aop_psens_dev->pmic_rail[i].resource_name);
