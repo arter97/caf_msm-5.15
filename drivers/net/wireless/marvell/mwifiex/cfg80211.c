@@ -1929,8 +1929,13 @@ mwifiex_cfg80211_get_antenna(struct wiphy *wiphy, u32 *tx_ant, u32 *rx_ant)
 /* cfg80211 operation handler for stop ap.
  * Function stops BSS running at uAP interface.
  */
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 static int mwifiex_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
 				    unsigned int link_id)
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+static int mwifiex_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
+				    struct cfg80211_ap_settings *settings)
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
 
@@ -1984,6 +1989,8 @@ static int mwifiex_cfg80211_start_ap(struct wiphy *wiphy,
 		return -ENOMEM;
 
 	mwifiex_set_sys_config_invalid_data(bss_cfg);
+
+	memcpy(bss_cfg->mac_addr, priv->curr_addr, ETH_ALEN);
 
 	if (params->beacon_interval)
 		bss_cfg->beacon_period = params->beacon_interval;

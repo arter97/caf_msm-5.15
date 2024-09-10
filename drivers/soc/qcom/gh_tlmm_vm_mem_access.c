@@ -246,6 +246,11 @@ static int gh_tlmm_vm_populate_vm_info(struct platform_device *dev, struct gh_tl
 	}
 
 	res = kzalloc(sizeof(*res), GFP_KERNEL);
+	if (!res) {
+		rc = -ENOMEM;
+		goto io_sizes_error;
+	}
+
 	for (i = 0; i < num_regs; i++)  {
 		ret = msm_gpio_get_pin_address(gpios[i], res);
 		if (!ret) {
