@@ -46,9 +46,14 @@ __setup("part.activeboot=", get_active_boot_part);
  */
 static void msm_nand_boot_device_is_nand(struct platform_device *pdev)
 {
+	int i;
 	u8 *buf;
 	size_t len;
-	u32 nand_boot, boot_dev_bits;
+	/* Currently, NAND boot supports three different boot_conf values.
+	 * In future, based on the number of supported values,
+	 * the array size needs to be increased.
+	 */
+	u32 nand_boot[3], boot_dev_bits;
 	struct nvmem_cell *cell;
 
 	cell = nvmem_cell_get(&pdev->dev, "boot_conf");
@@ -70,9 +75,9 @@ static void msm_nand_boot_device_is_nand(struct platform_device *pdev)
 		goto free_buf;
 	}
 
-	if (of_property_read_u32(pdev->dev.of_node,
-				   "qcom,nand_boot",
-				   &nand_boot)) {
+	if (of_property_read_u32_array(pdev->dev.of_node,
+					"qcom,nand_boot",
+					nand_boot, ARRAY_SIZE(nand_boot))) {
 		dev_err(&pdev->dev, "boot_config value for boot device not found\n");
 		goto free_buf;
 	}
@@ -84,11 +89,15 @@ static void msm_nand_boot_device_is_nand(struct platform_device *pdev)
 	 * FAST_BOOT bits might vary from target to target. It could be [1:3] or [1:4] or [1:5].
 	 * So, get the FAST_BOOT bits information from dtsi and shift accordingly.
 	 */
-	is_bootdevice_nand = (((*buf >> 1) & ((1 << boot_dev_bits) - 1)) == nand_boot) ?
+	for (i = 0; i < ARRAY_SIZE(nand_boot); i++) {
+		is_bootdevice_nand = (((*buf >> 1) & ((1 << boot_dev_bits) - 1)) == nand_boot[i]) ?
 										true : false;
+		if (is_bootdevice_nand)
+			break;
+	}
 	if (!is_bootdevice_nand)
-		dev_err(&pdev->dev, "boot_config val = 0x%x boot dev = 0x%x\n",
-					(*buf >> 1) & ((1 << boot_dev_bits) - 1), nand_boot);
+		dev_err(&pdev->dev, "boot_config val = 0x%x\n",
+				(*buf >> 1) & ((1 << boot_dev_bits) - 1));
 free_buf:
 	kfree(buf);
 put_nvmem_cell:
