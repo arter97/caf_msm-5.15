@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -2511,12 +2511,30 @@ static int qpnp_pon_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
+static int qpnp_pon_free_all_irqs(struct device *dev)
+{
+	int i, rc = 0;
+	struct qpnp_pon_config *cfg;
+	struct qpnp_pon *pon = dev_get_drvdata(dev);
+
+	for (i = 0; i < pon->num_pon_config; i++) {
+		cfg = &pon->pon_cfg[i];
+		rc = qpnp_pon_free_irqs(pon, cfg);
+		if (rc < 0)
+			return rc;
+	}
+
+	return rc;
+}
+
 static int qpnp_pon_restore(struct device *dev)
 {
 	int i, rc = 0;
 	struct qpnp_pon_config *cfg;
 	struct qpnp_pon *pon = dev_get_drvdata(dev);
 	struct pon_reg *pos = NULL;
+
+	qpnp_pon_free_all_irqs(dev);
 
 	list_for_each_entry(pos, &pon->restore_regs, list) {
 		rc = regmap_write(pon->regmap, pos->addr, pos->val);
@@ -2537,27 +2555,11 @@ static int qpnp_pon_restore(struct device *dev)
 	return rc;
 }
 
-static int qpnp_pon_freeze(struct device *dev)
-{
-	int i, rc = 0;
-	struct qpnp_pon_config *cfg;
-	struct qpnp_pon *pon = dev_get_drvdata(dev);
-
-	for (i = 0; i < pon->num_pon_config; i++) {
-		cfg = &pon->pon_cfg[i];
-		rc = qpnp_pon_free_irqs(pon, cfg);
-		if (rc < 0)
-			return rc;
-	}
-
-	return rc;
-}
-
 static int qpnp_pon_suspend(struct device *dev)
 {
 #ifdef CONFIG_DEEPSLEEP
 	if (pm_suspend_via_firmware())
-		return qpnp_pon_freeze(dev);
+		return qpnp_pon_free_all_irqs(dev);
 #endif
 
 	return 0;
@@ -2574,7 +2576,6 @@ static int qpnp_pon_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops qpnp_pon_pm_ops = {
-	.freeze = qpnp_pon_freeze,
 	.restore = qpnp_pon_restore,
 	.suspend = qpnp_pon_suspend,
 	.resume = qpnp_pon_resume,
