@@ -59,6 +59,7 @@ qcom-apcs-ipc-mailbox.ko
 glink_probe.ko
 qcom_glink_rpm.ko
 qcom_glink_smem.ko
+qcom_glink_spss.ko
 qcom_smd.ko
 qcom_glink.ko
 qcom_ipc_logging.ko
@@ -79,5 +80,4 @@ qcom_logbuf_vh.ko
 msm_rtb.ko
 minidump.ko
 crypto-qti-common.ko
-crypto-qti-hwkm.ko
-hwkm_v1.ko
+crypto-qti-tz.ko
