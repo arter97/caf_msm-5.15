@@ -14,7 +14,7 @@
  * This driver is based on idea from Hafnium Hypervisor Linux Driver,
  * but modified to work with Gunyah Hypervisor as needed.
  *
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"gh_proxy_sched: " fmt
@@ -552,6 +552,7 @@ static void gh_populate_all_res_info(gh_vmid_t vmid, bool res_populated)
 		vm->is_active = true;
 	} else if (!res_populated && vm->is_vcpu_info_populated) {
 		gh_reset_vm(vm);
+		destroy_workqueue(vm->vcpu_wq);
 		if (nr_vms)
 			nr_vms--;
 	}
