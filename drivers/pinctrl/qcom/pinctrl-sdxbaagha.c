@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1638,6 +1638,7 @@ static const struct msm_pinctrl_soc_data sdxbaagha_pinctrl = {
 	.nqup_regs = ARRAY_SIZE(sdxbaagha_qup_regs),
 	.wakeirq_map = sdxbaagha_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(sdxbaagha_pdc_map),
+	.wakeirq_dual_edge_errata = true,
 };
 
 static int sdxbaagha_pinctrl_probe(struct platform_device *pdev)
