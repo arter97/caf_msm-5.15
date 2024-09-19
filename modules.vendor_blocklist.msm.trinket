@@ -61,3 +61,9 @@ blocklist vsock
 blocklist vsock_diag
 blocklist xc4000
 blocklist xc5000
+blocklist qca_cld3_qca6174
+blocklist qca_cld3_wcn3980
+blocklist wlan_firmware_service
+blocklist cnss_prealloc
+blocklist cnss_utils
+blocklist icnss2
