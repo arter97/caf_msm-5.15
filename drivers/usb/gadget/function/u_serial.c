@@ -1505,6 +1505,7 @@ void gserial_suspend(struct gserial *gser)
 	spin_lock(&port->port_lock);
 
 	port->suspended = true;
+	port->start_delayed = true;
 	pool = &port->read_ep_queued;
 	out = port->port_usb->out;
 	while (!list_empty(pool)) {
