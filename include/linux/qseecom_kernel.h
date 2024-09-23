@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QSEECOM_KERNEL_H_
@@ -49,6 +49,8 @@ int qseecom_send_command(struct qseecom_handle *handle,
 int qseecom_create_key_in_slot(uint8_t usage_code, uint8_t key_slot,
 			       const uint8_t *key_id, const uint8_t *inhash32);
 #endif
+int qseecom_process_listener_from_smcinvoke(uint32_t *result,
+			u64 *response_type, unsigned int *data);
 
 #if IS_ENABLED(CONFIG_QSEECOM_PROXY)
 struct qseecom_drv_ops {
@@ -61,6 +63,8 @@ struct qseecom_drv_ops {
 	int (*qseecom_create_key_in_slot)(uint8_t usage_code, uint8_t key_slot,
 					  const uint8_t *key_id, const uint8_t *inhash32);
 #endif
+	int (*qseecom_process_listener_from_smcinvoke)(uint32_t *result,
+			u64 *response_type, unsigned int *data);
 };
 
 int provide_qseecom_kernel_fun_ops(const struct qseecom_drv_ops *ops);
