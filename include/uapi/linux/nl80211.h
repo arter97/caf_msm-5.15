@@ -2788,6 +2788,11 @@ enum nl80211_commands {
  *	indicates that the sub-channel is punctured. Higher 16 bits are
  *	reserved.
  *
+ * @NL80211_ATTR_MLD_MAC: MLD MAC address.
+ * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
+ * @NL80211_ATTR_MLD_LINK_IDS: nested attribute to hold MLD link-ids.
+ * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
+ *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
@@ -6402,6 +6407,11 @@ enum nl80211_feature_flags {
  *
  * @NL80211_EXT_FEATURE_SECURE_NAN: Device supports NAN Pairing which enables
  *	authentication, data encryption and message integrity.
+ * @NL80211_EXT_FEATURE_MLO: Driver/Device support Multi-link Operation(MLO)
+ *      feature.
+ *
+ * @NL80211_EXT_FEATURE_AUTH_TX_RANDOM_TA: Device supports randomized TA
+ *	for authentication frames in @NL80211_CMD_FRAME.
  *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.

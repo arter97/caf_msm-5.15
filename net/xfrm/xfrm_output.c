@@ -585,13 +585,15 @@ int xfrm_output_resume(struct sk_buff *skb, int err)
 	struct rt6_info	*rt6 = NULL;
 
 	// Save the IPv6 route before the xdst is stripped
-	if (skb_dst(skb)->ops->family == AF_INET6)
+	if (skb_dst(skb)->xfrm && skb_dst(skb)->ops->family == AF_INET6)
 		rt6 = xfrm_dst_rt6(dst_clone(skb_dst(skb)));
 
 	while (likely((err = xfrm_output_one(skb, err)) == 0)) {
 		nf_reset_ct(skb);
 
 		if (skb_dst(skb)->ops->family != AF_INET && ip_hdr(skb)->version == 4) {
+			if (rt6)
+				dst_release(&rt6->dst);
 			memset(IPCB(skb), 0, sizeof(*IPCB(skb)));
 			IPCB(skb)->flags |= IPSKB_XFRM_TRANSFORMED;
 			err = ip_output(net, skb->sk, skb);
@@ -612,6 +614,8 @@ int xfrm_output_resume(struct sk_buff *skb, int err)
 			if (unlikely(err != 1))
 				goto out;
 		} else {
+			if (rt6)
+				dst_release(&rt6->dst);
 			err = skb_dst(skb)->ops->local_out(net, skb->sk, skb);
 			if (unlikely(err != 1))
 				goto out;
