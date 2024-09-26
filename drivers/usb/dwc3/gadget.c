@@ -328,8 +328,7 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 	}
 
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
-		int	link_state;
-		bool	remote_wakeup = false;
+		int link_state;
 
 		/*
 		 * Initiate remote wakeup if the link state is in U3 when
@@ -340,26 +339,15 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		link_state = dwc3_gadget_get_link_state(dwc);
 		switch (link_state) {
 		case DWC3_LINK_STATE_U2:
-			if (dwc->gadget->speed < USB_SPEED_SUPER)
-				remote_wakeup = true;
-			break;
-		case DWC3_LINK_STATE_U3:
-			/*
-			 * In HS, DSTS can take few milliseconds to update linkstate,
-			 * so rely on dwc->link_state to know whether wakeup happened.
-			 * Don't issue remote wakuep again if link is already in U0.
-			 */
-			if (dwc->link_state == DWC3_LINK_STATE_U0)
+			if (dwc->gadget->speed >= USB_SPEED_SUPER)
 				break;
 
-			remote_wakeup = true;
-			break;
-		}
-
-		if (remote_wakeup) {
+			fallthrough;
+		case DWC3_LINK_STATE_U3:
 			ret = __dwc3_gadget_wakeup(dwc, false);
 			dev_WARN_ONCE(dwc->dev, ret, "wakeup failed --> %d\n",
 					ret);
+			break;
 		}
 	}
 
@@ -4189,7 +4177,6 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, unsigned int evtinfo)
 	struct dwc3_vendor	*vdwc = container_of(dwc, struct dwc3_vendor, dwc);
 
 	vdwc->suspended = false;
-	dwc->link_state = evtinfo & DWC3_LINK_STATE_MASK;
 
 	/*
 	 * TODO take core out of low power mode when that's
@@ -4201,6 +4188,8 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, unsigned int evtinfo)
 		dwc->gadget_driver->resume(dwc->gadget);
 		spin_lock(&dwc->lock);
 	}
+
+	dwc->link_state = evtinfo & DWC3_LINK_STATE_MASK;
 }
 
 static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
