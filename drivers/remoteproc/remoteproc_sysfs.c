@@ -229,6 +229,21 @@ static ssize_t state_store(struct device *dev,
 		ret = rproc_resume(rproc);
 		if (ret)
 			dev_err(&rproc->dev, "Resume failed: %d\n", ret);
+	} else if (sysfs_streq(buf, "suspend_indication")) {
+		if (rproc->state != RPROC_RUNNING)
+			return -EINVAL;
+
+		ret = rproc_suspend_indication(rproc);
+		if (ret)
+			dev_err(&rproc->dev, "failed to notify suspend: %d\n", ret);
+
+	} else if (sysfs_streq(buf, "resume_indication")) {
+		if (rproc->state != RPROC_RUNNING)
+			return -EINVAL;
+
+		ret = rproc_resume_indication(rproc);
+		if (ret)
+			dev_err(&rproc->dev, "failed to notify resume: %d\n", ret);
 	} else {
 		dev_err(&rproc->dev, "Unrecognised option: %s\n", buf);
 		ret = -EINVAL;

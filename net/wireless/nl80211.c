@@ -1563,16 +1563,13 @@ static int nl80211_key_allowed(struct wireless_dev *wdev)
 	case NL80211_IFTYPE_AP_VLAN:
 	case NL80211_IFTYPE_P2P_GO:
 	case NL80211_IFTYPE_MESH_POINT:
-		break;
 	case NL80211_IFTYPE_ADHOC:
 		if (wdev->u.ibss.current_bss)
 			return 0;
 		return -ENOLINK;
 	case NL80211_IFTYPE_STATION:
 	case NL80211_IFTYPE_P2P_CLIENT:
-		if (wdev->connected)
-			return 0;
-		return -ENOLINK;
+		break;
 	case NL80211_IFTYPE_NAN:
 		if (wiphy_ext_feature_isset(wdev->wiphy,
 					    NL80211_EXT_FEATURE_SECURE_NAN))
@@ -5488,8 +5485,11 @@ nl80211_parse_mbssid_elems(struct wiphy *wiphy, struct nlattr *attrs)
 	if (!wiphy->mbssid_max_interfaces)
 		return ERR_PTR(-EINVAL);
 
-	nla_for_each_nested(nl_elems, attrs, rem_elems)
+	nla_for_each_nested(nl_elems, attrs, rem_elems) {
+		if (num_elems >= 255)
+			return ERR_PTR(-EINVAL);
 		num_elems++;
+	}
 
 	elems = kzalloc(struct_size(elems, elem, num_elems), GFP_KERNEL);
 	if (!elems)

@@ -552,6 +552,7 @@ struct dwc3_msm {
 	bool			host_poweroff_in_pm_suspend;
 	bool			disable_host_ssphy_powerdown;
 	bool			enable_host_slow_suspend;
+	bool			force_suspend;
 	unsigned long		lpm_flags;
 	unsigned int		vbus_draw;
 #define MDWC3_SS_PHY_SUSPEND		BIT(0)
@@ -3643,6 +3644,10 @@ static int dwc3_msm_prepare_suspend(struct dwc3_msm *mdwc, bool ignore_p3_state)
 		}
 	}
 
+	/* Prepare SSPHY for suspend */
+	dwc3_msm_write_reg_field(mdwc->base, DWC3_GUSB3PIPECTL(0),
+					DWC3_GUSB3PIPECTL_SUSPHY, 1);
+
 	/* Clear previous L2 events */
 	dwc3_msm_write_reg(mdwc->base, PWR_EVNT_IRQ_STAT_REG,
 		PWR_EVNT_LPM_IN_L2_MASK | PWR_EVNT_LPM_OUT_L2_MASK);
@@ -5892,7 +5897,9 @@ static int dwc3_msm_core_init(struct dwc3_msm *mdwc)
 		goto depopulate;
 
 	dwc3_msm_override_pm_ops(dwc->dev, mdwc->dwc3_pm_ops, false);
-	dev_pm_syscore_device(dwc->dev, true);
+
+	if (!mdwc->force_suspend)
+		dev_pm_syscore_device(dwc->dev, true);
 
 	mdwc->xhci_pm_ops = kzalloc(sizeof(struct dev_pm_ops), GFP_ATOMIC);
 	if (!mdwc->xhci_pm_ops)
@@ -6619,6 +6626,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	if (of_property_read_bool(node, "qcom,disable-dev-mode-pm"))
 		pm_runtime_get_noresume(mdwc->dev);
 
+	mdwc->force_suspend = device_property_read_bool(mdwc->dev, "qcom,force-suspend");
+
 	mutex_init(&mdwc->suspend_resume_mutex);
 	mutex_init(&mdwc->role_switch_mutex);
 	mdwc->dis_role_switch = false;
@@ -6917,7 +6926,7 @@ static int dwc3_msm_host_notifier(struct notifier_block *nb,
 	 * relies on the DWC3 MSM to issue the PM runtime resume to wake up
 	 * the entire host device chain.
 	 */
-	if (event == USB_DEVICE_ADD)
+	if ((event == USB_DEVICE_ADD) && (!mdwc->force_suspend))
 		dev_pm_syscore_device(&udev->dev, true);
 	/*
 	 * For direct-attach devices, new udev is direct child of root hub
