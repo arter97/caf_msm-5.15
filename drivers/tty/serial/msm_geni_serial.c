@@ -1324,13 +1324,13 @@ static void msm_geni_serial_set_mctrl(struct uart_port *uport,
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 			     "%s: Device is being suspended, %s\n",
 			     __func__, current->comm);
-		mutex_unlock(&port->suspend_resume_lock);
 		return;
 	}
 	if (device_pending_suspend(uport)) {
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 			     "%s.Device is suspended, %s: mctrl=0x%x\n",
 			     __func__, current->comm, mctrl);
+		mutex_unlock(&port->suspend_resume_lock);
 		return;
 	}
 
