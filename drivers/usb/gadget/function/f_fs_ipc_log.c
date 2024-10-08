@@ -7,7 +7,6 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
 #include <linux/fs_parser.h>
-#include <linux/usb/dwc3-msm.h>
 #include <linux/ipc_logging.h>
 #include <linux/usb/functionfs.h>
 #include <linux/uio.h>
@@ -100,17 +99,6 @@ struct kprobe_data {
 };
 
 #define MAX_DEV_NAME_SIZE	41 /* it match size defined in ffs_dev */
-
-static unsigned long ffs_pt_reg(struct pt_regs *regs, int reg)
-{
-#ifdef CONFIG_ARM64
-	return regs->regs[reg];
-#elif CONFIG_ARM
-	return regs->uregs[reg];
-#endif
-}
-
-#ifdef CONFIG_IPC_LOGGING
 
 struct ipc_log_work {
 	struct work_struct ctxt_work;
@@ -217,6 +205,16 @@ static void *get_ipc_context(struct ffs_data *ffs)
 
 	return NULL;
 }
+
+static unsigned long ffs_pt_reg(struct pt_regs *regs, int reg)
+{
+#ifdef CONFIG_ARM64
+	return regs->regs[reg];
+#elif CONFIG_ARM
+	return regs->uregs[reg];
+#endif
+}
+
 
 static int entry_ffs_user_copy_worker(struct kretprobe_instance *ri,
 				      struct pt_regs *regs)
@@ -650,6 +648,17 @@ static int exit_functionfs_bind(struct kretprobe_instance *ri,
 	return 0;
 }
 
+static int entry_ffs_func_eps_disable(struct kretprobe_instance *ri,
+				    struct pt_regs *regs)
+{
+	struct ffs_function *func = (struct ffs_function *)ffs_pt_reg(regs, 0);
+	void *context = get_ipc_context(func->ffs);
+
+	kprobe_log(context, "enter: state %d setup_state %d flag %lu",
+		func->ffs->state, func->ffs->setup_state, func->ffs->flags);
+	return 0;
+}
+
 static int entry_ffs_func_bind(struct kretprobe_instance *ri,
 				    struct pt_regs *regs)
 {
@@ -823,60 +832,6 @@ static int exit_ffs_closed(struct kretprobe_instance *ri,
 	return 0;
 }
 
-#endif
-
-static DEFINE_SPINLOCK(ffs_gadget_lock);
-static bool ffs_gadget_pm_usage = false;
-
-static int entry_ffs_event_add(struct kretprobe_instance *ri,
-				    struct pt_regs *regs)
-{
-	struct ffs_data *ffs = (struct ffs_data *)ffs_pt_reg(regs, 0);
-	int event = (int)ffs_pt_reg(regs, 1);
-
-	pr_err("prashk %s entry", __func__);
-	/*
-	 * Bump up the gadget pm usage count during enumeration and avoid duplication
-	 * of votes, also synchronise ffs_gadget_pm_usage using static lock.
-	 */
-	if (event != FUNCTIONFS_ENABLE)
-		return 0;
-
-	spin_lock(&ffs_gadget_lock);
-	if (!ffs_gadget_pm_usage) {
-		pr_err("prashk %s put vote", __func__);
-		usb_gadget_autopm_get_async(ffs->gadget);
-		ffs_gadget_pm_usage = true;
-	}
-	spin_unlock(&ffs_gadget_lock);
-
-	return 0;
-}
-
-/* Make sure to remove votes before ffs_reset_work, which will eventually call pullup(0) */
-static int entry_ffs_func_eps_disable(struct kretprobe_instance *ri,
-				    struct pt_regs *regs)
-{
-	struct ffs_function *func = (struct ffs_function *)ffs_pt_reg(regs, 0);
-#ifdef CONFIG_IPC_LOGGING
-	void *context = get_ipc_context(func->ffs);
-
-	kprobe_log(context, "enter: state %d setup_state %d flag %lu",
-		func->ffs->state, func->ffs->setup_state, func->ffs->flags);
-#endif
-	pr_err("prashk %s entry", __func__);
-
-	spin_lock(&ffs_gadget_lock);
-	if (ffs_gadget_pm_usage) {
-		pr_err("prashk %s remove vote", __func__);
-		usb_gadget_autopm_put_async(func->gadget);
-		ffs_gadget_pm_usage = false;
-	}
-	spin_unlock(&ffs_gadget_lock);
-
-	return 0;
-}
-
 #define ENTRY_EXIT(name) {\
 	.handler = exit_##name,\
 	.entry_handler = entry_##name,\
@@ -893,7 +848,6 @@ static int entry_ffs_func_eps_disable(struct kretprobe_instance *ri,
 }
 
 static struct kretprobe ffsprobes[] = {
-#ifdef CONFIG_IPC_LOGGING
 	ENTRY(ffs_user_copy_worker),
 	ENTRY_EXIT(ffs_epfile_io),
 	ENTRY(ffs_epfile_async_io_complete),
@@ -916,6 +870,7 @@ static struct kretprobe ffsprobes[] = {
 	ENTRY(ffs_data_closed),
 	ENTRY(ffs_data_clear),
 	ENTRY_EXIT(functionfs_bind),
+	ENTRY(ffs_func_eps_disable),
 	ENTRY_EXIT(ffs_func_bind),
 	ENTRY(ffs_reset_work),
 	ENTRY(ffs_func_set_alt),
@@ -924,10 +879,7 @@ static struct kretprobe ffsprobes[] = {
 	ENTRY(ffs_func_suspend),
 	ENTRY(ffs_func_resume),
 	ENTRY_EXIT(ffs_func_unbind),
-	ENTRY_EXIT(ffs_closed),
-#endif
-	ENTRY(ffs_func_eps_disable),
-	ENTRY(ffs_event_add)
+	ENTRY_EXIT(ffs_closed)
 };
 
 static int __init kretprobe_init(void)
@@ -935,13 +887,12 @@ static int __init kretprobe_init(void)
 	int ret;
 	int i;
 
-#ifdef CONFIG_IPC_LOGGING
 	ipc_wq = alloc_ordered_workqueue("ipc_wq", 0);
 	if (!ipc_wq) {
 		pr_err("%s: Unable to create workqueue ipc_wq\n", __func__);
 		return -ENOMEM;
 	}
-#endif
+
 	for (i = 0; i < ARRAY_SIZE(ffsprobes); i++) {
 		ret = register_kretprobe(&ffsprobes[i]);
 		if (ret < 0) {
@@ -956,7 +907,6 @@ static void __exit kretprobe_exit(void)
 {
 	int i;
 
-#ifdef CONFIG_IPC_LOGGING
 	destroy_workqueue(ipc_wq);
 	for (i = 0; i < num_devices; i++) {
 		if (ipc_log_s[i].ffs) {
@@ -964,7 +914,7 @@ static void __exit kretprobe_exit(void)
 			ipc_log_s[i].context = NULL;
 		}
 	}
-#endif
+
 	for (i = 0; i < ARRAY_SIZE(ffsprobes); i++) {
 		unregister_kretprobe(&ffsprobes[i]);
 
