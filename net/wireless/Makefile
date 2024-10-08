@@ -25,6 +25,9 @@ cfg80211-y += extra-certs.o
 endif
 
 ccflags-$(CONFIG_CFG80211_PROP_MULTI_LINK_SUPPORT) += -DCFG80211_PROP_MULTI_LINK_SUPPORT
+ifeq ($(CONFIG_CFG80211_PROP_MULTI_LINK_SUPPORT),y)
+ccflags-$(CONFIG_CFG80211_PROP_MULTI_LINK_EXT_SUPPORT) += -DCFG80211_PROP_MULTI_LINK_EXT_SUPPORT
+endif
 
 $(obj)/shipped-certs.c: $(wildcard $(srctree)/$(src)/certs/*.hex)
 	@$(kecho) "  GEN     $@"

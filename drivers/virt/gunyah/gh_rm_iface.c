@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -1304,7 +1304,8 @@ int gh_rm_vm_stop(gh_vmid_t vmid, u32 stop_reason, u8 flags)
 				&resp_payload_size, &reply_err_code);
 	if (reply_err_code || IS_ERR(resp)) {
 		err = reply_err_code;
-		pr_err("%s: VM_STOP failed with err: %d\n", __func__, err);
+		pr_err("%s: VM_STOP failed with err: %d resp %d vmid %d\n",
+			__func__, err, resp, vmid);
 		return err;
 	}
 
@@ -1341,8 +1342,8 @@ int gh_rm_vm_reset(gh_vmid_t vmid)
 				&resp_payload_size, &reply_err_code);
 	if (reply_err_code || IS_ERR(resp)) {
 		err = reply_err_code;
-		pr_err("%s: VM_RESET failed with err: %d\n",
-			__func__, err);
+		pr_err("%s: VM_RESET failed with err %d for vmid  %d resp %d\n",
+			__func__, err, vmid, resp);
 		return err;
 	}
 

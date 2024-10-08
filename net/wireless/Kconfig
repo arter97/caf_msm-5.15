@@ -44,6 +44,14 @@ config CFG80211_PROP_MULTI_LINK_SUPPORT
 	  feature, otherwise driver operates in cfg80211's default
 	  Multi Link Operation feature.
 
+config CFG80211_PROP_MULTI_LINK_EXT_SUPPORT
+	tristate "cfg80211 - wireless configuration for MLO ext feature"
+	help
+	  Enable this option if wireless driver needs to operate in
+	  extended Multi Link Operation (MLO) feature with new 802.11be
+	  version, otherwise driver operates in legacy 802.11be Multi
+	  Link Operation feature.
+
 if CFG80211
 
 config NL80211_TESTMODE
@@ -209,15 +217,6 @@ config CFG80211_WEXT_EXPORT
 	  Drivers should select this option if they require cfg80211's
 	  wext compatibility symbols to be exported.
 
-config MAC80211_STA_HASH_MAX_SIZE
-	int "Station hash table maximum size"
-	default 0
-	help
-	  Setting this option to a low value (e.g. 4) allows testing the
-	  hash table with collisions relatively deterministically (just
-	  connect more stations than the number selected here.)
-
-	  If unsure, leave the default of 0.
 endif # CFG80211
 
 config LIB80211

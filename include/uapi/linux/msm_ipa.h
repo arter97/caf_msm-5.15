@@ -209,7 +209,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 50
+#define IPA_MAX_NUM_IFACE_FLT 75
 
 
 /**
@@ -3523,12 +3523,13 @@ enum ipa_vlan_ifaces {
 	IPA_VLAN_IF_ETH1,
 	IPA_VLAN_IF_RNDIS,
 	IPA_VLAN_IF_ECM,
-	IPA_VLAN_IF_WLAN
+	IPA_VLAN_IF_WLAN,
+	IPA_VLAN_IF_MHI_ETH
 };
 
 #define IPA_VLAN_IF_EMAC IPA_VLAN_IF_ETH
 #define IPA_VLAN_IF_WLAN IPA_VLAN_IF_WLAN
-#define IPA_VLAN_IF_MAX (IPA_VLAN_IF_WLAN + 1)
+#define IPA_VLAN_IF_MAX (IPA_VLAN_IF_MHI_ETH + 1)
 
 /**
  * struct ipa_get_vlan_mode - get vlan mode of a Lan interface

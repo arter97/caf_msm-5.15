@@ -58,6 +58,13 @@ function build_defconfig_fragments() {
 		if [ "${VARIANT}" = hostvm_debug_defconfig ]; then
 			apply_defconfig_fragment ${KERNEL_DIR}/arch/${ARCH}/configs/vendor/${MSM_ARCH}_hostvm-debug.config vendor/${MSM_ARCH}-debug_defconfig
 		fi
+
+	elif [[ "${VARIANT}" =~ ^(minimal_perf_defconfig|minimal_debug_defconfig) ]]; then
+		apply_defconfig_fragment "${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/"${MSM_ARCH}"_minimal.config vendor/"${MSM_ARCH}"_minimal_defconfig
+		if [[ "${VARIANT}" =~ ^(minimal_debug_defconfig) ]]; then
+			apply_defconfig_fragment "${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/"${MSM_ARCH}"_minimal_debug.config vendor/"${MSM_ARCH}"_minimal-debug_defconfig
+		fi
+                return
 	else
 		echo "Variant '${VARIANT}' unsupported by mdm"
 		exit 1
