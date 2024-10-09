@@ -4,6 +4,7 @@
  */
 
 #include <linux/cdev.h>
+#include <linux/delay.h>
 #include <linux/eventfd.h>
 #include <linux/interrupt.h>
 #include <linux/mailbox_client.h>
@@ -15,6 +16,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/string.h>
+#include <linux/suspend.h>
 
 #include <uapi/linux/sail_mbox.h>
 
@@ -22,7 +24,10 @@
 #define OTA_PHY_ADDR	0x90e00000
 #define SAIL_S1_MAGIC	0xD0000000U
 #define SAIL_S2_MAGIC	0xD0020000U
+#define SAIL_SUSPEND_MAGIC	0xD0030000U
 #define SAIL_IPC_SIGNAL	BIT(23)
+#define SAIL_SUSPEND_ACK_TIMEOUT_MS	2000
+#define SAIL_HANDSHAKE_DEFAULT_DELAY_US	50000
 
 struct mmap_data {
 	unsigned long mmap_phy_addr;
@@ -58,6 +63,10 @@ struct sail_mailbox {
 	int irq_count;
 	struct mmap_data pr_data;
 	bool mmap_ioctl_set;
+	void __iomem *req_tcsr_reg;
+	void __iomem *resp_tcsr_reg;
+	void __iomem *ipc_reg;
+	unsigned int sail_handshake_delay;
 };
 
 static struct sail_mailbox *sailmb_dev;
@@ -123,6 +132,21 @@ static int set_eventfd_for_signal(struct sail_irq_data *irq_data, const int irq_
 				irq_data[i].event_fd_sig = NULL;
 				return ret;
 			}
+			return 0;
+		}
+	}
+	return -ENOENT;
+}
+
+static int release_eventfd_for_signal(struct sail_irq_data *irq_data, const int irq_count,
+	const unsigned int signal)
+{
+	int i;
+
+	for (i = 0; i < irq_count; i++) {
+		if ((irq_data[i].signal_id == signal) && (irq_data[i].event_fd_sig)) {
+			eventfd_ctx_put(irq_data[i].event_fd_sig);
+			irq_data[i].event_fd_sig = NULL;
 			return 0;
 		}
 	}
@@ -258,6 +282,14 @@ static long sail_mb_ioctl_call(struct file *f, unsigned int cmd, unsigned long a
 				return ret;
 			}
 
+			ret = release_eventfd_for_signal(sailmb_dev->irq_data,
+				sailmb_dev->irq_count, data.sailmb_client.signal_num);
+			if (ret) {
+				dev_err(sailmb_dev->dev, "failed to reset eventfd %d\n", ret);
+				mutex_unlock(&sailmb_dev->dev_lock);
+				return ret;
+			}
+
 			disable_irq(irq);
 		} else {
 			ret = -EPERM;
@@ -352,9 +384,9 @@ static const struct file_operations sailmb_fops = {
 	.mmap = sail_mb_mmap,
 };
 
-static int sail_s1_handshake(void __iomem *tcsr_reg, void __iomem *ipc_reg)
+static int sail_handshake(void __iomem *tcsr_reg, void __iomem *ipc_reg,
+		const unsigned int magic)
 {
-	const unsigned int magic = SAIL_S1_MAGIC;
 	int tcsr_write_value;
 	unsigned int i;
 
@@ -363,25 +395,80 @@ static int sail_s1_handshake(void __iomem *tcsr_reg, void __iomem *ipc_reg)
 		writel_relaxed(tcsr_write_value, tcsr_reg);
 		tcsr_reg = tcsr_reg + 4;
 	}
+
+	isb();
+	/* ensure TSCR register writes go through before triggering IPC to SAIL */
+	mb();
 
 	writel_relaxed(SAIL_IPC_SIGNAL, ipc_reg);
 
 	return 0;
 }
 
-static int sail_s2_handshake(void __iomem *tcsr_reg, void __iomem *ipc_reg)
+static int do_sailmb_init_handshakes(void __iomem *tcsr_reg, void __iomem *ipc_reg)
 {
-	const unsigned int magic = SAIL_S2_MAGIC;
-	int tcsr_write_value;
-	unsigned int i;
+	int ret;
 
-	for (i = 0; i < 4; i++) {
-		tcsr_write_value = (((magic & (0xFFU << (8U * i))) >> (8U * i)) & 0xFFU);
-		writel_relaxed(tcsr_write_value, tcsr_reg);
-		tcsr_reg = tcsr_reg + 4;
+	ret = sail_handshake(tcsr_reg, ipc_reg, SAIL_S1_MAGIC);
+	if (ret) {
+		dev_err(sailmb_dev->dev, "sail_s1_handshake returned error %d\n", ret);
+		return ret;
 	}
 
-	writel_relaxed(SAIL_IPC_SIGNAL, ipc_reg);
+	if (sailmb_dev->sail_handshake_delay <= 20000)
+		usleep_range(sailmb_dev->sail_handshake_delay-100,
+				sailmb_dev->sail_handshake_delay);
+	else
+		msleep(sailmb_dev->sail_handshake_delay/1000);
+
+	ret = sail_handshake(tcsr_reg, ipc_reg, SAIL_S2_MAGIC);
+	if (ret) {
+		dev_err(sailmb_dev->dev, "sail_s2_handshake returned error %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+static int sail_suspend_ack(void __iomem *tcsr_reg)
+{
+	unsigned int i;
+	unsigned int magic = 0U;
+
+	for (i = 0; i < SAIL_SUSPEND_ACK_TIMEOUT_MS; i++) {
+		magic = 0U;
+		magic |= readl_relaxed(tcsr_reg) & (0xFFU);
+		magic |= (readl_relaxed(tcsr_reg + 4) & (0xFFU)) << 8U;
+		magic |= (readl_relaxed(tcsr_reg + 8) & (0xFFU)) << 16U;
+		magic |= (readl_relaxed(tcsr_reg + 12) & (0xFFU)) << 24U;
+
+		if (magic == SAIL_SUSPEND_MAGIC) {
+			dev_dbg(sailmb_dev->dev, "magic number matched\n");
+			return 0;
+		}
+
+		usleep_range(900, 1000);
+	}
+
+	return -ETIMEDOUT;
+}
+
+static int sail_suspend_handshake(void __iomem *req_tcsr_reg, void __iomem *ipc_reg,
+		void __iomem *resp_tcsr_reg)
+{
+	int ret;
+
+	ret = sail_handshake(req_tcsr_reg, ipc_reg, SAIL_SUSPEND_MAGIC);
+	if (ret) {
+		dev_err(sailmb_dev->dev, "sail suspend handshake returned error %d\n", ret);
+		return ret;
+	}
+
+	ret = sail_suspend_ack(resp_tcsr_reg);
+	if (ret) {
+		dev_err(sailmb_dev->dev, "sail failed to acknowledge suspend call\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -392,6 +479,7 @@ static int populate_irq_from_dt(struct platform_device *pdev, struct sail_mailbo
 	int ret;
 	int count = 0;
 	const char *intr_name = "sailmb_irq";
+	const size_t irq_name_size = strlen(intr_name) + 1;
 
 	sailmb_dev->irq_count = of_property_count_elems_of_size(pdev->dev.of_node,
 		"interrupts", (3 * sizeof(u32)));
@@ -424,9 +512,8 @@ static int populate_irq_from_dt(struct platform_device *pdev, struct sail_mailbo
 
 		sailmb_dev->irq_data[count].irq = platform_get_irq(pdev, count);
 		sailmb_dev->irq_data[count].irq_name =
-				devm_kzalloc(&pdev->dev, strlen(intr_name)+1, GFP_KERNEL);
-		strscpy(sailmb_dev->irq_data[count].irq_name, intr_name,
-			strlen(sailmb_dev->irq_data[count].irq_name));
+				devm_kzalloc(&pdev->dev, irq_name_size, GFP_KERNEL);
+		strscpy(sailmb_dev->irq_data[count].irq_name, intr_name, irq_name_size);
 
 		dev_dbg(sailmb_dev->dev, "requesting irq %d\n", sailmb_dev->irq_data[count].irq);
 		ret = devm_request_irq(&pdev->dev, sailmb_dev->irq_data[count].irq,
@@ -511,10 +598,10 @@ static int sailmb_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device *dev;
-	struct resource *tcsr_res;
+	struct resource *req_tcsr_res;
+	struct resource *resp_tcsr_res;
 	struct resource *ipc_res;
-	void __iomem *tcsr_reg;
-	void __iomem *ipc_reg;
+	unsigned int delay;
 
 	sailmb_dev = devm_kzalloc(&pdev->dev, sizeof(*sailmb_dev), GFP_KERNEL);
 	if (!sailmb_dev)
@@ -522,34 +609,40 @@ static int sailmb_probe(struct platform_device *pdev)
 
 	sailmb_dev->dev = &pdev->dev;
 
-	tcsr_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!tcsr_res) {
+	req_tcsr_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!req_tcsr_res) {
 		dev_err(sailmb_dev->dev, "failed to acquire tcsr io resource\n");
 		return -EINVAL;
 	}
 
-	tcsr_reg = devm_ioremap_resource(&pdev->dev, tcsr_res);
-	if (IS_ERR(tcsr_reg)) {
+	sailmb_dev->req_tcsr_reg = devm_ioremap_resource(&pdev->dev, req_tcsr_res);
+	if (IS_ERR(sailmb_dev->req_tcsr_reg)) {
 		dev_err(sailmb_dev->dev, "ioremap of tcsr register failed\n");
-		return PTR_ERR(tcsr_reg);
+		return PTR_ERR(sailmb_dev->req_tcsr_reg);
 	}
 
-	ipc_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	resp_tcsr_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!resp_tcsr_res) {
+		dev_err(sailmb_dev->dev, "failed to acquire tcsr io resource\n");
+		return -EINVAL;
+	}
+
+	sailmb_dev->resp_tcsr_reg = devm_ioremap_resource(&pdev->dev, resp_tcsr_res);
+	if (IS_ERR(sailmb_dev->resp_tcsr_reg)) {
+		dev_err(sailmb_dev->dev, "ioremap of tcsr register failed\n");
+		return PTR_ERR(sailmb_dev->resp_tcsr_reg);
+	}
+
+	ipc_res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
 	if (!ipc_res) {
 		dev_err(sailmb_dev->dev, "failed to acquire ipc io resource\n");
 		return -EINVAL;
 	}
 
-	ipc_reg = devm_ioremap_resource(&pdev->dev, ipc_res);
-	if (IS_ERR(ipc_reg)) {
+	sailmb_dev->ipc_reg = devm_ioremap_resource(&pdev->dev, ipc_res);
+	if (IS_ERR(sailmb_dev->ipc_reg)) {
 		dev_err(sailmb_dev->dev, "Ioremap of ipc register failed\n");
-		return PTR_ERR(ipc_reg);
-	}
-
-	ret = sail_s1_handshake(tcsr_reg, ipc_reg);
-	if (ret) {
-		dev_err(sailmb_dev->dev, "sail_s1_handshake returned error %d\n", ret);
-		return ret;
+		return PTR_ERR(sailmb_dev->ipc_reg);
 	}
 
 	ret = alloc_chrdev_region(&sailmb_dev->sailmb_dev_num, 0, 1, "sailMB");
@@ -582,19 +675,28 @@ static int sailmb_probe(struct platform_device *pdev)
 		goto failed_device_create;
 	}
 
-	ret = populate_irq_from_dt(pdev, sailmb_dev);
+	ret = populate_mbox_from_dt(pdev, sailmb_dev);
 	if (ret)
 		goto out;
 
-	ret = populate_mbox_from_dt(pdev, sailmb_dev);
+	ret = populate_irq_from_dt(pdev, sailmb_dev);
 	if (ret)
 		goto out;
 
 	mutex_init(&sailmb_dev->dev_lock);
 
-	ret = sail_s2_handshake(tcsr_reg, ipc_reg);
+	ret = of_property_read_u32(sailmb_dev->dev->of_node, "sail-handshake-delay", &delay);
+	if (ret)
+		sailmb_dev->sail_handshake_delay = SAIL_HANDSHAKE_DEFAULT_DELAY_US;
+	else
+		sailmb_dev->sail_handshake_delay = delay;
+
+	if (sailmb_dev->sail_handshake_delay < 100)
+		sailmb_dev->sail_handshake_delay = 100;
+
+	ret = do_sailmb_init_handshakes(sailmb_dev->req_tcsr_reg, sailmb_dev->ipc_reg);
 	if (ret) {
-		dev_err(sailmb_dev->dev, "sail_s2_handshake returned error %d\n", ret);
+		dev_err(sailmb_dev->dev, "sail-mailbox handshake failed %d\n", ret);
 		goto out;
 	}
 
@@ -623,6 +725,39 @@ static int sailmb_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int sailmb_suspend(struct device *dev)
+{
+	int ret;
+
+	ret = sail_suspend_handshake(sailmb_dev->req_tcsr_reg, sailmb_dev->ipc_reg,
+			sailmb_dev->resp_tcsr_reg);
+	if (ret) {
+		dev_err(sailmb_dev->dev, "sail_suspend_handshake returned error %d\n", ret);
+		goto suspend_fail;
+	}
+
+	return 0;
+
+suspend_fail:
+	do_sailmb_init_handshakes(sailmb_dev->req_tcsr_reg, sailmb_dev->ipc_reg);
+	return ret;
+}
+
+static int sailmb_resume(struct device *dev)
+{
+	int ret;
+
+	dev_dbg(sailmb_dev->dev, "sail-mailbox resuming, sending handshake signals\n");
+	ret = do_sailmb_init_handshakes(sailmb_dev->req_tcsr_reg, sailmb_dev->ipc_reg);
+
+	return ret;
+}
+
+static const struct dev_pm_ops sailmb_pm_ops = {
+	.suspend = sailmb_suspend,
+	.resume = sailmb_resume,
+};
+
 static const struct of_device_id sailmb_dt_match[] = {
 	{ .compatible = "qcom,sail-mailbox" },
 	{}
@@ -632,9 +767,10 @@ MODULE_DEVICE_TABLE(of, sailmb_dt_match);
 
 static struct platform_driver sailmb_driver = {
 	.driver = {
-		.name = "sail_sailbox",
+		.name = "sail_mailbox",
 		.of_match_table = sailmb_dt_match,
 		.suppress_bind_attrs = true,
+		.pm = &sailmb_pm_ops,
 	},
 	.probe = sailmb_probe,
 	.remove = sailmb_remove,
