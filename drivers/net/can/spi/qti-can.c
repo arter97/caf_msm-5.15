@@ -1737,17 +1737,17 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 		break;
 	case IOCTL_ENABLE_BUFFERING:
 	case IOCTL_DISABLE_BUFFERING:
-		qti_can_data_buffering(netdev, ifr, cmd);
-		ret = 0;
+		ret = qti_can_data_buffering(netdev, ifr, cmd);
+		dev_dbg(&priv_data->spidev->dev, "qti_can_data_buffering ret %x\n", ret);
 		break;
 	case IOCTL_DISABLE_ALL_BUFFERING:
-		qti_can_remove_all_buffering(netdev);
-		ret = 0;
+		ret = qti_can_remove_all_buffering(netdev);
+		dev_dbg(&priv_data->spidev->dev, "qti_can_remove_all_buffering ret %x\n", ret);
 		break;
 	case IOCTL_ADD_FRAME_FILTER:
 	case IOCTL_REMOVE_FRAME_FILTER:
-		qti_can_frame_filter(netdev, ifr, cmd);
-		ret = 0;
+		ret = qti_can_frame_filter(netdev, ifr, cmd);
+		dev_dbg(&priv_data->spidev->dev, "qti_can_frame_filter ret %x\n", ret);
 		break;
 	case IOCTL_END_FIRMWARE_UPGRADE:
 		ret = qti_can_end_fwupgrade_ioctl(netdev, ifr, cmd);

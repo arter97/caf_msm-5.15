@@ -44,6 +44,14 @@ config CFG80211_PROP_MULTI_LINK_SUPPORT
 	  feature, otherwise driver operates in cfg80211's default
 	  Multi Link Operation feature.
 
+config CFG80211_PROP_MULTI_LINK_EXT_SUPPORT
+	tristate "cfg80211 - wireless configuration for MLO ext feature"
+	help
+	  Enable this option if wireless driver needs to operate in
+	  extended Multi Link Operation (MLO) feature with new 802.11be
+	  version, otherwise driver operates in legacy 802.11be Multi
+	  Link Operation feature.
+
 if CFG80211
 
 config NL80211_TESTMODE

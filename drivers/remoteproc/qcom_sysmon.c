@@ -223,6 +223,8 @@ static int sysmon_callback(struct rpmsg_device *rpdev, void *data, int count,
 #define SSCTL_SUBSYS_EVENT_REQ		0x23
 #define SSCTL_SUBSYS_EVENT_WITH_TID_REQ		0x25
 #define SSCTL_DS_ENTRY_REQ		0x26
+#define QMI_SSCTL_SUSPEND_ENTRY_REQ_V02 0x27
+#define QMI_SSCTL_SUSPEND_EXIT_REQ_V02  0x28
 
 #define SSCTL_MAX_MSG_LEN		7
 
@@ -262,6 +264,40 @@ static struct qmi_elem_info ssctl_deepsleep_resp_ei[] = {
 		.array_type	= NO_ARRAY,
 		.tlv_type	= 0x02,
 		.offset		= offsetof(struct ssctl_deepsleep_resp, resp),
+		.ei_array	= qmi_response_type_v01_ei,
+	},
+	{}
+};
+
+struct ssctl_suspend_indication_resp {
+	struct qmi_response_type_v01 resp;
+};
+
+static struct qmi_elem_info ssctl_suspend_indication_resp_ei[] = {
+	{
+		.data_type	= QMI_STRUCT,
+		.elem_len	= 1,
+		.elem_size	= sizeof(struct qmi_response_type_v01),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x02,
+		.offset		= offsetof(struct ssctl_suspend_indication_resp, resp),
+		.ei_array	= qmi_response_type_v01_ei,
+	},
+	{}
+};
+
+struct ssctl_resume_indication_resp {
+	struct qmi_response_type_v01 resp;
+};
+
+static struct qmi_elem_info ssctl_resume_indication_resp_ei[] = {
+	{
+		.data_type	= QMI_STRUCT,
+		.elem_len	= 1,
+		.elem_size	= sizeof(struct qmi_response_type_v01),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x02,
+		.offset		= offsetof(struct ssctl_resume_indication_resp, resp),
 		.ei_array	= qmi_response_type_v01_ei,
 	},
 	{}
@@ -568,6 +604,86 @@ static int ssctl_request_deepsleep(struct qcom_sysmon *sysmon)
 
 	return 0;
 }
+
+static int ssctl_request_suspend_indication(struct qcom_sysmon *sysmon)
+{
+	struct ssctl_suspend_indication_resp resp;
+	struct qmi_txn txn;
+	int ret;
+
+	if (sysmon->ssctl_instance == -EINVAL)
+		return -EINVAL;
+
+	ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_suspend_indication_resp_ei, &resp);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to allocate QMI txn\n");
+		return ret;
+	}
+
+	ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
+			       QMI_SSCTL_SUSPEND_ENTRY_REQ_V02, 0, NULL, NULL);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to send suspend entry request\n");
+		qmi_txn_cancel(&txn);
+		return ret;
+	}
+
+	ret = qmi_txn_wait(&txn, 5 * HZ);
+
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed receiving QMI response\n");
+	} else if (resp.resp.result) {
+		ret = resp.resp.result;
+		dev_err(sysmon->dev, "suspend entry request failed\n");
+	} else {
+		dev_dbg(sysmon->dev, "suspend entry request completed\n");
+	}
+
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+static int ssctl_request_resume_indication(struct qcom_sysmon *sysmon)
+{
+	struct ssctl_resume_indication_resp resp;
+	struct qmi_txn txn;
+	int ret;
+
+	if (sysmon->ssctl_instance == -EINVAL)
+		return -EINVAL;
+
+	ret = qmi_txn_init(&sysmon->qmi, &txn, ssctl_resume_indication_resp_ei, &resp);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to allocate QMI txn\n");
+		return ret;
+	}
+
+	ret = qmi_send_request(&sysmon->qmi, &sysmon->ssctl, &txn,
+			       QMI_SSCTL_SUSPEND_EXIT_REQ_V02, 0, NULL, NULL);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed to send suspend exit request\n");
+		qmi_txn_cancel(&txn);
+		return ret;
+	}
+
+	ret = qmi_txn_wait(&txn, 5 * HZ);
+	if (ret < 0) {
+		dev_err(sysmon->dev, "failed receiving QMI response\n");
+	} else if (resp.resp.result) {
+		ret = resp.resp.result;
+		dev_err(sysmon->dev, "suspend exit request failed\n");
+	} else {
+		dev_dbg(sysmon->dev, "suspend exit request completed\n");
+	}
+
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 
 /**
  * ssctl_send_event() - send notification of other remote's SSR event
@@ -983,6 +1099,20 @@ static int sysmon_suspend(struct rproc_subdev *subdev)
 	return ret;
 }
 
+static int sysmon_suspend_indication(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+
+	return ssctl_request_suspend_indication(sysmon);
+}
+
+static int sysmon_resume_indication(struct rproc_subdev *subdev)
+{
+	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
+
+	return ssctl_request_resume_indication(sysmon);
+}
+
 static int sysmon_suspend_unprepare(struct rproc_subdev *subdev)
 {
 	struct qcom_sysmon *sysmon = container_of(subdev, struct qcom_sysmon, subdev);
@@ -1275,6 +1405,8 @@ add_subdev_callbacks:
 	sysmon->subdev.resume = sysmon_resume;
 	sysmon->subdev.suspend = sysmon_suspend;
 	sysmon->subdev.suspend_unprepare = sysmon_suspend_unprepare;
+	sysmon->subdev.indicate_suspend = sysmon_suspend_indication;
+	sysmon->subdev.indicate_resume = sysmon_resume_indication;
 
 	rproc_add_subdev(rproc, &sysmon->subdev);
 

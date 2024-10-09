@@ -2532,6 +2532,9 @@ static const struct proto_ops qrtr_proto_ops = {
 	.recvmsg	= qrtr_recvmsg,
 	.getname	= qrtr_getname,
 	.ioctl		= qrtr_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= qrtr_ioctl,
+#endif
 	.gettstamp	= sock_gettstamp,
 	.poll		= datagram_poll,
 	.shutdown	= sock_no_shutdown,

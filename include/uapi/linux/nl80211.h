@@ -2792,6 +2792,7 @@ enum nl80211_commands {
  * @NL80211_ATTR_MLD_REFERENCE: MLD Reference.
  * @NL80211_ATTR_MLD_LINK_IDS: nested attribute to hold MLD link-ids.
  * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
+ * @NL80211_ATTR_RECONFIG: whether the operation is reconfiguration or not
  *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined

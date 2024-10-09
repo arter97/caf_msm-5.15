@@ -26,7 +26,7 @@
  * Ubicom32 implementation derived from Cameo's implementation(with many thanks):
  *
  */
-/* Copyright (c) 2022,2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include <linux/types.h>
 #include <linux/ip.h>
@@ -418,7 +418,10 @@ static unsigned int porttrigger_forward(struct sk_buff *skb, const struct xt_act
 
 	/* Add the new entry to the list.
 	 */
-	pte->timeout.expires = jiffies + (TRIGGER_TIMEOUT * HZ);
+	if (info->timer == 0)
+		pte->timeout.expires = jiffies + (TRIGGER_TIMEOUT  * HZ);
+	else
+		pte->timeout.expires = jiffies + (info->timer * HZ);
 	add_timer(&pte->timeout);
 	list_add(&pte->list, &trigger_list);
 	porttrigger_pte_debug_print(pte, "ADD");

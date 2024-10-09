@@ -79,6 +79,8 @@
 #define RMNET_IOCTL_GET_EP_PAIR_ETH            0x0026   /* ETH data ep pair*/
 #define RMNET_IOCTL_GET_EPID_V2X               0x0027   /* Get v2x ep ID   */
 #define RMNET_IOCTL_GET_EP_PAIR_V2X            0x0028   /* v2x data ep pair*/
+#define RMNET_IOCTL_DEL_MUX_CHANNEL            0x0029   /* Del MUX ID      */
+#define RMNET_IOCTL_DEL_IFACE_MUX_CHANNEL      0x0030   /* Del IFACE MUX ID */
 /**
  * RMNET_IOCTL_EXTENDED_V2 ioctl types.
  * Should be sent through "extended_ioctl_type" variable.

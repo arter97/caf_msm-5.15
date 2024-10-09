@@ -467,6 +467,7 @@ static void gs_read_complete(struct usb_ep *ep, struct usb_request *req)
 	if (port->suspended) {
 		/* Read complete received as part of dequeue, so add it back to read_pool */
 		list_add_tail(&req->list, &port->read_pool);
+		port->read_started--;
 		spin_unlock(&port->port_lock);
 		return;
 	}
@@ -1504,6 +1505,7 @@ void gserial_suspend(struct gserial *gser)
 	spin_lock(&port->port_lock);
 
 	port->suspended = true;
+	port->start_delayed = true;
 	pool = &port->read_ep_queued;
 	out = port->port_usb->out;
 	while (!list_empty(pool)) {

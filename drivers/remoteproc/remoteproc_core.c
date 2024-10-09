@@ -1346,7 +1346,38 @@ static int rproc_suspend_unprepare_subdevices(struct rproc *rproc)
 	}
 	return 0;
 }
+
 #endif
+static int rproc_indicate_suspend_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->indicate_suspend) {
+			ret = subdev->indicate_suspend(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
+static int rproc_indicate_resume_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node) {
+		if (subdev->indicate_resume) {
+			ret = subdev->indicate_resume(subdev);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
 
 /**
  * rproc_alloc_registered_carveouts() - allocate all carveouts registered
@@ -2062,7 +2093,42 @@ static int __rproc_resume(struct rproc *rproc)
 
 	return 0;
 }
+
 #endif
+static int __rproc_suspend_indication(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = rproc_indicate_suspend_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to indicate subdevices for %s: %d\n",
+			rproc->name, ret);
+		return ret;
+	}
+
+	dev_info(dev, "remote processor %s successfully indicated\n", rproc->name);
+
+	return 0;
+}
+
+static int __rproc_resume_indication(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = rproc_indicate_resume_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to indicate subdevices for %s: %d\n",
+			rproc->name, ret);
+		return ret;
+	}
+
+	dev_info(dev, "remote processor %s successfully indicated\n", rproc->name);
+
+	return 0;
+}
+
 
 /**
  * rproc_trigger_recovery() - recover a remoteproc
@@ -2452,7 +2518,45 @@ int rproc_resume(struct rproc *rproc)
 	return ret;
 }
 EXPORT_SYMBOL(rproc_resume);
+
 #endif
+int rproc_suspend_indication(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = mutex_lock_interruptible(&rproc->lock);
+	if (ret) {
+		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
+		return ret;
+	}
+
+	ret = __rproc_suspend_indication(rproc);
+	mutex_unlock(&rproc->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rproc_suspend_indication);
+
+int rproc_resume_indication(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = mutex_lock_interruptible(&rproc->lock);
+	if (ret) {
+		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
+		return ret;
+	}
+
+	ret = __rproc_resume_indication(rproc);
+	mutex_unlock(&rproc->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rproc_resume_indication);
+
+
 
 /**
  * rproc_get_by_phandle() - find a remote processor by phandle

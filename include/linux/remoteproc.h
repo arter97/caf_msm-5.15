@@ -598,6 +598,8 @@ struct rproc_subdev {
 	int (*resume)(struct rproc_subdev *subdev);
 	int (*suspend)(struct rproc_subdev *subdev);
 	int (*suspend_unprepare)(struct rproc_subdev *subdev);
+	int (*indicate_suspend)(struct rproc_subdev *subdev);
+	int (*indicate_resume)(struct rproc_subdev *subdev);
 };
 
 /* we currently support only two vrings per rvdev */
@@ -698,6 +700,8 @@ static inline int rproc_suspend(struct rproc *rproc)
 	return 0;
 }
 #endif
+int rproc_suspend_indication(struct rproc *rproc);
+int rproc_resume_indication(struct rproc *rproc);
 int rproc_set_firmware(struct rproc *rproc, const char *fw_name);
 void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type);
 void *rproc_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem);
