@@ -389,7 +389,6 @@ int glink_rpm_start(struct device *dev)
 	struct qcom_glink *glink;
 	int ret = 0;
 
-	glink_ssr_notify_rpm();
 	glink_rpm_unregister(dev);
 	glink = glink_rpm_register(dev, dev->of_node);
 	if (IS_ERR(glink)) {
@@ -413,6 +412,7 @@ int glink_rpm_resume_noirq(struct device *dev)
 #if IS_ENABLED(CONFIG_DEEPSLEEP)
 	if (pm_suspend_via_firmware()) {
 		dev_info(dev, "Deep sleep exit path\n");
+		glink_ssr_notify_rpm();
 		ret = glink_rpm_start(dev);
 	}
 #endif
