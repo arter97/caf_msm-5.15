@@ -547,6 +547,10 @@ static void gh_populate_all_res_info(gh_vmid_t vmid, bool res_populated)
 		snprintf(workqueue_name, sizeof(workqueue_name), "vm%d_vcpu_wq",
 			 vm->id);
 		vm->vcpu_wq = create_freezable_workqueue(workqueue_name);
+		if (vm->vcpu_wq == NULL) {
+			pr_err("%s: Failed to create vcpu_wq\n", __func__);
+			goto unlock;
+		}
 		nr_vms++;
 		vm->is_vcpu_info_populated = true;
 		vm->is_active = true;
