@@ -61,6 +61,7 @@ def define_monaco():
         "drivers/iommu/msm_dma_iommu_mapping.ko",
         "drivers/iommu/qcom_iommu_debug.ko",
         "drivers/iommu/qcom_iommu_util.ko",
+        "drivers/irqchip/msm_show_resume_irq.ko",
         "drivers/irqchip/qcom-mpm.ko",
         "drivers/mailbox/qcom-apcs-ipc-mailbox.ko",
         "drivers/mfd/qcom-spmi-pmic.ko",
