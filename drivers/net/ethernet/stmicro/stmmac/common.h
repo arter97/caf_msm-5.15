@@ -467,6 +467,7 @@ struct dma_features {
 	unsigned int vlins;
 	unsigned int dvlan;
 	unsigned int l3l4fnum;
+	unsigned int nrvf_num;
 	unsigned int arpoffsel;
 	/* TSN Features */
 	unsigned int estwid;
@@ -476,8 +477,6 @@ struct dma_features {
 	unsigned int tbssel;
 	/* Numbers of Auxiliary Snapshot Inputs */
 	unsigned int aux_snapshot_n;
-	/* L3/L4 filter parameters */
-	int num_l3_l4_filters;
 };
 
 /* RX Buffer size must be multiple of 4/8/16 bytes */

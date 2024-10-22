@@ -7,19 +7,21 @@
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
 #include <linux/cpumask.h>
-#include <linux/debugfs.h>
-#include <linux/delay.h>
 #include <linux/console.h>
-#include <linux/dma-mapping.h>
+#include <linux/delay.h>
 #include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
 #include <linux/io.h>
+#include <linux/ioctl.h>
 #include <linux/ipc_logging.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/msm_gpi.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/qcom-geni-se.h>
@@ -30,11 +32,9 @@
 #include <linux/suspend.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
-#include <linux/ioctl.h>
-#include <linux/pinctrl/consumer.h>
-#include <linux/dma-mapping.h>
-#include <uapi/linux/msm_geni_serial.h>
 #include <soc/qcom/boot_stats.h>
+#include <uapi/linux/msm_geni_serial.h>
+
 
 static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_MSM_GENI_CONSOLE_DEFAULT_ENABLED);
 
@@ -367,7 +367,6 @@ struct msm_geni_serial_port {
 	unsigned int kpi_idx;
 	unsigned int kpi_comp_idx;
 	enum geni_se_xfer_mode xfer_mode;
-	struct dentry *dbg;
 	bool port_setup;
 	unsigned int *rx_fifo;
 	int (*handle_rx)(struct uart_port *uport,
@@ -440,6 +439,13 @@ struct msm_geni_serial_port {
 	struct uart_kpi_capture uart_kpi_rx[UART_KPI_TX_RX_INSTANCES];
 	enum uart_port_state port_state;
 	bool is_le_vm;
+
+	/**
+	 * mutex to prevent race condition between runtime
+	 * suspend and get_mctrl which tries to access IOS registers
+	 * when runtime suspend was in progress
+	 */
+	struct mutex suspend_resume_lock;
 };
 
 static const struct uart_ops msm_geni_serial_pops;
@@ -1291,17 +1297,26 @@ static unsigned int msm_geni_serial_get_mctrl(struct uart_port *uport)
 	unsigned int mctrl = TIOCM_DSR | TIOCM_CAR;
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 
-	if (!uart_console(uport) && device_pending_suspend(uport)) {
-		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
-				"%s.Device is suspended, %s\n",
-				__func__, current->comm);
-		return TIOCM_DSR | TIOCM_CAR | TIOCM_CTS;
+	if (!uart_console(uport)) {
+		if (!mutex_trylock(&port->suspend_resume_lock)) {
+			UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+					"%s.Device is being suspended, %s\n",
+					__func__, current->comm);
+			return mctrl;
+		}
+		if (device_pending_suspend(uport)) {
+			UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+					"%s.Device is suspended, %s\n",
+					__func__, current->comm);
+			mutex_unlock(&port->suspend_resume_lock);
+			return mctrl | TIOCM_CTS;
+		}
 	}
 
 	geni_ios = geni_read_reg(uport->membase, SE_GENI_IOS);
 	if (!(geni_ios & IO2_DATA_IN))
 		mctrl |= TIOCM_CTS;
-	else
+	else if (!uart_console(uport))
 		msm_geni_update_uart_error_code(port, SOC_ERROR_START_TX_IOS_SOC_RFR_HIGH);
 
 	if (!port->manual_flow)
@@ -1309,6 +1324,10 @@ static unsigned int msm_geni_serial_get_mctrl(struct uart_port *uport)
 
 	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s: geni_ios:0x%x, mctrl:0x%x\n",
 		__func__, geni_ios, mctrl);
+
+	if (!uart_console(uport))
+		mutex_unlock(&port->suspend_resume_lock);
+
 	return mctrl;
 }
 
@@ -4628,10 +4647,6 @@ static void msm_geni_serial_debug_init(struct uart_port *uport, bool console)
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 	char name[35];
 
-	msm_port->dbg = debugfs_create_dir(dev_name(uport->dev), NULL);
-	if (IS_ERR_OR_NULL(msm_port->dbg))
-		dev_err(uport->dev, "Failed to create dbg dir\n");
-
 	if (!console) {
 		memset(name, 0, sizeof(name));
 		if (!msm_port->ipc_log_rx) {
@@ -5341,6 +5356,8 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	if (!dev_port->is_console)
 		spin_lock_init(&dev_port->rx_lock);
 
+	mutex_init(&dev_port->suspend_resume_lock);
+
 	ret = uart_add_one_port(drv, uport);
 	if (ret)
 		dev_err(&pdev->dev, "Failed to register uart_port: %d\n", ret);
@@ -5393,7 +5410,6 @@ static int msm_geni_serial_remove(struct platform_device *pdev)
 	device_remove_file(port->uport.dev, &dev_attr_xfer_mode);
 	device_remove_file(port->uport.dev, &dev_attr_ver_info);
 	device_remove_file(port->uport.dev, &dev_attr_capture_kpi);
-	debugfs_remove(port->dbg);
 
 	dev_info(&pdev->dev, "%s driver removed %d\n", __func__, true);
 	return 0;
@@ -5443,6 +5459,7 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 		return 0;
 
 	geni_status = geni_read_reg(port->uport.membase, SE_GENI_STATUS);
+	mutex_lock(&port->suspend_resume_lock);
 	UART_LOG_DBG(port->ipc_log_pwr, dev,
 		     "%s: Start geni_status : 0x%x\n", __func__, geni_status);
 
@@ -5468,7 +5485,8 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 			 */
 			if (port->wakeup_byte && port->wakeup_irq)
 				msm_geni_serial_allow_rx(port);
-			return -EBUSY;
+			ret = -EBUSY;
+			goto exit_runtime_suspend;
 		}
 	}
 	/*
@@ -5485,7 +5503,8 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 		 */
 		if (port->wakeup_byte && port->wakeup_irq)
 			msm_geni_serial_allow_rx(port);
-		return -EBUSY;
+		ret = -EBUSY;
+		goto exit_runtime_suspend;
 	}
 
 	geni_status = geni_read_reg(port->uport.membase, SE_GENI_STATUS);
@@ -5516,7 +5535,8 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 			UART_LOG_DBG(port->ipc_log_pwr, dev,
 				     "%s: return, stop_rx_seq busy\n", __func__);
 			enable_irq(port->uport.irq);
-			return -EBUSY;
+			ret = -EBUSY;
+			goto exit_runtime_suspend;
 		}
 	}
 	if (count)
@@ -5552,6 +5572,7 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: End %d\n", __func__, ret);
 	__pm_relax(port->geni_wake);
 exit_runtime_suspend:
+	mutex_unlock(&port->suspend_resume_lock);
 	return ret;
 }
 

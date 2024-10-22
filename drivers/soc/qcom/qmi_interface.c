@@ -49,7 +49,7 @@ static void qmi_recv_new_server(struct qmi_handle *qmi,
 	if (!node && !port)
 		return;
 
-	svc = kzalloc(sizeof(*svc), GFP_KERNEL);
+	svc = vmalloc(sizeof(*svc));
 	if (!svc)
 		return;
 
@@ -61,7 +61,7 @@ static void qmi_recv_new_server(struct qmi_handle *qmi,
 
 	ret = ops->new_server(qmi, svc);
 	if (ret < 0)
-		kfree(svc);
+		vfree(svc);
 	else
 		list_add(&svc->list_node, &qmi->lookup_results);
 }
@@ -92,7 +92,7 @@ static void qmi_recv_del_server(struct qmi_handle *qmi,
 			ops->del_server(qmi, svc);
 
 		list_del(&svc->list_node);
-		kfree(svc);
+		vfree(svc);
 	}
 }
 
@@ -214,7 +214,7 @@ int qmi_add_lookup(struct qmi_handle *qmi, unsigned int service,
 {
 	struct qmi_service *svc;
 
-	svc = kzalloc(sizeof(*svc), GFP_KERNEL);
+	svc = vmalloc(sizeof(*svc));
 	if (!svc)
 		return -ENOMEM;
 
@@ -280,7 +280,7 @@ int qmi_add_server(struct qmi_handle *qmi, unsigned int service,
 {
 	struct qmi_service *svc;
 
-	svc = kzalloc(sizeof(*svc), GFP_KERNEL);
+	svc = vmalloc(sizeof(*svc));
 	if (!svc)
 		return -ENOMEM;
 
@@ -414,7 +414,7 @@ static void qmi_invoke_handler(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
 	if (!handler->fn || !handler->decoded_size)
 		return;
 
-	dest = kzalloc(handler->decoded_size, GFP_KERNEL);
+	dest = vmalloc(handler->decoded_size);
 	if (!dest) {
 		QMI_INFO("failed to allocate memory of decoded_size: 0x%x svc_id:0x%x\n",
 			 handler->decoded_size, qmi->svc_id);
@@ -427,7 +427,7 @@ static void qmi_invoke_handler(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
 	else
 		handler->fn(qmi, sq, txn, dest);
 
-	kfree(dest);
+	vfree(dest);
 }
 
 /**
@@ -782,13 +782,13 @@ void qmi_handle_release(struct qmi_handle *qmi)
 	/* Free registered lookup requests */
 	list_for_each_entry_safe(svc, tmp, &qmi->lookups, list_node) {
 		list_del(&svc->list_node);
-		kfree(svc);
+		vfree(svc);
 	}
 
 	/* Free registered service information */
 	list_for_each_entry_safe(svc, tmp, &qmi->services, list_node) {
 		list_del(&svc->list_node);
-		kfree(svc);
+		vfree(svc);
 	}
 }
 EXPORT_SYMBOL(qmi_handle_release);

@@ -344,8 +344,6 @@ static unsigned char dev_addr[ETH_ALEN] = {
 void *ipc_stmmac_log_ctxt;
 void *ipc_stmmac_log_ctxt_low;
 int stmmac_enable_ipc_low;
-#define MAX_PROC_SIZE 1024
-char tmp_buff[MAX_PROC_SIZE];
 static struct ip_params pparams;
 static struct mac_params mparams = {0};
 long phyaddr_pt_param = -1;
@@ -3221,7 +3219,8 @@ static void print_loopback_detail(enum loopback_mode loopback)
 	}
 }
 
-static ssize_t loopback_arg_parse(struct qcom_ethqos *ethqos, char *buf, int *config, int *speed)
+static ssize_t loopback_arg_parse(struct qcom_ethqos *ethqos, const char *buf,
+				  int *config, int *speed)
 {
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 	unsigned long ret;
@@ -4578,8 +4577,6 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 					      struct device_attribute *attr,
 					      const char *user_buffer, size_t count)
 {
-	char *in_buf;
-	u32 buf_len = 200;
 	unsigned long ret;
 	int config = 0;
 	int speed = 0;
@@ -4607,24 +4604,10 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 		return -EINVAL;
 	}
 
-	in_buf = kzalloc(buf_len, GFP_KERNEL);
-	if (!in_buf)
-		return -ENOMEM;
-
-	if (buf_len < count) {
-		ETHQOSERR("Required buffer exceeds available limit\n");
-		return -ENOMEM;
-	}
-
-	ret = copy_from_user(in_buf, user_buffer, count);
-	if (ret) {
-		ETHQOSERR("unable to copy from user\n");
-		goto fail;
-	}
-	ret = loopback_arg_parse(ethqos, in_buf, &config, &speed);
+	ret = loopback_arg_parse(ethqos, user_buffer, &config, &speed);
 	if (ret) {
 		ETHQOSERR("Bad arguments\n");
-		goto fail;
+		return -EINVAL;
 	}
 
 	switch (config) {
@@ -4698,11 +4681,7 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 	else
 		priv->loopback_direction = DISABLE_NW_LOOPBACK;
 
-	kfree(in_buf);
 	return count;
-fail:
-	kfree(in_buf);
-	return -EINVAL;
 }
 
 static ssize_t read_nw_loopback_config_sysfs(struct device *dev,
@@ -4880,13 +4859,9 @@ static ssize_t store_ipc_stmmac_log_ctxt_low(struct device *dev, struct device_a
 {
 	int tmp = 0;
 
-	if (count > MAX_PROC_SIZE)
-		count = MAX_PROC_SIZE;
-	if (copy_from_user(tmp_buff, buf, count))
-		return -EFAULT;
-	if (sscanf(tmp_buff, "%du", &tmp) < 0) {
-		pr_err("sscanf failed\n");
-		goto fail;
+	if (sscanf(user_buf, "%du", &tmp) < 0) {
+		ETHQOSERR("sscanf failed\n");
+		return -EINVAL;
 	} else {
 		if (tmp) {
 			if (!ipc_stmmac_log_ctxt_low) {
@@ -4895,7 +4870,7 @@ static ssize_t store_ipc_stmmac_log_ctxt_low(struct device *dev, struct device_a
 						       "stmmac_low", 0);
 			}
 			if (!ipc_stmmac_log_ctxt_low) {
-				pr_err("failed to create ipc stmmac low context\n");
+				ETHQOSERR("failed to create ipc stmmac low context\n");
 				return -EFAULT;
 			}
 		} else {
@@ -4906,7 +4881,7 @@ static ssize_t store_ipc_stmmac_log_ctxt_low(struct device *dev, struct device_a
 	}
 
 	stmmac_enable_ipc_low = tmp;
-fail:
+
 	return count;
 }
 
@@ -6389,6 +6364,7 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 		of_property_read_u32(fixed_phy_node, "speed", &mac2mac_speed);
 		plat_dat->fixed_phy_mode = true;
 		plat_dat->phy_addr = -1;
+		plat_dat->fixed_phy_speed = mac2mac_speed;
 		ETHQOSINFO("mac2mac mode: Fixed-link enabled from dt, Speed = %d\n",
 			   mac2mac_speed);
 		goto out;
@@ -6443,6 +6419,8 @@ static int ethqos_fixed_link_check(struct platform_device *pdev)
 				ETHQOSERR("Fixed-link speed update failed\n");
 				return -ENOENT;
 			}
+
+			plat_dat->fixed_phy_speed = mparams.link_speed;
 
 			ETHQOSINFO("mac2mac mode: Fixed-link speed updated from partition: %u\n",
 				   mparams.link_speed);

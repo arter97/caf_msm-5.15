@@ -1258,6 +1258,12 @@ static void stmmac_validate(struct phylink_config *config,
 		xpcs_validate(priv->hw->xpcs, supported, state);
 	if (priv->hw->qxpcs)
 		qcom_xpcs_validate(priv->hw->qxpcs, supported, state);
+
+	if (priv->plat->fixed_phy_mode)
+		priv->plat->max_supported_speed = priv->plat->fixed_phy_speed;
+	else
+		phy_speeds(&priv->plat->max_supported_speed, 1, supported);
+
 }
 
 static void stmmac_mac_config(struct phylink_config *config, unsigned int mode,
@@ -2630,6 +2636,20 @@ static void free_dma_desc_resources(struct stmmac_priv *priv)
 	 * to ensure all pending XDP_TX buffers are returned.
 	 */
 	free_dma_rx_desc_resources(priv);
+}
+
+/**
+ * stmmac_flush_all_tx_mtl - flush all MTL queues
+ * @priv: driver private structure
+ */
+static void stmmac_flush_all_tx_mtl(struct stmmac_priv *priv)
+{
+	int queue = 0;
+
+	for (queue = 0; queue < priv->plat->tx_queues_to_use; queue++) {
+		if (!priv->plat->tx_queues_cfg[queue].skip_sw)
+			stmmac_flush_tx_mtl(priv, priv->hw, queue);
+	}
 }
 
 /**
@@ -4327,7 +4347,7 @@ static int STMMAC_handle_prv_ioctl_filter_ipv4(struct net_device *dev,
 	if (!ifr || !ifr->ifr_ifru.ifru_data)
 		return -EINVAL;
 
-	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+	if (priv->app_l3_l4_filters == priv->dma_cap.l3l4fnum) {
 		pr_err("no more L3/L4 filters can be added\n");
 		return -EOPNOTSUPP;
 	}
@@ -4344,8 +4364,8 @@ static int STMMAC_handle_prv_ioctl_filter_ipv4(struct net_device *dev,
 	if (!stmmac_is_ipv4_filter_valid(filter))
 		return -EOPNOTSUPP;
 
-	priv->dma_cap.num_l3_l4_filters++;
-	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+	priv->app_l3_l4_filters++;
+	cur_filter_num = priv->app_l3_l4_filters - 1;
 
 	if (filter->src_addr || filter->dest_addr)
 		enable = true;
@@ -4396,7 +4416,7 @@ static int STMMAC_handle_prv_ioctl_filter_ipv6(struct net_device *dev,
 	if (!ifr || !ifr->ifr_ifru.ifru_data)
 		return -EINVAL;
 
-	if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+	if (priv->app_l3_l4_filters == priv->dma_cap.l3l4fnum) {
 		pr_err("no more L3/L4 filters can be added\n");
 		return -EOPNOTSUPP;
 	}
@@ -4413,8 +4433,8 @@ static int STMMAC_handle_prv_ioctl_filter_ipv6(struct net_device *dev,
 	if (!stmmac_is_ipv6_filter_valid(filter))
 		return -EOPNOTSUPP;
 
-	priv->dma_cap.num_l3_l4_filters++;
-	cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+	priv->app_l3_l4_filters++;
+	cur_filter_num = priv->app_l3_l4_filters - 1;
 
 	/*enable dynamic mapping*/
 	read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
@@ -4460,7 +4480,7 @@ static int STMMAC_add_ptp_filters(struct net_device *dev)
 	if (!filter)
 		return -ENOMEM;
 
-	if (!priv->dma_cap.num_l3_l4_filters) {
+	if (!priv->app_l3_l4_filters) {
 		/*enable dynamic mapping*/
 		read_value = (u32)readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0);
 		read_value |= XGMAC_QDDMACH;
@@ -4477,14 +4497,14 @@ static int STMMAC_add_ptp_filters(struct net_device *dev)
 
 	/* Add filter rules to receive PTP messages */
 	for (i = PTP_UDP_PORT1; i <= PTP_UDP_PORT2; i++) {
-		if (priv->dma_cap.num_l3_l4_filters == XGMAC_MAX_FILTER) {
+		if (priv->app_l3_l4_filters == priv->dma_cap.l3l4fnum) {
 			pr_err("no more L3/L4 filters can be added\n");
 			kfree(filter);
 			return -EOPNOTSUPP;
 		}
 
-		priv->dma_cap.num_l3_l4_filters++;
-		cur_filter_num = priv->dma_cap.num_l3_l4_filters - 1;
+		priv->app_l3_l4_filters++;
+		cur_filter_num = priv->app_l3_l4_filters - 1;
 		filter->l4_filter.dest_port = i;
 
 		stmmac_program_l4_filter(priv, &filter->l4_filter, cur_filter_num, true);
@@ -4741,7 +4761,7 @@ static int stmmac_release(struct net_device *dev)
 	qcom_ethstate_update(priv->plat, EMAC_HW_DOWN);
 
 	/*Reset num filters so ndo_open can reinit everything*/
-	priv->dma_cap.num_l3_l4_filters = 0;
+	priv->app_l3_l4_filters = 0;
 
 	if (priv->phy_irq_enabled)
 		priv->plat->phy_irq_disable(priv);
@@ -4784,6 +4804,8 @@ static int stmmac_release(struct net_device *dev)
 
 	/* Stop TX/RX DMA and clear the descriptors */
 	stmmac_stop_all_dma(priv);
+
+	stmmac_flush_all_tx_mtl(priv);
 
 	/* Release and free the Rx/Tx resources */
 	free_dma_desc_resources(priv);
@@ -7888,6 +7910,7 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
 		 * platform) with the values from the HW capability
 		 * register (if supported).
 		 */
+		priv->app_l3_l4_filters = 0;
 		priv->plat->enh_desc = priv->dma_cap.enh_desc;
 		priv->plat->pmt = priv->dma_cap.pmt_remote_wake_up &&
 				!priv->plat->use_phy_wol;
@@ -8459,7 +8482,7 @@ int stmmac_dvr_remove(struct device *dev)
 	netdev_info(priv->dev, "%s: removing driver", __func__);
 
 	/*Reset num filters so ndo_open can reinit everything*/
-	priv->dma_cap.num_l3_l4_filters = 0;
+	priv->app_l3_l4_filters = 0;
 
 	if (priv->plat->rgmii_rst) {
 		reset_control_put(priv->plat->rgmii_rst);
