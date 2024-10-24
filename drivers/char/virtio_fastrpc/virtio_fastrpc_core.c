@@ -1528,7 +1528,7 @@ int vfastrpc_internal_invoke2(struct vfastrpc_file *vfl,
 			err = -EBADE;
 			goto bail;
 		}
-		K_COPY_FROM_USER(err, fl->is_compat, &p.sess_info,
+		K_COPY_FROM_USER(err, is_compat, &p.sess_info,
 		(void *)inv2->invparam, inv2->size);
 		if (err)
 			goto bail;
