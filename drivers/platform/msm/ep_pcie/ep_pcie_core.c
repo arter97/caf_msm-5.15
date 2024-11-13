@@ -2187,6 +2187,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 reg, linkup_ts;
 	int timedout = false;
+	unsigned long irqsave_flags;
 
 	EP_PCIE_DBG(dev, "PCIe V%d: options input are 0x%x\n", dev->rev, opt);
 
@@ -2199,10 +2200,12 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		goto out;
 	}
 
-	if (dev->link_status == EP_PCIE_LINK_UP)
+	if (dev->link_status == EP_PCIE_LINK_UP) {
 		EP_PCIE_DBG(dev,
-			"PCIe V%d: link is already up, let's proceed with the voting for the resources\n",
+			"PCIe V%d: link is already up, but BME is not set\n",
 			dev->rev);
+		goto checkbme;
+	}
 
 	if (dev->power_on && (opt & EP_PCIE_OPT_POWER_ON)) {
 		EP_PCIE_ERR(dev,
@@ -2228,7 +2231,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			goto clk_fail;
 		}
 
+		spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 		dev->power_on = true;
+		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 		if (!dev->tcsr_not_supported) {
 			EP_PCIE_DBG(dev,
@@ -2307,7 +2312,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 					dev->rev);
 					goto pipe_clk_fail;
 				}
-				goto checkbme;
+				goto fw_linkup;
 			} else {
 				ltssm_en = readl_relaxed(dev->parf
 					+ PCIE20_PARF_LTSSM) & BIT(8);
@@ -2478,7 +2483,7 @@ pciereset:
 			"PCIe - link initialized for LE PCIe endpoint\n");
 	}
 
-checkbme:
+fw_linkup:
 	reg = readl_relaxed(dev->dm_core + PCIE20_CAP_LINKCTRLSTATUS);
 	dev->current_link_speed = (reg >> LINK_STATUS_REG_SHIFT) & PCI_EXP_LNKSTA_CLS;
 	dev->current_link_width = ((reg >> LINK_STATUS_REG_SHIFT) & PCI_EXP_LNKSTA_NLW) >>
@@ -2492,7 +2497,7 @@ checkbme:
 	ret = qcom_ep_pcie_icc_bw_update(dev, dev->current_link_speed, dev->current_link_width);
 	if (ret) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to set bus bandwidth:%d\n", dev->rev, ret);
-		goto out;
+		goto link_fail_pipe_clk_deinit;
 	}
 
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
@@ -2516,6 +2521,7 @@ checkbme:
 	if (dev->active_config)
 		ep_pcie_write_reg(dev->dm_core, PCIE20_AUX_CLK_FREQ_REG, dev->aux_clk_val);
 
+checkbme:
 	if (!(opt & EP_PCIE_OPT_ENUM_ASYNC)) {
 		/* Wait for up to 1000ms for BME to be set */
 		retries = 0;
@@ -2605,6 +2611,14 @@ int ep_pcie_core_disable_endpoint(void)
 			dev->rev);
 		goto out;
 	}
+
+	dev->power_on = false;
+	/*
+	 * In some cases, the device is requesting for an inband pme
+	 * as the wakeup host function is reading l23_ready bit as true.
+	 * Hence, clearing the bit here to avoid such scenarios.
+	 */
+	dev->l23_ready = false;
 	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 	if (!m2_enabled) {
@@ -2639,8 +2653,6 @@ int ep_pcie_core_disable_endpoint(void)
 		ep_pcie_l1ss_resources_deinit(dev);
 	}
 
-	dev->power_on = false;
-
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->ep_pcie_dev_wake) &&
 		!atomic_read(&dev->perst_deast)) {
@@ -2659,7 +2671,7 @@ int ep_pcie_core_disable_endpoint(void)
 	}
 
 	/*
-	 * In some caes though device requested to do an inband PME
+	 * In some cases though device requested to do an inband PME
 	 * the host might still proceed with PERST assertion, below
 	 * code is to toggle WAKE in such sceanrios.
 	 */
@@ -3954,7 +3966,7 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 		atomic_set(&dev->host_wake_pending, 1);
-	} else if (dev->l23_ready) {
+	} else if (dev->l23_ready && dev->power_on) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);

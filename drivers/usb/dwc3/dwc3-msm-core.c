@@ -4021,7 +4021,7 @@ disable_sleep_clk:
 	return ret;
 }
 
-static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc, bool enable_wakeup)
+static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc)
 {
 	bool can_suspend_ssphy, no_active_ss;
 
@@ -4038,8 +4038,7 @@ static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc, bool enable_wakeup)
 		((mdwc->hs_phy->flags & (PHY_HSFS_MODE | PHY_LS_MODE)) &&
 			 !dwc3_msm_is_superspeed(mdwc)));
 	can_suspend_ssphy = dwc3_msm_get_max_speed(mdwc) >= USB_SPEED_SUPER &&
-		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss ||
-		 (!enable_wakeup));
+		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss);
 
 	/* Suspend SS PHY */
 	if (can_suspend_ssphy) {
@@ -4158,7 +4157,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse,
 	/* Suspend HS PHY */
 	usb_phy_set_suspend(mdwc->hs_phy, 1);
 
-	dwc3_msm_suspend_phy(mdwc, enable_wakeup);
+	dwc3_msm_suspend_phy(mdwc);
 
 	/* make sure above writes are completed before turning off clocks */
 	wmb();
@@ -4877,6 +4876,13 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 			return NOTIFY_DONE;
 
 		if (!spoof && mdwc->drd_state != DRD_STATE_UNDEFINED) {
+		/*
+		 * If bus suspend feature is enabled, increase the autosuspend delay to default,
+		 * so that the HS-USB re-enumeration isn't interrupted by dwc3 RT suspend.
+		 */
+			if (!event && dwc->runtime_suspend_on_usb_suspend)
+				pm_runtime_set_autosuspend_delay(dwc->dev,
+						DWC3_DEFAULT_AUTOSUSPEND_DELAY);
 			dwc3_override_vbus_status(mdwc, !!event);
 			return NOTIFY_DONE;
 		}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:%s " fmt, KBUILD_MODNAME, __func__
@@ -23,6 +23,7 @@
 
 #define QMI_SENS_DRIVER		"qmi-therm-sensors-v2"
 #define QMI_TS_RESP_TOUT	msecs_to_jiffies(100)
+#define QMI_TS_TXN_WAIT_TOUT	msecs_to_jiffies(3000)
 
 struct qmi_sensor {
 	struct device			*dev;
@@ -165,7 +166,7 @@ static int qmi_ts_send_request(struct qmi_ts_instance *ts, int msg_id,
 		goto qmi_ts_send_exit;
 	}
 
-	ret = qmi_txn_wait(&txn, QMI_TS_RESP_TOUT);
+	ret = qmi_txn_wait(&txn, QMI_TS_TXN_WAIT_TOUT);
 	if (ret < 0) {
 		pr_err("qmi txn wait failed for msg id:0x%x ret:%d\n",
 			msg_id, ret);

@@ -326,6 +326,7 @@ u64 qti_can_get_ptp_time(struct qti_can *priv_data)
 	}
 	ret = getValue(gptp_time_ns, MAC_STNSR_TSSS_LPOS, MAC_STNSR_TSSS_HPOS);
 	ret = ret + (gptp_time_sec_cur * 1000000000ull);
+	dev_dbg(&priv_data->spidev->dev, "%s: %llu\r\n", __func__, ret);
 
 	return ret;
 }
@@ -451,13 +452,13 @@ static void qti_canfd_receive_frame(struct qti_can *priv_data,
 
 			if (priv_data->ts_conf == 1) {
 				if (nsec > system_ts_ns) {
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds sys-time %lld\r\n");
 					priv_data->time_diff = ktime_to_ms(system_ts_ns)
 						- (le64_to_cpu(frame->ts));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds system time: %lld\n", mstime);
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds MCU time: %lld\n",
 						le64_to_cpu(frame->ts));
 					ts_offset_corrected = le64_to_cpu(frame->ts)
@@ -568,14 +569,14 @@ static void qti_can_receive_frame(struct qti_can *priv_data,
 
 			if (priv_data->ts_conf == 1) {
 				if (nsec > system_ts_ns) {
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds sys-time %lld\r\n");
 					priv_data->time_diff = ktime_to_ms(system_ts_ns)
 						- (le64_to_cpu(frame->ts));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds system time: %lld\n",
 						ktime_to_ms(system_ts_ns));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds MCU time: %lld\n",
 						le64_to_cpu(frame->ts));
 					ts_offset_corrected = le64_to_cpu(frame->ts)
@@ -1040,6 +1041,8 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	if (!priv_data->wake_irq_en)
 		ret = spi_sync(spi, msg);
 	dev_dbg(&priv_data->spidev->dev, "spi_sync ret %d\n", ret);
+
+	dev_dbg(&priv_data->spidev->dev, "Rx Pkt\r\n");
 	for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
 		idx = 10 * rx_buf_idx;
 		dev_dbg(&priv_data->spidev->dev, "%X %X %X %X %X %X %X %X %X %X\n",
@@ -1052,6 +1055,20 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
 		priv_data->rx_buf[60], priv_data->rx_buf[61],
 		priv_data->rx_buf[62], priv_data->rx_buf[63]);
+
+	dev_dbg(&priv_data->spidev->dev, "Tx Pkt\r\n");
+	for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
+		idx = 10 * rx_buf_idx;
+		dev_dbg(&priv_data->spidev->dev, ">%X %X %X %X %X %X %X %X %X %X\n",
+			priv_data->tx_buf[idx + 0], priv_data->tx_buf[idx + 1],
+			priv_data->tx_buf[idx + 2], priv_data->tx_buf[idx + 3],
+			priv_data->tx_buf[idx + 4], priv_data->tx_buf[idx + 5],
+			priv_data->tx_buf[idx + 6], priv_data->tx_buf[idx + 7],
+			priv_data->tx_buf[idx + 8], priv_data->tx_buf[idx + 9]);
+	}
+	dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
+		priv_data->tx_buf[60], priv_data->tx_buf[61],
+		priv_data->tx_buf[62], priv_data->tx_buf[63]);
 
 	if (ret == 0)
 		qti_can_process_rx(priv_data, priv_data->rx_buf);
@@ -1728,7 +1745,9 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 		dev_err(&priv_data->spidev->dev, "qti_can_driver_mode %llu\n",
 			priv_data->driver_mode);
 		mutex_unlock(&priv_data->spi_lock);
-		qti_can_send_release_can_buffer_cmd(netdev);
+		ret = qti_can_send_release_can_buffer_cmd(netdev);
+		dev_dbg(&priv_data->spidev->dev, "qti_can_send_release_can_buffer_cmd %d\n",
+			ret);
 		ret = 0;
 		break;
 	case IOCTL_ENABLE_BUFFERING:

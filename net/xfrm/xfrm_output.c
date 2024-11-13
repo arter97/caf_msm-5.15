@@ -582,7 +582,7 @@ out:
 int xfrm_output_resume(struct sk_buff *skb, int err)
 {
 	struct net *net = xs_net(skb_dst(skb)->xfrm);
-	struct rt6_info	*rt6 = NULL;
+	struct rt6_info	*rt6 = NULL, *rt6_new = NULL;
 
 	// Save the IPv6 route before the xdst is stripped
 	if (skb_dst(skb)->xfrm && skb_dst(skb)->ops->family == AF_INET6)
@@ -603,9 +603,16 @@ int xfrm_output_resume(struct sk_buff *skb, int err)
 			   ip_hdr(skb)->version == 6) {
 			// The ip6_output etc. will use the IPv6 routing info,
 			// thus we extend the skb dst with the saved rt6.
-			memcpy(&rt6->dst, skb_dst(skb), sizeof(struct dst_entry));
+			rt6_new = ip6_dst_alloc(net, skb->dev, DST_NOPOLICY | DST_NOXFRM);
+			if (!rt6_new) {
+				err = -ENOMEM;
+				goto out;
+			}
+			memcpy(rt6_new, rt6, sizeof(struct rt6_info));
+			memcpy(&rt6_new->dst, skb_dst(skb), sizeof(struct dst_entry));
 			skb_dst_drop(skb);
-			skb_dst_set(skb, &rt6->dst);
+			skb_dst_set(skb, &rt6_new->dst);
+			dst_release(&rt6->dst);
 
 			memset(IP6CB(skb), 0, sizeof(*IP6CB(skb)));
 			IP6CB(skb)->flags |= IP6SKB_XFRM_TRANSFORMED;

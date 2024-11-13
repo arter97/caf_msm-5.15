@@ -60,6 +60,7 @@
 #define PHY_USXGMII_LOOPBACK_10	0x0800
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
 #define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
+#define EFUSE_MAC_ADDR_MASK 16
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -5564,7 +5565,7 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 			if (!mac_efuse_addr)
 				continue;
 
-			mac_addr = readq(mac_efuse_addr);
+			mac_addr = readq(mac_efuse_addr) >> EFUSE_MAC_ADDR_MASK;
 			ETHQOSINFO("Mac address read: %llx\n", mac_addr);
 
 			/* create byte array out of value read from efuse */
@@ -5581,6 +5582,8 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 				is_valid_ether_addr(pparams.mac_addr);
 			if (pparams.is_valid_mac_addr)
 				return;
+			else
+				ETHQOSERR("Fuse Mac address is invalid\n");
 		}
 	}
 }
@@ -7545,6 +7548,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 		plat_dat->has_c45_mdio_probe_capability = 1;
 		plat_dat->has_c22_mdio_probe_capability = 0;
 	}
+
+	if (!!of_find_property(np, "eth_aux_ts_enabled", NULL))
+		plat_dat->enable_aux_ts = true;
+
+	ETHQOSDBG("Aux Timestamp Feature  = %d\n", plat_dat->enable_aux_ts);
 
 	plat_dat->tso_en = of_property_read_bool(np, "snps,tso");
 	plat_dat->handle_prv_ioctl = ethqos_handle_prv_ioctl;

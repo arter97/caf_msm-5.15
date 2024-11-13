@@ -61,7 +61,7 @@ const static struct {
 	{GH_TELE_VM, "televm"},
 	{GH_FOTA_VM, "fotavm"},
 	{GH_ROBOTICS_VM1, "roboticsvm1"},
-	{GH_ROBOTICS_VM2, "roboticsvm2"},
+	{GH_ROBOTICS_VM2, "rdcapvm"},
 };
 
 static DEFINE_SPINLOCK(gh_sec_vm_lock);

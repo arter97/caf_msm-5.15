@@ -259,7 +259,7 @@ __acquires(&port->port_lock)
 		do_tty_wake = true;
 
 		req->length = len;
-		list_del(&req->list);
+		list_del_init(&req->list);
 		req->zero = kfifo_is_empty(&port->port_write_buf);
 
 		pr_vdebug("ttyGS%d: tx len=%d, %3ph ...\n", port->port_num, len, req->buf);
@@ -322,7 +322,7 @@ __acquires(&port->port_lock)
 			break;
 
 		req = list_entry(pool->next, struct usb_request, list);
-		list_del(&req->list);
+		list_del_init(&req->list);
 		req->length = out->maxpacket;
 
 		/* drop lock while we call out; the controller driver
@@ -464,6 +464,11 @@ static void gs_read_complete(struct usb_ep *ep, struct usb_request *req)
 	struct gs_port	*port = ep->driver_data;
 
 	spin_lock(&port->port_lock);
+	if (!port->port_usb)  {
+		spin_unlock(&port->port_lock);
+		return;
+	}
+
 	if (port->suspended) {
 		/* Read complete received as part of dequeue, so add it back to read_pool */
 		list_add_tail(&req->list, &port->read_pool);
@@ -474,7 +479,7 @@ static void gs_read_complete(struct usb_ep *ep, struct usb_request *req)
 
 	/* Make sure to delete req if it was already added to read_ep_queued */
 	if (!list_empty(&req->list))
-		list_del(&req->list);
+		list_del_init(&req->list);
 
 	/* Queue all received data until the tty layer is ready for it. */
 	list_add_tail(&req->list, &port->read_queue);
@@ -1511,7 +1516,7 @@ void gserial_suspend(struct gserial *gser)
 	while (!list_empty(pool)) {
 		req = list_entry(pool->next, struct usb_request, list);
 		if (req) {
-			list_del(&req->list);
+			list_del_init(&req->list);
 			spin_unlock_irqrestore(&port->port_lock, flags);
 			usb_ep_dequeue(out, req);
 			spin_lock_irqsave(&port->port_lock, flags);
