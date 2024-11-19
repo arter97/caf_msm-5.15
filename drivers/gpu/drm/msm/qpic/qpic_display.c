@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2016, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -499,7 +499,7 @@ int qpic_init_sps(struct qpic_display_data *qpic_display)
 
 	bam.phys_addr = qpic_display->qpic_phys + 0x4000;
 	bam.virt_addr = qpic_display->qpic_base + 0x4000;
-	bam.irq = qpic_display->irq_id - 4;
+	bam.irq = qpic_display->bam_irq_id;
 	bam.manage = SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE;
 
 	if (sps_phy2h(bam.phys_addr, &bam_handle)) {
@@ -1206,6 +1206,13 @@ int qpic_display_get_resource(struct qpic_display_data *qpic_display)
 	qpic_display->irq_id = platform_get_irq_byname(pdev, "qpic_irq");
 	if (!qpic_display->irq_id) {
 		DRM_ERROR("unable to get QPIC irq\n");
+		return -ENODEV;
+	}
+
+	/* Configure bam_irq from qpic if there are no bam initializion prior to it*/
+	qpic_display->bam_irq_id = platform_get_irq_byname(pdev, "bam_irq");
+	if (!qpic_display->bam_irq_id) {
+		DRM_ERROR("unable to get BAM irq\n");
 		return -ENODEV;
 	}
 
