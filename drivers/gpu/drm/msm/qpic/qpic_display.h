@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2015, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -109,6 +109,7 @@ struct qpic_display_data {
 	u32 qpic_phys;
 	char __iomem *qpic_base;
 	u32 irq_id;
+	u32 bam_irq_id;
 	bool irq_ena;
 	u32 res_init;
 
