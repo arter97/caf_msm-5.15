@@ -1234,7 +1234,7 @@ static void st_asm330lhh_enable_acc_gyro(struct st_asm330lhh_hw *hw)
 {
 	int i = 0;
 	struct st_asm330lhh_sensor *sensor;
-	int  acc_gain = ST_ASM330LHH_ACC_FS_2G_GAIN;
+	int  acc_gain = ST_ASM330LHH_ACC_FS_4G_GAIN;
 	int  gyro_gain = ST_ASM330LHH_GYRO_FS_125_GAIN;
 	int  delay;
 

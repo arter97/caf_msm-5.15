@@ -40,6 +40,8 @@
 #define WAN_IOCTL_SET_DATA_QUOTA_WARNING     21
 #define WAN_IOCTL_NOTIFY_NAT_MOVE_RES        22
 #define WAN_IOCTL_NOTIFY_DUAL_BACKHAUL_INFO  23
+#define WAN_IOCTL_GET_LAN_CLIENT_INFO        24
+#define WAN_IOCTL_CLEAN_UP                   25
 
 /* User space may not have this defined. */
 #ifndef IFNAMSIZ
@@ -316,4 +318,11 @@ struct wan_ioctl_query_per_client_stats {
 #define WAN_IOC_NOTIFY_NAT_MOVE_RES _IOWR(WAN_IOC_MAGIC, \
 	WAN_IOCTL_NOTIFY_NAT_MOVE_RES, \
 	bool)
+
+#define WAN_IOC_GET_LAN_CLIENT_INFO _IOWR(WAN_IOC_MAGIC, \
+		WAN_IOCTL_GET_LAN_CLIENT_INFO, \
+		struct wan_ioctl_send_lan_client_msg *)
+
+#define WAN_IOC_CLEAN_UP _IO(WAN_IOC_MAGIC, \
+		WAN_IOCTL_CLEAN_UP)
 #endif /* _RMNET_IPA_FD_IOCTL_H */

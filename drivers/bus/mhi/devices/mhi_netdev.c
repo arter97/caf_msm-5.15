@@ -1236,13 +1236,15 @@ static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 				return ret;
 		}
 
-		/* create ipc log buffer */
-		snprintf(node_name, sizeof(node_name),
-			 "%s_%s", dev_name(&mhi_dev->dev),
-			 mhi_netdev->interface_name);
+		if (!mhi_netdev->ipc_log) {
+			/* create ipc log buffer */
+			snprintf(node_name, sizeof(node_name),
+				 "%s_%s", dev_name(&mhi_dev->dev),
+				 mhi_netdev->interface_name);
 
-		mhi_netdev->ipc_log = ipc_log_context_create(IPC_LOG_PAGES,
-							     node_name, 0);
+			mhi_netdev->ipc_log = ipc_log_context_create(IPC_LOG_PAGES,
+								     node_name, 0);
+		}
 
 		mhi_netdev_create_debugfs(mhi_netdev);
 	}

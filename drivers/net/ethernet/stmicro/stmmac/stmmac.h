@@ -435,10 +435,13 @@ struct stmmac_priv {
 	bool en_wol;
 	u32 avb_vlan_id;
 	gh_vmid_t v2x_vm_id;
+	u16 qos_l3_l4_filter_end;
 	int unique_filter_new;
 	int unique_filter_old;
-	u16 qos_l3_l4_filter_start;
-	u16 qos_l3_l4_filter_end;
+	int max_filters_new;
+	int max_filters_old;
+	int app_l3_l4_filters;
+	u16 qos_l3_l4_filters;
 	bool queue_dis[MTL_MAX_RX_QUEUES];
 	struct dma_flt app_filters[32];
 	bool is_rx_sw[MTL_MAX_RX_QUEUES];

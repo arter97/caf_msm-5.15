@@ -2187,6 +2187,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 reg, linkup_ts;
 	int timedout = false;
+	unsigned long irqsave_flags;
 
 	EP_PCIE_DBG(dev, "PCIe V%d: options input are 0x%x\n", dev->rev, opt);
 
@@ -2199,16 +2200,18 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		goto out;
 	}
 
-	if (dev->link_status == EP_PCIE_LINK_UP)
+	if (dev->link_status == EP_PCIE_LINK_UP) {
 		EP_PCIE_DBG(dev,
-			"PCIe V%d: link is already up, let's proceed with the voting for the resources\n",
+			"PCIe V%d: link is already up, but BME is not set\n",
 			dev->rev);
+		goto checkbme;
+	}
 
 	if (dev->power_on && (opt & EP_PCIE_OPT_POWER_ON)) {
 		EP_PCIE_ERR(dev,
-			"PCIe V%d: request to turn on the power when link is already powered on\n",
+			"PCIe V%d: Power is already on. Do BCR reset before initiating link training\n",
 			dev->rev);
-		goto out;
+		goto pciereset;
 	}
 
 	if (opt & EP_PCIE_OPT_POWER_ON) {
@@ -2228,7 +2231,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			goto clk_fail;
 		}
 
+		spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 		dev->power_on = true;
+		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 		if (!dev->tcsr_not_supported) {
 			EP_PCIE_DBG(dev,
@@ -2275,7 +2280,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		val = !!(val & PARF_XMLH_LINK_UP);
 
 		if (link_in_l2)
-			goto trainlink;
+			goto pciereset;
 
 		 /* check link status during initial bootup */
 		if (!dev->enumerated) {
@@ -2307,7 +2312,7 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 					dev->rev);
 					goto pipe_clk_fail;
 				}
-				goto checkbme;
+				goto fw_linkup;
 			} else {
 				ltssm_en = readl_relaxed(dev->parf
 					+ PCIE20_PARF_LTSSM) & BIT(8);
@@ -2325,8 +2330,10 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 				}
 			}
 		}
+	}
 
-trainlink:
+pciereset:
+	if (opt & EP_PCIE_OPT_POWER_ON) {
 		ret = ep_pcie_reset_init(dev);
 		if (ret)
 			goto link_fail;
@@ -2476,7 +2483,7 @@ trainlink:
 			"PCIe - link initialized for LE PCIe endpoint\n");
 	}
 
-checkbme:
+fw_linkup:
 	reg = readl_relaxed(dev->dm_core + PCIE20_CAP_LINKCTRLSTATUS);
 	dev->current_link_speed = (reg >> LINK_STATUS_REG_SHIFT) & PCI_EXP_LNKSTA_CLS;
 	dev->current_link_width = ((reg >> LINK_STATUS_REG_SHIFT) & PCI_EXP_LNKSTA_NLW) >>
@@ -2490,7 +2497,7 @@ checkbme:
 	ret = qcom_ep_pcie_icc_bw_update(dev, dev->current_link_speed, dev->current_link_width);
 	if (ret) {
 		EP_PCIE_ERR(dev, "PCIe V%d: fail to set bus bandwidth:%d\n", dev->rev, ret);
-		goto out;
+		goto link_fail_pipe_clk_deinit;
 	}
 
 	/* Clear AOSS_CC_RESET_STATUS::PERST_RAW_RESET_STATUS when linking up */
@@ -2514,6 +2521,7 @@ checkbme:
 	if (dev->active_config)
 		ep_pcie_write_reg(dev->dm_core, PCIE20_AUX_CLK_FREQ_REG, dev->aux_clk_val);
 
+checkbme:
 	if (!(opt & EP_PCIE_OPT_ENUM_ASYNC)) {
 		/* Wait for up to 1000ms for BME to be set */
 		retries = 0;
@@ -2584,10 +2592,13 @@ int ep_pcie_core_disable_endpoint(void)
 {
 	unsigned long irqsave_flags;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
+	u32 status;
 
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
 
 	mutex_lock(&dev->setup_mtx);
+	mutex_lock(&dev->clk_mtx);
+	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->perst_deast) && !m2_enabled) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: PERST is de-asserted, exiting disable\n",
@@ -2601,6 +2612,15 @@ int ep_pcie_core_disable_endpoint(void)
 			dev->rev);
 		goto out;
 	}
+
+	dev->power_on = false;
+	/*
+	 * In some cases, the device is requesting for an inband pme
+	 * as the wakeup host function is reading l23_ready bit as true.
+	 * Hence, clearing the bit here to avoid such scenarios.
+	 */
+	dev->l23_ready = false;
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 	if (!m2_enabled) {
 		dev->link_status = EP_PCIE_LINK_DISABLED;
@@ -2619,6 +2639,13 @@ int ep_pcie_core_disable_endpoint(void)
 					ep_pcie_dev.tcsr_reset_separation_offset,
 					ep_pcie_dev.pcie_disconnect_req_reg_mask, 1);
 
+		/* Reading status to check which global irq was triggered after PERST# assertion */
+		status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
+		if (status)
+			EP_PCIE_DUMP(dev, "PCIe V%d: Global IRQ received; status:0x%x\n",
+					dev->rev, status);
+
 		ep_pcie_pipe_clk_deinit(dev);
 		ep_pcie_clk_deinit(dev);
 		ep_pcie_vreg_deinit(dev);
@@ -2626,8 +2653,6 @@ int ep_pcie_core_disable_endpoint(void)
 		/* Turn off the resources in M2/L1SS path */
 		ep_pcie_l1ss_resources_deinit(dev);
 	}
-
-	dev->power_on = false;
 
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->ep_pcie_dev_wake) &&
@@ -2647,7 +2672,7 @@ int ep_pcie_core_disable_endpoint(void)
 	}
 
 	/*
-	 * In some caes though device requested to do an inband PME
+	 * In some cases though device requested to do an inband PME
 	 * the host might still proceed with PERST assertion, below
 	 * code is to toggle WAKE in such sceanrios.
 	 */
@@ -2657,8 +2682,9 @@ int ep_pcie_core_disable_endpoint(void)
 		ep_pcie_core_wakeup_host_internal(EP_PCIE_EVENT_PM_D3_COLD);
 	}
 
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 out:
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+	mutex_unlock(&dev->clk_mtx);
 	mutex_unlock(&dev->setup_mtx);
 	return 0;
 }
@@ -2710,9 +2736,6 @@ int ep_pcie_core_mask_irq_event(enum ep_pcie_irq_event event,
 static irqreturn_t ep_pcie_handle_bme_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->bme_counter++;
 	EP_PCIE_DBG(dev,
@@ -2739,17 +2762,12 @@ static irqreturn_t ep_pcie_handle_bme_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 				"PCIe V%d:BME is still disabled\n", dev->rev);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->linkdown_counter++;
 	EP_PCIE_DBG(dev,
@@ -2777,18 +2795,12 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 				BIT(EP_PCIE_RES_DM_CORE), true);
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_LINKDOWN);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_linkup_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->linkup_counter++;
 	EP_PCIE_DBG(dev,
@@ -2797,17 +2809,12 @@ static irqreturn_t ep_pcie_handle_linkup_irq(int irq, void *data)
 
 	dev->link_status = EP_PCIE_LINK_UP;
 
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	if (!dev->tcsr_not_supported)
 		/*
@@ -2832,7 +2839,6 @@ static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 	EP_PCIE_DBG2(dev, "PCIe V%d: Put the link into L23\n",	dev->rev);
 	ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(2));
 	dev->link_status = EP_PCIE_LINK_IN_L23READY;
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 	return IRQ_HANDLED;
 }
@@ -2840,10 +2846,7 @@ static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
 	u32 dstate;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dstate = readl_relaxed(dev->dm_core +
 			PCIE20_CON_STATUS) & 0x3;
@@ -2902,9 +2905,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 			"PCIe V%d:invalid D state change to 0x%x\n",
 			dev->rev, dstate);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
@@ -3162,17 +3162,26 @@ exit_irq:
 static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	int i;
-	u32 status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
-	u32 mask = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_MASK);
+	int i, ret;
+	u32 status;
+	unsigned long irqsave_flags;
 
-	ep_pcie_write_mask(dev->parf + PCIE20_PARF_INT_ALL_CLEAR, 0, status);
+	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
+	if (!atomic_read(&dev->perst_deast)) {
+		EP_PCIE_ERR(dev,
+			"PCIe V%d: Global irq not processed as PERST# is asserted\n",
+			dev->rev);
+		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+		return IRQ_HANDLED;
+	}
+
+	status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
 
 	dev->global_irq_counter++;
 	EP_PCIE_DUMP(dev,
-		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x; mask:0x%x\n",
-		dev->rev, dev->global_irq_counter, irq, status, mask);
-	status &= mask;
+		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
+		dev->rev, dev->global_irq_counter, irq, status);
 
 	if (!status)
 		goto sriov_irq;
@@ -3232,7 +3241,9 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 	}
 
 sriov_irq:
-	return ep_pcie_handle_sriov_irq(irq, data);
+	ret = ep_pcie_handle_sriov_irq(irq, data);
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+	return ret;
 }
 
 int32_t ep_pcie_irq_init(struct ep_pcie_dev_t *dev)
@@ -3957,7 +3968,7 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 		atomic_set(&dev->host_wake_pending, 1);
-	} else if (dev->l23_ready) {
+	} else if (dev->l23_ready && dev->power_on) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);
@@ -4633,7 +4644,6 @@ static int ep_pcie_probe(struct platform_device *pdev)
 		EP_PCIE_ERR(&ep_pcie_dev,
 			"PCIe V%d: failed to init GPIO\n",
 			ep_pcie_dev.rev);
-		ep_pcie_release_resources(&ep_pcie_dev);
 		goto gpio_failure;
 	}
 
@@ -4642,8 +4652,6 @@ static int ep_pcie_probe(struct platform_device *pdev)
 		EP_PCIE_ERR(&ep_pcie_dev,
 			"PCIe V%d: failed to init IRQ\n",
 			ep_pcie_dev.rev);
-		ep_pcie_release_resources(&ep_pcie_dev);
-		ep_pcie_gpio_deinit(&ep_pcie_dev);
 		goto irq_failure;
 	}
 
@@ -4800,6 +4808,7 @@ static int __init ep_pcie_init(void)
 
 	mutex_init(&ep_pcie_dev.setup_mtx);
 	mutex_init(&ep_pcie_dev.ext_mtx);
+	mutex_init(&ep_pcie_dev.clk_mtx);
 	spin_lock_init(&ep_pcie_dev.ext_lock);
 	spin_lock_init(&ep_pcie_dev.isr_lock);
 

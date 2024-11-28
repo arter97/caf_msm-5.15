@@ -153,14 +153,13 @@
 #define IPA_IOCTL_SET_EXT_ROUTER_MODE           97
 #define IPA_IOCTL_QUERY_CACHED_DRIVER_MSG       98
 #define IPA_IOCTL_ADD_DEL_DSCP_PCP_MAPPING      99
-#define IPA_IOCTL_ADD_VLAN_PRIORITY             100
-#define IPA_IOCTL_GET_CT_IN_SRAM_INFO           101
-#define IPA_IOCTL_UPDATE_L2TP_CONFIG            102
-#define IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING      103
-#define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       104
-#define IPA_IOCTL_QOS_PARAM                     105
-#define IPA_IOCTL_FLUSH_QOS_PARAM               106
-#define IPA_IOCTL_GET_QOS_PARAMS                107
+#define IPA_IOCTL_GET_CT_IN_SRAM_INFO           100
+#define IPA_IOCTL_UPDATE_L2TP_CONFIG            101
+#define IPA_IOCTL_ADD_DEL_PDN_DSCP_MAPPING      102
+#define IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING       103
+#define IPA_IOCTL_QOS_PARAM                     104
+#define IPA_IOCTL_FLUSH_QOS_PARAM               105
+#define IPA_IOCTL_GET_QOS_PARAMS                106
 
 /**
  * max size of the header to be inserted
@@ -1071,20 +1070,8 @@ enum ipa_eth_pdu_evt {
 #define IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX
 };
 
-enum ipa_vlan_priority_evt {
-	IPA_VLAN_PRIORITY_UPDATE_EVENT = IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX,
-	IPA_VLAN_PRIORITY_EVENT_MAX
-#define IPA_VLAN_PRIORITY_EVENT_MAX IPA_VLAN_PRIORITY_EVENT_MAX
-};
-
-enum ipa_vlan_config_evt {
-	IPA_VLAN_CONFIG_READY = IPA_VLAN_PRIORITY_EVENT_MAX,
-	IPA_VLAN_CONFIG_READY_MAX
-#define IPA_VLAN_CONFIG_READY_MAX IPA_VLAN_CONFIG_READY_MAX
-};
-
 enum ipa_ipsec_ul_flt_evt {
-	IPA_IPSEC_UL_FLT_ADD_EVENT = IPA_VLAN_CONFIG_READY_MAX,
+	IPA_IPSEC_UL_FLT_ADD_EVENT = IPA_ENABLE_ETH_PDU_MODE_EVENT_MAX,
 	IPA_IPSEC_UL_FLT_DEL_EVENT,
 	IPA_IPSEC_UL_FLT_EVENT_MAX
 #define IPA_IPSEC_UL_FLT_EVENT_MAX IPA_IPSEC_UL_FLT_EVENT_MAX
@@ -3794,26 +3781,6 @@ struct ipa_ioc_pdn_dscp_map_info {
 };
 
 /**
- * struct vlan_priority - provides info required for vlan prirority
- * @vlan_name: vlan interface name
- * @vlan_priority: priority of corresponding vlan
- */
-struct vlan_priority_info {
-	char vlan_name[IPA_RESOURCE_NAME_MAX];
-	uint8_t vlan_priority;
-};
-
-/**
- * struct ipa_ioc_vlan_priority - provide vlan priority values
- * @no_of_vlans: Number of vlans passed
- * @vlan_pri0_info: holds info required for vlan priority
- */
-struct ipa_ioc_vlan_priority {
-	uint8_t num_of_vlans;
-	struct vlan_priority_info vlan_prio_info[IPA_MAX_PDN_NUM - 1];
-};
-
-/**
  * struct ipa_ioc_ipsec_ul_flt_attr - IPsec UL flt spec
  * @ip: IP family of filtering rule
  * @attr: filtering rule attrib
@@ -4211,10 +4178,6 @@ struct ipa_ioc_get_qos_config {
 #define IPA_IOC_UPDATE_PDN_DSCP_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_UPDATE_PDN_DSCP_MAPPING, \
 				struct ipa_ioc_pdn_dscp_map_info)
-
-#define IPA_IOC_ADD_VLAN_PRIORITY _IOWR(IPA_IOC_MAGIC, \
-				IPA_IOCTL_ADD_VLAN_PRIORITY, \
-				struct ipa_ioc_vlan_priority)
 
 #define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \

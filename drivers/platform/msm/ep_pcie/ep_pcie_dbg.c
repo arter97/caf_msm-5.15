@@ -81,12 +81,16 @@ static void ep_pcie_check_link_state(struct ep_pcie_dev_t *dev)
 {
 	u32 val = 0;
 
+	mutex_lock(&dev->clk_mtx);
+
 	if (!dev->power_on) {
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: the power is already down; can't dump registers\n",
 			dev->rev);
+		mutex_unlock(&dev->clk_mtx);
 		return;
 	}
+
 	EP_PCIE_DBG_FS("********** PCIe LTSSM State **********", NULL);
 	val = readl_relaxed(dev->parf + PCIE20_PARF_LTSSM);
 	EP_PCIE_DBG_FS("PARF_LTSSM: 0x%x\n", val);
@@ -102,6 +106,8 @@ static void ep_pcie_check_link_state(struct ep_pcie_dev_t *dev)
 	EP_PCIE_DBG_FS("L1 Sub State: %s\n",
 		ep_pcie_l1ss_str[(val & PCIE20_PARF_PM_STTS_PM_LINKST_IN_L1SUB_MASK)
 		>> PCIE20_PARF_PM_STTS_PM_LINKST_IN_L1SUB_SHIFT]);
+
+	mutex_unlock(&dev->clk_mtx);
 }
 
 static void ep_ep_pcie_phy_dump_pcs_debug_bus(struct ep_pcie_dev_t *dev,
@@ -278,10 +284,13 @@ void ep_pcie_reg_dump(struct ep_pcie_dev_t *dev, u32 sel, bool linkdown)
 		"PCIe V%d: Dump PCIe reg for 0x%x %s linkdown\n",
 		dev->rev, sel, linkdown ? "with" : "without");
 
+	mutex_lock(&dev->clk_mtx);
+
 	if (!dev->power_on) {
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: the power is already down; can't dump registers\n",
 			dev->rev);
+		mutex_unlock(&dev->clk_mtx);
 		return;
 	}
 
@@ -329,6 +338,7 @@ void ep_pcie_reg_dump(struct ep_pcie_dev_t *dev, u32 sel, bool linkdown)
 				readl_relaxed(dev->res[r].base + (i + 28)));
 		}
 	}
+	mutex_unlock(&dev->clk_mtx);
 }
 
 static void ep_pcie_show_status(struct ep_pcie_dev_t *dev)
@@ -380,9 +390,12 @@ static void ep_pcie_aspm_stat(struct ep_pcie_dev_t *ep_dev)
 		return;
 	}
 
+	mutex_lock(&ep_dev->clk_mtx);
+
 	if (!ep_dev->power_on) {
 		EP_PCIE_DBG_FS("PCIe V%d: the power is already down; can't dump registers\n",
 				ep_dev->rev);
+		mutex_unlock(&ep_dev->clk_mtx);
 		return;
 	}
 
@@ -393,6 +406,7 @@ static void ep_pcie_aspm_stat(struct ep_pcie_dev_t *ep_dev)
 		readl_relaxed(ep_dev->mmio + PCIE20_PARF_DEBUG_CNT_IN_L1SUB_L1),
 		readl_relaxed(ep_dev->mmio + PCIE20_PARF_DEBUG_CNT_IN_L1SUB_L2));
 
+	mutex_unlock(&ep_dev->clk_mtx);
 }
 
 /*
@@ -503,12 +517,20 @@ static void ep_pcie_eom_eye_seq(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 
 	EP_PCIE_DUMP(dev, "Starting PCIe EOM tests for lane %d", dev->rev);
 
+	mutex_lock(&dev->clk_mtx);
+
+	if (!dev->power_on) {
+		EP_PCIE_DBG_FS("PCIe V%d: the power is already down; can't generate eye diagram\n",
+				dev->rev);
+		goto exit;
+	}
+
 	regval = readl_relaxed(dev->dm_core + PCIE20_CAP_LINKCTRLSTATUS);
 	linkspeed = (regval & LINK_STATUS_REG_SPEED) >> LINK_STATUS_REG_SPEED_SHFT;
 	maxlanes = (regval & LINK_STATUS_REG_LANES) >> LINK_STATUS_REG_LANES_SHFT;
 
 	if (!ep_pcie_check_spd_and_lns(dev, linkspeed, maxlanes))
-		return;
+		goto exit;
 
 	EP_PCIE_DUMP(dev, "Entering EOM_INIT%d", dev->rev);
 
@@ -580,6 +602,8 @@ static void ep_pcie_eom_eye_seq(struct ep_pcie_dev_t *dev, u32 is_positive_seq)
 		}
 		ycoord = ycoord+1;
 	}
+exit:
+	mutex_unlock(&dev->clk_mtx);
 }
 
 

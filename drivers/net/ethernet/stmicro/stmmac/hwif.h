@@ -205,8 +205,12 @@ struct stmmac_dma_ops {
 	void (*enable_dma_transmission) (void __iomem *ioaddr);
 	void (*enable_dma_irq)(void __iomem *ioaddr, u32 chan,
 			       bool rx, bool tx);
+	void (*enable_dma_ts_irq)(void __iomem *ioaddr, u32 chan,
+				  bool rx, bool tx);
 	void (*disable_dma_irq)(void __iomem *ioaddr, u32 chan,
 				bool rx, bool tx);
+	void (*disable_dma_ts_irq)(void __iomem *ioaddr, u32 chan,
+				   bool rx, bool tx);
 	void (*start_tx)(void __iomem *ioaddr, u32 chan);
 	void (*stop_tx)(void __iomem *ioaddr, u32 chan);
 	void (*start_rx)(void __iomem *ioaddr, u32 chan);
@@ -231,6 +235,24 @@ struct stmmac_dma_ops {
 			   u32 tx_queues, u32 rx_queues);
 };
 
+#define stmmac_do_void_callback_enable(__priv, args...) \
+{ \
+	struct stmmac_priv *priv_t = __priv; \
+	if ((priv_t)->plat->enable_aux_ts) \
+		stmmac_do_void_callback(priv_t, dma, enable_dma_ts_irq, ## args); \
+	else \
+		stmmac_do_void_callback(priv_t, dma, enable_dma_irq, ## args); \
+}
+
+#define stmmac_do_void_callback_disable(__priv, args...) \
+{ \
+	struct stmmac_priv *priv_t = __priv; \
+	if ((priv_t)->plat->enable_aux_ts) \
+		stmmac_do_void_callback(priv_t, dma, disable_dma_ts_irq, ## args); \
+	else \
+		stmmac_do_void_callback(priv_t, dma, disable_dma_irq, ## args); \
+}
+
 #define stmmac_reset(__priv, __args...) \
 	stmmac_do_callback(__priv, dma, reset, __args)
 #define stmmac_dma_init(__priv, __args...) \
@@ -254,9 +276,9 @@ struct stmmac_dma_ops {
 #define stmmac_enable_dma_transmission(__priv, __args...) \
 	stmmac_do_void_callback(__priv, dma, enable_dma_transmission, __args)
 #define stmmac_enable_dma_irq(__priv, __args...) \
-	stmmac_do_void_callback(__priv, dma, enable_dma_irq, __args)
+	stmmac_do_void_callback_enable(__priv, __args)
 #define stmmac_disable_dma_irq(__priv, __args...) \
-	stmmac_do_void_callback(__priv, dma, disable_dma_irq, __args)
+	stmmac_do_void_callback_disable(__priv, __args)
 #define stmmac_start_tx(__priv, __args...) \
 	stmmac_do_void_callback(__priv, dma, start_tx, __args)
 #define stmmac_stop_tx(__priv, __args...) \

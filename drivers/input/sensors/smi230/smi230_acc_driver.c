@@ -1845,7 +1845,7 @@ static int smi230_acc_early_buff_init(struct smi230_client_data *client_data)
 
 	p_smi230_dev->accel_cfg.odr = SMI230_ACCEL_ODR_100_HZ;
 	p_smi230_dev->accel_cfg.bw = SMI230_ACCEL_BW_NORMAL;
-	p_smi230_dev->accel_cfg.range = SMI230_ACCEL_RANGE_2G;
+	p_smi230_dev->accel_cfg.range = SMI230_ACCEL_RANGE_4G;
 
 	err |= smi230_acc_set_meas_conf(p_smi230_dev);
 	smi230_delay(100);

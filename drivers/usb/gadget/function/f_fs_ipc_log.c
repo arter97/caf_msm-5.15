@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -32,6 +33,9 @@ struct ffs_io_data {
 	bool use_sg;
 
 	struct ffs_data *ffs;
+
+	int status;
+	struct completion done;
 };
 
 /* Copied from f_fs.c */
@@ -56,8 +60,6 @@ struct ffs_ep {
 	struct usb_endpoint_descriptor	*descs[3];
 
 	u8				num;
-
-	int				status;	/* P: epfile->mutex */
 };
 
 /* Copied from f_fs.c */
@@ -222,8 +224,7 @@ static int entry_ffs_user_copy_worker(struct kretprobe_instance *ri,
 	struct kprobe_data *data = (struct kprobe_data *)ri->data;
 	struct work_struct *work = (struct work_struct *)ffs_pt_reg(regs, 0);
 	struct ffs_io_data *io_data = container_of(work, struct ffs_io_data, work);
-	int ret = io_data->req->status ? io_data->req->status :
-					 io_data->req->actual;
+	int ret = io_data->status;
 	struct ffs_data *ffs = io_data->ffs;
 	void *context = get_ipc_context(ffs);
 

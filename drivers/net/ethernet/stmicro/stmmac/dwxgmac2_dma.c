@@ -258,11 +258,11 @@ static void dwxgmac2_dma_tx_mode(void __iomem *ioaddr, int mode,
 	writel(value, ioaddr +  XGMAC_MTL_TXQ_OPMODE(channel));
 }
 
-static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
-				    bool rx, bool tx)
+static void dwxgmac2_enable_dma_ts_irq(void __iomem *ioaddr, u32 chan,
+				       bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
-	u32 intr_en;
+	u32 intr_en = 0;
 
 	if (rx)
 		value |= XGMAC_DMA_INT_DEFAULT_RX;
@@ -278,11 +278,24 @@ static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 
-static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
-				     bool rx, bool tx)
+static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
+				    bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
-	u32 intr_en;
+
+	if (rx)
+		value |= XGMAC_DMA_INT_DEFAULT_RX;
+	if (tx)
+		value |= XGMAC_DMA_INT_DEFAULT_TX;
+
+	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+}
+
+static void dwxgmac2_disable_dma_ts_irq(void __iomem *ioaddr, u32 chan,
+					bool rx, bool tx)
+{
+	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+	u32 intr_en = 0;
 
 	if (rx)
 		value &= ~XGMAC_DMA_INT_DEFAULT_RX;
@@ -295,6 +308,19 @@ static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
 			writel(intr_en, ioaddr + XGMAC_INT_EN);
 		}
 	}
+	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+}
+
+static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
+				     bool rx, bool tx)
+{
+	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+
+	if (rx)
+		value &= ~XGMAC_DMA_INT_DEFAULT_RX;
+	if (tx)
+		value &= ~XGMAC_DMA_INT_DEFAULT_TX;
+
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 
@@ -431,7 +457,18 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 
 	/* MAC HW feature 1 */
 	hw_cap = readl(ioaddr + XGMAC_HW_FEATURE1);
+	/* L3-L4 filtering support */
 	dma_cap->l3l4fnum = (hw_cap & XGMAC_HWFEAT_L3L4FNUM) >> 27;
+	/* If L3L4FNUM < 8, then the number of L3L4 filters supported by
+	 * XGMAC is equal to L3L4FNUM. From L3L4FNUM >= 8 the number of
+	 * L3L4 filters goes on like 8, 16, 32, ... Current maximum of
+	 * L3L4FNUM = 10.
+	 */
+	if (dma_cap->l3l4fnum >= 8 && dma_cap->l3l4fnum <= 10)
+		dma_cap->l3l4fnum = 8 << (dma_cap->l3l4fnum - 8);
+	else if (dma_cap->l3l4fnum > 10)
+		dma_cap->l3l4fnum = 32;
+
 	dma_cap->hash_tb_sz = (hw_cap & XGMAC_HWFEAT_HASHTBLSZ) >> 24;
 	dma_cap->rssen = (hw_cap & XGMAC_HWFEAT_RSSEN) >> 20;
 	dma_cap->tsoen = (hw_cap & XGMAC_HWFEAT_TSOEN) >> 18;
@@ -488,9 +525,31 @@ static int dwxgmac2_get_hw_feature(void __iomem *ioaddr,
 	dma_cap->frpes = (hw_cap & XGMAC_HWFEAT_FRPES) >> 11;
 	dma_cap->frpbs = (hw_cap & XGMAC_HWFEAT_FRPPB) >> 9;
 	dma_cap->frpsel = (hw_cap & XGMAC_HWFEAT_FRPSEL) >> 3;
+	/* Extended VLAN tag filters supported */
+	dma_cap->nrvf_num = (hw_cap & XGMAC_HWFEAT_NRVF) >> 0;
+	switch (dma_cap->nrvf_num) {
+	case 0:
+		dma_cap->nrvf_num = 0;
+		break;
+	case 1:
+		dma_cap->nrvf_num = 4;
+		break;
+	case 2:
+		dma_cap->nrvf_num = 8;
+		break;
+	case 3:
+		dma_cap->nrvf_num = 16;
+		break;
+	case 4:
+		dma_cap->nrvf_num = 24;
+		break;
+	case 5:
+		dma_cap->nrvf_num = 32;
+		break;
+	default:
+		dma_cap->nrvf_num = 0;
+	}
 
-	/* L3L4 filtering feature*/
-	dma_cap->num_l3_l4_filters = 0;
 
 	return 0;
 }
@@ -634,7 +693,9 @@ const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.dma_rx_mode = dwxgmac2_dma_rx_mode,
 	.dma_tx_mode = dwxgmac2_dma_tx_mode,
 	.enable_dma_irq = dwxgmac2_enable_dma_irq,
+	.enable_dma_ts_irq = dwxgmac2_enable_dma_ts_irq,
 	.disable_dma_irq = dwxgmac2_disable_dma_irq,
+	.disable_dma_ts_irq = dwxgmac2_disable_dma_ts_irq,
 	.start_tx = dwxgmac2_dma_start_tx,
 	.stop_tx = dwxgmac2_dma_stop_tx,
 	.start_rx = dwxgmac2_dma_start_rx,

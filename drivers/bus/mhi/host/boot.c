@@ -485,6 +485,7 @@ void mhi_fw_load_handler(struct mhi_controller *mhi_cntrl)
 	buf = dma_alloc_coherent(mhi_cntrl->cntrl_dev, size, &dma_addr,
 				 GFP_KERNEL);
 	if (!buf) {
+		MHI_ERR(dev, "Failed to allocate SBL image %d\n", size);
 		release_firmware(firmware);
 		goto error_fw_load;
 	}
@@ -527,6 +528,7 @@ void mhi_fw_load_handler(struct mhi_controller *mhi_cntrl)
 
 		ret = mhi_alloc_bhie_table(mhi_cntrl, &mhi_cntrl->fbc_image, img_size);
 		if (ret) {
+			MHI_ERR(dev, "MHI did not allocate table for BHIe, ret: %d\n", ret);
 			release_firmware(firmware);
 			goto error_fw_load;
 		}
