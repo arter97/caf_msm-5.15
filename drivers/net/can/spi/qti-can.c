@@ -873,69 +873,71 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	struct spi_mosi *req;
 	u64 rx_buf_idx, idx = 0;
 
-	spi = priv_data->spidev;
-	dev = &spi->dev;
-	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	xfer = kzalloc(sizeof(*xfer), GFP_KERNEL);
-	if (!xfer || !msg)
-		return -ENOMEM;
-	dev_dbg(&priv_data->spidev->dev, ">%x %2d [%d]\n", priv_data->tx_buf[0],
-		priv_data->tx_buf[1], priv_data->tx_buf[2]);
+	if (!priv_data) {
+		spi = priv_data->spidev;
+		dev = &spi->dev;
+		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+		xfer = kzalloc(sizeof(*xfer), GFP_KERNEL);
+		if (!xfer || !msg)
+			return -ENOMEM;
+		dev_dbg(&priv_data->spidev->dev, ">%x %2d [%d]\n", priv_data->tx_buf[0],
+			priv_data->tx_buf[1], priv_data->tx_buf[2]);
 
-	if (static_pos_checksum_en || dynamic_pos_checksum_en) {
-		req = (struct spi_mosi *)(priv_data->tx_buf);
-		if (req->cmd == CMD_CAN_SEND_FRAME && static_pos_checksum_en)
-			checksum_tx_len = XFER_BUFFER_SIZE - 2;
-		else if (req->cmd == CMD_CAN_SEND_FRAME &&
-			 req->len > CAN_FD_PACKET_SIZE && req->seq == 0)
-			checksum_tx_len = CAN_FD_PACKET_SIZE + 4;
-		else if (req->cmd == CMD_CAN_SEND_FRAME &&
-			 req->len > CAN_FD_PACKET_SIZE && req->seq == 1)
-			checksum_tx_len = (req->len) - CAN_FD_PACKET_DATA + 4;
-		else
-			checksum_tx_len = (req->len) + 4;
-		for (i = 0; i < checksum_tx_len; i++)
-			tx_checksum ^= priv_data->tx_buf[i];
-
-		if (static_pos_checksum_en) {
-			priv_data->tx_buf[(XFER_BUFFER_SIZE - 2)] = tx_checksum;
-		} else if (dynamic_pos_checksum_en) {
-			if (req->cmd == CMD_CAN_SEND_FRAME &&
-			    req->len > CAN_FD_PACKET_SIZE && req->seq == 0)
-				priv_data->tx_buf[CAN_FD_PACKET_SIZE + 4] = tx_checksum;
+		if (static_pos_checksum_en || dynamic_pos_checksum_en) {
+			req = (struct spi_mosi *)(priv_data->tx_buf);
+			if (req->cmd == CMD_CAN_SEND_FRAME && static_pos_checksum_en)
+				checksum_tx_len = XFER_BUFFER_SIZE - 2;
 			else if (req->cmd == CMD_CAN_SEND_FRAME &&
-				 req->len > CAN_FD_PACKET_SIZE && req->seq == 1)
-				priv_data->tx_buf[req->len - CAN_FD_PACKET_DATA + 4] = tx_checksum;
+				 req->len > CAN_FD_PACKET_SIZE && req->seq == 0)
+				checksum_tx_len = CAN_FD_PACKET_SIZE + 4;
+			else if (req->cmd == CMD_CAN_SEND_FRAME &&
+			 	req->len > CAN_FD_PACKET_SIZE && req->seq == 1)
+				checksum_tx_len = (req->len) - CAN_FD_PACKET_DATA + 4;
 			else
-				priv_data->tx_buf[req->len + 4] = tx_checksum;
+				checksum_tx_len = (req->len) + 4;
+			for (i = 0; i < checksum_tx_len; i++)
+				tx_checksum ^= priv_data->tx_buf[i];
+
+			if (static_pos_checksum_en) {
+				priv_data->tx_buf[(XFER_BUFFER_SIZE - 2)] = tx_checksum;
+			} else if (dynamic_pos_checksum_en) {
+				if (req->cmd == CMD_CAN_SEND_FRAME &&
+			    	    req->len > CAN_FD_PACKET_SIZE && req->seq == 0)
+					priv_data->tx_buf[CAN_FD_PACKET_SIZE + 4] = tx_checksum;
+				else if (req->cmd == CMD_CAN_SEND_FRAME &&
+				 	req->len > CAN_FD_PACKET_SIZE && req->seq == 1)
+					priv_data->tx_buf[req->len - CAN_FD_PACKET_DATA + 4] = tx_checksum;
+				else
+					priv_data->tx_buf[req->len + 4] = tx_checksum;
+			}
 		}
-	}
 
-	spi_message_init(msg);
-	spi_message_add_tail(xfer, msg);
-	xfer->tx_buf = priv_data->tx_buf;
-	xfer->rx_buf = priv_data->rx_buf;
-	xfer->len = priv_data->xfer_length;
-	xfer->bits_per_word = priv_data->bits_per_word;
-	/*wake_irq_en check added to disable SPI transfer in the event of shutdown/reboot only*/
-	if (!priv_data->wake_irq_en)
-		ret = spi_sync(spi, msg);
-	dev_dbg(&priv_data->spidev->dev, "spi_sync ret %d\n", ret);
-	for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
-		idx = 10 * rx_buf_idx;
-		dev_dbg(&priv_data->spidev->dev, "%X %X %X %X %X %X %X %X %X %X\n",
-			priv_data->rx_buf[idx + 0], priv_data->rx_buf[idx + 1],
-			priv_data->rx_buf[idx + 2], priv_data->rx_buf[idx + 3],
-			priv_data->rx_buf[idx + 4], priv_data->rx_buf[idx + 5],
-			priv_data->rx_buf[idx + 6], priv_data->rx_buf[idx + 7],
-			priv_data->rx_buf[idx + 8], priv_data->rx_buf[idx + 9]);
-	}
-	dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
-		priv_data->rx_buf[60], priv_data->rx_buf[61],
-		priv_data->rx_buf[62], priv_data->rx_buf[63]);
+		spi_message_init(msg);
+		spi_message_add_tail(xfer, msg);
+		xfer->tx_buf = priv_data->tx_buf;
+		xfer->rx_buf = priv_data->rx_buf;
+		xfer->len = priv_data->xfer_length;
+		xfer->bits_per_word = priv_data->bits_per_word;
+		/*wake_irq_en check added to disable SPI transfer in the event of shutdown/reboot only*/
+		if (!priv_data->wake_irq_en)
+			ret = spi_sync(spi, msg);
+		dev_dbg(&priv_data->spidev->dev, "spi_sync ret %d\n", ret);
+		for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
+			idx = 10 * rx_buf_idx;
+			dev_dbg(&priv_data->spidev->dev, "%X %X %X %X %X %X %X %X %X %X\n",
+				priv_data->rx_buf[idx + 0], priv_data->rx_buf[idx + 1],
+				priv_data->rx_buf[idx + 2], priv_data->rx_buf[idx + 3],
+				priv_data->rx_buf[idx + 4], priv_data->rx_buf[idx + 5],
+				priv_data->rx_buf[idx + 6], priv_data->rx_buf[idx + 7],
+				priv_data->rx_buf[idx + 8], priv_data->rx_buf[idx + 9]);
+		}
+		dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
+			priv_data->rx_buf[60], priv_data->rx_buf[61],
+			priv_data->rx_buf[62], priv_data->rx_buf[63]);
 
-	if (ret == 0)
-		qti_can_process_rx(priv_data, priv_data->rx_buf);
+		if (ret == 0)
+			qti_can_process_rx(priv_data, priv_data->rx_buf);
+	}
 
 	kfree(msg);
 	kfree(xfer);
