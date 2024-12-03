@@ -89,7 +89,7 @@ struct qti_can {
 	bool can_fw_cmd_timeout_req;
 	u32 rem_all_buffering_timeout_ms;
 	u32 can_fw_cmd_timeout_ms;
-	u32 time_diff;
+	s64 time_diff;
 	bool active_low;
 	bool univ_acc_filter_flag;
 	bool probe_query_resp;

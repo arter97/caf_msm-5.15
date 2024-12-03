@@ -2597,6 +2597,7 @@ int ep_pcie_core_disable_endpoint(void)
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
 
 	mutex_lock(&dev->setup_mtx);
+	mutex_lock(&dev->clk_mtx);
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->perst_deast) && !m2_enabled) {
 		EP_PCIE_DBG(dev,
@@ -2683,6 +2684,7 @@ int ep_pcie_core_disable_endpoint(void)
 
 out:
 	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+	mutex_unlock(&dev->clk_mtx);
 	mutex_unlock(&dev->setup_mtx);
 	return 0;
 }
@@ -4806,6 +4808,7 @@ static int __init ep_pcie_init(void)
 
 	mutex_init(&ep_pcie_dev.setup_mtx);
 	mutex_init(&ep_pcie_dev.ext_mtx);
+	mutex_init(&ep_pcie_dev.clk_mtx);
 	spin_lock_init(&ep_pcie_dev.ext_lock);
 	spin_lock_init(&ep_pcie_dev.isr_lock);
 

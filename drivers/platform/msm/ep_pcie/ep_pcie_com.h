@@ -554,6 +554,7 @@ struct ep_pcie_dev_t {
 	void                         *ipc_log_eom_delay;
 	struct mutex                 setup_mtx;
 	struct mutex                 ext_mtx;
+	struct mutex                 clk_mtx;
 	spinlock_t                   ext_lock;
 	unsigned long                ext_save_flags;
 
