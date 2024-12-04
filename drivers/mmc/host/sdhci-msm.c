@@ -3,7 +3,7 @@
  * drivers/mmc/host/sdhci-msm.c - Qualcomm SDHCI Platform driver
  *
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -311,9 +311,16 @@ enum vdd_io_level {
 	VDD_IO_SET_LEVEL,
 };
 
+
 enum dll_init_context {
 	DLL_INIT_NORMAL = 0,
 	DLL_INIT_FROM_CX_COLLAPSE_EXIT,
+};
+struct mmc_gpio {
+	struct gpio_desc *ro_gpio, *cd_gpio;
+	irqreturn_t (*cd_gpio_isr)(int irq, void *dev_id);
+	char *ro_label, *cd_label;
+	u32 cd_debounce_delay_ms;
 };
 
 static struct sdhci_msm_host *sdhci_slot[2];
@@ -4710,12 +4717,255 @@ static int sdhci_msm_setup_ice_clk(struct sdhci_msm_host *msm_host,
 
 	return ret;
 }
+static int sdhci_msm_setup_clocks_and_bus(struct sdhci_msm_host *msm_host)
+{
+	struct sdhci_host *host = mmc_priv(msm_host->mmc);
+	struct platform_device *pdev = msm_host->pdev;
+	struct clk *clk;
+	int ret;
+
+	/* Setup SDCC bus voter clock. */
+	msm_host->bus_clk = devm_clk_get(&pdev->dev, "bus");
+	if (!IS_ERR(msm_host->bus_clk)) {
+		/* Vote for max. clk rate for max. performance */
+		ret = clk_set_rate(msm_host->bus_clk, INT_MAX);
+		if (ret)
+			return ret;
+		ret = clk_prepare_enable(msm_host->bus_clk);
+		if (ret)
+			return ret;
+	}
+
+	/* Setup main peripheral bus clock */
+	clk = devm_clk_get(&pdev->dev, "iface");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev, "Peripheral clk setup failed (%d)\n", ret);
+		goto bus_clk_disable;
+	}
+	msm_host->bulk_clks[1].clk = clk;
+
+	/* Setup SDC MMC clock */
+	clk = devm_clk_get(&pdev->dev, "core");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev, "SDC MMC clk setup failed (%d)\n", ret);
+		goto bus_clk_disable;
+	}
+	msm_host->bulk_clks[0].clk = clk;
+
+	 /* Check for optional interconnect paths */
+	ret = dev_pm_opp_of_find_icc_paths(&pdev->dev, NULL);
+	if (ret)
+		goto bus_clk_disable;
+
+	msm_host->opp_table = dev_pm_opp_set_clkname(&pdev->dev, "core");
+	if (IS_ERR(msm_host->opp_table)) {
+		ret = PTR_ERR(msm_host->opp_table);
+		goto bus_clk_disable;
+	}
+
+	/* OPP table is optional */
+	ret = dev_pm_opp_of_add_table(&pdev->dev);
+	if (!ret) {
+		msm_host->has_opp_table = true;
+	} else if (ret != -ENODEV) {
+		dev_err(&pdev->dev, "Invalid OPP table in Device tree\n");
+		goto opp_cleanup;
+	}
+
+	/* Vote for maximum clock rate for maximum performance */
+	ret = dev_pm_opp_set_rate(&pdev->dev, INT_MAX);
+	if (ret)
+		dev_warn(&pdev->dev, "core clock boost failed\n");
+
+	ret = sdhci_msm_setup_ice_clk(msm_host, pdev);
+	if (ret)
+		goto bus_clk_disable;
+
+	clk = devm_clk_get(&pdev->dev, "cal");
+	if (IS_ERR(clk))
+		clk = NULL;
+	msm_host->bulk_clks[3].clk = clk;
+
+	clk = devm_clk_get(&pdev->dev, "sleep");
+	if (IS_ERR(clk))
+		clk = NULL;
+	msm_host->bulk_clks[4].clk = clk;
+
+	ret = clk_bulk_prepare_enable(ARRAY_SIZE(msm_host->bulk_clks),
+			msm_host->bulk_clks);
+	if (ret)
+		goto opp_cleanup;
+	ret = qcom_clk_set_flags(msm_host->bulk_clks[0].clk,
+			CLKFLAG_NORETAIN_MEM);
+	if (ret)
+		dev_err(&pdev->dev, "Failed to set core clk NORETAIN_MEM: %d\n",
+				ret);
+	ret = qcom_clk_set_flags(msm_host->bulk_clks[2].clk,
+			CLKFLAG_RETAIN_MEM);
+	if (ret)
+		dev_err(&pdev->dev, "Failed to set ice clk RETAIN_MEM: %d\n",
+				ret);
+	/*
+	 * xo clock is needed for FLL feature of cm_dll.
+	 * In case if xo clock is not mentioned in DT, warn and proceed.
+	 */
+	msm_host->xo_clk = devm_clk_get(&pdev->dev, "xo");
+	if (IS_ERR(msm_host->xo_clk)) {
+		ret = PTR_ERR(msm_host->xo_clk);
+		dev_warn(&pdev->dev, "TCXO clk not present (%d)\n", ret);
+	}
+
+	INIT_DELAYED_WORK(&msm_host->clk_gating_work,
+			sdhci_msm_clkgate_bus_delayed_work);
+
+	ret = sdhci_msm_bus_register(msm_host, pdev);
+	if (ret && !msm_host->skip_bus_bw_voting) {
+		dev_err(&pdev->dev, "Bus registration failed (%d)\n", ret);
+		goto clk_disable;
+	}
+
+	if (!msm_host->skip_bus_bw_voting)
+		sdhci_msm_bus_voting(host, true);
+
+	return 0;
+
+clk_disable:
+	clk_bulk_disable_unprepare(ARRAY_SIZE(msm_host->bulk_clks),
+			msm_host->bulk_clks);
+opp_cleanup:
+	if (msm_host->has_opp_table)
+		dev_pm_opp_of_remove_table(&pdev->dev);
+	dev_pm_opp_put_clkname(msm_host->opp_table);
+bus_clk_disable:
+	if (!IS_ERR(msm_host->bus_clk))
+		clk_disable_unprepare(msm_host->bus_clk);
+
+	return ret;
+}
 
 static void sdhci_msm_set_caps(struct sdhci_msm_host *msm_host)
 {
 	msm_host->mmc->caps |= MMC_CAP_AGGRESSIVE_PM;
 	msm_host->mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_NEED_RSP_BUSY;
 }
+static int sdhci_msm_prepare_hibernation(struct sdhci_msm_host *msm_host)
+{
+	struct mmc_host *mhost = msm_host->mmc;
+	int ret = 0;
+
+	if (!mhost->card)
+		return ret;
+
+	mmc_get_card(mhost->card, NULL);
+
+	/*
+	 *Increase usage_count of card and host device till
+	 *hibernation is over. This will ensure they will not runtime suspend.
+	 */
+	pm_runtime_get_noresume(mmc_dev(mhost));
+
+#if IS_ENABLED(CONFIG_MMC_SDHCI_MSM_SCALING)
+	if (sdhci_msm_mmc_can_scale_clk(msm_host)) {
+
+		/*
+		 *Disable clock scaling and mask host capability so that
+		 *we will run in max frequency during:
+		 *	1. Hibernation preparation and image creation
+		 *	2. After finding hibernation image during reboot
+		 *	3. Once hibernation image is loaded and till hibernation
+		 *	restore is complete.
+		 */
+		if (msm_host->clk_scaling.enable)
+			sdhci_msm_mmc_suspend_clk_scaling(mhost);
+
+		mhost->caps2 &= ~MMC_CAP2_CLK_SCALE;
+		msm_host->scale_caps = mhost->caps2;
+		msm_host->clk_scaling.state = MMC_LOAD_HIGH;
+
+		/* Set to max. frequency when disabling */
+		ret = sdhci_msm_mmc_clk_update_freq(msm_host, msm_host->clk_scaling_highest,
+			msm_host->clk_scaling.state);
+		if (ret && ret != -EAGAIN)
+			pr_err("%s: clock scale to %lu failed with error %d\n",
+				mmc_hostname(mhost), msm_host->clk_scaling_highest, ret);
+	}
+#endif
+
+	mmc_put_card(mhost->card, NULL);
+	return ret;
+}
+
+static int sdhci_msm_post_hibernation(struct sdhci_msm_host *msm_host)
+{
+	struct mmc_host *mhost = msm_host->mmc;
+	struct mmc_gpio *ctx = (struct mmc_gpio *) mhost->slot.handler_priv;
+	int irq, ret = 0;
+
+	if (!mhost->card)
+		return ret;
+
+	mmc_get_card(mhost->card, NULL);
+
+#if IS_ENABLED(CONFIG_MMC_SDHCI_MSM_SCALING)
+	if (!(mhost->caps2 & MMC_CAP2_CLK_SCALE))
+		goto enable_pm;
+
+	/* Enable the clock scaling and set the host capability */
+	mhost->caps2 |= MMC_CAP2_CLK_SCALE;
+	msm_host->scale_caps = mhost->caps2;
+
+	if (!msm_host->clk_scaling.enable) {
+		sdhci_msm_mmc_resume_clk_scaling(mhost);
+		msm_host->clk_scaling.enable = true;
+	}
+enable_pm:
+#endif /* End of CONFIG_MMC_SDHCI_MSM_SCALING */
+	/*
+	 * Reduce usage count of card and host device so that they may
+	 * runtime suspend.
+	 */
+	pm_runtime_put_noidle(mmc_dev(mhost));
+	mmc_put_card(mhost->card, NULL);
+
+	/* Register cd-gpio IRQ Post Hibernation*/
+	irq = mhost->slot.cd_irq;
+	if (irq >= 0) {
+		ret = devm_request_threaded_irq(mhost->parent, irq,
+				NULL, ctx->cd_gpio_isr,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+				IRQF_ONESHOT,
+				ctx->cd_label, mhost);
+	}
+	return ret;
+}
+
+static int sdhci_msm_hibernation_notifier(struct notifier_block *notify_block,
+		unsigned long mode, void *unused)
+{
+	struct sdhci_msm_host *msm_host;
+
+	if (!notify_block)
+		return -EINVAL;
+
+	msm_host = container_of(
+		notify_block, struct sdhci_msm_host, sdhci_msm_pm_notifier);
+
+	switch (mode) {
+	case PM_HIBERNATION_PREPARE:
+		sdhci_msm_prepare_hibernation(msm_host);
+		break;
+	case PM_POST_HIBERNATION:
+		sdhci_msm_post_hibernation(msm_host);
+		break;
+	default:
+		pr_debug("Unhandled mode!!\n");
+	}
+
+	return 0;
+}
+
 /* RUMI W/A for SD card */
 static void sdhci_msm_set_rumi_bus_mode(struct sdhci_host *host)
 {
@@ -4983,7 +5233,6 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	struct sdhci_host *host;
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_msm_host *msm_host;
-	struct clk *clk;
 	int ret;
 	u16 host_version, core_minor;
 	u32 core_version, config;
@@ -5075,111 +5324,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		of_property_read_bool(dev->of_node,
 			"qcom,restore-after-cx-collapse");
 
-	/* Setup SDCC bus voter clock. */
-	msm_host->bus_clk = devm_clk_get(&pdev->dev, "bus");
-	if (!IS_ERR(msm_host->bus_clk)) {
-		/* Vote for max. clk rate for max. performance */
-		ret = clk_set_rate(msm_host->bus_clk, INT_MAX);
-		if (ret)
-			goto pltfm_free;
-		ret = clk_prepare_enable(msm_host->bus_clk);
-		if (ret)
-			goto pltfm_free;
-	}
-
-	/* Setup main peripheral bus clock */
-	clk = devm_clk_get(&pdev->dev, "iface");
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		dev_err(&pdev->dev, "Peripheral clk setup failed (%d)\n", ret);
-		goto bus_clk_disable;
-	}
-	msm_host->bulk_clks[1].clk = clk;
-
-	/* Setup SDC MMC clock */
-	clk = devm_clk_get(&pdev->dev, "core");
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		dev_err(&pdev->dev, "SDC MMC clk setup failed (%d)\n", ret);
-		goto bus_clk_disable;
-	}
-	msm_host->bulk_clks[0].clk = clk;
-
-	 /* Check for optional interconnect paths */
-	ret = dev_pm_opp_of_find_icc_paths(&pdev->dev, NULL);
+	ret = sdhci_msm_setup_clocks_and_bus(msm_host);
 	if (ret)
-		goto bus_clk_disable;
-
-	msm_host->opp_table = dev_pm_opp_set_clkname(&pdev->dev, "core");
-	if (IS_ERR(msm_host->opp_table)) {
-		ret = PTR_ERR(msm_host->opp_table);
-		goto bus_clk_disable;
-	}
-
-	/* OPP table is optional */
-	ret = dev_pm_opp_of_add_table(&pdev->dev);
-	if (!ret) {
-		msm_host->has_opp_table = true;
-	} else if (ret != -ENODEV) {
-		dev_err(&pdev->dev, "Invalid OPP table in Device tree\n");
-		goto opp_cleanup;
-	}
-
-	/* Vote for maximum clock rate for maximum performance */
-	ret = dev_pm_opp_set_rate(&pdev->dev, INT_MAX);
-	if (ret)
-		dev_warn(&pdev->dev, "core clock boost failed\n");
-
-	ret = sdhci_msm_setup_ice_clk(msm_host, pdev);
-	if (ret)
-		goto bus_clk_disable;
-
-	clk = devm_clk_get(&pdev->dev, "cal");
-	if (IS_ERR(clk))
-		clk = NULL;
-	msm_host->bulk_clks[3].clk = clk;
-
-	clk = devm_clk_get(&pdev->dev, "sleep");
-	if (IS_ERR(clk))
-		clk = NULL;
-	msm_host->bulk_clks[4].clk = clk;
-
-	ret = clk_bulk_prepare_enable(ARRAY_SIZE(msm_host->bulk_clks),
-				      msm_host->bulk_clks);
-	if (ret)
-		goto opp_cleanup;
-	ret = qcom_clk_set_flags(msm_host->bulk_clks[0].clk,
-			CLKFLAG_NORETAIN_MEM);
-	if (ret)
-		dev_err(&pdev->dev, "Failed to set core clk NORETAIN_MEM: %d\n",
-				ret);
-	ret = qcom_clk_set_flags(msm_host->bulk_clks[2].clk,
-			CLKFLAG_RETAIN_MEM);
-	if (ret)
-		dev_err(&pdev->dev, "Failed to set ice clk RETAIN_MEM: %d\n",
-				ret);
-	/*
-	 * xo clock is needed for FLL feature of cm_dll.
-	 * In case if xo clock is not mentioned in DT, warn and proceed.
-	 */
-	msm_host->xo_clk = devm_clk_get(&pdev->dev, "xo");
-	if (IS_ERR(msm_host->xo_clk)) {
-		ret = PTR_ERR(msm_host->xo_clk);
-		dev_warn(&pdev->dev, "TCXO clk not present (%d)\n", ret);
-	}
-
-	INIT_DELAYED_WORK(&msm_host->clk_gating_work,
-			sdhci_msm_clkgate_bus_delayed_work);
-
-	ret = sdhci_msm_bus_register(msm_host, pdev);
-	if (ret && !msm_host->skip_bus_bw_voting) {
-		dev_err(&pdev->dev, "Bus registration failed (%d)\n", ret);
-		goto clk_disable;
-	}
-
-	if (!msm_host->skip_bus_bw_voting)
-		sdhci_msm_bus_voting(host, true);
-
+		goto pltfm_free;
 	/* Setup regulators */
 	ret = sdhci_msm_vreg_init(&pdev->dev, msm_host, true);
 	if (ret) {
@@ -5259,7 +5406,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 
 	ret = sdhci_msm_register_vreg(msm_host);
 	if (ret)
-		goto clk_disable;
+		goto vreg_deinit;
 
 	/*
 	 * Power on reset state may trigger power irq if previous status of
@@ -5355,6 +5502,15 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		register_trace_android_rvh_mmc_cache_card_properties(mmc_cache_card, NULL);
 		register_trace_android_rvh_partial_init(partial_init, NULL);
 	}
+	msm_host->sdhci_msm_pm_notifier.notifier_call
+		= sdhci_msm_hibernation_notifier;
+	ret = register_pm_notifier(&msm_host->sdhci_msm_pm_notifier);
+	if (ret) {
+		dev_err(&pdev->dev, "%s: register pm notifier failed: %d\n",
+				__func__, ret);
+		goto pm_runtime_disable;
+	}
+
 	return 0;
 
 pm_runtime_disable:
@@ -5368,14 +5524,11 @@ bus_unregister:
 		sdhci_msm_bus_get_and_set_vote(host, 0);
 		sdhci_msm_bus_unregister(&pdev->dev, msm_host);
 	}
-clk_disable:
 	clk_bulk_disable_unprepare(ARRAY_SIZE(msm_host->bulk_clks),
 				   msm_host->bulk_clks);
-opp_cleanup:
 	if (msm_host->has_opp_table)
 		dev_pm_opp_of_remove_table(&pdev->dev);
 	dev_pm_opp_put_clkname(msm_host->opp_table);
-bus_clk_disable:
 	if (!IS_ERR(msm_host->bus_clk))
 		clk_disable_unprepare(msm_host->bus_clk);
 pltfm_free:
@@ -5407,6 +5560,7 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 	dead = (readl_relaxed(host->ioaddr + SDHCI_INT_STATUS) ==
 		    0xffffffff);
 
+	unregister_pm_notifier(&msm_host->sdhci_msm_pm_notifier);
 	sdhci_remove_host(host, dead);
 
 	sdhci_msm_vreg_init(&pdev->dev, msm_host, false);
@@ -5449,6 +5603,11 @@ static __maybe_unused int sdhci_msm_runtime_suspend(struct device *dev)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_qos_req *qos_req = msm_host->sdhci_qos;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+	host->runtime_suspended = true;
+	spin_unlock_irqrestore(&host->lock, flags);
 
 	sdhci_msm_log_str(msm_host, "Enter\n");
 	if (!qos_req)
@@ -5468,6 +5627,7 @@ static __maybe_unused int sdhci_msm_runtime_resume(struct device *dev)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_qos_req *qos_req = msm_host->sdhci_qos;
+	unsigned long flags;
 	int ret;
 
 	sdhci_msm_log_str(msm_host, "Enter\n");
@@ -5499,7 +5659,15 @@ static __maybe_unused int sdhci_msm_runtime_resume(struct device *dev)
 	sdhci_msm_vote_pmqos(msm_host->mmc,
 			msm_host->sdhci_qos->active_mask);
 
-	return sdhci_msm_ice_resume(msm_host);
+	ret = sdhci_msm_ice_resume(msm_host);
+	if (ret)
+		return ret;
+
+	spin_lock_irqsave(&host->lock, flags);
+	host->runtime_suspended = false;
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	return ret;
 }
 
 static int sdhci_msm_suspend_late(struct device *dev)

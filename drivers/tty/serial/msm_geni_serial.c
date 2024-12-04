@@ -509,9 +509,16 @@ void geni_se_dump_dbg_regs(struct uart_port *uport)
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 	void __iomem *base = uport->membase;
 
+	if (!mutex_trylock(&port->suspend_resume_lock)) {
+		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+			     "%s: Device is being suspended, %s\n",
+			     __func__, current->comm);
+		return;
+	}
 	if (device_pending_suspend(uport)) {
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 			     "%s: Device is suspended, Return\n", __func__);
+		mutex_unlock(&port->suspend_resume_lock);
 		return;
 	}
 
@@ -552,6 +559,7 @@ void geni_se_dump_dbg_regs(struct uart_port *uport)
 		     "dma_txirq_en:0x%x, dma_rxirq_en:0x%x geni_m_irq_en:0x%x geni_s_irq_en:0x%x\n",
 		     geni_dma_tx_irq_en, geni_dma_rx_irq_en, geni_m_irq_en,
 		     geni_s_irq_en);
+	mutex_unlock(&port->suspend_resume_lock);
 }
 
 int msm_geni_serial_resources_on(struct msm_geni_serial_port *port)
@@ -1312,10 +1320,17 @@ static void msm_geni_serial_set_mctrl(struct uart_port *uport,
 	u32 uart_manual_rfr = 0;
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 
+	if (!mutex_trylock(&port->suspend_resume_lock)) {
+		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+			     "%s: Device is being suspended, %s\n",
+			     __func__, current->comm);
+		return;
+	}
 	if (device_pending_suspend(uport)) {
 		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
 			     "%s.Device is suspended, %s: mctrl=0x%x\n",
 			     __func__, current->comm, mctrl);
+		mutex_unlock(&port->suspend_resume_lock);
 		return;
 	}
 
@@ -1344,6 +1359,7 @@ static void msm_geni_serial_set_mctrl(struct uart_port *uport,
 		     "%s:%s, mctrl=0x%x, manual_rfr=0x%x, flow=%s\n",
 		     __func__, current->comm, mctrl, uart_manual_rfr,
 		     (port->manual_flow ? "OFF" : "ON"));
+	mutex_unlock(&port->suspend_resume_lock);
 }
 
 static const char *msm_geni_serial_get_type(struct uart_port *uport)
@@ -3799,8 +3815,10 @@ static void msm_geni_serial_flush(struct uart_port *uport)
 {
 	struct msm_geni_serial_port *port = GET_DEV_PORT(uport);
 
-	atomic_set(&port->flush_buffers, 1);
-	msm_geni_serial_stop_tx(uport);
+	if (port->ioctl_count) {
+		atomic_set(&port->flush_buffers, 1);
+		msm_geni_serial_stop_tx(uport);
+	}
 }
 
 static void msm_geni_serial_shutdown(struct uart_port *uport)

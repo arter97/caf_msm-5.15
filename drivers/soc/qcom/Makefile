@@ -81,3 +81,4 @@ obj-$(CONFIG_QCOM_CPU_VENDOR_HOOKS) += qcom_cpu_vendor_hooks.o
 obj-$(CONFIG_QCOM_RUN_QUEUE_STATS) += rq_stats.o
 obj-$(CONFIG_MSM_PERFORMANCE) += msm_performance.o
 obj-$(CONFIG_MSM_POWER_STATE) += power_state.o
+obj-$(CONFIG_QCOM_S2D_VENDOR_HOOK) += qcom_hib.o

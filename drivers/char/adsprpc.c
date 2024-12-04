@@ -841,7 +841,10 @@ static int fastrpc_mmap_find(struct fastrpc_file *fl, int fd,
 
 	if ((va + len) < va)
 		return -EFAULT;
-	if (mflags == ADSP_MMAP_DMA_BUFFER) {
+	if (mflags == ADSP_MMAP_HEAP_ADDR ||
+				 mflags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
+		return -EFAULT;
+	} else if (mflags == ADSP_MMAP_DMA_BUFFER) {
 		hlist_for_each_entry_safe(map, n, &fl->maps, hn) {
 			if (map->buf == buf) {
 				if (refs) {
@@ -1404,10 +1407,7 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 	else
 		fl->mem_snap.nonheap_bufs_size += map->size;
 	spin_unlock(&fl->hlock);
-<<<<<<< HEAD   (cf04f0 msm: adsprpc: Avoid taking reference for group_info)
-=======
 
->>>>>>> CHANGE (210e76 msm: adsprpc: use-after-free (UAF) in global maps)
 	if ((mflags != ADSP_MMAP_HEAP_ADDR) &&
 			(mflags != ADSP_MMAP_REMOTE_HEAP_ADDR))
 		fastrpc_mmap_add(map);
@@ -4283,7 +4283,40 @@ static bool fastrpc_session_exists(struct fastrpc_apps *me, uint32_t cid, int tg
 
 	return session_found;
 }
+int fastrpc_register_phys_range(struct fastrpc_file *fl)
+{
+	struct fastrpc_ioctl_invoke_async ioctl;
+	remote_arg_t ra[2] = {};
+	struct smq_phy_page page;
+	int num = 1;
+	int err = 0;
+	struct fastrpc_apps *me = &gfa;
+	struct {
+		int num;
+	} inargs;
 
+	inargs.num = sizeof(page);
+	ra[0].buf.pv = (void *)&inargs;
+	ra[0].buf.len = sizeof(inargs);
+	page.addr = me->range.addr;
+	page.size = me->range.size;
+	ra[1].buf.pv = (void *)&page;
+	ra[1].buf.len = num * sizeof(page);
+
+	ioctl.inv.handle = FASTRPC_STATIC_HANDLE_PROCESS_GROUP;
+	ioctl.inv.sc = REMOTE_SCALARS_MAKE(13, 2, 0);
+	ioctl.inv.pra = ra;
+	ioctl.fds = NULL;
+	ioctl.attrs = NULL;
+	ioctl.crc = NULL;
+	ioctl.perf_kernel = NULL;
+	ioctl.perf_dsp = NULL;
+	ioctl.job = NULL;
+	err = fastrpc_internal_invoke(fl,
+		FASTRPC_MODE_PARALLEL, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
+
+	return err;
+}
 int fastrpc_init_process(struct fastrpc_file *fl,
 				struct fastrpc_ioctl_init_attrs *uproc)
 {
@@ -4343,6 +4376,8 @@ int fastrpc_init_process(struct fastrpc_file *fl,
 	case FASTRPC_INIT_ATTACH:
 	case FASTRPC_INIT_ATTACH_SENSORS:
 		err = fastrpc_init_attach_process(fl, init);
+		if (!err && cid == MDSP_DOMAIN_ID && me->range.addr && me->range.size)
+			err = fastrpc_register_phys_range(fl);
 		break;
 	case FASTRPC_INIT_CREATE:
 		err = fastrpc_init_create_dynamic_process(fl, uproc);

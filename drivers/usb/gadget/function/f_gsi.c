@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -624,6 +624,14 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 				sizeof(ipa_in_channel_out_params));
 	memset(&ipa_out_channel_out_params, 0x0,
 				sizeof(ipa_out_channel_out_params));
+
+	ret = wait_for_completion_timeout(&wait_for_ipa_ready,
+				msecs_to_jiffies(GSI_IPA_READY_TIMEOUT));
+	if (!ret) {
+		log_event_err("%s: ipa ready timeout", __func__);
+		ret = -ETIMEDOUT;
+		goto end_xfer_ep_out;
+	}
 
 	log_event_dbg("%s: Calling xdci_connect", __func__);
 	ret = d_port->ipa_ops->xdci_connect(out_params, in_params,
@@ -2842,7 +2850,7 @@ EXPORT_SYMBOL(ipa_ready_callback);
 
 void ipa_exit_callback(void)
 {
-	memcpy(&ipa_ops, 0x0, sizeof(struct ipa_usb_ops));
+	memset(&ipa_ops, 0x0, sizeof(struct ipa_usb_ops));
 	reinit_completion(&wait_for_ipa_ready);
 
 }

@@ -404,15 +404,15 @@ EXPORT_SYMBOL_GPL(crypto_qti_debug);
 int crypto_qti_keyslot_program(const struct ice_mmio_data *mmio_data,
 			       const struct blk_crypto_key *key,
 			       unsigned int slot,
-			       u8 data_unit_mask, int capid)
+			       u8 data_unit_mask, int capid, int storage_type)
 {
 	int err = 0;
 
 	err = crypto_qti_program_key(mmio_data, key, slot,
-				data_unit_mask, capid);
+				data_unit_mask, capid, storage_type);
 	if (err) {
 		pr_err("%s: program key failed with error %d\n", __func__, err);
-		err = crypto_qti_invalidate_key(mmio_data, slot);
+		err = crypto_qti_invalidate_key(mmio_data, slot, storage_type);
 		if (err) {
 			pr_err("%s: invalidate key failed with error %d\n", __func__, err);
 			return err;
@@ -424,11 +424,11 @@ int crypto_qti_keyslot_program(const struct ice_mmio_data *mmio_data,
 EXPORT_SYMBOL_GPL(crypto_qti_keyslot_program);
 
 int crypto_qti_keyslot_evict(const struct ice_mmio_data *mmio_data,
-							 unsigned int slot)
+						unsigned int slot, int storage_type)
 {
 	int err = 0;
 
-	err = crypto_qti_invalidate_key(mmio_data, slot);
+	err = crypto_qti_invalidate_key(mmio_data, slot, storage_type);
 	if (err) {
 		pr_err("%s: invalidate key failed with error %d\n",
 			__func__, err);
