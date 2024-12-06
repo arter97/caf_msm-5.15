@@ -1929,8 +1929,13 @@ mwifiex_cfg80211_get_antenna(struct wiphy *wiphy, u32 *tx_ant, u32 *rx_ant)
 /* cfg80211 operation handler for stop ap.
  * Function stops BSS running at uAP interface.
  */
+#ifndef CFG80211_PROP_MULTI_LINK_SUPPORT
 static int mwifiex_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
 				    unsigned int link_id)
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+static int mwifiex_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev,
+				    struct cfg80211_ap_settings *settings)
+#endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
 
@@ -3174,13 +3179,11 @@ int mwifiex_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 		cfg80211_unregister_netdevice(wdev->netdev);
 
 	if (priv->dfs_cac_workqueue) {
-		flush_workqueue(priv->dfs_cac_workqueue);
 		destroy_workqueue(priv->dfs_cac_workqueue);
 		priv->dfs_cac_workqueue = NULL;
 	}
 
 	if (priv->dfs_chan_sw_workqueue) {
-		flush_workqueue(priv->dfs_chan_sw_workqueue);
 		destroy_workqueue(priv->dfs_chan_sw_workqueue);
 		priv->dfs_chan_sw_workqueue = NULL;
 	}
