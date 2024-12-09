@@ -258,11 +258,11 @@ static void dwxgmac2_dma_tx_mode(void __iomem *ioaddr, int mode,
 	writel(value, ioaddr +  XGMAC_MTL_TXQ_OPMODE(channel));
 }
 
-static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
-				    bool rx, bool tx)
+static void dwxgmac2_enable_dma_ts_irq(void __iomem *ioaddr, u32 chan,
+				       bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
-	u32 intr_en;
+	u32 intr_en = 0;
 
 	if (rx)
 		value |= XGMAC_DMA_INT_DEFAULT_RX;
@@ -278,11 +278,24 @@ static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 
-static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
-				     bool rx, bool tx)
+static void dwxgmac2_enable_dma_irq(void __iomem *ioaddr, u32 chan,
+				    bool rx, bool tx)
 {
 	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
-	u32 intr_en;
+
+	if (rx)
+		value |= XGMAC_DMA_INT_DEFAULT_RX;
+	if (tx)
+		value |= XGMAC_DMA_INT_DEFAULT_TX;
+
+	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+}
+
+static void dwxgmac2_disable_dma_ts_irq(void __iomem *ioaddr, u32 chan,
+					bool rx, bool tx)
+{
+	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+	u32 intr_en = 0;
 
 	if (rx)
 		value &= ~XGMAC_DMA_INT_DEFAULT_RX;
@@ -295,6 +308,19 @@ static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
 			writel(intr_en, ioaddr + XGMAC_INT_EN);
 		}
 	}
+	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+}
+
+static void dwxgmac2_disable_dma_irq(void __iomem *ioaddr, u32 chan,
+				     bool rx, bool tx)
+{
+	u32 value = readl(ioaddr + XGMAC_DMA_CH_INT_EN(chan));
+
+	if (rx)
+		value &= ~XGMAC_DMA_INT_DEFAULT_RX;
+	if (tx)
+		value &= ~XGMAC_DMA_INT_DEFAULT_TX;
+
 	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(chan));
 }
 
@@ -667,7 +693,9 @@ const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.dma_rx_mode = dwxgmac2_dma_rx_mode,
 	.dma_tx_mode = dwxgmac2_dma_tx_mode,
 	.enable_dma_irq = dwxgmac2_enable_dma_irq,
+	.enable_dma_ts_irq = dwxgmac2_enable_dma_ts_irq,
 	.disable_dma_irq = dwxgmac2_disable_dma_irq,
+	.disable_dma_ts_irq = dwxgmac2_disable_dma_ts_irq,
 	.start_tx = dwxgmac2_dma_start_tx,
 	.stop_tx = dwxgmac2_dma_stop_tx,
 	.start_rx = dwxgmac2_dma_start_rx,

@@ -27,7 +27,8 @@
 #define QMI_INSTANSE_ID			0
 #define PAYLOAD_VALID			1
 #define IPC_LOGPAGES			10
-#define FM_REPORT_TO_FM_REQ_MSG_V01_MAX_MSG_LEN	1070
+#define FM_REPORT_TO_FM_REQ_MSG_V01_MAX_MSG_LEN	1329
+#define QMI_FM_FAULT_STRING_LENGTH_MAX_V01 255
 
 #define AOP_FC_DBG(dev, msg, args...) do {		\
 		pr_debug("%s:" msg, __func__, args);	\
@@ -93,6 +94,28 @@ enum fm_fault_severity_type_enum_t_v01 {
 	FM_FAULT_SEVERITY_TYPE_ENUM_T_MAX_VAL_V01 = INT_MAX,
 };
 
+struct fm_string_t_v01 {
+	char qmi_string[QMI_FM_FAULT_STRING_LENGTH_MAX_V01 + 1];
+};
+
+static struct qmi_elem_info fm_string_t_v01_ei[] = {
+	{
+		.data_type      = QMI_STRING,
+		.elem_len       = QMI_FM_FAULT_STRING_LENGTH_MAX_V01 + 1,
+		.elem_size      = sizeof(char),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0,
+		.offset         = offsetof(struct
+					   fm_string_t_v01,
+					   qmi_string),
+	},
+	{
+		.data_type      = QMI_EOTI,
+		.array_type       = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
+	},
+};
+
 struct fm_report_to_fm_req_msg_v01 {
 	uint32_t	internal_fault_id;
 	enum	fm_subsystem_type_enum_t_v01 subsystem;
@@ -100,6 +123,8 @@ struct fm_report_to_fm_req_msg_v01 {
 	enum	fm_fault_severity_type_enum_t_v01 fault_severity;
 	uint8_t	is_active;
 	uint64_t	event_time;
+	u8 fault_source_valid;
+	struct fm_string_t_v01 fault_source;
 	uint8_t	payload_valid;
 	char	payload[1024];
 };
@@ -204,6 +229,27 @@ struct qmi_elem_info fm_report_to_fm_req_msg_v01_ei[] = {
 					   event_time),
 	},
 	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x10,
+		.offset         = offsetof(struct
+					   fm_report_to_fm_req_msg_v01,
+					   fault_source_valid),
+	},
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct fm_string_t_v01),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x10,
+		.offset         = offsetof(struct
+					   fm_report_to_fm_req_msg_v01,
+					   fault_source),
+		.ei_array      = fm_string_t_v01_ei,
+	},
+	{
 		.data_type	= QMI_OPT_FLAG,
 		.elem_len	= 1,
 		.elem_size	= sizeof(u8),
@@ -290,8 +336,8 @@ static int send_fault_details_qmi(struct qmi_aop_fc_instance *aop_fc)
 
 		if (aop_fc_resp.resp.result != QMI_RESULT_SUCCESS_V01) {
 			ret = aop_fc_resp.resp.result;
-			pr_err("Get AOP fault details NOT success for inst_id:0x%x ret:%d\n",
-					QMI_INSTANSE_ID, ret);
+			pr_err("Get AOP fault details NOT success for inst_id:0x%x res:%d error:%d\n",
+					QMI_INSTANSE_ID, ret, aop_fc_resp.resp.error);
 			goto  reg_exit;
 		}
 

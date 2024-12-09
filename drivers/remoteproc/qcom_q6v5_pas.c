@@ -747,6 +747,7 @@ static int adsp_start(struct rproc *rproc)
 
 	if (is_mss_ssr_hyp_assign_en(adsp))
 		add_mpss_extended_mem_ssr_dump(adsp);
+	adsp->q6v5.seq++;
 
 free_metadata:
 	qcom_mdt_free_metadata(adsp->dev, adsp->pas_id, adsp->mdata,
@@ -841,6 +842,7 @@ static int adsp_stop(struct rproc *rproc)
 			dev_err(adsp->dev, "failed to reclaim mpss extended dsm mem\n");
 	}
 
+	adsp->q6v5.seq++;
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_stop", "exit");
 
 	return ret;

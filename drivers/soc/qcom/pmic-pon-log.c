@@ -179,7 +179,7 @@ static const struct pmic_pon_trigger_mapping pmic_pon_pon_trigger_map[] = {
 	{0x0621, "RTC_ALARM"},
 	{0x0640, "SMPL"},
 	/* PMX75 USB PON trigger */
-	{0x18A0, "USB_CHARGER"},
+	{0x18A0, "CBLPWR"},
 	{0x18C0, "PMIC_SID1_GPIO5"},
 	/* PMI632 USB PON trigger */
 	{0x2763, "USB_CHARGER"},

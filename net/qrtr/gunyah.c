@@ -12,6 +12,7 @@
 #include <linux/types.h>
 #include <linux/skbuff.h>
 #include <linux/gunyah/gh_rm_drv.h>
+#include <linux/gunyah/gh_vm.h>
 #include <linux/gunyah/gh_dbl.h>
 #include <soc/qcom/secure_buffer.h>
 #include "qrtr.h"
@@ -80,7 +81,9 @@ struct qrtr_gunyah_dev {
 	bool master;
 	u32 peer_name;
 	struct notifier_block rm_nb;
+	struct notifier_block vm_nb;
 
+	bool vm_reset;
 	u32 label;
 	void *tx_dbl;
 	void *rx_dbl;
@@ -328,6 +331,11 @@ static int qrtr_gunyah_send(struct qrtr_endpoint *ep, struct sk_buff *skb)
 	left_size = skb->len;
 	offset = 0;
 	while (left_size > 0) {
+		if (qdev->vm_reset) {
+			rc = -ENOTCONN;
+			break;
+		}
+
 		tx_avail = gunyah_tx_avail(&qdev->tx_pipe);
 		if (!tx_avail) {
 			if (!gunyah_wait_for_tx_avail(qdev)) {
@@ -520,6 +528,22 @@ static void qrtr_gunyah_unshare_mem(struct qrtr_gunyah_dev *qdev,
 			src_vmlist, 2, dst_vmlist, dst_perms, 1);
 }
 
+static int qrtr_gunyah_vm_cb(struct notifier_block *nb, unsigned long cmd,
+			     void *data)
+{
+	struct qrtr_gunyah_dev *qdev;
+	gh_vmid_t vmid;
+	gh_vmid_t cb_vmid = *(gh_vmid_t *)data;
+
+	qdev = container_of(nb, struct qrtr_gunyah_dev, vm_nb);
+
+	gh_rm_get_vmid(qdev->peer_name, &vmid);
+	if (cmd == GH_VM_EARLY_POWEROFF && vmid == cb_vmid)
+		qdev->vm_reset = true;
+
+	return NOTIFY_DONE;
+}
+
 static int qrtr_gunyah_rm_cb(struct notifier_block *nb, unsigned long cmd,
 			     void *data)
 {
@@ -555,6 +579,7 @@ static int qrtr_gunyah_rm_cb(struct notifier_block *nb, unsigned long cmd,
 			pr_err("%s: failed to share memory\n", __func__);
 			return NOTIFY_DONE;
 		}
+		qdev->vm_reset = false;
 	}
 	if (vm_status_payload->vm_status == GH_RM_VM_STATUS_RESET) {
 		qrtr_endpoint_unregister(&qdev->ep);
@@ -751,6 +776,9 @@ static int qrtr_gunyah_probe(struct platform_device *pdev)
 		qdev->rm_nb.notifier_call = qrtr_gunyah_rm_cb;
 		qdev->rm_nb.priority = INT_MAX;
 		gh_rm_register_notifier(&qdev->rm_nb);
+
+		qdev->vm_nb.notifier_call = qrtr_gunyah_vm_cb;
+		gh_register_vm_notifier(&qdev->vm_nb);
 	}
 
 	dbl_label = qdev->label;

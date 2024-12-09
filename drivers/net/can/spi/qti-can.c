@@ -31,9 +31,9 @@
 #define RX_FD_BUFFER_SIZE		82
 #define QTI_CAN_FW_QUERY_RETRY_COUNT	3
 #define QTI_CAN_TIME_SYNC_RETRY_COUNT   3
-#define DRIVER_MODE_RAW_FRAMES		0
-#define DRIVER_MODE_PROPERTIES		1
-#define DRIVER_MODE_AMB			2
+#define DRIVER_MODE_RAW_FRAMES		0uL
+#define DRIVER_MODE_PROPERTIES		1uL
+#define DRIVER_MODE_AMB			2uL
 #define QUERY_FIRMWARE_TIMEOUT_MS	150
 #define QUERY_TIME_REQUEST_TIMEOUT_MS    50
 #define EUPGRADE			140
@@ -50,7 +50,7 @@
 #define CALYPSO_MAX_CAN_CLK_FREQ	40000000 /* 40MHz */
 #define TIME_REQUEST_PERIOD         (60000) /* 60 Seconds */
 
-#define PTP_REG_BASE				0x23047008
+#define PTP_REG_BASE			0x23047008
 
 #define MAC_STNSR_TSSS_LPOS 0
 #define MAC_STNSR_TSSS_HPOS 30
@@ -77,13 +77,13 @@ struct qti_can {
 	struct completion response_completion;
 	int wait_cmd;
 	int cmd_result;
-	int driver_mode;
+	u64 driver_mode;
 	int clk_freq_mhz;
 	int max_can_channels;
 	int bits_per_word;
 	int reset_delay_msec;
 	int reset;
-	int ts_conf;
+	u32 ts_conf;
 	bool support_can_fd;
 	bool use_qtimer;
 	bool can_fw_cmd_timeout_req;
@@ -187,6 +187,8 @@ struct can_filter_req {
 	u8 can_if;
 	u32 mid;
 	u32 mask;
+	u8 type;
+	u32 reserved;
 } __packed;
 
 struct can_add_filter_resp {
@@ -284,6 +286,7 @@ struct qti_can_buffer {
 	u8 can_if;
 	u32 mid;
 	u32 mask;
+	u32 reserved;
 } __packed;
 
 struct can_fw_br_resp {
@@ -323,6 +326,7 @@ u64 qti_can_get_ptp_time(struct qti_can *priv_data)
 	}
 	ret = getValue(gptp_time_ns, MAC_STNSR_TSSS_LPOS, MAC_STNSR_TSSS_HPOS);
 	ret = ret + (gptp_time_sec_cur * 1000000000ull);
+	dev_dbg(&priv_data->spidev->dev, "%s: %llu\r\n", __func__, ret);
 
 	return ret;
 }
@@ -448,13 +452,13 @@ static void qti_canfd_receive_frame(struct qti_can *priv_data,
 
 			if (priv_data->ts_conf == 1) {
 				if (nsec > system_ts_ns) {
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds sys-time %lld\r\n");
 					priv_data->time_diff = ktime_to_ms(system_ts_ns)
 						- (le64_to_cpu(frame->ts));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds system time: %lld\n", mstime);
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds MCU time: %lld\n",
 						le64_to_cpu(frame->ts));
 					ts_offset_corrected = le64_to_cpu(frame->ts)
@@ -565,14 +569,14 @@ static void qti_can_receive_frame(struct qti_can *priv_data,
 
 			if (priv_data->ts_conf == 1) {
 				if (nsec > system_ts_ns) {
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds sys-time %lld\r\n");
 					priv_data->time_diff = ktime_to_ms(system_ts_ns)
 						- (le64_to_cpu(frame->ts));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds system time: %lld\n",
 						ktime_to_ms(system_ts_ns));
-					dev_err(&priv_data->spidev->dev,
+					dev_dbg(&priv_data->spidev->dev,
 						"CAN time exceeds MCU time: %lld\n",
 						le64_to_cpu(frame->ts));
 					ts_offset_corrected = le64_to_cpu(frame->ts)
@@ -1037,6 +1041,8 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	if (!priv_data->wake_irq_en)
 		ret = spi_sync(spi, msg);
 	dev_dbg(&priv_data->spidev->dev, "spi_sync ret %d\n", ret);
+
+	dev_dbg(&priv_data->spidev->dev, "Rx Pkt\r\n");
 	for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
 		idx = 10 * rx_buf_idx;
 		dev_dbg(&priv_data->spidev->dev, "%X %X %X %X %X %X %X %X %X %X\n",
@@ -1049,6 +1055,20 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
 		priv_data->rx_buf[60], priv_data->rx_buf[61],
 		priv_data->rx_buf[62], priv_data->rx_buf[63]);
+
+	dev_dbg(&priv_data->spidev->dev, "Tx Pkt\r\n");
+	for (rx_buf_idx = 0; rx_buf_idx < 6; rx_buf_idx++) {
+		idx = 10 * rx_buf_idx;
+		dev_dbg(&priv_data->spidev->dev, ">%X %X %X %X %X %X %X %X %X %X\n",
+			priv_data->tx_buf[idx + 0], priv_data->tx_buf[idx + 1],
+			priv_data->tx_buf[idx + 2], priv_data->tx_buf[idx + 3],
+			priv_data->tx_buf[idx + 4], priv_data->tx_buf[idx + 5],
+			priv_data->tx_buf[idx + 6], priv_data->tx_buf[idx + 7],
+			priv_data->tx_buf[idx + 8], priv_data->tx_buf[idx + 9]);
+	}
+	dev_dbg(&priv_data->spidev->dev, "%X %X %X %X\n",
+		priv_data->tx_buf[60], priv_data->tx_buf[61],
+		priv_data->tx_buf[62], priv_data->tx_buf[63]);
 
 	if (ret == 0)
 		qti_can_process_rx(priv_data, priv_data->rx_buf);
@@ -1220,7 +1240,7 @@ static int qti_can_write(struct qti_can *priv_data,
 		for (i = 0; i < cf->len; i++)
 			req->data[i] = cf->data[i];
 	} else {
-		dev_err(&priv_data->spidev->dev, "%s: wrong driver mode %i\n",
+		dev_err(&priv_data->spidev->dev, "%s: wrong driver mode %llu\n",
 			__func__, priv_data->driver_mode);
 	}
 
@@ -1318,7 +1338,7 @@ static int qti_can_send_release_can_buffer_cmd(struct net_device *netdev)
 	struct spi_mosi *req;
 	struct qti_can *priv_data;
 	struct qti_can_netdev_privdata *netdev_priv_data;
-	int *mode;
+	u64 *mode;
 
 	netdev_priv_data = netdev_priv(netdev);
 	priv_data = netdev_priv_data->qti_can;
@@ -1333,7 +1353,7 @@ static int qti_can_send_release_can_buffer_cmd(struct net_device *netdev)
 	req->cmd = CMD_CAN_RELEASE_BUFFER;
 	req->len = sizeof(int);
 	req->seq = atomic_inc_return(&priv_data->msg_seq);
-	mode = (int *)req->data;
+	mode = (u64 *)req->data;
 	*mode = priv_data->driver_mode;
 
 	ret = qti_can_do_spi_transaction(priv_data);
@@ -1342,7 +1362,7 @@ static int qti_can_send_release_can_buffer_cmd(struct net_device *netdev)
 }
 
 static int qti_can_data_buffering(struct net_device *netdev,
-				  struct ifreq *ifr, int cmd)
+				  struct ifreq *ifr, int cmd,  void __user *data)
 {
 	char *tx_buf, *rx_buf;
 	int ret;
@@ -1375,7 +1395,7 @@ static int qti_can_data_buffering(struct net_device *netdev,
 		return -ENOMEM;
 	}
 
-	if (copy_from_user(add_request, ifr->ifr_data,
+	if (copy_from_user(add_request, data,
 			   sizeof(struct qti_can_buffer))) {
 		mutex_unlock(&priv_data->spi_lock);
 		kfree(add_request);
@@ -1459,7 +1479,7 @@ static int qti_can_remove_all_buffering(struct net_device *netdev)
 }
 
 static int qti_can_frame_filter(struct net_device *netdev,
-				struct ifreq *ifr, int cmd)
+				struct ifreq *ifr, int cmd, void __user *data)
 {
 	char *tx_buf, *rx_buf;
 	int ret;
@@ -1493,7 +1513,7 @@ static int qti_can_frame_filter(struct net_device *netdev,
 		return -ENOMEM;
 	}
 
-	if (copy_from_user(filter_request, ifr->ifr_data,
+	if (copy_from_user(filter_request, data,
 			   sizeof(struct can_filter_req))) {
 		mutex_unlock(&priv_data->spi_lock);
 		kfree(filter_request);
@@ -1606,7 +1626,7 @@ static int qti_can_end_fwupgrade_ioctl(struct net_device *netdev,
 }
 
 static int qti_can_do_blocking_ioctl(struct net_device *netdev,
-				     struct ifreq *ifr, int cmd)
+				     struct ifreq *ifr, int cmd, void __user *data)
 {
 	int spi_cmd, ret;
 
@@ -1615,7 +1635,7 @@ static int qti_can_do_blocking_ioctl(struct net_device *netdev,
 	struct qti_can_ioctl_req *ioctl_data = NULL;
 	struct spi_device *spi;
 	int len = 0;
-	u8 *data = NULL;
+	u8 *buff = NULL;
 
 	netdev_priv_data = netdev_priv(netdev);
 	priv_data = netdev_priv_data->qti_can;
@@ -1641,7 +1661,7 @@ static int qti_can_do_blocking_ioctl(struct net_device *netdev,
 			return -ENOMEM;
 		}
 
-		if (copy_from_user(ioctl_data, ifr->ifr_data,
+		if (copy_from_user(ioctl_data, data,
 				   sizeof(struct qti_can_ioctl_req))) {
 			mutex_unlock(&priv_data->spi_lock);
 			kfree(ioctl_data);
@@ -1660,7 +1680,7 @@ static int qti_can_do_blocking_ioctl(struct net_device *netdev,
 		 */
 		if ((void *)ioctl_data > (void *)0x100) {
 			len = ioctl_data->len;
-			data = ioctl_data->data;
+			buff = ioctl_data->data;
 		}
 	}
 	dev_dbg(&priv_data->spidev->dev, "%s len %d\n", __func__, len);
@@ -1675,7 +1695,7 @@ static int qti_can_do_blocking_ioctl(struct net_device *netdev,
 	priv_data->cmd_result = -1;
 	reinit_completion(&priv_data->response_completion);
 
-	ret = qti_can_send_spi_locked(priv_data, spi_cmd, len, data);
+	ret = qti_can_send_spi_locked(priv_data, spi_cmd, len, buff);
 
 	kfree(ioctl_data);
 	mutex_unlock(&priv_data->spi_lock);
@@ -1696,10 +1716,10 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 {
 	struct qti_can *priv_data;
 	struct qti_can_netdev_privdata *netdev_priv_data;
-	int *mode;
+	u64 mode;
 	int ret = -EINVAL;
 	struct spi_device *spi;
-	int *ts_conf;
+	u32 ts_conf;
 
 	netdev_priv_data = netdev_priv(netdev);
 	priv_data = netdev_priv_data->qti_can;
@@ -1714,30 +1734,25 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 		/* Regular NULL check will fail here as ioctl_data is at
 		 * some offset
 		 */
-		if (ifr->ifr_data > (void __user *)IFR_DATA_OFFSET) {
-			mutex_lock(&priv_data->spi_lock);
-			mode = kzalloc(sizeof(*mode), GFP_KERNEL);
-			if (!mode) {
-				mutex_unlock(&priv_data->spi_lock);
-				return -ENOMEM;
-			}
-			if (copy_from_user(mode, ifr->ifr_data, sizeof(int))) {
-				mutex_unlock(&priv_data->spi_lock);
-				kfree(mode);
-				return -EFAULT;
-			}
-			priv_data->driver_mode = *mode;
-			dev_err(&priv_data->spidev->dev, "qti_can_driver_mode %d\n",
-				priv_data->driver_mode);
-			kfree(mode);
+		if (!data)
+			return -EINVAL;
+		mutex_lock(&priv_data->spi_lock);
+		if (copy_from_user(&mode, data, sizeof(u64))) {
 			mutex_unlock(&priv_data->spi_lock);
+			return -EFAULT;
 		}
-		qti_can_send_release_can_buffer_cmd(netdev);
+		priv_data->driver_mode = mode;
+		dev_err(&priv_data->spidev->dev, "qti_can_driver_mode %llu\n",
+			priv_data->driver_mode);
+		mutex_unlock(&priv_data->spi_lock);
+		ret = qti_can_send_release_can_buffer_cmd(netdev);
+		dev_dbg(&priv_data->spidev->dev, "qti_can_send_release_can_buffer_cmd %d\n",
+			ret);
 		ret = 0;
 		break;
 	case IOCTL_ENABLE_BUFFERING:
 	case IOCTL_DISABLE_BUFFERING:
-		ret = qti_can_data_buffering(netdev, ifr, cmd);
+		ret = qti_can_data_buffering(netdev, ifr, cmd, data);
 		dev_dbg(&priv_data->spidev->dev, "qti_can_data_buffering ret %x\n", ret);
 		break;
 	case IOCTL_DISABLE_ALL_BUFFERING:
@@ -1746,7 +1761,7 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 		break;
 	case IOCTL_ADD_FRAME_FILTER:
 	case IOCTL_REMOVE_FRAME_FILTER:
-		ret = qti_can_frame_filter(netdev, ifr, cmd);
+		ret = qti_can_frame_filter(netdev, ifr, cmd, data);
 		dev_dbg(&priv_data->spidev->dev, "qti_can_frame_filter ret %x\n", ret);
 		break;
 	case IOCTL_END_FIRMWARE_UPGRADE:
@@ -1759,29 +1774,23 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 	case IOCTL_BOOT_ROM_UPGRADE_DATA:
 	case IOCTL_END_BOOT_ROM_UPGRADE:
 	case IOCTL_END_FW_UPDATE_FILE:
-		ret = qti_can_do_blocking_ioctl(netdev, ifr, cmd);
+		ret = qti_can_do_blocking_ioctl(netdev, ifr, cmd, data);
 		break;
 	case IOCTL_TIMESTAMP_CONF:
 		if (!ifr)
 			return -EINVAL;
-		if (ifr->ifr_data > (void __user *)IFR_DATA_OFFSET) {
-			mutex_lock(&priv_data->spi_lock);
-			ts_conf = kzalloc(sizeof(*ts_conf), GFP_KERNEL);
-			if (!ts_conf) {
-				mutex_unlock(&priv_data->spi_lock);
-				return -ENOMEM;
-			}
-			if (copy_from_user(ts_conf, ifr->ifr_data, sizeof(int))) {
-				mutex_unlock(&priv_data->spi_lock);
-				kfree(ts_conf);
-				return -EFAULT;
-			}
-			priv_data->ts_conf = *ts_conf;
-			dev_info(&priv_data->spidev->dev, "timestamp Configuration %d\n",
-				 priv_data->ts_conf);
-			kfree(ts_conf);
+		if (!data)
+			return -EINVAL;
+
+		mutex_lock(&priv_data->spi_lock);
+		if (copy_from_user(&ts_conf, data, sizeof(u32))) {
 			mutex_unlock(&priv_data->spi_lock);
+			return -EFAULT;
 		}
+		priv_data->ts_conf = ts_conf;
+		dev_info(&priv_data->spidev->dev, "timestamp Configuration %d\n",
+			 priv_data->ts_conf);
+		mutex_unlock(&priv_data->spi_lock);
 		break;
 	}
 	dev_dbg(&priv_data->spidev->dev, "%s ret %d\n", __func__, ret);
