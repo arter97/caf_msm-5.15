@@ -4827,6 +4827,25 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	} else {
 		if (mdwc->vbus_active == event)
 			return NOTIFY_DONE;
+		else if (atomic_read(&mdwc->pm_suspended)) {
+			/*
+			 * If APPS is suspending, and we receive a cable connection change
+			 * notification before the APPS suspend routine completes, wakeup
+			 * the system inorder to trigger pm_resume.
+			 */
+			dev_info(mdwc->dev, "PM suspended, Abort APPS suspend\n");
+			pm_wakeup_dev_event(mdwc->dev, 0, true);
+		} else {
+			/*
+			 * When APPS is suspending, and we receive a cable connection change
+			 * notification before dwc3-msm pm_suspend gets called, then keep the
+			 * system awake inorder to process the event.
+			 */
+			dev_dbg(mdwc->dev, "Keep APPS awake till the vbus event is processed\n");
+			pm_stay_awake(mdwc->dev);
+			pm_runtime_mark_last_busy(mdwc->dev);
+		}
+
 		mdwc->vbus_active = event;
 	}
 
