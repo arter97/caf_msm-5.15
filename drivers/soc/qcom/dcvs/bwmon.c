@@ -24,7 +24,6 @@
 #include <linux/suspend.h>
 #include <soc/qcom/dcvs.h>
 #include <trace/hooks/sched.h>
-#include <linux/workqueue.h>
 #include "bwmon.h"
 #include "trace-dcvs.h"
 
@@ -1735,7 +1734,6 @@ static __always_inline int __start_bw_hwmon(struct bw_hwmon *hw,
 	struct bwmon *m = to_bwmon(hw);
 	u32 limit, zone_actions;
 	int ret;
-	int try = 0;
 	irq_handler_t handler;
 
 	switch (type) {
@@ -1753,16 +1751,10 @@ static __always_inline int __start_bw_hwmon(struct bw_hwmon *hw,
 		break;
 	}
 
-retry:
 	ret = request_threaded_irq(m->irq, handler, bwmon_intr_thread,
 				  IRQF_ONESHOT | IRQF_SHARED,
 				  dev_name(m->dev), m);
 	if (ret < 0) {
-		try++;
-		if (try < 5) {
-			msleep(10);
-			goto retry;
-		}
 		dev_err(m->dev, "Unable to register interrupt handler! (%d)\n",
 			ret);
 		return ret;
@@ -2113,7 +2105,7 @@ static int qcom_bwmon_driver_probe(struct platform_device *pdev)
 	ret = start_monitor(&m->hw);
 	if (ret < 0) {
 		dev_err(dev, "Error starting BWMON monitor: %d\n", ret);
-		goto err_start;
+		return ret;
 	}
 
 	dcvs_kobj = qcom_dcvs_kobject_get(dcvs_hw);
@@ -2134,16 +2126,6 @@ static int qcom_bwmon_driver_probe(struct platform_device *pdev)
 
 err_sysfs:
 	stop_monitor(&m->hw);
-
-err_start:
-	unregister_trace_android_vh_jiffies_update(bwmon_jiffies_update_cb,
-								NULL);
-	unregister_pm_notifier(&m->hw.pm_nb);
-	cancel_work(&m->hw.work);
-	destroy_workqueue(bwmon_wq);
-	bwmon_wq = NULL;
-	qcom_dcvs_unregister_voter(dev_name(dev), dcvs_hw, m->hw.dcvs_path);
-	list_del(&m->hw.node->list);
 	return ret;
 }
 
