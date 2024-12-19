@@ -13,10 +13,14 @@
  */
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/nsproxy.h>
 #include <linux/proc_fs.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <asm/atomic.h>
+#include <net/net_namespace.h>
+#include <net/netns/generic.h>
+#include <net/dst.h>
 #include <net/netlink.h>
 
 #include <linux/netfilter/x_tables.h>
@@ -63,13 +67,22 @@ module_param_named(event_num, qlog_nl_event, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(event_num,
 		 "Event number for NETLINK_NFLOG message. 0 disables log."
 		 "111 is what ipt_ULOG uses.");
-static struct sock *nflognl;
 #endif
 
-static LIST_HEAD(counter_list);
+struct quota2_net {
+	struct sock *nflognl;
+	struct list_head counter_list;
+	struct proc_dir_entry *proc_xt_quota;
+};
+
+static int quota2_net_id;
+static inline struct quota2_net *quota2_pernet(struct net *net)
+{
+	return net_generic(net, quota2_net_id);
+}
+
 static DEFINE_SPINLOCK(counter_list_lock);
 
-static struct proc_dir_entry *proc_xt_quota;
 static unsigned int quota_list_perms = S_IRUGO | S_IWUSR;
 static kuid_t quota_list_uid = KUIDT_INIT(0);
 static kgid_t quota_list_gid = KGIDT_INIT(0);
@@ -80,12 +93,14 @@ static void quota2_log(unsigned int hooknum,
 		       const struct sk_buff *skb,
 		       const struct net_device *in,
 		       const struct net_device *out,
+		       struct net *net,
 		       const char *prefix)
 {
 	ulog_packet_msg_t *pm;
 	struct sk_buff *log_skb;
 	size_t size;
 	struct nlmsghdr *nlh;
+	struct quota2_net *quota2_net = quota2_pernet(net);
 
 	if (!qlog_nl_event)
 		return;
@@ -119,13 +134,14 @@ static void quota2_log(unsigned int hooknum,
 
 	NETLINK_CB(log_skb).dst_group = 1;
 	pr_debug("throwing 1 packets to netlink group 1\n");
-	netlink_broadcast(nflognl, log_skb, 0, 1, GFP_ATOMIC);
+	netlink_broadcast(quota2_net->nflognl, log_skb, 0, 1, GFP_ATOMIC);
 }
 #else
 static void quota2_log(unsigned int hooknum,
 		       const struct sk_buff *skb,
 		       const struct net_device *in,
 		       const struct net_device *out,
+		       struct net *net,
 		       const char *prefix)
 {
 }
@@ -197,11 +213,12 @@ q2_new_counter(const struct xt_quota_mtinfo2 *q, bool anon)
  * @name:	name of counter
  */
 static struct xt_quota_counter *
-q2_get_counter(const struct xt_quota_mtinfo2 *q)
+q2_get_counter(struct net *net, const struct xt_quota_mtinfo2 *q)
 {
 	struct proc_dir_entry *p;
 	struct xt_quota_counter *e = NULL;
 	struct xt_quota_counter *new_e;
+	struct quota2_net *quota2_net = quota2_pernet(net);
 
 	if (*q->name == '\0')
 		return q2_new_counter(q, true);
@@ -212,7 +229,7 @@ q2_get_counter(const struct xt_quota_mtinfo2 *q)
 		goto out;
 
 	spin_lock_bh(&counter_list_lock);
-	list_for_each_entry(e, &counter_list, list)
+	list_for_each_entry(e, &quota2_net->counter_list, list)
 		if (strcmp(e->name, q->name) == 0) {
 			atomic_inc(&e->ref);
 			spin_unlock_bh(&counter_list_lock);
@@ -222,7 +239,7 @@ q2_get_counter(const struct xt_quota_mtinfo2 *q)
 		}
 	e = new_e;
 	pr_debug("xt_quota2: new_counter name=%s", e->name);
-	list_add_tail(&e->list, &counter_list);
+	list_add_tail(&e->list, &quota2_net->counter_list);
 	/* The entry having a refcount of 1 is not directly destructible.
 	 * This func has not yet returned the new entry, thus iptables
 	 * has not references for destroying this entry.
@@ -234,7 +251,8 @@ q2_get_counter(const struct xt_quota_mtinfo2 *q)
 
 	/* create_proc_entry() is not spin_lock happy */
 	p = e->procfs_entry = proc_create_data(e->name, quota_list_perms,
-	                      proc_xt_quota, &q2_counter_fops, e);
+			quota2_net->proc_xt_quota,
+			&q2_counter_fops, e);
 
 	if (IS_ERR_OR_NULL(p)) {
 		spin_lock_bh(&counter_list_lock);
@@ -265,7 +283,7 @@ static int quota_mt2_check(const struct xt_mtchk_param *par)
 		return -EINVAL;
 	}
 
-	q->master = q2_get_counter(q);
+	q->master = q2_get_counter(par->net, q);
 	if (q->master == NULL) {
 		printk(KERN_ERR "xt_quota.3: memory alloc failure\n");
 		return -ENOMEM;
@@ -278,6 +296,7 @@ static void quota_mt2_destroy(const struct xt_mtdtor_param *par)
 {
 	struct xt_quota_mtinfo2 *q = par->matchinfo;
 	struct xt_quota_counter *e = q->master;
+	struct quota2_net *quota2_net = quota2_pernet(par->net);
 
 	if (*q->name == '\0') {
 		kfree(e);
@@ -292,7 +311,7 @@ static void quota_mt2_destroy(const struct xt_mtdtor_param *par)
 
 	list_del(&e->list);
 	spin_unlock_bh(&counter_list_lock);
-	remove_proc_entry(e->name, proc_xt_quota);
+	remove_proc_entry(e->name, quota2_net->proc_xt_quota);
 	kfree(e);
 }
 
@@ -325,6 +344,7 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 				   skb,
 				   xt_in(par),
 				   xt_out(par),
+				   xt_net(par),
 				   q->name);
 			/* we do not allow even small packets from now on */
 			e->quota = 0;
@@ -359,32 +379,73 @@ static struct xt_match quota_mt2_reg[] __read_mostly = {
 	},
 };
 
-static int __init quota_mt2_init(void)
+static int __net_init quota2_net_init(struct net *net)
 {
-	int ret;
+	struct quota2_net *quota2_net = quota2_pernet(net);
+
+	INIT_LIST_HEAD(&quota2_net->counter_list);
 	pr_debug("xt_quota2: init()");
 
 #ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
-	nflognl = netlink_kernel_create(&init_net, NETLINK_NFLOG, NULL);
-	if (!nflognl)
+	quota2_net->nflognl = netlink_kernel_create(net, NETLINK_NFLOG, NULL);
+	if (!quota2_net->nflognl)
 		return -ENOMEM;
 #endif
 
-	proc_xt_quota = proc_mkdir("xt_quota", init_net.proc_net);
-	if (proc_xt_quota == NULL)
+	quota2_net->proc_xt_quota = proc_mkdir("xt_quota", net->proc_net);
+	if (quota2_net->proc_xt_quota == NULL)
 		return -EACCES;
+
+	return 0;
+}
+
+static void __net_exit quota2_net_exit(struct net *net)
+{
+	struct quota2_net *quota2_net = quota2_pernet(net);
+	struct xt_quota_counter *e = NULL;
+	struct list_head *pos, *q;
+
+#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
+	netlink_kernel_release(quota2_net->nflognl);
+#endif
+	remove_proc_entry("xt_quota", net->proc_net);
+
+	/* destroy counter_list while freeing it's content */
+	spin_lock_bh(&counter_list_lock);
+	list_for_each_safe(pos, q, &quota2_net->counter_list) {
+		e = list_entry(pos, struct xt_quota_counter, list);
+		list_del(pos);
+		kfree(e);
+	}
+	spin_unlock_bh(&counter_list_lock);
+}
+
+static struct pernet_operations quota2_net_ops = {
+	.init   = quota2_net_init,
+	.exit   = quota2_net_exit,
+	.id     = &quota2_net_id,
+	.size   = sizeof(struct quota2_net),
+};
+
+static int __init quota_mt2_init(void)
+{
+	int ret;
+
+	ret = register_pernet_subsys(&quota2_net_ops);
+	if (ret < 0)
+		return ret;
 
 	ret = xt_register_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
 	if (ret < 0)
-		remove_proc_entry("xt_quota", init_net.proc_net);
-	pr_debug("xt_quota2: init() %d", ret);
+		unregister_pernet_subsys(&quota2_net_ops);
+
 	return ret;
 }
 
 static void __exit quota_mt2_exit(void)
 {
 	xt_unregister_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
-	remove_proc_entry("xt_quota", init_net.proc_net);
+	unregister_pernet_subsys(&quota2_net_ops);
 }
 
 module_init(quota_mt2_init);
