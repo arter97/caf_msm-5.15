@@ -27,6 +27,9 @@ struct qcom_reboot_reason {
 	struct kobject kobj;
 	unsigned int last_reset_reason;
 #endif
+#ifdef CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
+	struct kobject bootparam_kobj;
+#endif
 };
 
 struct poweroff_reason {
@@ -41,9 +44,13 @@ static struct poweroff_reason reasons[] = {
 	{ "dm-verity device corrupted",	0x04 },
 	{ "dm-verity enforcing",	0x05 },
 	{ "keys clear",			0x06 },
-#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+#if defined(CONFIG_POWER_RESET_QCOM_RESET_REASON) || \
+	defined(CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM)
 	{ "panic",			0x07 },
 	{ "watchdog bark",		0x08 },
+#endif
+#ifdef CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
+	{ "admin-trigger",		0x09 },
 #endif
 #ifdef CONFIG_FIRMWARE_FAIL_SAFE
 	{ "firmware auth failed",       0x0E },
@@ -51,7 +58,8 @@ static struct poweroff_reason reasons[] = {
 	{}
 };
 
-#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+#if defined(CONFIG_POWER_RESET_QCOM_RESET_REASON) || \
+	defined(CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM)
 /* interface for exporting attributes */
 struct reset_attribute {
 	struct attribute        attr;
@@ -80,7 +88,9 @@ static const struct sysfs_ops reset_sysfs_ops = {
 static struct kobj_type qcom_reset_kobj_type = {
 	.sysfs_ops      = &reset_sysfs_ops,
 };
+#endif
 
+#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
 static ssize_t reset_reason_show(struct kobject *kobj,
 				struct attribute *this,
 				char *buf)
@@ -171,6 +181,60 @@ static void store_reset_reason(char *cmd, struct nvmem_cell *nvmem_cell)
 EXPORT_SYMBOL_GPL(store_reset_reason);
 #endif
 
+#ifdef CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
+static unsigned int reason;
+module_param(reason, uint, 0444);
+
+static ssize_t bootparam_show(struct kobject *bootparam_kobj,
+				struct attribute *this,
+				char *buf)
+{
+	const char *reset_reason = "normal";
+	struct poweroff_reason *iter;
+
+	for (iter = reasons; iter->pon_reason; iter++) {
+		if (iter->pon_reason == reason) {
+			reset_reason = iter->cmd;
+			break;
+		}
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n", reset_reason);
+}
+static struct reset_attribute attr_bootparam = __ATTR_RO(bootparam);
+
+static struct attribute *bootparam_attrs[] = {
+	&attr_bootparam.attr,
+	NULL
+};
+static struct attribute_group bootparam_attr_group = {
+	.attrs = bootparam_attrs,
+};
+static int bootparam_sysfs(struct qcom_reboot_reason *reboot)
+{
+	int ret;
+
+	ret = kobject_init_and_add(&reboot->bootparam_kobj, &qcom_reset_kobj_type,
+			kernel_kobj, "reboot_reason");
+	if (ret) {
+		pr_err("%s: Error in creation kobject_add\n", __func__);
+		kobject_put(&reboot->bootparam_kobj);
+		return ret;
+	}
+
+	attr_bootparam.attr.name = "reason";
+
+	ret = sysfs_create_group(&reboot->bootparam_kobj, &bootparam_attr_group);
+	if (ret) {
+		pr_err("%s: Error in creation sysfs_create_group\n", __func__);
+		kobject_del(&reboot->bootparam_kobj);
+		return ret;
+	}
+
+	return 0;
+}
+#endif
+
 static int qcom_reboot_reason_reboot(struct notifier_block *this,
 				     unsigned long event, void *ptr)
 {
@@ -203,6 +267,9 @@ static int qcom_reboot_reason_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
 	reset_reason_sysfs(reboot);
+#endif
+#ifdef CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
+	bootparam_sysfs(reboot);
 #endif
 	reboot->reboot_nb.notifier_call = qcom_reboot_reason_reboot;
 	reboot->reboot_nb.priority = 255;
