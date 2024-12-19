@@ -4772,7 +4772,7 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
 
-	if (mdwc->dis_role_switch)
+	if (!dwc || mdwc->dis_role_switch)
 		return NOTIFY_DONE;
 
 	dbg_event(0xFF, "extcon idx", enb->idx);
