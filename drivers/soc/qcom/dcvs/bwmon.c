@@ -2139,7 +2139,7 @@ err_start:
 	unregister_trace_android_vh_jiffies_update(bwmon_jiffies_update_cb,
 								NULL);
 	unregister_pm_notifier(&m->hw.pm_nb);
-	cancel_work(&m->hw.work);
+	cancel_work_sync(&m->hw.work);
 	destroy_workqueue(bwmon_wq);
 	bwmon_wq = NULL;
 	qcom_dcvs_unregister_voter(dev_name(dev), dcvs_hw, m->hw.dcvs_path);
