@@ -78,6 +78,7 @@
 #include <trace/hooks/user.h>
 #include <trace/hooks/delayacct.h>
 #include <trace/hooks/bl_hib.h>
+#include <trace/hooks/cdc_ether.h>
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
  * associated with them) to allow external modules to probe them.
@@ -400,3 +401,4 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_init_aes_encrypt);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_skip_swap_map_write);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_post_image_save);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_should_end_madvise);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_is_rndis_enabled);
