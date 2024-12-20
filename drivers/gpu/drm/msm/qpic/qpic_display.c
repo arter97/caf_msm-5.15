@@ -1145,7 +1145,7 @@ int qpic_display_io_init(struct platform_device *pdev,
 		qpic_panel_io->te_gpio = te_gpio;
 
 	if (!gpio_is_valid(bl_gpio))
-		DRM_WARN("%s: te gpio not specified\n", __func__);
+		DRM_WARN("%s: bl gpio not specified\n", __func__);
 	else
 		qpic_panel_io->bl_gpio = bl_gpio;
 
