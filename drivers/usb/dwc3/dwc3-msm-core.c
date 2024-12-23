@@ -535,7 +535,6 @@ struct dwc3_msm {
 	bool			check_eud_state;
 	bool			vbus_active;
 	bool			eud_active;
-	bool			suspend;
 	bool			use_pdc_interrupts;
 	enum dwc3_id_state	id_state;
 	unsigned long		use_pwr_event_for_wakeup;
@@ -4368,14 +4367,6 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 	} else {
 		dbg_log_string("XCVR: BSV clear\n");
 		clear_bit(B_SESS_VLD, &mdwc->inputs);
-	}
-
-	if (mdwc->suspend) {
-		dbg_log_string("XCVR: SUSP set\n");
-		set_bit(B_SUSPEND, &mdwc->inputs);
-	} else {
-		dbg_log_string("XCVR: SUSP clear\n");
-		clear_bit(B_SUSPEND, &mdwc->inputs);
 	}
 
 	if (mdwc->check_eud_state && mdwc->vbus_active) {
