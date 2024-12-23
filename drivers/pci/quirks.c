@@ -2466,6 +2466,22 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_NVIDIA,  PCI_DEVICE_ID_NVIDIA_CK804_PCIE,
 DECLARE_PCI_FIXUP_RESUME_EARLY(PCI_VENDOR_ID_NVIDIA,  PCI_DEVICE_ID_NVIDIA_CK804_PCIE,
 			quirk_nvidia_ck804_pcie_aer_ext_cap);
 
+/*
+ * For sdxpinn, this is a WA to restrict the EP MRRS to a max
+ * of 256B to get optimal performance and avoid the degradation
+ * seen during concurrency of multiple controllers.
+ */
+static void quirk_qcom_rc_mrrs_limit(struct pci_dev *pdev)
+{
+	struct pci_dev *p = pci_get_device(PCI_VENDOR_ID_QCOM, 0x1109, NULL);
+
+	if (!p)
+		return;
+	pcie_set_readrq(p, 256);
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_QCOM, 0x0309,
+			quirk_qcom_rc_mrrs_limit);
+
 static void quirk_via_cx700_pci_parking_caching(struct pci_dev *dev)
 {
 	/*

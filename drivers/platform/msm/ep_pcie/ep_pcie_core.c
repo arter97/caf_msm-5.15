@@ -443,6 +443,57 @@ static int ep_pcie_vreg_init(struct ep_pcie_dev_t *dev)
 				break;
 			}
 		}
+	}
+
+	if (rc)
+		while (i--) {
+			struct regulator *hdl = dev->vreg[i].hdl;
+
+			if (hdl)
+				if (!strcmp(dev->vreg[i].name, "vreg-mx")) {
+					EP_PCIE_DBG(dev, "PCIe V%d: Removing vote for %s.\n",
+						dev->rev, dev->vreg[i].name);
+					regulator_set_voltage(hdl, RPMH_REGULATOR_LEVEL_RETENTION,
+						RPMH_REGULATOR_LEVEL_MAX);
+				}
+		}
+
+	return rc;
+}
+
+static int ep_pcie_vreg_enable(struct ep_pcie_dev_t *dev)
+{
+	int i, rc = 0;
+	struct regulator *vreg;
+	struct ep_pcie_vreg_info_t *info;
+
+	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
+
+	for (i = 0; i < EP_PCIE_MAX_VREG; i++) {
+		info = &dev->vreg[i];
+		vreg = info->hdl;
+
+		if (!vreg) {
+			EP_PCIE_ERR(dev,
+				"PCIe V%d:  handle of Vreg %s is NULL\n",
+				dev->rev, info->name);
+			rc = -EINVAL;
+			break;
+		}
+
+		if (!strcmp(dev->vreg[i].name, "vreg-mx") && info->max_v) {
+			rc = regulator_set_voltage(vreg,
+						   info->min_v, info->max_v);
+			if (rc) {
+				EP_PCIE_ERR(dev,
+					"PCIe V%d:  can't set voltage for %s: %d\n",
+					dev->rev, info->name, rc);
+			}
+			break;
+		}
+
+		EP_PCIE_DBG(dev, "PCIe V%d: Vreg %s is being enabled\n",
+			dev->rev, info->name);
 
 		rc = regulator_enable(vreg);
 		if (rc) {
@@ -736,7 +787,11 @@ int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
 	struct ep_pcie_clk_info_t *clki;
 
 	/* Turn on LDOs */
-	ep_pcie_vreg_init(dev);
+	rc = ep_pcie_vreg_enable(dev);
+	if (rc) {
+		EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n", dev->rev);
+		return rc;
+	}
 
 	/* Set bus bandwidth */
 	if (dev->icc_path) {
@@ -2216,10 +2271,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 
 	if (opt & EP_PCIE_OPT_POWER_ON) {
 		/* enable power */
-		ret = ep_pcie_vreg_init(dev);
+		ret = ep_pcie_vreg_enable(dev);
 		if (ret) {
-			EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n",
-				dev->rev);
+			EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n", dev->rev);
 			goto out;
 		}
 
@@ -2612,6 +2666,9 @@ int ep_pcie_core_disable_endpoint(void)
 			dev->rev);
 		goto out;
 	}
+
+	/* Masking IRQs to stop Global IRQ from triggering during suspend sequence */
+	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_MASK, 0x0);
 
 	dev->power_on = false;
 	/*
@@ -3167,6 +3224,15 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 	unsigned long irqsave_flags;
 
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
+	if (dev->power_on) {
+		status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
+		dev->global_irq_counter++;
+		EP_PCIE_DUMP(dev,
+			"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
+			dev->rev, dev->global_irq_counter, irq, status);
+	}
+
 	if (!atomic_read(&dev->perst_deast)) {
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: Global irq not processed as PERST# is asserted\n",
@@ -3174,14 +3240,6 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 		return IRQ_HANDLED;
 	}
-
-	status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
-	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
-
-	dev->global_irq_counter++;
-	EP_PCIE_DUMP(dev,
-		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
-		dev->rev, dev->global_irq_counter, irq, status);
 
 	if (!status)
 		goto sriov_irq;
@@ -4342,7 +4400,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 		EP_PCIE_DBG(&ep_pcie_dev,
 			"PCIe V%d: boot_config is not PCIe\n",
 			ep_pcie_dev.rev);
-		goto res_failure;
+		/*
+		 * For non-pcie boot config, instead of failing probe, simply return
+		 * success (without proceeding for any further initialization)
+		 * to satisfy GCC sync_state framework requirements.
+		 */
+		return 0;
 	}
 
 	ret = of_property_read_u32((&pdev->dev)->of_node,
@@ -4674,6 +4737,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	EP_PCIE_DBG(&ep_pcie_dev,
 		"PCIe V%d: %s got resources successfully; start turning on the link\n",
 		ep_pcie_dev.rev, dev_name(&(pdev->dev)));
+
+	ret = ep_pcie_vreg_init(&ep_pcie_dev);
+	if (ret) {
+		EP_PCIE_ERR(&ep_pcie_dev, "PCIe V%d: failed to enable Vreg\n", ep_pcie_dev.rev);
+		goto irq_deinit;
+	}
 
 	ret = ep_pcie_enumeration(&ep_pcie_dev);
 	if (ret == EP_PCIE_ERROR)

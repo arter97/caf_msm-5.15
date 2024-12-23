@@ -413,6 +413,7 @@ struct mhi_uci_ctxt_t {
 	atomic_t mhi_enable_notif_wq_active;
 	struct workqueue_struct *at_ctrl_wq;
 	struct work_struct at_ctrl_work;
+	bool init_done;
 };
 
 #define CHAN_TO_CLIENT(_CHAN_NR) (_CHAN_NR / 2)
@@ -2273,6 +2274,10 @@ int mhi_uci_init(void)
 	struct uci_client *mhi_client = NULL;
 	unsigned long r = 0;
 
+	if (uci_ctxt.init_done) {
+		uci_log(UCI_DBG_INFO, "MHI uci init already done, returning.\n");
+		return 0;
+	}
 	mhi_uci_ipc_log = ipc_log_context_create(MHI_UCI_IPC_LOG_PAGES,
 						"mhi-uci", 0);
 	if (mhi_uci_ipc_log == NULL) {
@@ -2355,7 +2360,7 @@ int mhi_uci_init(void)
 	uci_ctxt.cdev_ctrl = cdev_alloc();
 	if (uci_ctxt.cdev_ctrl == NULL) {
 		uci_log(UCI_DBG_ERROR, "ctrl cdev alloc failed\n");
-		return 0;
+		goto failed_cdev_add;
 	}
 
 	cdev_init(uci_ctxt.cdev_ctrl, &mhi_uci_ctrl_client_fops);
@@ -2364,9 +2369,7 @@ int mhi_uci_init(void)
 	if (IS_ERR_VALUE(r)) {
 		uci_log(UCI_DBG_ERROR,
 		"Failed to add ctrl cdev %d, ret 0x%lx\n", i, r);
-		kfree(uci_ctxt.cdev_ctrl);
-		uci_ctxt.cdev_ctrl = NULL;
-		return 0;
+		goto failed_cdev_add;
 	}
 
 	uci_ctxt.dev =
@@ -2377,14 +2380,16 @@ int mhi_uci_init(void)
 		uci_log(UCI_DBG_ERROR,
 				"Failed to add ctrl cdev %d\n", i);
 		cdev_del(uci_ctxt.cdev_ctrl);
-		kfree(uci_ctxt.cdev_ctrl);
-		uci_ctxt.cdev_ctrl = NULL;
+		goto failed_cdev_add;
 	}
 
 	uci_ctxt.mhi_uci_class->dev_uevent = mhi_state_uevent;
-
+	uci_ctxt.init_done = true;
 	return 0;
 
+failed_cdev_add:
+	kfree(uci_ctxt.cdev_ctrl);
+	uci_ctxt.cdev_ctrl = NULL;
 failed_device_create:
 	while (--i >= 0) {
 		cdev_del(&uci_ctxt.cdev[i]);
