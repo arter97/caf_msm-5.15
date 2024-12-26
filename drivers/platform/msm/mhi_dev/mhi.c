@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -44,7 +44,7 @@
 /* Wait time on the device for Host to set BHI_INTVEC */
 #define MHI_BHI_INTVEC_MAX_CNT			200
 #define MHI_BHI_INTVEC_WAIT_MS		50
-#define MHI_WAKEUP_TIMEOUT_CNT		20
+#define MHI_WAKEUP_TIMEOUT_CNT		25
 #define MHI_MASK_CH_EV_LEN		32
 #define MHI_RING_CMD_ID			0
 #define MHI_RING_PRIMARY_EVT_ID		1
@@ -2527,6 +2527,12 @@ static int mhi_dev_process_tre_ring(struct mhi_dev *mhi,
 	reason.vf_id = mhi->vf_id;
 	reason.ch_id = ch->ch_id;
 	reason.reason = MHI_DEV_TRE_AVAILABLE;
+	/*
+	 * Save lowest value of tre_len to split packets in UCI layer
+	 * for write request of size more than tre_len.
+	 */
+	if (!ch->tre_size || ch->tre_size > el->tre.len)
+		ch->tre_size = el->tre.len;
 
 	/* Invoke a callback to let the client know its data is ready.
 	 * Copy this event to the clients context so that it can be
@@ -3742,7 +3748,7 @@ int mhi_dev_read_channel(struct mhi_req *mreq)
 	uint64_t read_from_loc;
 	ssize_t bytes_read = 0;
 	size_t write_to_loc = 0;
-	uint32_t usr_buf_remaining;
+	uint32_t usr_buf_remaining, tre_size;
 	int td_done = 0, rc = 0;
 	struct mhi_dev_client *handle_client;
 	struct mhi_dev *mhi_ctx = NULL;
@@ -3793,10 +3799,9 @@ int mhi_dev_read_channel(struct mhi_req *mreq)
 		}
 
 		el = &ring->ring_cache[ring->rd_offset];
-		mhi_log(mreq->vf_id, MHI_MSG_VERBOSE, "evtptr : 0x%llx\n",
-						el->tre.data_buf_ptr);
-		mhi_log(mreq->vf_id, MHI_MSG_VERBOSE, "evntlen : 0x%x, offset:%lu\n",
-						el->tre.len, ring->rd_offset);
+		mhi_log(mreq->vf_id, MHI_MSG_VERBOSE,
+				"TRE.PTR: 0x%llx, TRE.LEN: 0x%x, rd offset: %lu\n",
+				el->tre.data_buf_ptr, el->tre.len, ring->rd_offset);
 
 		if (ch->tre_loc) {
 			bytes_to_read = min(usr_buf_remaining,
@@ -3815,17 +3820,16 @@ int mhi_dev_read_channel(struct mhi_req *mreq)
 
 
 			ch->tre_loc = el->tre.data_buf_ptr;
-			ch->tre_size = el->tre.len;
-			ch->tre_bytes_left = ch->tre_size;
-
+			tre_size = el->tre.len;
+			ch->tre_bytes_left = el->tre.len;
 			mhi_log(mreq->vf_id, MHI_MSG_VERBOSE,
-			"user_buf_remaining %d, ch->tre_size %d\n",
-			usr_buf_remaining, ch->tre_size);
-			bytes_to_read = min(usr_buf_remaining, ch->tre_size);
+					"user_buf_remaining %d, tre_size %d\n",
+					usr_buf_remaining, el->tre.len);
+			bytes_to_read = min(usr_buf_remaining, tre_size);
 		}
 
 		bytes_read += bytes_to_read;
-		addr_offset = ch->tre_size - ch->tre_bytes_left;
+		addr_offset = el->tre.len - ch->tre_bytes_left;
 		read_from_loc = ch->tre_loc + addr_offset;
 		write_to_loc = (size_t) mreq->buf +
 			(mreq->len - usr_buf_remaining);
@@ -4225,7 +4229,7 @@ static void mhi_dev_enable(struct work_struct *work)
 			"Cleared reset before waiting for M0\n");
 	}
 
-	while (state != MHI_DEV_M0_STATE &&
+	while (state != MHI_DEV_M0_STATE && !mhi->stop_polling_m0 &&
 		((max_cnt < MHI_SUSPEND_TIMEOUT) || mhi->no_m0_timeout)) {
 		/* Wait for Host to set the M0 state */
 		msleep(MHI_SUSPEND_MIN);
@@ -4293,6 +4297,11 @@ static void mhi_dev_enable(struct work_struct *work)
 				"Failed to initialize mhi_dev_net iface\n");
 	return;
 exit:
+	/*
+	 * since mhi_dev_enable() is unsuccessful, mhi is not in disconnected
+	 * state as well, so updating MHI state info to invalid state.
+	 */
+	mhi_update_state_info(mhi, MHI_STATE_INVAL);
 	mutex_unlock(&mhi->mhi_lock);
 	return;
 }

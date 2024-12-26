@@ -2957,52 +2957,6 @@ EXPORT_SYMBOL(msm_ep_set_mode);
 
 static void dwc3_resume_work(struct work_struct *w);
 
-static void dwc3_restart_usb_work(struct work_struct *w)
-{
-	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
-						restart_usb_work);
-	unsigned int timeout = 50;
-
-	if (atomic_read(&mdwc->in_lpm) || mdwc->dr_mode != USB_DR_MODE_OTG) {
-		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
-		return;
-	}
-
-	/* guard against concurrent VBUS handling */
-	mdwc->in_restart = true;
-
-	if (!mdwc->vbus_active) {
-		dev_dbg(mdwc->dev, "%s bailing out in disconnect\n", __func__);
-		mdwc->err_evt_seen = false;
-		mdwc->in_restart = false;
-		return;
-	}
-
-	dbg_event(0xFF, "RestartUSB", 0);
-	/* Reset active USB connection */
-	dwc3_resume_work(&mdwc->resume_work);
-
-	/* Make sure disconnect is processed before sending connect */
-	while (--timeout && !pm_runtime_suspended(mdwc->dev))
-		msleep(20);
-
-	if (!timeout) {
-		dev_dbg(mdwc->dev,
-			"Not in LPM after disconnect, forcing suspend...\n");
-		dbg_event(0xFF, "ReStart:RT SUSP",
-			atomic_read(&mdwc->dev->power.usage_count));
-		pm_runtime_suspend(mdwc->dev);
-	}
-
-	mdwc->in_restart = false;
-	/* Force reconnect only if cable is still connected */
-	if (mdwc->vbus_active)
-		dwc3_resume_work(&mdwc->resume_work);
-
-	mdwc->err_evt_seen = false;
-	flush_work(&mdwc->sm_work);
-}
-
 /*
  * Config Global Distributed Switch Controller (GDSC)
  * to support controller power collapse
@@ -3231,6 +3185,7 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 {
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 	struct dwc3_event_buffer *evt;
+	u32 saved_config = 0x00;
 	u32 reg;
 	int i;
 
@@ -3359,6 +3314,28 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 		break;
 	case DWC3_GSI_EVT_BUF_CLEAR:
 		dev_dbg(mdwc->dev, "DWC3_GSI_EVT_BUF_CLEAR\n");
+
+		/*
+		 * GSI_EVT_BUF_CLEAR is invoked during run_stop(0).
+		 * Ensure that during run_stop(0), UTMI clock is not suspended
+		 * since it is observed that if the SUSPHY bit of USB2PFYCFG(0)
+		 * is set, then DSTS_CtrlDevHalt bit is not getting set to "1"
+		 * causing LPM entry issues.
+		 */
+		reg = dwc3_msm_read_reg(mdwc->base, DWC3_GUSB2PHYCFG(0));
+		if (unlikely(reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
+			saved_config |= DWC3_GUSB2PHYCFG_SUSPHY;
+			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
+		}
+
+		if (reg & DWC3_GUSB2PHYCFG_ENBLSLPM) {
+			saved_config |= DWC3_GUSB2PHYCFG_ENBLSLPM;
+			reg &= ~DWC3_GUSB2PHYCFG_ENBLSLPM;
+		}
+
+		if (saved_config)
+			dwc3_msm_write_reg(mdwc->base, DWC3_GUSB2PHYCFG(0), reg);
+
 		for (i = 0; i < mdwc->num_gsi_event_buffers; i++) {
 			reg = dwc3_msm_read_reg(mdwc->base,
 					DWC3_GEVNTCOUNT((i+1)));
@@ -3367,6 +3344,7 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 					DWC3_GEVNTCOUNT((i+1)), reg);
 			dbg_log_string("remaining EVNTCOUNT(%d)=%d", i+1, reg);
 		}
+
 		break;
 	case DWC3_CONTROLLER_NOTIFY_DISABLE_UPDXFER:
 		dwc3_msm_dbm_disable_updxfer(dwc, value);
@@ -3903,7 +3881,7 @@ disable_sleep_clk:
 	return ret;
 }
 
-static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc, bool enable_wakeup)
+static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc)
 {
 	bool can_suspend_ssphy, no_active_ss;
 
@@ -3920,8 +3898,7 @@ static void dwc3_msm_suspend_phy(struct dwc3_msm *mdwc, bool enable_wakeup)
 		((mdwc->hs_phy->flags & (PHY_HSFS_MODE | PHY_LS_MODE)) &&
 			 !dwc3_msm_is_superspeed(mdwc)));
 	can_suspend_ssphy = dwc3_msm_get_max_speed(mdwc) >= USB_SPEED_SUPER &&
-		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss ||
-		 (!enable_wakeup));
+		(!(mdwc->use_pwr_event_for_wakeup & PWR_EVENT_SS_WAKEUP) || no_active_ss);
 
 	/* Suspend SS PHY */
 	if (can_suspend_ssphy) {
@@ -4040,7 +4017,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse,
 	/* Suspend HS PHY */
 	usb_phy_set_suspend(mdwc->hs_phy, 1);
 
-	dwc3_msm_suspend_phy(mdwc, enable_wakeup);
+	dwc3_msm_suspend_phy(mdwc);
 
 	/* make sure above writes are completed before turning off clocks */
 	wmb();
@@ -5520,6 +5497,16 @@ int dwc3_msm_set_dp_mode(struct device *dev, bool dp_connected, int lanes)
 	dbg_log_string("Set DP lanes:%d refcnt:%d\n", lanes, mdwc->refcnt_dp_usb);
 
 	if (lanes == 2) {
+		if (!mdwc->in_host_mode) {
+			msleep(20);
+			/*
+			 * There are scenarios where DP driver calls this API before dwc3-msm
+			 * gets the role information, hence return if host mode hasn't started.
+			 * DP Altmode driver has retry mechanism we return -EAGAIN or -EBUSY.
+			 */
+			return -EAGAIN;
+		}
+
 		mutex_lock(&mdwc->role_switch_mutex);
 		mdwc->dp_state = DP_2_LANE;
 		mdwc->refcnt_dp_usb++;
@@ -5574,6 +5561,102 @@ exit:
 	return ret;
 }
 EXPORT_SYMBOL(dwc3_msm_set_dp_mode);
+
+static int dwc3_msm_restart_usb_host(struct dwc3_msm *mdwc)
+{
+	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
+	struct usb_hcd *hcd = platform_get_drvdata(dwc->xhci);
+	int ret = 0;
+
+	if (!test_bit(HCD_FLAG_DEAD, &hcd->flags))
+		return 0;
+
+	mutex_lock(&mdwc->role_switch_mutex);
+
+	/* Check if USB cable disconnected */
+	if (mdwc->id_state == DWC3_ID_FLOAT)
+		goto exit;
+
+	/* stop USB host mode */
+	ret = dwc3_start_stop_host(mdwc, false);
+	if (ret)
+		goto exit;
+
+	dwc3_start_stop_host(mdwc, true);
+
+exit:
+	mutex_unlock(&mdwc->role_switch_mutex);
+
+	return ret;
+}
+
+static int dwc3_msm_restart_usb_gadget(struct dwc3_msm *mdwc)
+{
+	unsigned int timeout = 50;
+
+	/* guard against concurrent VBUS handling */
+	mdwc->in_restart = true;
+
+	if (!mdwc->vbus_active) {
+		dev_dbg(mdwc->dev, "%s bailing out in disconnect\n", __func__);
+		mdwc->err_evt_seen = false;
+		mdwc->in_restart = false;
+		return 0;
+	}
+
+	dbg_event(0xFF, "RestartUSB", 0);
+	/* Reset active USB connection */
+	dwc3_resume_work(&mdwc->resume_work);
+
+	/* Make sure disconnect is processed before sending connect */
+	while (--timeout && !pm_runtime_suspended(mdwc->dev))
+		msleep(20);
+
+	if (!timeout) {
+		dev_dbg(mdwc->dev,
+			"Not in LPM after disconnect, forcing suspend...\n");
+		dbg_event(0xFF, "ReStart:RT SUSP",
+			atomic_read(&mdwc->dev->power.usage_count));
+		pm_runtime_suspend(mdwc->dev);
+	}
+
+	mdwc->in_restart = false;
+	/* Force reconnect only if cable is still connected */
+	if (mdwc->vbus_active)
+		dwc3_resume_work(&mdwc->resume_work);
+
+	mdwc->err_evt_seen = false;
+	flush_work(&mdwc->sm_work);
+
+	return 0;
+}
+
+static void dwc3_restart_usb_work(struct work_struct *w)
+{
+	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
+						restart_usb_work);
+	enum usb_role role;
+
+	if (atomic_read(&mdwc->in_lpm)) {
+		dev_dbg(mdwc->dev, "%s failed!!!\n", __func__);
+		return;
+	}
+
+	mutex_lock(&mdwc->role_switch_mutex);
+	role = dwc3_msm_get_role(mdwc);
+	mutex_unlock(&mdwc->role_switch_mutex);
+
+	switch (role) {
+	case USB_ROLE_HOST:
+		dwc3_msm_restart_usb_host(mdwc);
+		break;
+	case USB_ROLE_DEVICE:
+		dwc3_msm_restart_usb_gadget(mdwc);
+		break;
+	default:
+		dev_err(mdwc->dev, "incorrect role during restart\n");
+	}
+}
 
 static int dwc3_msm_debug_init(struct dwc3_msm *mdwc)
 {
@@ -6415,7 +6498,7 @@ static int dwc3_msm_host_ss_powerdown(struct dwc3_msm *mdwc)
 {
 	u32 reg;
 
-	if (mdwc->disable_host_ssphy_powerdown ||
+	if (mdwc->disable_host_ssphy_powerdown || mdwc->dp_state ||
 		dwc3_msm_get_max_speed(mdwc) < USB_SPEED_SUPER)
 		return 0;
 
@@ -6519,21 +6602,48 @@ static int dwc3_msm_host_notifier(struct notifier_block *nb,
 {
 	struct dwc3_msm *mdwc = container_of(nb, struct dwc3_msm, host_nb);
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
+	struct usb_hcd *hcd;
 	struct usb_device *udev = ptr;
+	struct usb_bus *ubus = ptr;
+	struct xhci_hcd *xhci;
 
-	if (event == USB_BUS_ADD && mdwc->enable_host_slow_suspend) {
-		struct usb_bus *ubus = ptr;
-		struct usb_hcd *hcd = bus_to_hcd(ubus);
-		struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	if (!dwc->xhci)
+		return NOTIFY_DONE;
+
+	hcd = platform_get_drvdata(dwc->xhci);
+	if (!hcd)
+		return NOTIFY_DONE;
+
+	if (event == USB_BUS_ADD) {
+		/*
+		 * If the hcd or the shared_hcd do not match the one
+		 * associated with the bus, bail out.
+		 */
+		if (hcd != bus_to_hcd(ubus) &&
+		    hcd->shared_hcd != bus_to_hcd(ubus))
+			return NOTIFY_DONE;
 
 		if (usb_hcd_is_primary_hcd(hcd)) {
-			dev_dbg(ubus->controller, "enable slow suspend\n");
-			xhci->quirks |= XHCI_SLOW_SUSPEND;
+			xhci = hcd_to_xhci(hcd);
+
+			if (mdwc->enable_host_slow_suspend)
+				xhci->quirks |= XHCI_SLOW_SUSPEND;
 		}
 	}
 
 	if (event != USB_DEVICE_ADD && event != USB_DEVICE_REMOVE)
 		return NOTIFY_DONE;
+
+	/*
+	 * If the USB device's bus does not match either the primary HCD's
+	 * bus or the shared HCD's bus, bail out.
+	 */
+	if (udev->bus != hcd_to_bus(hcd)) {
+		if (!hcd->shared_hcd ||
+		    udev->bus != hcd_to_bus(hcd->shared_hcd)) {
+			return NOTIFY_DONE;
+		}
+	}
 
 	/*
 	 * Regardless of where the device is in the host tree, the USB generic
@@ -6589,6 +6699,9 @@ static int dwc3_msm_host_notifier(struct notifier_block *nb,
 
 			if (mdwc->wcd_usbss)
 				wcd_usbss_dpdm_switch_update(true, true);
+
+			if (hcd && test_bit(HCD_FLAG_DEAD, &hcd->flags))
+				schedule_work(&mdwc->restart_usb_work);
 		}
 	} else if (!udev->parent) {
 		/* USB root hub device */
