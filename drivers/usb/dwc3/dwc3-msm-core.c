@@ -4766,13 +4766,13 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	char *eud_str;
 	const char *edev_name;
 
-	if (!edev || !mdwc)
+	if (!edev || !mdwc || mdwc->dis_role_switch)
 		return NOTIFY_DONE;
 
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
 
-	if (!dwc || mdwc->dis_role_switch)
+	if (!dwc && mdwc->drd_state != DRD_STATE_UNDEFINED)
 		return NOTIFY_DONE;
 
 	dbg_event(0xFF, "extcon idx", enb->idx);
