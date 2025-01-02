@@ -49,7 +49,7 @@ static void qmi_recv_new_server(struct qmi_handle *qmi,
 	if (!node && !port)
 		return;
 
-	svc = vmalloc(sizeof(*svc));
+	svc = vzalloc(sizeof(*svc));
 	if (!svc)
 		return;
 
@@ -214,7 +214,7 @@ int qmi_add_lookup(struct qmi_handle *qmi, unsigned int service,
 {
 	struct qmi_service *svc;
 
-	svc = vmalloc(sizeof(*svc));
+	svc = vzalloc(sizeof(*svc));
 	if (!svc)
 		return -ENOMEM;
 
@@ -280,7 +280,7 @@ int qmi_add_server(struct qmi_handle *qmi, unsigned int service,
 {
 	struct qmi_service *svc;
 
-	svc = vmalloc(sizeof(*svc));
+	svc = vzalloc(sizeof(*svc));
 	if (!svc)
 		return -ENOMEM;
 
@@ -414,7 +414,7 @@ static void qmi_invoke_handler(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
 	if (!handler->fn || !handler->decoded_size)
 		return;
 
-	dest = vmalloc(handler->decoded_size);
+	dest = vzalloc(handler->decoded_size);
 	if (!dest) {
 		QMI_INFO("failed to allocate memory of decoded_size: 0x%x svc_id:0x%x\n",
 			 handler->decoded_size, qmi->svc_id);
@@ -707,7 +707,7 @@ int qmi_handle_init(struct qmi_handle *qmi, size_t recv_buf_size,
 		recv_buf_size = sizeof(struct qrtr_ctrl_pkt);
 
 	qmi->recv_buf_size = recv_buf_size;
-	qmi->recv_buf = vmalloc(recv_buf_size);
+	qmi->recv_buf = vzalloc(recv_buf_size);
 	if (!qmi->recv_buf)
 		return -ENOMEM;
 

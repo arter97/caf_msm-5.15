@@ -703,6 +703,9 @@ static int set_ethernet_interface(char *eth_intf)
 	} else if (!strcmp("2500base", eth_intf)) {
 		mparams.eth_intf =  PHY_INTERFACE_MODE_2500BASEX;
 		mparams.is_valid_eth_intf = true;
+	} else if (!strcmp("5gbase-r", eth_intf)) {
+		mparams.eth_intf =  PHY_INTERFACE_MODE_5GBASER;
+		mparams.is_valid_eth_intf = true;
 	} else {
 		ETHQOSERR("Invalid Eth interface programmed: %s\n", eth_intf);
 		return 1;
@@ -4621,7 +4624,7 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 		break;
 	}
 
-	/*Backup speed & duplex before Enabling Loopback */
+	/*Backup speed & duplex and disable power saving before Enabling Loopback */
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
 	    config > DISABLE_LOOPBACK) {
 		/*Backup old speed & duplex*/
@@ -4632,6 +4635,10 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 			ethqos->backup_speed = SPEED_UNKNOWN;
 			ethqos->backup_duplex = DUPLEX_UNKNOWN;
 		}
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		if (priv->plat->enable_power_saving)
+			priv->plat->enable_power_saving(netdev, false);
+#endif
 	}
 
 	if (config == DISABLE_LOOPBACK)
@@ -4674,6 +4681,11 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 		ETHQOSINFO("Invalid Loopback=%d\n", config);
 		break;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving && config == DISABLE_LOOPBACK)
+		priv->plat->enable_power_saving(netdev, true);
+#endif
 
 	priv->current_loopback = config;
 
@@ -5548,6 +5560,7 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 	int ret, i, count, x;
 	u32 mac_efuse_prop, efuse_size = 8;
 	unsigned long mac_addr;
+	unsigned char temp_mac_addr[ETH_ALEN];
 
 	/* If the property doesn't exist or empty return */
 	count = of_property_count_u32_elems(np, "mac-efuse-addr");
@@ -5570,20 +5583,22 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 
 			/* create byte array out of value read from efuse */
 			for (i = 0; i < ETH_ALEN ; i++) {
-				pparams.mac_addr[ETH_ALEN - 1 - i] =
+				temp_mac_addr[ETH_ALEN - 1 - i] =
 					mac_addr & 0xff;
 				mac_addr = mac_addr >> 8;
+			}
+			if (is_valid_ether_addr(temp_mac_addr)) {
+				strscpy(pparams.mac_addr, temp_mac_addr, sizeof(pparams.mac_addr));
+				pparams.is_valid_mac_addr = true;
+			} else {
+				ETHQOSERR("Fuse Mac address is invalid\n");
 			}
 
 			iounmap(mac_efuse_addr);
 
-			/* if valid address is found set cookie & return */
-			pparams.is_valid_mac_addr =
-				is_valid_ether_addr(pparams.mac_addr);
+			/* if valid address is found return */
 			if (pparams.is_valid_mac_addr)
 				return;
-			else
-				ETHQOSERR("Fuse Mac address is invalid\n");
 		}
 	}
 }

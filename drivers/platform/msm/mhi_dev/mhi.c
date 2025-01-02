@@ -5420,6 +5420,7 @@ static void mhi_dev_pcie_handle_event(struct work_struct *work)
 	enum ep_pcie_link_status link_state;
 	struct mhi_dev *mhi = container_of(work, struct mhi_dev, pcie_event);
 
+	mhi_uci_init();
 	if (!mhi_dma_fun_ops && !mhi->use_edma) {
 		/*
 		 * Register for linkup event if it is not registered in
@@ -5626,7 +5627,6 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		INIT_LIST_HEAD(&mhi_pf->client_cb_list);
 		mutex_init(&mhi_pf->mhi_lock);
 
-		mhi_uci_init();
 		mhi_update_state_info(mhi_pf, MHI_STATE_CONFIGURED);
 	}
 
@@ -5636,12 +5636,17 @@ static int mhi_dev_probe(struct platform_device *pdev)
 		mhi_dev_pcie_notify_event = MHI_INIT;
 		/* Get EP PCIe capabilities to check if it supports SRIOV capability */
 		ep_pcie_core_get_capability(mhi_hw_ctx->phandle, &mhi_hw_ctx->ep_cap);
+
+		/*
+		 * PCIe driver is available and link is already up,
+		 * proceed with UCI initialization
+		 */
+		mhi_uci_init();
 		/*
 		 * Setup all virtual device prior to PF Mission mode
 		 * completion to make sure VF's are initialized in mission
 		 * mode directly, if not host assumes it in PBL state.
 		 */
-
 		if (!mhi_pf) {
 			mhi_log(MHI_DEFAULT_ERROR_LOG_ID, MHI_MSG_ERROR,
 					"mhi_pf is NULL, defering\n");
