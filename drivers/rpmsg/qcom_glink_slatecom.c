@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1922,8 +1922,6 @@ static int glink_slatecom_rx_short_data(struct glink_slatecom *glink,
 
 	/* Handle message when no fragments remain to be received */
 	if (!left_size) {
-		glink_slatecom_send_rx_done(glink, channel, intent);
-
 		spin_lock_irqsave(&channel->recv_lock, flags);
 		if (channel->ept.cb) {
 			channel->ept.cb(channel->ept.rpdev,
@@ -1934,6 +1932,7 @@ static int glink_slatecom_rx_short_data(struct glink_slatecom *glink,
 		}
 		spin_unlock_irqrestore(&channel->recv_lock, flags);
 
+		glink_slatecom_send_rx_done(glink, channel, intent);
 		glink_slatecom_free_intent(channel, intent);
 	}
 	mutex_unlock(&channel->intent_lock);
