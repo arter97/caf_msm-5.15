@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -3373,6 +3373,15 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 		break;
 	case DWC3_CONTROLLER_PULLUP_ENTER:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_PULLUP_ENTER %d\n", value);
+
+		/*
+		 * Set autosuspend delay back to default value during pullup(0) if cable
+		 * is connected. Events like adb root calls usb_gadget_disconnect which
+		 * causes system to suspend immediately even before adbd restarts.
+		 */
+		if (dwc->runtime_suspend_on_usb_suspend && mdwc->vbus_active && !value)
+			pm_runtime_set_autosuspend_delay(dwc->dev, DWC3_DEFAULT_AUTOSUSPEND_DELAY);
+
 		/* ignore pullup when role switch from device to host */
 		if (mdwc->vbus_active)
 			usb_redriver_gadget_pullup_enter(mdwc->redriver, value);
