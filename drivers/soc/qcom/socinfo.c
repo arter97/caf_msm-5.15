@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -214,6 +214,25 @@ static const char * const hw_platform_feature_code[] = {
 	[SOCINFO_FC_AF] = "AF",
 	[SOCINFO_FC_AG] = "AG",
 	[SOCINFO_FC_AH] = "AH",
+};
+
+static const char * const hw_platform_wfeature_code[] = {
+	[SOCINFO_FC_W0 - SOCINFO_FC_W0] = "W0",
+	[SOCINFO_FC_W1 - SOCINFO_FC_W0] = "W1",
+	[SOCINFO_FC_W2 - SOCINFO_FC_W0] = "W2",
+	[SOCINFO_FC_W3 - SOCINFO_FC_W0] = "W3",
+	[SOCINFO_FC_W4 - SOCINFO_FC_W0] = "W4",
+	[SOCINFO_FC_W5 - SOCINFO_FC_W0] = "W5",
+	[SOCINFO_FC_W6 - SOCINFO_FC_W0] = "W6",
+	[SOCINFO_FC_W7 - SOCINFO_FC_W0] = "W7",
+	[SOCINFO_FC_W8 - SOCINFO_FC_W0] = "W8",
+	[SOCINFO_FC_W9 - SOCINFO_FC_W0] = "W9",
+	[SOCINFO_FC_WA - SOCINFO_FC_W0] = "WA",
+	[SOCINFO_FC_WB - SOCINFO_FC_W0] = "WB",
+	[SOCINFO_FC_WC - SOCINFO_FC_W0] = "WC",
+	[SOCINFO_FC_WD - SOCINFO_FC_W0] = "WD",
+	[SOCINFO_FC_WE - SOCINFO_FC_W0] = "WE",
+	[SOCINFO_FC_WF - SOCINFO_FC_W0] = "WF",
 };
 
 static const char * const hw_platform_ifeature_code[] = {
@@ -570,6 +589,8 @@ static const char *socinfo_get_feature_code_mapping(void)
 
 	if (id > SOCINFO_FC_UNKNOWN && id < SOCINFO_FC_EXT_RESERVE)
 		return hw_platform_feature_code[id];
+	else if (id >= SOCINFO_FC_W0 && id < SOCINFO_FC_SUBPART_RESERVE)
+		return hw_platform_wfeature_code[id - SOCINFO_FC_W0];
 	else if (id >= SOCINFO_FC_Y0 && id < SOCINFO_FC_INT_RESERVE)
 		return hw_platform_ifeature_code[id - SOCINFO_FC_Y0];
 
