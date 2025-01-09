@@ -333,7 +333,7 @@ static int qpic_lcdc_send_pkt_bam(struct qpic_display_data *qpic_display,
 			u32 cmd, u32 len, u8 *param)
 {
 	int  ret = 0;
-	u32 cfg2, block_len, flags;
+	u32 cfg0, cfg2, block_len, flags;
 	phys_addr_t phys_addr;
 
 	if ((cmd != OP_WRITE_MEMORY_START) &&
@@ -343,6 +343,13 @@ static int qpic_lcdc_send_pkt_bam(struct qpic_display_data *qpic_display,
 	} else {
 		phys_addr = (phys_addr_t) param;
 	}
+
+	/* Set WR_ACTIVE = 3, WR_CS_HOLD = 1, CS_WR_RD_SETUP = 1 */
+	cfg0 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0);
+	cfg0 &= ~((1 << 12) | (1 << 17) | (1 << 23));
+	cfg0 |= (1 << 10) | (1 << 15) | (1 << 20) | (1 << 21);
+	QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0, cfg0);
+
 	cfg2 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG2);
 	cfg2 &= ~0xFF;
 	cfg2 |= cmd;
