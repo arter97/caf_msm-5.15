@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"io-pgtable-fast: " fmt
@@ -129,7 +129,7 @@
 
 #define PTE_SH_IDX(pte) (pte & AV8L_FAST_PTE_SH_MASK)
 
-#define iopte_pmd_offset(pmds, base, iova) (pmds + ((iova - base) >> 12))
+#define iopte_pmd_offset(pmds, base, iova) (pmds + ((iova - ALIGN_DOWN(base, SZ_2M)) >> 12))
 
 #define MAX_ADDR_SZ     CONFIG_IOMMU_IO_PGTABLE_FAST_MAXSZ
 
