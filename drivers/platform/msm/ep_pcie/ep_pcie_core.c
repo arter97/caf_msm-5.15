@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -488,8 +488,8 @@ static int ep_pcie_vreg_enable(struct ep_pcie_dev_t *dev)
 				EP_PCIE_ERR(dev,
 					"PCIe V%d:  can't set voltage for %s: %d\n",
 					dev->rev, info->name, rc);
+				break;
 			}
-			break;
 		}
 
 		EP_PCIE_DBG(dev, "PCIe V%d: Vreg %s is being enabled\n",
