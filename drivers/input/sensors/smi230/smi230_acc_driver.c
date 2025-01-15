@@ -605,6 +605,7 @@ static ssize_t smi230_acc_store_range(struct device *dev,
 				      const char *buf, size_t count)
 {
 	int err = 0, range;
+	uint8_t data, range_reg_val;
 
 	err = kstrtoint(buf, 10, &range);
 	if (err) {
@@ -630,13 +631,29 @@ static ssize_t smi230_acc_store_range(struct device *dev,
 		return count;
 	}
 
+	mutex_lock(&interrupt_handling_lock);
 	err |= smi230_acc_set_meas_conf(p_smi230_dev);
 
-	PDEBUG("set range to %d, err %d", range, err);
+	usleep_range(1000, 1001);
+	err |= smi230_acc_get_regs(SMI230_ACCEL_RANGE_REG, &data, 1,
+							   p_smi230_dev);
+	range_reg_val = data & SMI230_ACCEL_RANGE_MASK;
+	if (range_reg_val != p_smi230_dev->accel_cfg.range) {
+		usleep_range(1000, 1001);
+		err |= smi230_acc_set_meas_conf(p_smi230_dev);
+	}
+	mutex_unlock(&interrupt_handling_lock);
 
 	if (err) {
 		PERR("setting range failed");
 		return err;
+	}
+	if (range_reg_val == p_smi230_dev->accel_cfg.range)
+		PDEBUG("set range to %d, err %d", range, err);
+	else {
+		PDEBUG("set range to %d failed. reg_val %d", range,
+				range_reg_val);
+		return -1;
 	}
 	return count;
 }
