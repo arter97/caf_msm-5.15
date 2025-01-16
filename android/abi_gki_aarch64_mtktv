@@ -2074,6 +2074,7 @@
   trace_event_raw_init
   trace_event_reg
   trace_handle_return
+  __traceiter_android_vh_is_rndis_enabled
   __traceiter_android_vh_meminfo_proc_show
   __traceiter_android_vh_oom_check_panic
   __traceiter_android_vh_pcplist_add_cma_pages_bypass
@@ -2086,6 +2087,7 @@
   __traceiter_mmap_lock_start_locking
   __traceiter_suspend_resume
   trace_output_call
+  __tracepoint_android_vh_is_rndis_enabled
   __tracepoint_android_vh_meminfo_proc_show
   __tracepoint_android_vh_oom_check_panic
   __tracepoint_android_vh_pcplist_add_cma_pages_bypass
@@ -2250,10 +2252,19 @@
   usbnet_cdc_unbind
   usbnet_disconnect
   usbnet_generic_cdc_bind
+  usbnet_get_drvinfo
   usbnet_get_endpoints
+  usbnet_get_ethernet_addr
+  usbnet_get_link
+  usbnet_get_link_ksettings_internal
+  usbnet_get_msglevel
+  usbnet_link_change
+  usbnet_manage_power
+  usbnet_nway_reset
   usbnet_open
   usbnet_probe
   usbnet_resume
+  usbnet_set_msglevel
   usbnet_skb_return
   usbnet_start_xmit
   usbnet_stop
