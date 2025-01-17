@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -1721,9 +1721,6 @@ int qcom_smd_rpm_quickboot(struct rpmsg_device *rpdev, int status)
 	struct rpmsg_channel_info chinfo = {};
 	struct rpmsg_endpoint *ept = NULL;
 	struct rb_node *t;
-
-	if (!probe_status)
-		return 0;
 
 	strscpy(chinfo.name, rpdev->id.name, 32);
 	chinfo.src = rpdev->src;
