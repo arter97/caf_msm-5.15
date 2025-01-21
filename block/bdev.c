@@ -514,12 +514,11 @@ long nr_blockdev_pages(void)
 {
 	struct inode *inode;
 	long ret = 0;
-	unsigned long flags;
 
-	spin_lock_irqsave(&blockdev_superblock->s_inode_list_lock, flags);
+	spin_lock(&blockdev_superblock->s_inode_list_lock);
 	list_for_each_entry(inode, &blockdev_superblock->s_inodes, i_sb_list)
 		ret += inode->i_mapping->nrpages;
-	spin_unlock_irqrestore(&blockdev_superblock->s_inode_list_lock, flags);
+	spin_unlock(&blockdev_superblock->s_inode_list_lock);
 
 	return ret;
 }
