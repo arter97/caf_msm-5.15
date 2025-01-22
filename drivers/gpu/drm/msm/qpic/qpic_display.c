@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2016, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/dma-buf.h>
 #include <linux/platform_device.h>
+#include <linux/nvmem-consumer.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_damage_helper.h>
@@ -25,6 +26,9 @@
 static bool use_bam = true;
 static bool use_irq = true;
 static u32 use_vsync = true;
+
+/* Variable to check boot device is NAND or not */
+static bool is_bootdevice_nand = true;
 
 /* QPIC display default format */
 static uint32_t qpic_pipe_formats[] = {
@@ -275,6 +279,15 @@ static void qpic_display_bus_unregister(struct qpic_display_data *qpic_display)
 static void qpic_display_clk_ctrl(struct qpic_display_data *qpic_display, bool enable)
 {
 	if (enable) {
+		/* Set clk rate to 133MHz when boot type is emmc */
+		if (!is_bootdevice_nand) {
+			if (!IS_ERR_OR_NULL(qpic_display->qpic_clk)) {
+				clk_set_rate(qpic_display->qpic_clk,
+					MSM_QPIC_EMMC_BUS_VOTE_MAX_RATE);
+			} else {
+				DRM_ERROR("%s: Failed to set clk rate\n", __func__);
+			}
+		}
 		if (qpic_display->qpic_clk)
 			clk_prepare_enable(qpic_display->qpic_clk);
 		if (qpic_display->qpic_a_clk)
@@ -333,7 +346,7 @@ static int qpic_lcdc_send_pkt_bam(struct qpic_display_data *qpic_display,
 			u32 cmd, u32 len, u8 *param)
 {
 	int  ret = 0;
-	u32 cfg2, block_len, flags;
+	u32 cfg0, cfg2, block_len, flags;
 	phys_addr_t phys_addr;
 
 	if ((cmd != OP_WRITE_MEMORY_START) &&
@@ -343,6 +356,13 @@ static int qpic_lcdc_send_pkt_bam(struct qpic_display_data *qpic_display,
 	} else {
 		phys_addr = (phys_addr_t) param;
 	}
+
+	/* Set WR_ACTIVE = 3, WR_CS_HOLD = 1, CS_WR_RD_SETUP = 1 */
+	cfg0 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0);
+	cfg0 &= ~((1 << 12) | (1 << 17) | (1 << 23));
+	cfg0 |= (1 << 10) | (1 << 15) | (1 << 20) | (1 << 21);
+	QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0, cfg0);
+
 	cfg2 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG2);
 	cfg2 &= ~0xFF;
 	cfg2 |= cmd;
@@ -421,7 +441,6 @@ static int qpic_send_pkt_sw(struct qpic_display_data *qpic_display,
 	int i, ret = 0;
 
 	if (len <= 4) {
-		len = (len + 3) / 4; /* len in dwords */
 		data = 0;
 		if (param) {
 			for (i = 0; i < len; i++)
@@ -432,11 +451,6 @@ static int qpic_send_pkt_sw(struct qpic_display_data *qpic_display,
 		return 0;
 	}
 
-	if ((len & 0x1) != 0) {
-		DRM_DEBUG_DRIVER("%s: number of bytes needs be even\n", __func__);
-		len = (len + 1) & (~0x1);
-		DRM_DEBUG_DRIVER("%s: number of bytes needs be even, len = %d\n", __func__, len);
-	}
 	QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_IRQ_CLR, 0xff);
 	QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_CMD_DATA_CYCLE_CNT, 0);
 	cfg2 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG2);
@@ -458,20 +472,15 @@ static int qpic_send_pkt_sw(struct qpic_display_data *qpic_display,
 			goto exit_send_cmd_sw;
 
 		space = 16;
+		/* max length of the parameter which can be written to FIFO_DATA_PORT0 */
 
 		while ((space > 0) && (bytes_left > 0)) {
 			/* write to fifo */
-			if (bytes_left >= 4) {
-				QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_FIFO_DATA_PORT0,
-					*(u32 *)param);
-				param += 4;
-				bytes_left -= 4;
-				space--;
-			} else if (bytes_left == 2) {
-				QPIC_OUTPW(qpic_display, QPIC_REG_QPIC_LCDC_FIFO_DATA_PORT0,
-					*(u16 *)param);
-				bytes_left -= 2;
-			}
+			data = 0;
+			data |= param[len - bytes_left];
+			QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_FIFO_DATA_PORT0, data);
+			bytes_left -= 1;
+			space--;
 		}
 	}
 	/* finished */
@@ -499,8 +508,12 @@ int qpic_init_sps(struct qpic_display_data *qpic_display)
 
 	bam.phys_addr = qpic_display->qpic_phys + 0x4000;
 	bam.virt_addr = qpic_display->qpic_base + 0x4000;
-	bam.irq = qpic_display->irq_id - 4;
 	bam.manage = SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE;
+
+	if (!qpic_display->bam_irq_id)
+		bam.irq = qpic_display->irq_id - 4;
+	else
+		bam.irq = qpic_display->bam_irq_id;
 
 	if (sps_phy2h(bam.phys_addr, &bam_handle)) {
 		if (sps_register_bam_device(&bam, &bam_handle)) {
@@ -1145,7 +1158,7 @@ int qpic_display_io_init(struct platform_device *pdev,
 		qpic_panel_io->te_gpio = te_gpio;
 
 	if (!gpio_is_valid(bl_gpio))
-		DRM_WARN("%s: te gpio not specified\n", __func__);
+		DRM_WARN("%s: bl gpio not specified\n", __func__);
 	else
 		qpic_panel_io->bl_gpio = bl_gpio;
 
@@ -1162,6 +1175,56 @@ int qpic_display_io_init(struct platform_device *pdev,
 		qpic_panel_io->avdd_vreg = avdd_vreg;
 
 	return 0;
+}
+
+/* Check whether boot device is NAND by reading boot_config register. */
+static void qpic_display_boot_device_is_nand(struct platform_device *pdev)
+{
+	u8 *buf;
+	size_t len;
+	u32 nand_boot, boot_dev_bits;
+	struct nvmem_cell *cell;
+
+	cell = nvmem_cell_get(&pdev->dev, "boot_conf");
+	if (IS_ERR(cell)) {
+		dev_err(&pdev->dev, "nvmem cell get failed err:(%ld)\n", PTR_ERR(cell));
+		return;
+	}
+
+	buf = (u8 *)nvmem_cell_read(cell, &len);
+	if (IS_ERR(buf)) {
+		dev_err(&pdev->dev, "nvmem cell read failed err:(%ld)\n", PTR_ERR(buf));
+		goto put_nvmem_cell;
+	}
+
+	if (of_property_read_u32(pdev->dev.of_node, "qcom,boot_dev_bits",
+				   &boot_dev_bits)) {
+		dev_err(&pdev->dev, "number of bits to represent boot device not found\n");
+		goto free_buf;
+	}
+
+	if (of_property_read_u32(pdev->dev.of_node, "qcom,nand_boot",
+				   &nand_boot)) {
+		dev_err(&pdev->dev, "boot_config value for boot device not found\n");
+		goto free_buf;
+	}
+
+	/* Storage boot device fuse is present in QFPROM_RAW_OEM_CONFIG_ROW0_LSB
+	 * this fuse is blown by bootloader and populated in boot_config
+	 * register[1:4] FAST_BOOT bits - hence shift read data by 1 and mask it with 0xf.
+	 *
+	 * FAST_BOOT bits might vary from target to target.
+	 * So, get the FAST_BOOT bits information from dtsi and shift accordingly.
+	 */
+	is_bootdevice_nand = (((*buf >> 1) & ((1 << boot_dev_bits) - 1)) == nand_boot) ?
+										true : false;
+	if (!is_bootdevice_nand)
+		DRM_INFO("%s bootdevice is not nand, boot_config val = 0x%x boot dev = 0x%x\n",
+				__func__, (*buf >> 1) & ((1 << boot_dev_bits) - 1), nand_boot);
+free_buf:
+	kfree(buf);
+put_nvmem_cell:
+	nvmem_cell_put(cell);
 }
 
 int qpic_display_alloc_cmd_buf(struct qpic_display_data *qpic_display)
@@ -1183,10 +1246,40 @@ int qpic_display_alloc_cmd_buf(struct qpic_display_data *qpic_display)
 	return 0;
 }
 
+int qpic_display_enable_tlmm_reg(struct qpic_display_data *qpic_display)
+{
+	struct resource *tlmm_res;
+	struct platform_device *pdev = qpic_display->pdev;
+	u32 data;
+
+	tlmm_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tlmm_central_base");
+	if (!tlmm_res) {
+		DRM_ERROR("unable to get TLMM CENTRAL reg base address\n");
+		return -ENOMEM;
+	}
+
+	qpic_display->tlmm_reg_size = resource_size(tlmm_res);
+	qpic_display->tlmm_central_base = devm_ioremap(&pdev->dev, tlmm_res->start,
+	qpic_display->tlmm_reg_size);
+	if (unlikely(!qpic_display->tlmm_central_base)) {
+		DRM_ERROR("unable to map mdss TLMM CENTRAL base\n");
+		return -ENOMEM;
+	}
+
+	/* Map TLMM reg to set the flag EBI2_BOOT_SELECT on emmc target */
+	data = QPIC_TLMM_INP(qpic_display, QPIC_REG_TLMM_EBI2_EMMC_GPIO_CFG);
+	data |= 0x2;
+	QPIC_TLMM_OUTP(qpic_display, QPIC_REG_TLMM_EBI2_EMMC_GPIO_CFG, data);
+
+	return 0;
+
+}
+
 int qpic_display_get_resource(struct qpic_display_data *qpic_display)
 {
 	struct resource *res;
 	struct platform_device *pdev = qpic_display->pdev;
+	int rc;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "qpic_base");
 	if (!res) {
@@ -1207,6 +1300,28 @@ int qpic_display_get_resource(struct qpic_display_data *qpic_display)
 	if (!qpic_display->irq_id) {
 		DRM_ERROR("unable to get QPIC irq\n");
 		return -ENODEV;
+	}
+
+	/* Check if boot device is not NAND */
+	qpic_display_boot_device_is_nand(pdev);
+
+	/* Configure bam_irq from qpic if there are no bam initializion prior to it*/
+	qpic_display->bam_irq_id = platform_get_irq_byname(pdev, "bam_irq");
+	if (!qpic_display->bam_irq_id) {
+		DRM_ERROR("unable to get QPIC BAM irq\n");
+	}
+
+	if (!is_bootdevice_nand) {
+		if (!qpic_display->bam_irq_id) {
+			DRM_ERROR("unable to get QPIC BAM irq for non NAND variants\n");
+			return -ENODEV;
+		}
+
+		rc = qpic_display_enable_tlmm_reg(qpic_display);
+		if (rc) {
+			DRM_ERROR("qpic display get TLMM address failed, rc = %d\n", rc);
+			return -ENOMEM;
+		}
 	}
 
 	qpic_display->qpic_clk = devm_clk_get(&pdev->dev, "core_clk");
