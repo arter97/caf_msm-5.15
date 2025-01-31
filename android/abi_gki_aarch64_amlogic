@@ -51,6 +51,7 @@
   __bitmap_and
   __bitmap_andnot
   __bitmap_clear
+  __bitmap_complement
   bitmap_find_next_zero_area_off
   bitmap_free
   __bitmap_or
@@ -65,6 +66,7 @@
   __blk_alloc_disk
   blk_cleanup_disk
   blkdev_get_by_path
+  blkdev_ioctl
   blkdev_issue_discard
   blkdev_put
   blk_finish_plug
@@ -173,7 +175,9 @@
   clk_put
   clk_register
   clk_register_composite
+  clk_restore_context
   clk_round_rate
+  clk_save_context
   clk_set_max_rate
   clk_set_min_rate
   clk_set_parent
@@ -375,6 +379,9 @@
   devm_hwrng_register
   devm_iio_channel_get
   devm_iio_device_alloc
+  __devm_iio_device_register
+  devm_iio_trigger_alloc
+  __devm_iio_trigger_register
   devm_input_allocate_device
   devm_ioremap
   devm_ioremap_resource
@@ -528,6 +535,15 @@
   dma_sync_single_for_device
   dma_unmap_page_attrs
   dma_unmap_sg_attrs
+  dm_get_device
+  dm_io
+  dm_io_client_create
+  dm_io_client_destroy
+  dm_per_bio_data
+  dm_put_device
+  dm_register_target
+  dm_table_get_mode
+  dm_unregister_target
   d_obtain_alias
   do_SAK
   do_trace_netlink_extack
@@ -543,6 +559,8 @@
   dput
   dql_completed
   dql_reset
+  driver_attach
+  driver_register
   driver_unregister
   drm_add_modes_noedid
   drm_atomic_add_affected_connectors
@@ -710,6 +728,7 @@
   drm_property_blob_get
   drm_property_blob_put
   drm_property_create
+  drm_property_create_blob
   drm_property_create_bool
   drm_property_create_enum
   drm_property_create_range
@@ -908,6 +927,7 @@
   gpiochip_get_data
   gpiochip_line_is_valid
   gpiochip_lock_as_irq
+  gpiochip_remove
   gpiochip_unlock_as_irq
   gpiod_cansleep
   gpiod_count
@@ -944,6 +964,7 @@
   hdmi_drm_infoframe_init
   hdmi_drm_infoframe_pack
   hdmi_infoframe_unpack
+  hdmi_spd_infoframe_init
   hdmi_spd_infoframe_pack
   hdmi_vendor_infoframe_init
   hdmi_vendor_infoframe_pack
@@ -995,14 +1016,29 @@
   iget5_locked
   iget_failed
   ihold
+  iio_alloc_pollfunc
+  iio_buffer_enabled
   iio_buffer_init
   iio_buffer_put
+  iio_dealloc_pollfunc
+  iio_device_alloc
   iio_device_attach_buffer
+  iio_device_claim_direct_mode
+  iio_device_free
+  iio_device_id
   __iio_device_register
+  iio_device_release_direct_mode
   iio_device_unregister
   iio_get_time_ns
+  iio_push_event
   iio_push_to_buffers
   iio_read_channel_processed
+  iio_read_mount_matrix
+  iio_show_mount_matrix
+  iio_trigger_notify_done
+  iio_trigger_poll_chained
+  __iio_trigger_register
+  iio_trigger_unregister
   ilookup
   inc_nlink
   inc_zone_page_state
@@ -1079,6 +1115,7 @@
   irq_domain_set_info
   irq_domain_xlate_onecell
   irq_find_matching_fwspec
+  irq_get_irq_data
   irq_of_parse_and_map
   __irq_resolve_mapping
   irq_set_affinity_hint
@@ -1199,6 +1236,7 @@
   led_classdev_unregister
   led_init_default_state_get
   led_set_brightness
+  led_set_brightness_nosleep
   led_trigger_blink_oneshot
   led_trigger_event
   led_trigger_register
@@ -1284,6 +1322,7 @@
   mmc_cqe_request_done
   mmc_detect_change
   mmc_free_host
+  mmc_get_ext_csd
   mmc_gpiod_request_cd
   mmc_gpio_get_cd
   mmc_of_parse
@@ -1766,6 +1805,7 @@
   register_sysctl
   register_sysctl_table
   register_wide_hw_breakpoint
+  regmap_bulk_read
   regmap_bulk_write
   regmap_field_read
   regmap_field_update_bits_base
@@ -2143,8 +2183,10 @@
   thermal_zone_bind_cooling_device
   thermal_zone_device_disable
   thermal_zone_device_enable
+  thermal_zone_device_register
   thermal_zone_device_unregister
   thermal_zone_device_update
+  thermal_zone_get_temp
   thermal_zone_get_zone_by_name
   thermal_zone_of_sensor_unregister
   thermal_zone_unbind_cooling_device
@@ -2283,10 +2325,35 @@
   truncate_setsize
   try_module_get
   try_wait_for_completion
+  __tty_alloc_driver
+  tty_driver_kref_put
+  tty_encode_baud_rate
   tty_flip_buffer_push
   tty_get_char_size
+  tty_hangup
+  __tty_insert_flip_char
+  tty_insert_flip_string_fixed_flag
+  tty_kref_put
+  tty_ldisc_deref
+  tty_ldisc_ref
+  tty_port_close
+  tty_port_destroy
+  tty_port_hangup
+  tty_port_init
+  tty_port_open
+  tty_port_register_device
+  tty_port_tty_get
+  tty_port_tty_wakeup
   tty_put_char
+  tty_register_driver
+  tty_standard_install
+  tty_std_termios
+  tty_termios_baud_rate
+  tty_termios_copy_hw
   tty_termios_hw_change
+  tty_unregister_device
+  tty_unregister_driver
+  tty_vhangup
   uart_add_one_port
   uart_console_device
   uart_console_write
@@ -2376,6 +2443,7 @@
   usb_get_dev
   usb_get_dr_mode
   usb_get_from_anchor
+  usb_get_intf
   usb_get_maximum_speed
   usb_get_maximum_ssp_rate
   usb_get_role_switch_default_mode
@@ -2400,9 +2468,13 @@
   usb_kill_anchored_urbs
   usb_kill_urb
   usb_lock_device_for_reset
+  usb_match_id
+  usb_match_one_id
   usb_phy_set_charger_current
+  usb_poison_urb
   usb_put_dev
   usb_put_hcd
+  usb_put_intf
   usb_register_dev
   usb_register_driver
   usb_remove_hcd
@@ -2423,9 +2495,12 @@
   usb_serial_handle_dcd_change
   usb_serial_register_drivers
   usb_set_interface
+  usb_show_dynids
+  usb_store_new_id
   usb_submit_urb
   usb_unanchor_urb
   usb_unlink_urb
+  usb_unpoison_urb
   usb_wakeup_notification
   __usecs_to_jiffies
   usleep_range_state
@@ -2601,79 +2676,3 @@
   zs_map_object
   zs_pool_stats
   zs_unmap_object
-
-	scmi_driver_unregister
-	usb_serial_deregister_drivers
-	__bitmap_complement
-	__tty_insert_flip_char
-	gpiochip_remove
-	tty_encode_baud_rate
-	tty_insert_flip_string_fixed_flag
-	tty_termios_hw_change
-	usb_serial_generic_close
-	usb_serial_generic_get_icount
-	usb_serial_generic_open
-	usb_serial_generic_throttle
-	usb_serial_generic_unthrottle
-	usb_serial_register_drivers
-	__tty_alloc_driver
-	driver_attach
-	driver_register
-	tty_driver_kref_put
-	tty_hangup
-	tty_kref_put
-	tty_ldisc_deref
-	tty_ldisc_ref
-	tty_port_close
-	tty_port_destroy
-	tty_port_hangup
-	tty_port_init
-	tty_port_open
-	tty_port_register_device
-	tty_port_tty_get
-	tty_port_tty_wakeup
-	tty_register_driver
-	tty_standard_install
-	tty_std_termios
-	tty_termios_baud_rate
-	tty_termios_copy_hw
-	tty_unregister_device
-	tty_unregister_driver
-	tty_vhangup
-	usb_get_intf
-	usb_match_id
-	usb_match_one_id
-	usb_poison_urb
-	usb_put_intf
-	usb_show_dynids
-	usb_store_new_id
-	usb_unpoison_urb
-	of_count_phandle_with_args
-	request_any_context_irq
-	__devm_iio_trigger_register
-	__module_get
-	devm_iio_trigger_alloc
-	iio_trigger_notify_done
-	iio_alloc_pollfunc
-	iio_dealloc_pollfunc
-	iio_device_id
-	iio_trigger_poll_chained
-	iio_show_mount_matrix
-	iio_read_mount_matrix
-	__devm_iio_device_register
-	iio_device_alloc
-	iio_device_claim_direct_mode
-	iio_device_free
-	iio_device_release_direct_mode
-	iio_push_event
-	irq_get_irq_data
-	regmap_bulk_read
-	regmap_bulk_write
-	__iio_trigger_register
-	iio_buffer_enabled
-	iio_trigger_unregister
-	__devm_regmap_init
-	devm_fwnode_pwm_get
-	led_set_brightness
-	led_set_brightness_nosleep
-  

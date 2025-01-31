@@ -290,6 +290,7 @@
   of_get_next_child
   of_get_property
   of_get_regulator_init_data
+  of_graph_get_endpoint_count
   of_hwspin_lock_get_id
   of_iomap
   of_match_device
@@ -477,6 +478,8 @@
   usb_role_switch_get_role
   usb_role_switch_set_role
   usleep_range_state
+  v4l2_enum_dv_timings_cap
+  v4l2_find_dv_timings_cea861_vic
   vabits_actual
   vfree
   vmalloc
