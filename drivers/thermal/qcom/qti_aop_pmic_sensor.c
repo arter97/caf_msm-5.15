@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/platform_device.h>
@@ -21,6 +21,7 @@
 
 struct pmic_rails {
 	int pmic_id;
+	int pmic_index;
 	int type;
 	char resource_name[PMIC_RAIL_NAME_LENGTH];
 };
@@ -114,7 +115,7 @@ static int qmp_read_data(struct aop_pmic_sensor_peripheral_data *aop_psens_perph
 		return ret;
 	}
 
-	idx = aop_psens_perph->pmic_rail->pmic_id - 1;
+	idx = aop_psens_perph->pmic_rail->pmic_index;
 
 	ret = readl_relaxed(aop_psens_dev->regmap + (idx * sizeof(struct pmic_stats))
 				+ offset);
@@ -168,7 +169,7 @@ static int aop_psens_probe_temp(struct platform_device *pdev,
 			aop_psens_temp->tz_dev = devm_thermal_zone_of_sensor_register(&pdev->dev,
 				sensor_id, aop_psens_temp, &aop_psens_temp_device_ops);
 			if (IS_ERR(aop_psens_temp->tz_dev)) {
-				pr_debug("aop pmic sensor [%s] thermal zone registration failed. %d\n",
+				pr_err("aop pmic sensor [%s] thermal zone registration failed. %d\n",
 				aop_psens_dev->pmic_rail[i].resource_name,
 				PTR_ERR(aop_psens_temp->tz_dev));
 				aop_psens_temp->tz_dev = NULL;
@@ -320,6 +321,14 @@ static int aop_pmic_parse_dt(struct device *dev, struct platform_device *pdev,
 		}
 
 		aop_psens_dev->pmic_rail[idx].pmic_id = val;
+
+		ret = of_property_read_u32(subsys_np, "qcom,pmic-index", &val);
+		if (ret < 0) {
+			pr_err("Unable to parse the dt, ret = %d\n", ret);
+			return ret;
+		}
+
+		aop_psens_dev->pmic_rail[idx].pmic_index = val;
 
 		ret = of_property_read_u32(subsys_np, "qcom,type", &val);
 		if (ret < 0) {
