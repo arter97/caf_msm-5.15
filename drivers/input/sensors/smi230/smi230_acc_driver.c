@@ -648,7 +648,9 @@ static ssize_t smi230_acc_show_sensor_temperature(struct device *dev,
 	int err;
 	int32_t sensor_temp;
 
+	mutex_lock(&interrupt_handling_lock);
 	err = smi230_acc_get_sensor_temperature(p_smi230_dev, &sensor_temp);
+	mutex_unlock(&interrupt_handling_lock);
 	if (err != SMI230_OK)
 		return err;
 

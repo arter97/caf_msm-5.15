@@ -359,11 +359,9 @@ static int qpic_lcdc_send_pkt_bam(struct qpic_display_data *qpic_display,
 
 	/* Set WR_ACTIVE = 3, WR_CS_HOLD = 1, CS_WR_RD_SETUP = 1 */
 	cfg0 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0);
-	DRM_INFO("QPIC_REG_QPIC_LCDC_CFG0 = %x cfg0 = %x\n", QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0), cfg0);
 	cfg0 &= ~((1 << 12) | (1 << 17) | (1 << 23));
 	cfg0 |= (1 << 10) | (1 << 15) | (1 << 20) | (1 << 21);
 	QPIC_OUTP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0, cfg0);
-	DRM_INFO("QPIC_REG_QPIC_LCDC_CFG0 = %x cfg0 = %x\n", QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG0), cfg0);
 
 	cfg2 = QPIC_INP(qpic_display, QPIC_REG_QPIC_LCDC_CFG2);
 	cfg2 &= ~0xFF;
@@ -1160,7 +1158,7 @@ int qpic_display_io_init(struct platform_device *pdev,
 		qpic_panel_io->te_gpio = te_gpio;
 
 	if (!gpio_is_valid(bl_gpio))
-		DRM_WARN("%s: te gpio not specified\n", __func__);
+		DRM_WARN("%s: bl gpio not specified\n", __func__);
 	else
 		qpic_panel_io->bl_gpio = bl_gpio;
 

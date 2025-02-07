@@ -1290,6 +1290,7 @@ static const struct soc_id soc_id[] = {
 	{ 608, "CROW" },
 	{ 644, "CROW_LTE" },
 	{ 668, "QCS_KALAMAP_N"},
+	{ 688, "QCM_KALAMA_N"},
 };
 
 static struct qcom_socinfo *qsocinfo;

@@ -5359,6 +5359,7 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 	if (mhi_ctx->config_iatu || mhi_ctx->mhi_int) {
 
 		dev_info(&pdev->dev, "request mhi irq %d\n", mhi_ctx->mhi_irq);
+		irq_set_status_flags(mhi_ctx->mhi_irq, IRQ_NOAUTOEN);
 		rc = devm_request_irq(&pdev->dev, mhi_ctx->mhi_irq, mhi_dev_isr,
 			IRQF_TRIGGER_HIGH, "mhi_isr", mhi_ctx);
 		if (rc) {
@@ -5366,8 +5367,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 			mutex_unlock(&mhi_ctx->mhi_lock);
 			return -EINVAL;
 		}
-
-		disable_irq(mhi_ctx->mhi_irq);
 	}
 
 	mhi_ctx->init_done = true;

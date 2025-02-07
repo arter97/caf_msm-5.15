@@ -173,6 +173,15 @@ config POWER_RESET_QCOM_RESET_REASON
 	  set as part of system restart.
 	  If unsure, say N.
 
+config POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
+	bool "MSM reboot reason boot parameter"
+	depends on POWER_RESET_QCOM_REBOOT_REASON
+	help
+	  This feature adds a command line parameter 'qcom-reboot-reason.reason'
+	  which can be used to pass the reboot reason on bootup. This allows
+	  the driver to access the reboot reason on targets where the bootloader
+	  clears the reason after reading it.
+
 config POWER_RESET_QCOM_DOWNLOAD_MODE_COMPRESS
 	bool "MSM compression support for fulldump"
 	depends on ARCH_QCOM
