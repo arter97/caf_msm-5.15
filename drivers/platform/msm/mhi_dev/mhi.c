@@ -5411,7 +5411,6 @@ void mhi_dev_resume_init_with_link_up(struct ep_pcie_notify *notify)
 		return;
 	}
 	queue_work(mhi->pcie_event_wq, &mhi->pcie_event);
-	mhi_uci_init();
 }
 
 static void mhi_dev_pcie_handle_event(struct work_struct *work)
