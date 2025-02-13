@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_H_
@@ -584,6 +584,18 @@ struct ipa_ep_cfg_metadata {
 struct ipa_ep_cfg_seq {
 	bool set_dynamic;
 	int seq_type;
+};
+
+/**
+ * struct ipa_ep_cfg_ucp - uCP config register
+ * @command: Command ID at uCP, that the packets should hit
+ *
+ * @enable: 0 - Disabled
+ *		1- Enabled
+ */
+struct ipa_ep_cfg_ucp {
+	u16 command;
+	u32 enable;
 };
 
 /**
