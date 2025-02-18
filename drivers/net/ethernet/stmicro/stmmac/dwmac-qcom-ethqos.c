@@ -4624,7 +4624,7 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 		break;
 	}
 
-	/*Backup speed & duplex before Enabling Loopback */
+	/*Backup speed & duplex and disable power saving before Enabling Loopback */
 	if (priv->current_loopback == DISABLE_LOOPBACK &&
 	    config > DISABLE_LOOPBACK) {
 		/*Backup old speed & duplex*/
@@ -4635,6 +4635,10 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 			ethqos->backup_speed = SPEED_UNKNOWN;
 			ethqos->backup_duplex = DUPLEX_UNKNOWN;
 		}
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+		if (priv->plat->enable_power_saving)
+			priv->plat->enable_power_saving(netdev, false);
+#endif
 	}
 
 	if (config == DISABLE_LOOPBACK)
@@ -4677,6 +4681,11 @@ static ssize_t loopback_handling_config_sysfs(struct device *dev,
 		ETHQOSINFO("Invalid Loopback=%d\n", config);
 		break;
 	}
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	if (priv->plat->enable_power_saving && config == DISABLE_LOOPBACK)
+		priv->plat->enable_power_saving(netdev, true);
+#endif
 
 	priv->current_loopback = config;
 

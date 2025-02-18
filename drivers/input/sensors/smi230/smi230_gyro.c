@@ -553,53 +553,26 @@ smi230_gyro_set_int_config(const struct smi230_gyro_int_channel_cfg *int_config,
  */
 int8_t smi230_gyro_perform_selftest(const struct smi230_dev *dev)
 {
-	int8_t rslt;
-	uint8_t data = 0, loop_break = 1;
+	int8_t ret, rslt = 0;
+	uint8_t data = 1;
 
 	/* Check for null pointer in the device structure*/
-	rslt = null_ptr_check(dev);
+	ret = null_ptr_check(dev);
 
 	/* Proceed if null check is fine */
-	if (rslt == SMI230_OK) {
+	if (ret == SMI230_OK) {
 		/* Enable the gyro self-test */
-		rslt = set_gyro_selftest(SMI230_ENABLE, dev);
+		ret = set_gyro_selftest(SMI230_ENABLE, dev);
 
-		if (rslt == SMI230_OK) {
-			/* Loop till self-test ready bit is set */
-			while (loop_break) {
-				/* Read self-test register to check if self-test ready bit is set */
-				rslt = get_regs(SMI230_GYRO_SELF_TEST_REG,
-						&data, 1, dev);
+		smi230_delay(80);
 
-				if (rslt == SMI230_OK) {
-					data = SMI230_GET_BITS(
-						data,
-						SMI230_GYRO_SELF_TEST_RDY);
+		if (ret == SMI230_OK) {
+			/* Read self-test register */
+			ret = get_regs(SMI230_GYRO_SELF_TEST_REG, &data, 1,
+				       dev);
 
-					if (data) {
-						/* If self-test ready bit is set, exit the loop */
-						loop_break = 0;
-					}
-
-				} else {
-					/* Exit the loop in case of communication failure */
-					loop_break = 0;
-				}
-			}
-
-			if (rslt == SMI230_OK) {
-				/* Read self-test register to check for self-test Ok bit */
-				rslt = get_regs(SMI230_GYRO_SELF_TEST_REG,
-						&data, 1, dev);
-
-				if (rslt == SMI230_OK) {
-					data = SMI230_GET_BITS(
-						data,
-						SMI230_GYRO_SELF_TEST_RESULT);
-
-					rslt = (int8_t)data;
-				}
-			}
+			if (ret == SMI230_OK)
+				rslt = data & SMI230_GYRO_SELF_TEST_RESULT_MASK;
 		}
 	}
 
@@ -960,7 +933,7 @@ int8_t smi230_gyro_read_fifo_data(struct smi230_fifo_frame *fifo,
  * @brief This API gets the length of FIFO data available in the sensor in
  * bytes.
  */
-int8_t smi230_gyro_get_fifo_length(uint16_t *fifo_bytes,
+int8_t smi230_gyro_get_fifo_length(uint16_t *fifo_frames,
 				   const struct smi230_dev *dev)
 {
 	/* Variable to define error */
@@ -971,14 +944,12 @@ int8_t smi230_gyro_get_fifo_length(uint16_t *fifo_bytes,
 
 	/* Check for null pointer in the device structure */
 	rslt = null_ptr_check(dev);
-	if ((rslt == SMI230_OK) && (fifo_bytes != NULL)) {
+	if ((rslt == SMI230_OK) && (fifo_frames != NULL)) {
 		/* read fifo length */
 		rslt = smi230_gyro_get_regs(SMI230_GYRO_FIFO_STATUS_ADDR, &data,
 					    1, dev);
 		if (rslt == SMI230_OK) {
-			/* Get total FIFO length */
-			(*fifo_bytes) = (uint16_t)(data & 0x7F) *
-					SMI230_FIFO_GYRO_FRAME_LENGTH;
+			(*fifo_frames) = (uint16_t)(data & 0x7F);
 		} else {
 			rslt = SMI230_E_NULL_PTR;
 		}
@@ -1065,7 +1036,7 @@ static void unpack_gyro_data(struct smi230_sensor_data *gyro,
  * FIFO in headerless mode.
  */
 static int8_t extract_gyro_headerless_mode(struct smi230_sensor_data *gyro,
-					   uint8_t *fifo_length,
+					   uint16_t *fifo_length,
 					   struct smi230_fifo_frame *fifo)
 {
 	/* Variable to define error */
@@ -1078,7 +1049,7 @@ static int8_t extract_gyro_headerless_mode(struct smi230_sensor_data *gyro,
 	uint16_t gyro_index = 0;
 
 	/* Variable to indicate gyroerometer frames read */
-	uint8_t frame_to_read = *fifo_length;
+	uint16_t frame_to_read = *fifo_length;
 
 	for (data_index = 0; data_index < fifo->length;) {
 		unpack_gyro_data(&gyro[gyro_index], data_index, fifo);
@@ -1105,7 +1076,7 @@ static int8_t extract_gyro_headerless_mode(struct smi230_sensor_data *gyro,
  * structure instance.
  */
 int8_t smi230_gyro_extract_fifo(struct smi230_sensor_data *gyro_data,
-				uint8_t *fifo_length,
+				uint16_t *fifo_length,
 				struct smi230_fifo_frame *fifo,
 				const struct smi230_dev *dev)
 {

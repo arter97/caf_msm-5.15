@@ -49,6 +49,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include "smi230_driver.h"
 
@@ -59,6 +60,8 @@
 #define SMI230_MAX_RETRY_I2C_XFER   1
 #define SMI230_I2C_WRITE_DELAY_TIME 1
 
+static DEFINE_MUTEX(xfer_lock);
+
 struct i2c_adapter *smi230_i2c_adapter;
 
 static struct smi230_dev smi230_i2c_dev;
@@ -67,6 +70,7 @@ static int8_t smi230_i2c_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
 			      uint16_t len)
 {
 	int32_t retry;
+	int8_t ret = 0;
 
 	struct i2c_msg msg[] = {
 		{
@@ -83,6 +87,9 @@ static int8_t smi230_i2c_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
 			.buf = data,
 		},
 	};
+
+	mutex_lock(&xfer_lock);
+
 	for (retry = 0; retry < SMI230_MAX_RETRY_I2C_XFER; retry++) {
 		if (i2c_transfer(smi230_i2c_adapter, msg, ARRAY_SIZE(msg)) > 0)
 			break;
@@ -93,16 +100,18 @@ static int8_t smi230_i2c_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
 
 	if (SMI230_MAX_RETRY_I2C_XFER <= retry) {
 		PERR("I2C xfer error");
-		return -EIO;
+		ret = -EIO;
 	}
 
-	return 0;
+	mutex_unlock(&xfer_lock);
+	return ret;
 }
 
 static int8_t smi230_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
 			       uint8_t *data, uint16_t len)
 {
 	int32_t retry;
+	int8_t ret = 0;
 	struct i2c_msg msg = {
 		.addr = dev_addr,
 		.flags = 0,
@@ -115,6 +124,9 @@ static int8_t smi230_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
 		PERR("Allocate mem failed\n");
 		return -ENOMEM;
 	}
+
+	mutex_lock(&xfer_lock);
+
 	msg.buf[0] = reg_addr;
 	memcpy(&msg.buf[1], data, len);
 	for (retry = 0; retry < SMI230_MAX_RETRY_I2C_XFER; retry++) {
@@ -127,16 +139,22 @@ static int8_t smi230_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
 	kfree(msg.buf);
 	if (SMI230_MAX_RETRY_I2C_XFER <= retry) {
 		PERR("I2C xfer error");
-		return -EIO;
+		ret = -EIO;
 	}
 
-	return 0;
+	mutex_unlock(&xfer_lock);
+
+	return ret;
 }
 
 /* ACC driver */
 #ifdef CONFIG_SMI230_ACC_DRIVER
+#if KERNEL_VERSION(6, 6, 0) > LINUX_VERSION_CODE
 static int smi230_acc_i2c_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
+#else
+static int smi230_acc_i2c_probe(struct i2c_client *client)
+#endif
 {
 	int err = 0;
 
@@ -172,11 +190,17 @@ static int smi230_acc_i2c_probe(struct i2c_client *client,
 
 	return smi230_acc_probe(&client->dev, &smi230_i2c_dev);
 }
-
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
 static int smi230_acc_i2c_remove(struct i2c_client *client)
 {
 	return smi230_acc_remove(&client->dev);
 }
+#else
+static void smi230_acc_i2c_remove(struct i2c_client *client)
+{
+	smi230_acc_remove(&client->dev);
+}
+#endif
 
 static const struct i2c_device_id smi230_acc_id[] = { { SENSOR_ACC_NAME, 0 },
 						      {} };
@@ -205,8 +229,12 @@ struct i2c_driver smi230_acc_driver = {
 
 /* GYRO driver */
 #ifdef CONFIG_SMI230_GYRO_DRIVER
+#if KERNEL_VERSION(6, 6, 0) > LINUX_VERSION_CODE
 static int smi230_gyro_i2c_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
+#else
+static int smi230_gyro_i2c_probe(struct i2c_client *client)
+#endif
 {
 	int err = 0;
 
@@ -243,10 +271,17 @@ static int smi230_gyro_i2c_probe(struct i2c_client *client,
 	return smi230_gyro_probe(&client->dev, &smi230_i2c_dev);
 }
 
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
 static int smi230_gyro_i2c_remove(struct i2c_client *client)
 {
 	return smi230_gyro_remove(&client->dev);
 }
+#else
+static void smi230_gyro_i2c_remove(struct i2c_client *client)
+{
+	smi230_gyro_remove(&client->dev);
+}
+#endif
 
 static const struct i2c_device_id smi230_gyro_id[] = { { SENSOR_GYRO_NAME, 0 },
 						       {} };
@@ -291,6 +326,8 @@ static int __init smi230_module_init(void)
 #ifdef CONFIG_SMI230_ACC_DRIVER
 	err |= i2c_add_driver(&smi230_acc_driver);
 #endif
+
+	PINFO("Bosch Sensor Device %s registered", SENSOR_GYRO_NAME);
 	return err;
 }
 
@@ -302,6 +339,7 @@ static void __exit smi230_module_exit(void)
 #ifdef CONFIG_SMI230_GYRO_DRIVER
 	i2c_del_driver(&smi230_gyro_driver);
 #endif
+	PINFO("Bosch Sensor Device %s unregistered", SENSOR_GYRO_NAME);
 }
 
 module_init(smi230_module_init);

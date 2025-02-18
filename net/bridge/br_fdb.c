@@ -521,6 +521,8 @@ static struct net_bridge_fdb_entry *fdb_create(struct net_bridge *br,
 		WRITE_ONCE(fdb->dst, source);
 		fdb->key.vlan_id = vid;
 		fdb->flags = flags;
+		fdb->is_local = test_bit(BR_FDB_LOCAL, &fdb->flags);
+		fdb->is_static = test_bit(BR_FDB_STATIC, &fdb->flags);
 		fdb->updated = fdb->used = jiffies;
 		if (rhashtable_lookup_insert_fast(&br->fdb_hash_tbl,
 						  &fdb->rhnode,

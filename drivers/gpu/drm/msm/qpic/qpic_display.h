@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2015, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,6 +16,8 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_simple_kms_helper.h>
+
+#define MSM_QPIC_EMMC_BUS_VOTE_MAX_RATE  133000000 /* Hz */
 
 #define QPIC_REG_QPIC_LCDC_CTRL				0x22000
 #define QPIC_REG_LCDC_VERSION				0x22004
@@ -33,12 +35,18 @@
 #define QPIC_REG_QPIC_LCDC_FIFO_DATA_PORT0		0x22140
 #define QPIC_REG_QPIC_LCDC_FIFO_EOF			0x22180
 
+#define QPIC_REG_TLMM_EBI2_EMMC_GPIO_CFG	0x98028
+
 #define QPIC_OUTP(qpic_display, off, data) \
 	writel_relaxed((data), (qpic_display)->qpic_base  + (off))
 #define QPIC_OUTPW(qpic_display, off, data) \
 	writew_relaxed((data), (qpic_display)->qpic_base  + (off))
 #define QPIC_INP(qpic_display, off) \
 	readl_relaxed((qpic_display)->qpic_base + (off))
+#define QPIC_TLMM_OUTP(qpic_display, off, data) \
+	writel_relaxed((data), (qpic_display)->tlmm_central_base  + (off))
+#define QPIC_TLMM_INP(qpic_display, off) \
+	readl_relaxed((qpic_display)->tlmm_central_base + (off))
 
 #define QPIC_MAX_VSYNC_WAIT_TIME_IN_MS			500
 
@@ -106,9 +114,12 @@ struct qpic_display_data {
 	bool pipe_enabled;
 
 	size_t qpic_reg_size;
+	size_t tlmm_reg_size;
 	u32 qpic_phys;
 	char __iomem *qpic_base;
+	char __iomem *tlmm_central_base;
 	u32 irq_id;
+	u32 bam_irq_id;
 	bool irq_ena;
 	u32 res_init;
 

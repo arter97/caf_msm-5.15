@@ -292,7 +292,7 @@ static void mhi_netdev_queue_skb(struct mhi_netdev *mhi_netdev,
 	if (!nr_tre)
 		return;
 
-	size = (mhi_netdev->mru < ndev->mtu) ? mhi_netdev->mru : ndev->mtu;
+	size = mhi_dev->mhi_cntrl->buffer_len;
 
 	for (i = 0; i < nr_tre; i++) {
 		skb = netdev_alloc_skb(ndev, size);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -2251,6 +2251,12 @@ static int mhi_dev_send_completion_event(struct mhi_dev_channel *ch,
 						GFP_KERNEL);
 	struct mhi_dev *mhi = ch->ring->mhi_dev;
 
+	if (!compl_event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for transfer completion event\n");
+		return -ENOMEM;
+	}
+
 	compl_event->evt_tr_comp.chid = ch->ch_id;
 	compl_event->evt_tr_comp.type =
 				MHI_DEV_RING_EL_TRANSFER_COMPLETION_EVENT;
@@ -2274,6 +2280,12 @@ int mhi_dev_send_state_change_event(struct mhi_dev *mhi,
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
 
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for state change event\n");
+		return -ENOMEM;
+	}
+
 	event->evt_state_change.type = MHI_DEV_RING_EL_MHI_STATE_CHG;
 	event->evt_state_change.mhistate = state;
 
@@ -2290,6 +2302,12 @@ int mhi_dev_send_ee_event(struct mhi_dev *mhi, enum mhi_dev_execenv exec_env)
 
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
+
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for ee state change event\n");
+		return -ENOMEM;
+	}
 
 	event->evt_ee_state.type = MHI_DEV_RING_EL_EE_STATE_CHANGE_NOTIFY;
 	event->evt_ee_state.execenv = exec_env;
@@ -2343,6 +2361,12 @@ static int mhi_dev_send_cmd_comp_event(struct mhi_dev *mhi,
 
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
+
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for command completion event\n");
+		return -ENOMEM;
+	}
 
 	if (code > MHI_CMD_COMPL_CODE_RES) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -3794,8 +3818,10 @@ static int mhi_dev_alloc_evt_buf_evt_req(struct mhi_dev *mhi,
 	/* Allocate event requests */
 	for (i = 0; i < ch->evt_req_size; ++i) {
 		req = kzalloc(sizeof(struct event_req), GFP_KERNEL);
-		if (!req)
+		if (!req) {
+			rc = -ENOMEM;
 			goto free_ereqs;
+		}
 		list_add_tail(&req->list, &ch->event_req_buffers);
 	}
 
@@ -5359,6 +5385,7 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 	if (mhi_ctx->config_iatu || mhi_ctx->mhi_int) {
 
 		dev_info(&pdev->dev, "request mhi irq %d\n", mhi_ctx->mhi_irq);
+		irq_set_status_flags(mhi_ctx->mhi_irq, IRQ_NOAUTOEN);
 		rc = devm_request_irq(&pdev->dev, mhi_ctx->mhi_irq, mhi_dev_isr,
 			IRQF_TRIGGER_HIGH, "mhi_isr", mhi_ctx);
 		if (rc) {
@@ -5366,8 +5393,6 @@ static int mhi_dev_resume_mmio_mhi_init(struct mhi_dev *mhi_ctx)
 			mutex_unlock(&mhi_ctx->mhi_lock);
 			return -EINVAL;
 		}
-
-		disable_irq(mhi_ctx->mhi_irq);
 	}
 
 	mhi_ctx->init_done = true;

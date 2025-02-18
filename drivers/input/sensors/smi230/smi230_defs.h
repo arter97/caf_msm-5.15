@@ -60,6 +60,7 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/mutex.h>
 #else
 #include <stdint.h>
 #include <stddef.h>
@@ -493,8 +494,9 @@
 /**\name    Mask definitions for GYRO_SELF_TEST register */
 #define SMI230_GYRO_SELF_TEST_EN_MASK	    UINT8_C(0x01)
 #define SMI230_GYRO_SELF_TEST_RDY_MASK	    UINT8_C(0x02)
-#define SMI230_GYRO_SELF_TEST_RESULT_MASK   UINT8_C(0x04)
+#define SMI230_GYRO_SELF_TEST_RESULT_MASK   UINT8_C(0x06)
 #define SMI230_GYRO_SELF_TEST_FUNCTION_MASK UINT8_C(0x08)
+#define SMI230_GYRO_SELF_TEST_OK	    UINT8_C(0x02)
 
 /**\name    Position definitions for GYRO_SELF_TEST register */
 #define SMI230_GYRO_SELF_TEST_RDY_POS	   UINT8_C(1)
@@ -606,12 +608,12 @@
 #define SMI230_FIFO_INTR_MASK	     UINT8_C(0x5C)
 
 /*name FIFO config modes */
-#define SMI230_ACC_STREAM_MODE UINT8_C(0x00)
-#define SMI230_ACC_FIFO_MODE   UINT8_C(0x01)
+#define SMI230_ACC_STREAM_MODE UINT8_C(0x02)
+#define SMI230_ACC_FIFO_MODE   UINT8_C(0x03)
 
 #define SMI230_FIFO_GYRO_FRAME_LENGTH UINT8_C(6)
-#define SMI230_GYRO_STREAM_MODE	      UINT8_C(0x8C)
-#define SMI230_GYRO_FIFO_MODE	      UINT8_C(0x4C)
+#define SMI230_GYRO_STREAM_MODE	      UINT8_C(0x80)
+#define SMI230_GYRO_FIFO_MODE	      UINT8_C(0x40)
 /*name Mask definitions for FIFO configuration modes */
 #define SMI230_ACC_FIFO_MODE_CONFIG_MASK UINT8_C(0x01)
 
@@ -654,7 +656,7 @@
 
 /*! @name Interrupt flag masks for ACC_INT_STAT_1 */
 #define SMI230_ACCEL_FIFO_FULL UINT8_C(0x01)
-#define SMI230_ACCEL_FIFO_WTM  UINT8_C(0x02)
+#define SMI230_ACCEL_FIFO_WM   UINT8_C(0x02)
 
 /**\name    Absolute value */
 #ifndef SMI230_ABS
@@ -799,6 +801,8 @@
 #define SMI230_GET_MSB(var) (uint8_t)((var & SMI230_SET_HIGH_BYTE) >> 8)
 
 /*************************************************************************/
+
+static DEFINE_MUTEX(interrupt_handling_lock);
 
 /*!
  * @brief Interface selection enums

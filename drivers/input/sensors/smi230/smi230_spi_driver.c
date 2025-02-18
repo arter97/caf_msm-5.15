@@ -47,6 +47,7 @@
 #include <linux/types.h>
 #include <linux/spi/spi.h>
 #include <linux/module.h>
+#include <linux/version.h>
 
 #include "smi230_driver.h"
 #define MODULE_TAG MODULE_NAME
@@ -54,6 +55,8 @@
 #include "smi230.h"
 
 #define SMI230_SPI_MAX_BUFFER_SIZE 32
+
+static DEFINE_MUTEX(xfer_lock);
 
 static uint8_t *read_buf = NULL;
 static struct spi_device *smi230_acc_device;
@@ -64,6 +67,7 @@ static struct smi230_dev smi230_spi_dev;
 static int8_t smi230_spi_write(uint8_t dev_addr, uint8_t reg_addr,
 			       uint8_t *data, uint16_t len)
 {
+	int8_t ret = 0;
 	struct spi_message msg;
 	uint8_t buffer[SMI230_SPI_MAX_BUFFER_SIZE + 1];
 	struct spi_transfer xfer = {
@@ -74,6 +78,7 @@ static int8_t smi230_spi_write(uint8_t dev_addr, uint8_t reg_addr,
 	if (len > SMI230_SPI_MAX_BUFFER_SIZE)
 		return -EINVAL;
 
+	mutex_lock(&xfer_lock);
 	buffer[0] = reg_addr;
 	memcpy(&buffer[1], data, len);
 	spi_message_init(&msg);
@@ -83,9 +88,13 @@ static int8_t smi230_spi_write(uint8_t dev_addr, uint8_t reg_addr,
 	/* PINFO("write xfer reg %x data0 %d\t", reg_addr, data[0]); */
 #endif
 	if (dev_addr == SMI230_ACCEL_CHIP_ID)
-		return spi_sync(smi230_acc_device, &msg);
+		ret = spi_sync(smi230_acc_device, &msg);
 	else
-		return spi_sync(smi230_gyro_device, &msg);
+		ret = spi_sync(smi230_gyro_device, &msg);
+
+	mutex_unlock(&xfer_lock);
+
+	return ret;
 }
 
 static int8_t smi230_spi_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
@@ -105,6 +114,7 @@ static int8_t smi230_spi_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
 		}
 	};
 
+	mutex_lock(&xfer_lock);
 	spi_message_init(&msg);
 	spi_message_add_tail(&xfer[0], &msg);
 	spi_message_add_tail(&xfer[1], &msg);
@@ -121,6 +131,8 @@ static int8_t smi230_spi_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data,
 	for (index = 0; index < len; index++) {
 		data[index] = read_buf[index];
 	}
+
+	mutex_unlock(&xfer_lock);
 
 	return ret;
 }
@@ -170,6 +182,7 @@ static int smi230_acc_spi_probe(struct spi_device *device)
 		return smi230_acc_probe(&device->dev, &smi230_spi_dev);
 }
 
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
 static int smi230_acc_spi_remove(struct spi_device *device)
 {
 	if (read_buf != NULL) {
@@ -178,6 +191,16 @@ static int smi230_acc_spi_remove(struct spi_device *device)
 	}
 	return smi230_acc_remove(&device->dev);
 }
+#else
+static void smi230_acc_spi_remove(struct spi_device *device)
+{
+	if (read_buf != NULL) {
+		kfree(read_buf);
+		read_buf = NULL;
+	}
+	smi230_acc_remove(&device->dev);
+}
+#endif
 
 static const struct spi_device_id smi230_acc_id[] = { { SENSOR_ACC_NAME, 0 },
 						      {} };
@@ -244,6 +267,7 @@ static int smi230_gyro_spi_probe(struct spi_device *device)
 	return smi230_gyro_probe(&device->dev, &smi230_spi_dev);
 }
 
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
 static int smi230_gyro_spi_remove(struct spi_device *device)
 {
 	if (read_buf != NULL) {
@@ -252,6 +276,16 @@ static int smi230_gyro_spi_remove(struct spi_device *device)
 	}
 	return smi230_gyro_remove(&device->dev);
 }
+#else
+static void smi230_gyro_spi_remove(struct spi_device *device)
+{
+	if (read_buf != NULL) {
+		kfree(read_buf);
+		read_buf = NULL;
+	}
+	smi230_gyro_remove(&device->dev);
+}
+#endif
 
 static const struct spi_device_id smi230_gyro_id[] = { { SENSOR_GYRO_NAME, 0 },
 						       {} };

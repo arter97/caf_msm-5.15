@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2015,2019 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/io.h>
@@ -116,12 +116,13 @@ int scm_get_wq_ctx(u32 *wq_ctx, u32 *flags, u32 *more_pending)
 }
 
 static int scm_smc_do_quirk(struct device *dev, struct arm_smccc_args *smc,
-		    struct arm_smccc_res *res, const bool multi_smc_call)
+		    struct arm_smccc_res *res, const bool multicall_allowed)
 {
 	struct completion *wq = NULL;
 	struct qcom_scm *qscm;
 	struct arm_smccc_args original = *smc;
 	u32 wq_ctx, smc_call_ctx, flags;
+	bool multi_smc_call;
 
 	do {
 		__scm_smc_do_quirk(smc, res);
@@ -142,6 +143,7 @@ static int scm_smc_do_quirk(struct device *dev, struct arm_smccc_args *smc,
 				return PTR_ERR(wq);
 			}
 
+			multi_smc_call = qcom_scm_multi_call_allow(qscm, multicall_allowed);
 			if (res->a0 == QCOM_SCM_WAITQ_SLEEP) {
 				if (multi_smc_call)
 					mutex_unlock(&qcom_scm_lock);
@@ -182,7 +184,6 @@ static int __scm_smc_do(struct device *dev, struct arm_smccc_args *smc,
 			 bool multicall_allowed)
 {
 	int ret, retry_count = 0;
-	bool multi_smc_call = qcom_scm_multi_call_allow(dev, multicall_allowed);
 
 	if (call_type == QCOM_SCM_CALL_ATOMIC) {
 		__scm_smc_do_quirk(smc, res);
@@ -191,7 +192,7 @@ static int __scm_smc_do(struct device *dev, struct arm_smccc_args *smc,
 
 	do {
 		mutex_lock(&qcom_scm_lock);
-		ret = scm_smc_do_quirk(dev, smc, res, multi_smc_call);
+		ret = scm_smc_do_quirk(dev, smc, res, multicall_allowed);
 		mutex_unlock(&qcom_scm_lock);
 		if (ret)
 			return ret;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -443,6 +443,57 @@ static int ep_pcie_vreg_init(struct ep_pcie_dev_t *dev)
 				break;
 			}
 		}
+	}
+
+	if (rc)
+		while (i--) {
+			struct regulator *hdl = dev->vreg[i].hdl;
+
+			if (hdl)
+				if (!strcmp(dev->vreg[i].name, "vreg-mx")) {
+					EP_PCIE_DBG(dev, "PCIe V%d: Removing vote for %s.\n",
+						dev->rev, dev->vreg[i].name);
+					regulator_set_voltage(hdl, RPMH_REGULATOR_LEVEL_RETENTION,
+						RPMH_REGULATOR_LEVEL_MAX);
+				}
+		}
+
+	return rc;
+}
+
+static int ep_pcie_vreg_enable(struct ep_pcie_dev_t *dev)
+{
+	int i, rc = 0;
+	struct regulator *vreg;
+	struct ep_pcie_vreg_info_t *info;
+
+	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
+
+	for (i = 0; i < EP_PCIE_MAX_VREG; i++) {
+		info = &dev->vreg[i];
+		vreg = info->hdl;
+
+		if (!vreg) {
+			EP_PCIE_ERR(dev,
+				"PCIe V%d:  handle of Vreg %s is NULL\n",
+				dev->rev, info->name);
+			rc = -EINVAL;
+			break;
+		}
+
+		if (!strcmp(dev->vreg[i].name, "vreg-mx") && info->max_v) {
+			rc = regulator_set_voltage(vreg,
+						   info->min_v, info->max_v);
+			if (rc) {
+				EP_PCIE_ERR(dev,
+					"PCIe V%d:  can't set voltage for %s: %d\n",
+					dev->rev, info->name, rc);
+				break;
+			}
+		}
+
+		EP_PCIE_DBG(dev, "PCIe V%d: Vreg %s is being enabled\n",
+			dev->rev, info->name);
 
 		rc = regulator_enable(vreg);
 		if (rc) {
@@ -736,7 +787,11 @@ int ep_pcie_l1ss_resources_init(struct ep_pcie_dev_t *dev)
 	struct ep_pcie_clk_info_t *clki;
 
 	/* Turn on LDOs */
-	ep_pcie_vreg_init(dev);
+	rc = ep_pcie_vreg_enable(dev);
+	if (rc) {
+		EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n", dev->rev);
+		return rc;
+	}
 
 	/* Set bus bandwidth */
 	if (dev->icc_path) {
@@ -2216,10 +2271,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 
 	if (opt & EP_PCIE_OPT_POWER_ON) {
 		/* enable power */
-		ret = ep_pcie_vreg_init(dev);
+		ret = ep_pcie_vreg_enable(dev);
 		if (ret) {
-			EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n",
-				dev->rev);
+			EP_PCIE_ERR(dev, "PCIe V%d: failed to enable Vreg\n", dev->rev);
 			goto out;
 		}
 
@@ -2613,6 +2667,9 @@ int ep_pcie_core_disable_endpoint(void)
 		goto out;
 	}
 
+	/* Masking IRQs to stop Global IRQ from triggering during suspend sequence */
+	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_MASK, 0x0);
+
 	dev->power_on = false;
 	/*
 	 * In some cases, the device is requesting for an inband pme
@@ -2679,6 +2736,11 @@ int ep_pcie_core_disable_endpoint(void)
 	if (atomic_read(&dev->host_wake_pending)) {
 		EP_PCIE_DBG(dev, "PCIe V%d: wake pending, init wakeup\n",
 			dev->rev);
+		/*
+		 * Clear the wake pending otherwise ep_pcie_core_wakeup_host_internal
+		 * will return without WAKE toggle
+		 */
+		atomic_set(&dev->host_wake_pending, 0);
 		ep_pcie_core_wakeup_host_internal(EP_PCIE_EVENT_PM_D3_COLD);
 	}
 
@@ -3163,10 +3225,19 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
 	int i, ret;
-	u32 status;
+	u32 status = 0;
 	unsigned long irqsave_flags;
 
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
+	if (dev->power_on) {
+		status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
+		dev->global_irq_counter++;
+		EP_PCIE_DUMP(dev,
+			"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
+			dev->rev, dev->global_irq_counter, irq, status);
+	}
+
 	if (!atomic_read(&dev->perst_deast)) {
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: Global irq not processed as PERST# is asserted\n",
@@ -3174,14 +3245,6 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 		return IRQ_HANDLED;
 	}
-
-	status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
-	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
-
-	dev->global_irq_counter++;
-	EP_PCIE_DUMP(dev,
-		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
-		dev->rev, dev->global_irq_counter, irq, status);
 
 	if (!status)
 		goto sriov_irq;
@@ -3501,6 +3564,11 @@ enum ep_pcie_link_status ep_pcie_core_get_linkstatus(void)
 {
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 bme;
+
+	if (dev->link_status == EP_PCIE_LINK_INVALID) {
+		EP_PCIE_INFO(&ep_pcie_dev, "PCIe V%d: Non PCIe Boot\n", ep_pcie_dev.rev);
+		return EP_PCIE_LINK_INVALID;
+	}
 
 	if (!dev->power_on || (dev->link_status == EP_PCIE_LINK_DISABLED)) {
 		EP_PCIE_DBG(dev,
@@ -4334,15 +4402,60 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 static int ep_pcie_probe(struct platform_device *pdev)
 {
 	int ret, num_ipc_pages_dev_fac;
-	u32 sriov_mask = 0;
+	u32 dev_id, sriov_mask = 0;
 	char logname[MAX_NAME_LEN];
+
+	ep_pcie_dev.vendor_id = 0xFFFF;
+	ret = of_property_read_u16((&pdev->dev)->of_node,
+				   "qcom,pcie-vendor-id",
+				   &ep_pcie_dev.vendor_id);
+	if (ret)
+		EP_PCIE_DBG(&ep_pcie_dev,
+			   "PCIe V%d: pcie-vendor-id does not exist.\n",
+			   ep_pcie_dev.rev);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-vendor-id:%d.\n",
+				ep_pcie_dev.rev, ep_pcie_dev.vendor_id);
+
+	ep_pcie_dev.device_id = 0xFFFF;
+	ret = of_property_read_u16((&pdev->dev)->of_node,
+				"qcom,pcie-device-id",
+				&ep_pcie_dev.device_id);
+	if (ret)
+		EP_PCIE_DBG(&ep_pcie_dev,
+			   "PCIe V%d: pcie-device-id does not exist.\n",
+			   ep_pcie_dev.rev);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-device-id:%d.\n",
+			   ep_pcie_dev.rev, ep_pcie_dev.device_id);
 
 	ret = is_pcie_boot_config(pdev);
 	if (ret) {
-		EP_PCIE_DBG(&ep_pcie_dev,
+		EP_PCIE_INFO(&ep_pcie_dev,
 			"PCIe V%d: boot_config is not PCIe\n",
 			ep_pcie_dev.rev);
-		goto res_failure;
+		/*
+		 * In a non-PCIe boot configuration, the EP-PCIe driver should probe successfully
+		 * without failing, to meet GCC sync state requirements. During such a boot,
+		 * the driver performs a dummy probe without real initialization.
+		 *
+		 * PCIe client drivers (e.g., MHI) cannot distinguish between a full probe and
+		 * a dummy probe. To address this, the link state is set to INVALID STATE during
+		 * a dummy probe. Client drivers can query this state to determine the probe type
+		 * and take appropriate actions for non-PCIe boot scenarios.
+		 */
+		dev_id = ep_pcie_dev.device_id;
+		dev_id = dev_id << 16 | ep_pcie_dev.vendor_id;
+		hw_drv.device_id = dev_id;
+
+		ep_pcie_dev.link_status = EP_PCIE_LINK_INVALID;
+		ep_pcie_register_drv(&hw_drv);
+		/*
+		 * For non-pcie boot config, instead of failing probe, simply return
+		 * success (without proceeding for any further initialization)
+		 * to satisfy GCC sync_state framework requirements.
+		 */
+		return 0;
 	}
 
 	ret = of_property_read_u32((&pdev->dev)->of_node,
@@ -4401,30 +4514,6 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	else
 		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-link-speed:%d\n",
 			ep_pcie_dev.rev, ep_pcie_dev.link_speed);
-
-	ep_pcie_dev.vendor_id = 0xFFFF;
-	ret = of_property_read_u16((&pdev->dev)->of_node,
-				"qcom,pcie-vendor-id",
-				&ep_pcie_dev.vendor_id);
-	if (ret)
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: pcie-vendor-id does not exist.\n",
-				ep_pcie_dev.rev);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-vendor-id:%d.\n",
-				ep_pcie_dev.rev, ep_pcie_dev.vendor_id);
-
-	ep_pcie_dev.device_id = 0xFFFF;
-	ret = of_property_read_u16((&pdev->dev)->of_node,
-				"qcom,pcie-device-id",
-				&ep_pcie_dev.device_id);
-	if (ret)
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: pcie-device-id does not exist.\n",
-				ep_pcie_dev.rev);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-device-id:%d.\n",
-				ep_pcie_dev.rev, ep_pcie_dev.device_id);
 
 	ret = of_property_read_u32((&pdev->dev)->of_node,
 				"qcom,dbi-base-reg",
@@ -4674,6 +4763,12 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	EP_PCIE_DBG(&ep_pcie_dev,
 		"PCIe V%d: %s got resources successfully; start turning on the link\n",
 		ep_pcie_dev.rev, dev_name(&(pdev->dev)));
+
+	ret = ep_pcie_vreg_init(&ep_pcie_dev);
+	if (ret) {
+		EP_PCIE_ERR(&ep_pcie_dev, "PCIe V%d: failed to enable Vreg\n", ep_pcie_dev.rev);
+		goto irq_deinit;
+	}
 
 	ret = ep_pcie_enumeration(&ep_pcie_dev);
 	if (ret == EP_PCIE_ERROR)

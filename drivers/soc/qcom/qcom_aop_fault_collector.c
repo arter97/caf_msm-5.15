@@ -254,7 +254,7 @@ struct qmi_elem_info fm_report_to_fm_req_msg_v01_ei[] = {
 		.elem_len	= 1,
 		.elem_size	= sizeof(u8),
 		.array_type	= NO_ARRAY,
-		.tlv_type	= 0x10,
+		.tlv_type	= 0x11,
 		.offset		= offsetof(struct
 					   fm_report_to_fm_req_msg_v01,
 					   payload_valid),
@@ -264,7 +264,7 @@ struct qmi_elem_info fm_report_to_fm_req_msg_v01_ei[] = {
 		.elem_len	= 1024,
 		.elem_size	= sizeof(char),
 		.array_type	= STATIC_ARRAY,
-		.tlv_type	= 0x10,
+		.tlv_type	= 0x11,
 		.offset		= offsetof(struct
 					   fm_report_to_fm_req_msg_v01,
 					   payload),

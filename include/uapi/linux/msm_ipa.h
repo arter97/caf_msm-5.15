@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_IPA_H_
@@ -160,6 +160,7 @@
 #define IPA_IOCTL_QOS_PARAM                     104
 #define IPA_IOCTL_FLUSH_QOS_PARAM               105
 #define IPA_IOCTL_GET_QOS_PARAMS                106
+#define IPA_IOCTL_ADD_PPPOE_MAPPING             107
 
 /**
  * max size of the header to be inserted
@@ -1092,7 +1093,13 @@ enum ipa_qos_param_evt {
 #define IPA_QOS_PARAM_EVENT_MAX IPA_QOS_PARAM_EVENT_MAX
 };
 
-#define IPA_EVENT_MAX_NUM (IPA_QOS_PARAM_EVENT_MAX)
+enum ipa_pppoe_event {
+	IPA_PPPOE_ADD_MAPPING_EVENT = IPA_QOS_PARAM_EVENT_MAX,
+	IPA_PPPOE_EVENT_MAX
+#define IPA_PPPOE_EVENT_MAX IPA_PPPOE_EVENT_MAX
+};
+
+#define IPA_EVENT_MAX_NUM (IPA_PPPOE_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -1582,6 +1589,7 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_2ND_PASS:               send to 2nd pass with no modification
  * IPA_HDR_PROC_MARK_DSCP:              Mark DSCP value based on PDN or tuple
  *                                      info for DL traffic
+ * IPA_HDR_PROC_PPPOE_HEADER_ADD:       Add PPPoE Header
  */
 enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_NONE,
@@ -1606,8 +1614,9 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_IPSEC_DECAP_NXT_RND,
 	IPA_HDR_PROC_2ND_PASS,
 	IPA_HDR_PROC_MARK_DSCP,
+	IPA_HDR_PROC_PPPOE_HEADER_ADD,
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_MARK_DSCP + 1)
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_PPPOE_HEADER_ADD + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule
@@ -1849,6 +1858,14 @@ struct ipa_eogre_hdr_proc_ctx_params {
 };
 
 /**
+ * struct ipa_pppoe_header_add_proc params -
+ * @reserved:<Reserved for future purpose>.
+ */
+struct ipa_pppoe_header_add_procparams {
+	uint32_t reserved;
+};
+
+/**
  * struct ipa_eth_II_to_eth_II_ex_procparams -
  * @input_ethhdr_negative_offset: Specifies where the ethernet hdr offset is
  *	(in bytes) from the start of the input IP hdr
@@ -1983,6 +2000,7 @@ struct ipa_hdr_proc_ctx_add {
 	struct ipa_wwan_to_eth_II_ex_procparams generic_params_v2;
 	struct ipa_ipsec_params ipsec_params;
 	struct ipa_pdn_dscp_procparams pdn_dscp_params;
+	struct ipa_pppoe_header_add_procparams pppoe_params;
 };
 
 #define IPA_L2TP_HDR_PROC_SUPPORT
@@ -3834,6 +3852,13 @@ struct ipa_ioc_get_qos_config {
 	struct ipa_ioc_qos_config qos_config[IPA_QOS_PARAMS_MAX];
 };
 
+struct ipa_ioc_pppoe_info {
+	uint8_t add;
+	char dev_name[IPA_RESOURCE_NAME_MAX];
+	uint16_t vlan_id;
+	char pppoe_dev_name[IPA_RESOURCE_NAME_MAX];
+};
+
 /**
  *   actual IOCTLs supported by IPA driver
  */
@@ -4198,6 +4223,10 @@ struct ipa_ioc_get_qos_config {
 #define IPA_IOC_GET_QOS_PARAMS _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_GET_QOS_PARAMS, \
 				struct ipa_ioc_get_qos_config)
+
+#define IPA_IOC_ADD_PPPOE_MAPPING _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_ADD_PPPOE_MAPPING, \
+				struct ipa_ioc_pppoe_info)
 
 /*
  * unique magic number of the Tethering bridge ioctls
