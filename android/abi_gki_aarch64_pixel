@@ -311,6 +311,7 @@
   device_init_wakeup
   device_link_add
   device_link_del
+  device_property_match_string
   device_property_present
   device_property_read_string
   device_property_read_u32_array
@@ -872,6 +873,7 @@
   ieee802154_unregister_hw
   ieee802154_wake_queue
   ieee802154_xmit_complete
+  iio_buffer_enabled
   iio_device_unregister
   import_iovec
   in6_pton
