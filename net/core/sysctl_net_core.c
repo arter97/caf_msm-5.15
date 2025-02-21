@@ -280,7 +280,6 @@ static int proc_dointvec_minmax_bpf_enable(struct ctl_table *table, int write,
 		if (jit_enable < 2 ||
 		    (jit_enable == 2 && bpf_dump_raw_ok(current_cred()))) {
 			*(int *)table->data = jit_enable;
-			bpf_jit_enable = init_net.core.bpf_jit_enable;
 			if (jit_enable == 2)
 				pr_warn("bpf_jit_enable = 2 was set! NEVER use this in production, only for JIT debugging!\n");
 		} else {
@@ -297,8 +296,6 @@ proc_dointvec_minmax_bpf_restricted(struct ctl_table *table, int write,
 {
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
-	if (!strcmp(table->procname, "bpf_jit_kallsyms"))
-		bpf_jit_kallsyms = init_net.core.bpf_jit_kallsyms;
 
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
@@ -384,6 +381,20 @@ static struct ctl_table net_core_table[] = {
 		.proc_handler	= proc_do_rss_key,
 	},
 #ifdef CONFIG_BPF_JIT
+	{
+		.procname	= "bpf_jit_enable",
+		.data		= &bpf_jit_enable,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax_bpf_enable,
+# ifdef CONFIG_BPF_JIT_ALWAYS_ON
+		.extra1		= SYSCTL_ONE,
+		.extra2		= SYSCTL_ONE,
+# else
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= &two,
+# endif
+	},
 # ifdef CONFIG_HAVE_EBPF_JIT
 	{
 		.procname	= "bpf_jit_harden",
@@ -393,6 +404,15 @@ static struct ctl_table net_core_table[] = {
 		.proc_handler	= proc_dointvec_minmax_bpf_restricted,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= &two,
+	},
+	{
+		.procname	= "bpf_jit_kallsyms",
+		.data		= &bpf_jit_kallsyms,
+		.maxlen		= sizeof(int),
+		.mode		= 0600,
+		.proc_handler	= proc_dointvec_minmax_bpf_restricted,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
 	},
 # endif
 	{
@@ -575,33 +595,6 @@ static struct ctl_table netns_core_table[] = {
 		.extra1		= SYSCTL_ZERO,
 		.proc_handler	= proc_dointvec_minmax
 	},
-#ifdef CONFIG_BPF_JIT
-	{
-		.procname	= "bpf_jit_enable",
-		.data		= &init_net.core.bpf_jit_enable,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax_bpf_enable,
-# ifdef CONFIG_BPF_JIT_ALWAYS_ON
-		.extra1		= SYSCTL_ONE,
-		.extra2		= SYSCTL_ONE,
-# else
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= &two,
-# endif
-	},
-# ifdef CONFIG_HAVE_EBPF_JIT
-	{
-		.procname	= "bpf_jit_kallsyms",
-		.data		= &init_net.core.bpf_jit_kallsyms,
-		.maxlen		= sizeof(int),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax_bpf_restricted,
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= SYSCTL_ONE,
-	},
-# endif
-# endif
 	{ }
 };
 
@@ -629,14 +622,6 @@ static __net_init int sysctl_core_net_init(struct net *net)
 			goto err_dup;
 
 		tbl[0].data = &net->core.sysctl_somaxconn;
-
-/* Refer to kernel/bpf/core.c initialization */
-# ifdef CONFIG_BPF_JIT
-		init_net.core.bpf_jit_enable = IS_BUILTIN(CONFIG_BPF_JIT_DEFAULT_ON);
-# ifdef CONFIG_HAVE_EBPF_JIT
-		init_net.core.bpf_jit_kallsyms = IS_BUILTIN(CONFIG_BPF_JIT_DEFAULT_ON);
-# endif
-# endif
 
 		/* Don't export any sysctls to unprivileged users */
 		if (net->user_ns != &init_user_ns) {
