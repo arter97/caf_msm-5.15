@@ -451,7 +451,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = true,
-	.dev_reset_support = false,
+	.dev_reset_support = true,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
