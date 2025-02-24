@@ -147,7 +147,7 @@ struct qcom_scm_pas_metadata {
 	ssize_t size;
 };
 
-extern int qcom_scm_pas_init_image(u32 peripheral, const void *metadata,
+extern int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata,
 				   size_t size,
 				   struct qcom_scm_pas_metadata *ctx);
 void qcom_scm_pas_metadata_release(struct qcom_scm_pas_metadata *ctx);

@@ -31,6 +31,7 @@
 
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #include <asm/smp_plat.h>
+#include <asm/smp.h>
 #endif
 
 #include "qcom_scm.h"
@@ -316,7 +317,8 @@ static bool __qcom_scm_is_call_available(struct device *dev, u32 svc_id,
 	return ret ? false : !!res.result[0];
 }
 
-#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+//#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#if 0
 static int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
 				       unsigned int flags)
 {
@@ -659,7 +661,7 @@ EXPORT_SYMBOL(qcom_scm_config_cpu_errata);
  * track the metadata allocation, this needs to be released by invoking
  * qcom_scm_pas_metadata_release() by the caller.
  */
-int qcom_scm_pas_init_image(u32 peripheral, const void *metadata, size_t size,
+int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata, size_t size,
 			    struct qcom_scm_pas_metadata *ctx)
 {
 	int ret;
@@ -672,24 +674,19 @@ int qcom_scm_pas_init_image(u32 peripheral, const void *metadata, size_t size,
 	};
 	struct qcom_scm_res res;
 
+	/* ctx support depends on dma_alloc_coherent logic which we don't have (yet) */
+	if (ctx)
+		return -ENOTSUPP;
+
 	ret = qcom_scm_clk_enable();
 	if (ret)
-		goto out;
+		return ret;
 
 	desc.args[1] = metadata;
 
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
 
 	qcom_scm_clk_disable();
-
-out:
-	if (ret < 0 || !ctx) {
-		dma_free_coherent(__scm->dev, size, mdata_buf, mdata_phys);
-	} else if (ctx) {
-		ctx->ptr = mdata_buf;
-		ctx->phys = mdata_phys;
-		ctx->size = size;
-	}
 
 	return ret ? : res.result[0];
 }
