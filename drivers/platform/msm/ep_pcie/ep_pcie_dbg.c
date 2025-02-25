@@ -39,6 +39,8 @@
 #define LINK_STATUS_REG_LANES_SHFT              0x14
 #define POSITIVE_SEQUENCE                       1
 #define NEGATIVE_SEQUENCE                       0
+#define TO_LTSSM_STR(state)			((state) >= ARRAY_SIZE(ep_pcie_ltssm_str) ? \
+						"LTSSM_INVALID" : ep_pcie_ltssm_str[state])
 
 static const char * const
 	ep_pcie_debugfs_option_desc[EP_PCIE_MAX_DEBUGFS_OPTION] = {
@@ -79,6 +81,7 @@ static struct ep_pcie_dev_t *dev;
 
 static void ep_pcie_check_link_state(struct ep_pcie_dev_t *dev)
 {
+	int idx = 0;
 	u32 val = 0;
 
 	mutex_lock(&dev->clk_mtx);
@@ -94,8 +97,8 @@ static void ep_pcie_check_link_state(struct ep_pcie_dev_t *dev)
 	EP_PCIE_DBG_FS("********** PCIe LTSSM State **********", NULL);
 	val = readl_relaxed(dev->parf + PCIE20_PARF_LTSSM);
 	EP_PCIE_DBG_FS("PARF_LTSSM: 0x%x\n", val);
-	EP_PCIE_DBG_FS("LTSSM State: %s\n",
-		ep_pcie_ltssm_str[val & PCIE20_PARF_LTSSM_STATE_MASK]);
+	idx = val & PCIE20_PARF_LTSSM_STATE_MASK;
+	EP_PCIE_DBG_FS("LTSSM State: %s\n", TO_LTSSM_STR(idx));
 
 	EP_PCIE_DBG_FS("*********** PCIe PM Status ***********", NULL);
 	val = readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS);

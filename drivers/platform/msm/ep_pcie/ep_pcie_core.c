@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -488,8 +488,8 @@ static int ep_pcie_vreg_enable(struct ep_pcie_dev_t *dev)
 				EP_PCIE_ERR(dev,
 					"PCIe V%d:  can't set voltage for %s: %d\n",
 					dev->rev, info->name, rc);
+				break;
 			}
-			break;
 		}
 
 		EP_PCIE_DBG(dev, "PCIe V%d: Vreg %s is being enabled\n",
@@ -3225,7 +3225,7 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
 	int i, ret;
-	u32 status;
+	u32 status = 0;
 	unsigned long irqsave_flags;
 
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
@@ -3564,6 +3564,11 @@ enum ep_pcie_link_status ep_pcie_core_get_linkstatus(void)
 {
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
 	u32 bme;
+
+	if (dev->link_status == EP_PCIE_LINK_INVALID) {
+		EP_PCIE_INFO(&ep_pcie_dev, "PCIe V%d: Non PCIe Boot\n", ep_pcie_dev.rev);
+		return EP_PCIE_LINK_INVALID;
+	}
 
 	if (!dev->power_on || (dev->link_status == EP_PCIE_LINK_DISABLED)) {
 		EP_PCIE_DBG(dev,
@@ -4397,14 +4402,54 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 static int ep_pcie_probe(struct platform_device *pdev)
 {
 	int ret, num_ipc_pages_dev_fac;
-	u32 sriov_mask = 0;
+	u32 dev_id, sriov_mask = 0;
 	char logname[MAX_NAME_LEN];
+
+	ep_pcie_dev.vendor_id = 0xFFFF;
+	ret = of_property_read_u16((&pdev->dev)->of_node,
+				   "qcom,pcie-vendor-id",
+				   &ep_pcie_dev.vendor_id);
+	if (ret)
+		EP_PCIE_DBG(&ep_pcie_dev,
+			   "PCIe V%d: pcie-vendor-id does not exist.\n",
+			   ep_pcie_dev.rev);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-vendor-id:%d.\n",
+				ep_pcie_dev.rev, ep_pcie_dev.vendor_id);
+
+	ep_pcie_dev.device_id = 0xFFFF;
+	ret = of_property_read_u16((&pdev->dev)->of_node,
+				"qcom,pcie-device-id",
+				&ep_pcie_dev.device_id);
+	if (ret)
+		EP_PCIE_DBG(&ep_pcie_dev,
+			   "PCIe V%d: pcie-device-id does not exist.\n",
+			   ep_pcie_dev.rev);
+	else
+		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-device-id:%d.\n",
+			   ep_pcie_dev.rev, ep_pcie_dev.device_id);
 
 	ret = is_pcie_boot_config(pdev);
 	if (ret) {
-		EP_PCIE_DBG(&ep_pcie_dev,
+		EP_PCIE_INFO(&ep_pcie_dev,
 			"PCIe V%d: boot_config is not PCIe\n",
 			ep_pcie_dev.rev);
+		/*
+		 * In a non-PCIe boot configuration, the EP-PCIe driver should probe successfully
+		 * without failing, to meet GCC sync state requirements. During such a boot,
+		 * the driver performs a dummy probe without real initialization.
+		 *
+		 * PCIe client drivers (e.g., MHI) cannot distinguish between a full probe and
+		 * a dummy probe. To address this, the link state is set to INVALID STATE during
+		 * a dummy probe. Client drivers can query this state to determine the probe type
+		 * and take appropriate actions for non-PCIe boot scenarios.
+		 */
+		dev_id = ep_pcie_dev.device_id;
+		dev_id = dev_id << 16 | ep_pcie_dev.vendor_id;
+		hw_drv.device_id = dev_id;
+
+		ep_pcie_dev.link_status = EP_PCIE_LINK_INVALID;
+		ep_pcie_register_drv(&hw_drv);
 		/*
 		 * For non-pcie boot config, instead of failing probe, simply return
 		 * success (without proceeding for any further initialization)
@@ -4469,30 +4514,6 @@ static int ep_pcie_probe(struct platform_device *pdev)
 	else
 		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-link-speed:%d\n",
 			ep_pcie_dev.rev, ep_pcie_dev.link_speed);
-
-	ep_pcie_dev.vendor_id = 0xFFFF;
-	ret = of_property_read_u16((&pdev->dev)->of_node,
-				"qcom,pcie-vendor-id",
-				&ep_pcie_dev.vendor_id);
-	if (ret)
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: pcie-vendor-id does not exist.\n",
-				ep_pcie_dev.rev);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-vendor-id:%d.\n",
-				ep_pcie_dev.rev, ep_pcie_dev.vendor_id);
-
-	ep_pcie_dev.device_id = 0xFFFF;
-	ret = of_property_read_u16((&pdev->dev)->of_node,
-				"qcom,pcie-device-id",
-				&ep_pcie_dev.device_id);
-	if (ret)
-		EP_PCIE_DBG(&ep_pcie_dev,
-				"PCIe V%d: pcie-device-id does not exist.\n",
-				ep_pcie_dev.rev);
-	else
-		EP_PCIE_DBG(&ep_pcie_dev, "PCIe V%d: pcie-device-id:%d.\n",
-				ep_pcie_dev.rev, ep_pcie_dev.device_id);
 
 	ret = of_property_read_u32((&pdev->dev)->of_node,
 				"qcom,dbi-base-reg",

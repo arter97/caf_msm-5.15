@@ -2251,6 +2251,12 @@ static int mhi_dev_send_completion_event(struct mhi_dev_channel *ch,
 						GFP_KERNEL);
 	struct mhi_dev *mhi = ch->ring->mhi_dev;
 
+	if (!compl_event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for transfer completion event\n");
+		return -ENOMEM;
+	}
+
 	compl_event->evt_tr_comp.chid = ch->ch_id;
 	compl_event->evt_tr_comp.type =
 				MHI_DEV_RING_EL_TRANSFER_COMPLETION_EVENT;
@@ -2274,6 +2280,12 @@ int mhi_dev_send_state_change_event(struct mhi_dev *mhi,
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
 
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for state change event\n");
+		return -ENOMEM;
+	}
+
 	event->evt_state_change.type = MHI_DEV_RING_EL_MHI_STATE_CHG;
 	event->evt_state_change.mhistate = state;
 
@@ -2290,6 +2302,12 @@ int mhi_dev_send_ee_event(struct mhi_dev *mhi, enum mhi_dev_execenv exec_env)
 
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
+
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for ee state change event\n");
+		return -ENOMEM;
+	}
 
 	event->evt_ee_state.type = MHI_DEV_RING_EL_EE_STATE_CHANGE_NOTIFY;
 	event->evt_ee_state.execenv = exec_env;
@@ -2343,6 +2361,12 @@ static int mhi_dev_send_cmd_comp_event(struct mhi_dev *mhi,
 
 	union mhi_dev_ring_element_type *event = kzalloc(sizeof(union mhi_dev_ring_element_type),
 						GFP_KERNEL);
+
+	if (!event) {
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+		"Failed to allocate memory for command completion event\n");
+		return -ENOMEM;
+	}
 
 	if (code > MHI_CMD_COMPL_CODE_RES) {
 		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
@@ -3794,8 +3818,10 @@ static int mhi_dev_alloc_evt_buf_evt_req(struct mhi_dev *mhi,
 	/* Allocate event requests */
 	for (i = 0; i < ch->evt_req_size; ++i) {
 		req = kzalloc(sizeof(struct event_req), GFP_KERNEL);
-		if (!req)
+		if (!req) {
+			rc = -ENOMEM;
 			goto free_ereqs;
+		}
 		list_add_tail(&req->list, &ch->event_req_buffers);
 	}
 
@@ -5549,6 +5575,45 @@ int mhi_edma_status(void)
 	return ret;
 }
 
+/**
+ * is_non_pcie_boot - Check if the device is not booting over PCIe
+ *
+ * @pdev: Pointer to the platform device structure
+ *
+ * Returns: true if the device is not booting over PCIe, false otherwise
+ *
+ * This function checks if the device is not booting over PCIe (booting over some
+ * other interface like usb) by reading the "qcom,mhi-ifc-id" property from the
+ * device tree and checking the link status of the corresponding PCIe handle.
+ * If the link status is invalid, it indicates that the device is not booting over PCIe.
+ */
+static bool is_non_pcie_boot(struct platform_device *pdev)
+{
+	int rc = 0;
+	u32 ifc_id;
+	struct ep_pcie_hw *phandle;
+
+	if (pdev->dev.of_node) {
+		rc = of_property_read_u32((&pdev->dev)->of_node,
+				"qcom,mhi-ifc-id", &ifc_id);
+		if (rc) {
+			dev_err(&pdev->dev, "qcom,mhi-ifc-id does not exist\n");
+			return false;
+		}
+
+		phandle = ep_pcie_get_phandle(ifc_id);
+		if (phandle) {
+			if (ep_pcie_get_linkstatus(phandle) == EP_PCIE_LINK_INVALID) {
+				dev_notice(&pdev->dev, "PCIe: not a pcie boot\n");
+				return true;
+			}
+		} else {
+			dev_err(&pdev->dev, "PCIe: Invalid ep-pcie handle\n");
+		}
+	}
+	return false;
+}
+
 int mhi_edma_init(struct device *dev)
 {
 	if (!mhi_hw_ctx->tx_dma_chan) {
@@ -5579,6 +5644,11 @@ static int mhi_dev_probe(struct platform_device *pdev)
 {
 	struct mhi_dev *mhi_pf = NULL;
 	int rc = 0, devfac = 0;
+
+	if (is_non_pcie_boot(pdev)) {
+		dev_notice(&pdev->dev, "PCIe: not a pcie boot\n");
+		return -EPERM;
+	}
 
 	if (pdev->dev.of_node) {
 		rc = mhi_get_device_info(pdev);
