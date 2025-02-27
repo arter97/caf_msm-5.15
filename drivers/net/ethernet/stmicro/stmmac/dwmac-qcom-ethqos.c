@@ -2,7 +2,7 @@
 
 // Copyright (c) 2018-19, Linaro Limited
 // Copyright (c) 2021, The Linux Foundation. All rights reserved.
-// Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/module.h>
 #include <linux/of.h>
@@ -4527,6 +4527,9 @@ static ssize_t nw_loopback_handling_config_sysfs(struct device *dev,
 		return -EINVAL;
 	}
 
+	if (!in_buf)
+		return -ENOMEM;
+
 	ret = sscanf(in_buf, "%d", &config);
 	if (ret != 1) {
 		ETHQOSERR("Error in reading option from user");
@@ -5941,6 +5944,8 @@ static ssize_t ethqos_mac_recovery_enable(struct file *file,
 		ETHQOSERR("emac string is too long - count=%u\n", count);
 		return -EFAULT;
 	}
+	if (!in_buf)
+		return -ENOMEM;
 
 	for (i = 0; i < MAC_ERR_CNT; i++) {
 		if (in_buf[i] == '1')
@@ -6752,7 +6757,7 @@ static int qcom_ethqos_vm_notifier(struct notifier_block *nb,
 	struct qcom_ethqos *ethqos = container_of(nb, struct qcom_ethqos, vm_nb);
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
 	gh_vmid_t cb_vm_id = *(gh_vmid_t *)ptr;
-	gh_vmid_t v2x_vm_id;
+	gh_vmid_t v2x_vm_id = 0;
 	int result;
 
 	if (event == GH_VM_BEFORE_POWERUP) {
@@ -6943,7 +6948,7 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 		phylink_connect_phy(priv->phylink, priv->phydev);
 		rtnl_unlock();
 
-		if (phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
+		if (phydev && phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
 			if (phydev->interface == PHY_INTERFACE_MODE_USXGMII) {
 				ETHQOSDBG("set_max_speed 10G\n");
 				phy_set_max_speed(phydev, SPEED_10000);
@@ -6990,9 +6995,9 @@ static int qcom_ethqos_bring_up_phy_if(struct device *dev)
 
 	ret = stmmac_resume(&ethqos->pdev->dev);
 
-	if (phydev->interface == PHY_INTERFACE_MODE_USXGMII)
+	if (phydev && phydev->interface == PHY_INTERFACE_MODE_USXGMII)
 		speed = SPEED_10000;
-	else if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
+	else if (phydev && phydev->interface == PHY_INTERFACE_MODE_SGMII)
 		speed = SPEED_1000;
 
 	if (!net->rtnl) {
@@ -7726,6 +7731,12 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ndev = dev_get_drvdata(&ethqos->pdev->dev);
 	priv = netdev_priv(ndev);
 	ethqos->priv = priv;
+
+	if (!priv) {
+		pr_err("priv is NULL\n");
+		return -EINVAL;
+	}
+
 	ethqos->power_state = true;
 
 	qcom_ethqos_init_aux_ts(ethqos, plat_dat, priv);
