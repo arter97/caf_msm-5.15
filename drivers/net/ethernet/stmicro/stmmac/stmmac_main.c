@@ -1294,6 +1294,11 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+	if (!priv) {
+		pr_err("priv is NULL\n");
+		return;
+	}
+
 #if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
