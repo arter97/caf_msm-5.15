@@ -5,7 +5,7 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2014 Sony Mobile Communications AB
  * Copyright (c) 2012-2013, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -2032,12 +2032,28 @@ static const struct of_device_id adsp_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
 
+#ifdef CONFIG_HIBERNATION
+static int rproc_adsp_driver_freeze(struct device *dev)
+{
+	pr_info("remoteproc- freeze for hibernation.\n");
+	qcom_pil_info_reset();
+	return 0;
+}
+
+static const struct dev_pm_ops rproc_adsp_pm_ops = {
+	.freeze = rproc_adsp_driver_freeze,
+};
+#endif
+
 static struct platform_driver adsp_driver = {
 	.probe = adsp_probe,
 	.remove = adsp_remove,
 	.driver = {
 		.name = "qcom_q6v5_pas",
 		.of_match_table = adsp_of_match,
+#ifdef CONFIG_HIBERNATION
+		.pm = &rproc_adsp_pm_ops,
+#endif
 	},
 };
 
