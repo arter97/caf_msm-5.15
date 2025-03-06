@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)    "%s: " fmt, __func__
@@ -1178,6 +1178,21 @@ static int rproc_slate_resume(struct device *dev)
 }
 #endif
 
+#ifdef CONFIG_HIBERNATION
+static int rproc_slate_driver_freeze(struct device *dev)
+{
+	int ret;
+	struct qcom_slate *slate_data = dev_get_drvdata(dev);
+
+	ret =  qseecom_shutdown_app(&slate_data->qseecom_handle);
+	if (ret)
+		pr_err("QSEECOM Slate Shutdown failed returned: %d\n", ret);
+	else
+		slate_data->qseecom_handle = NULL;
+	return ret;
+}
+#endif
+
 static int rproc_slate_driver_probe(struct platform_device *pdev)
 {
 	struct qcom_slate *slate;
@@ -1309,6 +1324,9 @@ static const struct dev_pm_ops rproc_slate_pm_ops = {
 #ifdef CONFIG_DEEPSLEEP
 	.suspend = rproc_slate_suspend,
 	.resume = rproc_slate_resume,
+#endif
+#ifdef CONFIG_HIBERNATION
+	.freeze = rproc_slate_driver_freeze,
 #endif
 };
 
