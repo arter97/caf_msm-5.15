@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: %s: " fmt, KBUILD_MODNAME, __func__
@@ -436,7 +436,6 @@ static int ps_pm_cb(struct notifier_block *nb, unsigned long event, void *unused
 	case PM_HIBERNATION_PREPARE:
 		pr_info("Hibernate entry\n");
 
-		send_uevent(drv, PREPARE_FOR_HIBERNATION);
 		drv->current_state = HIBERNATE;
 		break;
 

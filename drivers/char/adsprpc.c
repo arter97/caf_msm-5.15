@@ -78,21 +78,6 @@
 #define DEBUGFS_SIZE 3072
 #define PID_SIZE 10
 
-#define AUDIO_PDR_ADSP_DTSI_PROPERTY_NAME        "qcom,fastrpc-adsp-audio-pdr"
-#define AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME   "audio_pdr_adsprpc"
-#define AUDIO_PDR_ADSP_SERVICE_NAME              "avs/audio"
-#define ADSP_AUDIOPD_NAME                        "msm/adsp/audio_pd"
-
-#define SENSORS_PDR_ADSP_DTSI_PROPERTY_NAME        "qcom,fastrpc-adsp-sensors-pdr"
-#define SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "sensors_pdr_adsprpc"
-#define SENSORS_PDR_ADSP_SERVICE_NAME              "tms/servreg"
-#define ADSP_SENSORPD_NAME                       "msm/adsp/sensor_pd"
-
-#define SENSORS_PDR_SLPI_DTSI_PROPERTY_NAME      "qcom,fastrpc-slpi-sensors-pdr"
-#define SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME "sensors_pdr_sdsprpc"
-#define SENSORS_PDR_SLPI_SERVICE_NAME            SENSORS_PDR_ADSP_SERVICE_NAME
-#define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
-
 #define FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME		"adsprpc-secure"
 #define FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME	"adsprpc-non_secure"
 
@@ -1209,6 +1194,11 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 				goto bail;
 		}
 	} else if (mflags == FASTRPC_MAP_FD_NOMAP) {
+		if (map->attr & FASTRPC_ATTR_KEEP_MAP) {
+			ADSPRPC_ERR("Invalid attribute 0x%x for fd %d\n", map->attr, fd);
+			err = -EINVAL;
+			goto bail;
+		}
 		VERIFY(err, !IS_ERR_OR_NULL(map->buf = dma_buf_get(fd)));
 		if (err) {
 			ADSPRPC_ERR("dma_buf_get failed for fd %d ret %ld\n",
@@ -6580,7 +6570,7 @@ bail:
 	return err;
 }
 
-static int fastrpc_check_pd_status(struct fastrpc_file *fl, char *sloc_name)
+int fastrpc_check_pd_status(struct fastrpc_file *fl, char *sloc_name)
 {
 	int err = 0, session = -1, cid = -1;
 	struct fastrpc_apps *me = &gfa;

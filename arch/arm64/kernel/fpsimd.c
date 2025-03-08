@@ -862,21 +862,19 @@ int vec_set_vector_length(struct task_struct *task, enum vec_type type,
 	if (task == current)
 		put_cpu_fpsimd_context();
 
+	task_set_vl(task, type, vl);
+
 	/*
 	 * Free the changed states if they are not in use, SME will be
 	 * reallocated to the correct size on next use and we just
 	 * allocate SVE now in case it is needed for use in streaming
 	 * mode.
 	 */
-	if (system_supports_sve()) {
-		sve_free(task);
-		sve_alloc(task, true);
-	}
+	sve_free(task);
+	sve_alloc(task, true);
 
 	if (free_sme)
 		sme_free(task);
-
-	task_set_vl(task, type, vl);
 
 out:
 	update_tsk_thread_flag(task, vec_vl_inherit_flag(type),
