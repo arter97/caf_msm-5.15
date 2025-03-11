@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2018 - 2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.​
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.​
  */
 
 #ifndef _IPA_WDI3_H_
@@ -245,6 +245,7 @@ struct ipa_wdi_reg_intf_in_params {
  * @rx_bank_id: value used to perform TCL HW setting
  * @rx_pmac_id: value used to perform TCL HW setting
  * @mlo_chip_id: used in mlo capable chip to identify chip id for the pipe
+ * @rx_peer_metadata_ver: metadata version passed by wlan
  */
 struct ipa_wdi_pipe_setup_info {
 	struct ipa_ep_cfg ipa_ep_cfg;
@@ -266,6 +267,7 @@ struct ipa_wdi_pipe_setup_info {
 	u8 rx_bank_id;
 	u8 rx_pmac_id;
 	u8 mlo_chip_id;
+	u8 rx_peer_metadata_ver;
 };
 
 /**
@@ -290,6 +292,7 @@ struct ipa_wdi_pipe_setup_info {
  * @rx_bank_id: value used to perform TCL HW setting
  * @rx_pmac_id: value used to perform TCL HW setting
  * @mlo_chip_id: used in mlo capable chip to identify chip id for the pipe
+ * @rx_peer_metadata_ver: metadata version passed by wlan
  */
 struct ipa_wdi_pipe_setup_info_smmu {
 	struct ipa_ep_cfg ipa_ep_cfg;
@@ -311,6 +314,7 @@ struct ipa_wdi_pipe_setup_info_smmu {
 	u8 rx_bank_id;
 	u8 rx_pmac_id;
 	u8 mlo_chip_id;
+	u8 rx_peer_metadata_ver;
 };
 
 /**
