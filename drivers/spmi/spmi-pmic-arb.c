@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2012-2015, 2017, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitmap.h>
@@ -130,6 +130,15 @@ struct apid_data {
 	u8		irq_ee;
 };
 
+struct irq_config {
+	u8		sid;
+	u8		pid;
+	u8		irqs;
+	u8		type;
+	u8		polarity_high;
+	u8		polarity_low;
+};
+
 /**
  * spmi_pmic_arb - SPMI PMIC Arbiter object
  *
@@ -190,6 +199,8 @@ struct spmi_pmic_arb {
 	u16			last_apid;
 	struct apid_data	*apid_data;
 	int			max_periphs;
+	struct irq_config	*saved_irq_config;
+	int			irq_config_count;
 	struct dentry		*debugfs;
 	u32			debug_spmi_addr;
 };
@@ -639,12 +650,36 @@ static void qpnpint_irq_ack(struct irq_data *d)
 	qpnpint_spmi_write(d, QPNPINT_REG_LATCHED_CLR, &data, 1);
 }
 
+
+static int irq_config_lookup(struct spmi_pmic_arb *pmic_arb, int sid, int pid)
+{
+	int i;
+
+	for (i = 0; i < pmic_arb->irq_config_count; i++) {
+		if (pmic_arb->saved_irq_config[i].sid == sid)
+			if (pmic_arb->saved_irq_config[i].pid == pid)
+				return i;
+	}
+
+	dev_err(&pmic_arb->spmic->dev, "irq config lookup failed for sid: %d,pid: %d\n", sid, pid);
+	return -EINVAL;
+}
+
 static void qpnpint_irq_mask(struct irq_data *d)
 {
+	struct spmi_pmic_arb *pmic_arb = irq_data_get_irq_chip_data(d);
 	u8 irq = hwirq_to_irq(d->hwirq);
 	u8 data = BIT(irq);
+	int i;
 
 	qpnpint_spmi_write(d, QPNPINT_REG_EN_CLR, &data, 1);
+
+	i = irq_config_lookup(pmic_arb, hwirq_to_sid(d->hwirq), hwirq_to_per(d->hwirq));
+	if (i < 0)
+		return;
+
+	pmic_arb->saved_irq_config[i].irqs &= ~BIT(irq);
+
 }
 
 static void qpnpint_irq_unmask(struct irq_data *d)
@@ -654,11 +689,15 @@ static void qpnpint_irq_unmask(struct irq_data *d)
 	u8 irq = hwirq_to_irq(d->hwirq);
 	u16 apid = hwirq_to_apid(d->hwirq);
 	u8 buf[2];
+	int i;
 
 	writel_relaxed(SPMI_PIC_ACC_ENABLE_BIT,
 			ver_ops->acc_enable(pmic_arb, apid));
 
 	qpnpint_spmi_read(d, QPNPINT_REG_EN_SET, &buf[0], 1);
+
+	i = irq_config_lookup(pmic_arb, hwirq_to_sid(d->hwirq), hwirq_to_per(d->hwirq));
+
 	if (!(buf[0] & BIT(irq))) {
 		/*
 		 * Since the interrupt is currently disabled, write to both the
@@ -668,6 +707,9 @@ static void qpnpint_irq_unmask(struct irq_data *d)
 		buf[0] = BIT(irq);
 		buf[1] = BIT(irq);
 		qpnpint_spmi_write(d, QPNPINT_REG_LATCHED_CLR, &buf, 2);
+		if (i < 0)
+			return;
+		pmic_arb->saved_irq_config[i].irqs |= BIT(irq);
 	}
 }
 
@@ -678,21 +720,35 @@ static int qpnpint_irq_set_type(struct irq_data *d, unsigned int flow_type)
 	irq_flow_handler_t flow_handler;
 	u8 irq = hwirq_to_irq(d->hwirq);
 	unsigned long flags;
+	int i;
 
 	raw_spin_lock_irqsave(&pmic_arb->irq_lock, flags);
 	qpnpint_spmi_read(d, QPNPINT_REG_SET_TYPE, &type, sizeof(type));
 
+	i = irq_config_lookup(pmic_arb, hwirq_to_sid(d->hwirq), hwirq_to_per(d->hwirq));
+	if (i < 0) {
+		dev_err(&pmic_arb->spmic->dev, "irq config lookup failed\n");
+		return -EINVAL;
+	}
+
 	if (flow_type & (IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING)) {
 		type.type |= BIT(irq);
-		if (flow_type & IRQF_TRIGGER_RISING)
-			type.polarity_high |= BIT(irq);
-		else
-			type.polarity_high &= ~BIT(irq);
-		if (flow_type & IRQF_TRIGGER_FALLING)
-			type.polarity_low  |= BIT(irq);
-		else
-			type.polarity_low  &= ~BIT(irq);
+		pmic_arb->saved_irq_config[i].type |= BIT(irq);
 
+		if (flow_type & IRQF_TRIGGER_RISING) {
+			type.polarity_high |= BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_high |= BIT(irq);
+		} else {
+			type.polarity_high &= ~BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_high &= ~BIT(irq);
+		}
+		if (flow_type & IRQF_TRIGGER_FALLING) {
+			type.polarity_low  |= BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_low |= BIT(irq);
+		} else {
+			type.polarity_low  &= ~BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_low &= ~BIT(irq);
+		}
 		flow_handler = handle_edge_irq;
 	} else {
 		if ((flow_type & (IRQF_TRIGGER_HIGH)) &&
@@ -702,12 +758,17 @@ static int qpnpint_irq_set_type(struct irq_data *d, unsigned int flow_type)
 		}
 
 		type.type &= ~BIT(irq); /* level trig */
+		pmic_arb->saved_irq_config[i].type &= ~BIT(irq);
 		if (flow_type & IRQF_TRIGGER_HIGH) {
 			type.polarity_high |= BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_high |= BIT(irq);
 			type.polarity_low  &= ~BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_low &= ~BIT(irq);
 		} else {
 			type.polarity_low  |= BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_low |= BIT(irq);
 			type.polarity_high &= ~BIT(irq);
+			pmic_arb->saved_irq_config[i].polarity_high &= ~BIT(irq);
 		}
 
 		flow_handler = handle_level_irq;
@@ -995,6 +1056,7 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 	u16 i, apid, ppid, apid_max;
 	bool valid, is_irq_ee;
 	u32 regval, offset;
+	int irq_config_count = 0;
 
 	/*
 	 * In order to allow multiple EEs to write to a single PPID in arbiter
@@ -1030,6 +1092,9 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 
 		apidd->irq_ee = is_irq_ee ? apidd->write_ee : INVALID_EE;
 
+		if (apidd->irq_ee == 0)
+			irq_config_count++;
+
 		valid = pmic_arb->ppid_to_apid[ppid] & PMIC_ARB_APID_VALID;
 		apid = pmic_arb->ppid_to_apid[ppid] & ~PMIC_ARB_APID_VALID;
 		prev_apidd = &pmic_arb->apid_data[apid];
@@ -1050,15 +1115,31 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 		pmic_arb->last_apid = i;
 	}
 
+	pmic_arb->irq_config_count = irq_config_count;
+	pmic_arb->saved_irq_config = devm_kcalloc(&pmic_arb->spmic->dev, irq_config_count,
+						sizeof(struct irq_config),
+						GFP_KERNEL);
+	if (!pmic_arb->saved_irq_config) {
+		dev_err(&pmic_arb->spmic->dev, "failed to allocate memory for saving irq configs\n");
+		return -ENOMEM;
+	}
+
+
 	/* Dump the mapping table for debug purposes. */
 	dev_dbg(&pmic_arb->spmic->dev, "PPID APID Write-EE IRQ-EE\n");
-	for (ppid = 0; ppid < PMIC_ARB_MAX_PPID; ppid++) {
+	for (ppid = 0, i = 0; ppid < PMIC_ARB_MAX_PPID; ppid++) {
 		apid = pmic_arb->ppid_to_apid[ppid];
 		if (apid & PMIC_ARB_APID_VALID) {
 			apid &= ~PMIC_ARB_APID_VALID;
 			apidd = &pmic_arb->apid_data[apid];
 			dev_dbg(&pmic_arb->spmic->dev, "%#03X %3u %2u %2u\n",
 			      ppid, apid, apidd->write_ee, apidd->irq_ee);
+
+			if (apidd->irq_ee == 0) {
+				pmic_arb->saved_irq_config[i].sid = ppid >> 8;
+				pmic_arb->saved_irq_config[i].pid = ppid & 0xFF;
+				i++;
+			}
 		}
 	}
 
@@ -1908,6 +1989,56 @@ static int spmi_pmic_arb_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int spmi_pmic_arb_resume(struct device *dev)
+{
+	struct spmi_controller *ctrl = dev_get_drvdata(dev);
+	struct spmi_pmic_arb *pmic_arb = spmi_controller_get_drvdata(ctrl);
+	u8 buf[2];
+	u8 type;
+	u8 polarity_high;
+	u8 polarity_low;
+	int i;
+
+	for (i = 0; i < pmic_arb->irq_config_count; i++) {
+		if (pmic_arb->saved_irq_config[i].irqs == 0)
+			continue;
+
+		buf[0] = pmic_arb->saved_irq_config[i].irqs;
+		buf[1] = pmic_arb->saved_irq_config[i].irqs;
+
+		pmic_arb_write_cmd(pmic_arb->spmic, SPMI_CMD_EXT_WRITEL,
+				pmic_arb->saved_irq_config[i].sid,
+				(pmic_arb->saved_irq_config[i].pid << 8) +
+				QPNPINT_REG_LATCHED_CLR, buf, sizeof(buf));
+
+		type = pmic_arb->saved_irq_config[i].type;
+		polarity_low  = pmic_arb->saved_irq_config[i].polarity_low;
+		polarity_high = pmic_arb->saved_irq_config[i].polarity_high;
+
+		pmic_arb_write_cmd(pmic_arb->spmic, SPMI_CMD_EXT_WRITEL,
+				pmic_arb->saved_irq_config[i].sid,
+				(pmic_arb->saved_irq_config[i].pid << 8) +
+				QPNPINT_REG_SET_TYPE,
+				&type, sizeof(type));
+		pmic_arb_write_cmd(pmic_arb->spmic, SPMI_CMD_EXT_WRITEL,
+				pmic_arb->saved_irq_config[i].sid,
+				(pmic_arb->saved_irq_config[i].pid << 8) +
+				QPNPINT_REG_POLARITY_HIGH,
+				&polarity_high, sizeof(polarity_high));
+		pmic_arb_write_cmd(pmic_arb->spmic, SPMI_CMD_EXT_WRITEL,
+				pmic_arb->saved_irq_config[i].sid,
+				(pmic_arb->saved_irq_config[i].pid << 8) +
+				QPNPINT_REG_POLARITY_LOW,
+				&polarity_low, sizeof(polarity_low));
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops spmi_pmic_arb_pm_ops = {
+	.restore = spmi_pmic_arb_resume,
+};
+
 static const struct of_device_id spmi_pmic_arb_match_table[] = {
 	{ .compatible = "qcom,spmi-pmic-arb", },
 	{},
@@ -1920,6 +2051,7 @@ static struct platform_driver spmi_pmic_arb_driver = {
 	.driver		= {
 		.name	= "spmi_pmic_arb",
 		.of_match_table = spmi_pmic_arb_match_table,
+		.pm = &spmi_pmic_arb_pm_ops,
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
