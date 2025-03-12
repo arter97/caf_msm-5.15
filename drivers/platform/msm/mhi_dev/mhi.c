@@ -142,7 +142,7 @@ int mhi_dma_provide_ops(const struct mhi_dma_ops *ops)
 		return -EINVAL;
 	}
 
-	mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_VERBOSE, "Received MHI DMA fun ops\n");
+	mhi_log(MHI_DEV_PHY_FUN, MHI_MSG_NOTICE, "Received MHI DMA fun ops\n");
 
 	memcpy(&mhi_hw_ctx->mhi_dma_fun_ops, ops, sizeof(struct mhi_dma_ops));
 	mhi_dma_fun_ops = &mhi_hw_ctx->mhi_dma_fun_ops;
