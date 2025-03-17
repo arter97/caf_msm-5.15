@@ -2128,6 +2128,7 @@
   __skb_gso_segment
   __skb_pad
   skb_pull
+  skb_pull_data
   skb_push
   skb_put
   skb_queue_head
