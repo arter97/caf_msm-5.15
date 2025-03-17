@@ -1,6 +1,6 @@
-load(":target_variants.bzl", "la_variants")
-load(":msm_kernel_la.bzl", "define_msm_la")
 load(":image_opts.bzl", "boot_image_opts")
+load(":msm_kernel_la.bzl", "define_msm_la")
+load(":target_variants.bzl", "la_variants")
 
 target_name = "monaco"
 
@@ -103,7 +103,7 @@ def define_monaco():
         "drivers/soc/qcom/boot_stats.ko",
         "drivers/soc/qcom/core_hang_detect.ko",
         "drivers/soc/qcom/crypto-qti-common.ko",
-        "drivers/soc/qcom/crypto-qti-tz.ko",
+        "drivers/soc/qcom/crypto-qti-hwkm.ko",
         "drivers/soc/qcom/dcc_v2.ko",
         "drivers/soc/qcom/dcvs/bwmon.ko",
         "drivers/soc/qcom/dcvs/memlat.ko",
@@ -112,6 +112,7 @@ def define_monaco():
         "drivers/soc/qcom/eud.ko",
         "drivers/soc/qcom/glink_pkt.ko",
         "drivers/soc/qcom/glink_probe.ko",
+        "drivers/soc/qcom/hwkm_v1.ko",
         "drivers/soc/qcom/mdt_loader.ko",
         "drivers/soc/qcom/mem_buf/mem_buf.ko",
         "drivers/soc/qcom/mem_buf/mem_buf_dev.ko",
