@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -101,6 +101,10 @@ struct lt8711uxe2 {
 	u32 dp_alt_en_gpio;
 	int irq;
 	u8 alt_mode;
+
+	u32 cc_finished_gpio;
+	int cc_irq;
+	bool is_cc_finished;
 };
 
 static void lt8711uxe2_check_state(struct lt8711uxe2 *pdata);
@@ -265,6 +269,13 @@ static int lt8711uxe2_parse_dt(struct lt8711uxe2 *pdata)
 	else
 		pr_debug("dp_alt_en_gpio=%d\n", pdata->dp_alt_en_gpio);
 
+	pdata->cc_finished_gpio = of_get_named_gpio(pdata->dev->of_node,
+					"lt,cc-gpio", 0);
+	if (!gpio_is_valid(pdata->cc_finished_gpio))
+		pr_err("cc_finished_gpio not specified\n");
+	else
+		pr_debug("cc_finished_gpio=%d\n", pdata->cc_finished_gpio);
+
 	return ret;
 }
 
@@ -329,7 +340,22 @@ static int lt8711uxe2_gpio_configure(struct lt8711uxe2 *pdata, bool on)
 			}
 		}
 
+		if (gpio_is_valid(pdata->cc_finished_gpio)) {
+			ret = gpio_request(pdata->cc_finished_gpio, "lt8711uxe2-cc-gpio");
+			if (ret) {
+				dev_err(pdata->dev, "lt8711uxe2 cc gpio request failed\n");
+				goto dp_alt_en_err;
+			}
+
+			ret = gpio_direction_input(pdata->cc_finished_gpio);
+			if (ret) {
+				dev_err(pdata->dev, "lt8711uxe2 cc gpio direction failed\n");
+				goto cc_finished_err;
+			}
+		}
+
 	} else {
+		gpio_free(pdata->cc_finished_gpio);
 		if (gpio_is_valid(pdata->dp_lane_sel_gpio))
 			gpio_free(pdata->dp_alt_en_gpio);
 		if (gpio_is_valid(pdata->dp_alt_en_gpio))
@@ -340,6 +366,9 @@ static int lt8711uxe2_gpio_configure(struct lt8711uxe2 *pdata, bool on)
 	}
 	return ret;
 
+cc_finished_err:
+	if (gpio_is_valid(pdata->cc_finished_gpio))
+		gpio_free(pdata->cc_finished_gpio);
 dp_alt_en_err:
 	if (gpio_is_valid(pdata->dp_lane_sel_gpio))
 		gpio_free(pdata->dp_alt_en_gpio);
@@ -1142,8 +1171,15 @@ static void lt8711uxe2_check_state(struct lt8711uxe2 *pdata)
 		return;
 	}
 
+	if (gpio_is_valid(pdata->cc_finished_gpio) &&
+			(!pdata->is_cc_finished)) {
+		pr_err("cc communicate not finish wait it!\n");
+		return;
+	}
+
 	extcon_set_state(pdata->edev, EXTCON_USB_HOST, host_mode);
 	extcon_set_state(pdata->edev, EXTCON_USB, device_mode);
+
 	if (pdata->usb_ss_support) {
 		if (dp_lane == LT8711UXE2_DP_2LANE)
 			ss_func.intval = 1;
@@ -1219,6 +1255,22 @@ static irqreturn_t lt8711uxe2_irq_thread_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t lt8711uxe2_cc_irq_thread_handler(int irq, void *dev_id)
+{
+	struct lt8711uxe2 *pdata = (struct lt8711uxe2 *)dev_id;
+
+	if (gpio_get_value(pdata->cc_finished_gpio)) {
+		pdata->is_cc_finished = true;
+		lt8711uxe2_reset(pdata, true);
+		pr_debug("get cc gpio high\n");
+	} else {
+		gpio_set_value(pdata->reset_gpio, LT8711UXE2_GPIO_LOW);
+		pr_debug("get cc gpio low\n");
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int lt8711uxe2_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1252,7 +1304,10 @@ static int lt8711uxe2_probe(struct i2c_client *client,
 
 	mutex_init(&pdata->mutex);
 
-	lt8711uxe2_reset(pdata, true);
+	if (gpio_is_valid(pdata->cc_finished_gpio))
+		lt8711uxe2_reset(pdata, false);
+	else
+		lt8711uxe2_reset(pdata, true);
 
 	ret = lt8711uxe2_read_firmware_version(pdata);
 	if (ret)
@@ -1353,6 +1408,20 @@ static int lt8711uxe2_probe(struct i2c_client *client,
 		goto remove_group;
 	}
 	enable_irq_wake(pdata->irq);
+
+	if (gpio_is_valid(pdata->cc_finished_gpio)) {
+		pdata->cc_irq = gpio_to_irq(pdata->cc_finished_gpio);
+		ret = devm_request_threaded_irq(&client->dev, pdata->cc_irq, NULL,
+					lt8711uxe2_cc_irq_thread_handler,
+					IRQF_TRIGGER_RISING |
+					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+					"lt8711uxe2_cc_irq", pdata);
+		if (ret) {
+			pr_err("failed to request cc_irq\n");
+			goto remove_group;
+		}
+		enable_irq_wake(pdata->cc_finished_gpio);
+	}
 
 	return 0;
 

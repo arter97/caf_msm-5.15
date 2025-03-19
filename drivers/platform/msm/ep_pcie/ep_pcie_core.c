@@ -44,6 +44,7 @@
 #define TCSR_PERST_SEPARATION_ENABLE		0x270
 #define TCSR_PCIE_RST_SEPARATION		0x3F8
 #define TCSR_PCIE_PERST_EN			0x258
+#define TCSR_HOT_RESET_EN			0x3e8
 
 #define PCIE_ISSUE_WAKE				1
 #define PCIE_MHI_FWD_STATUS_MIN			5000
@@ -58,6 +59,9 @@
 
 #define LODWORD(addr)             (addr & 0xFFFFFFFF)
 #define HIDWORD(addr)             ((addr >> 32) & 0xFFFFFFFF)
+
+#define GEN_1_2_LTSSM_DETECT_TIMEOUT_MS	20 /* in msec */
+#define GEN_3_ABOVE_LTSSM_DETECT_TIMEOUT_MS	100 /* in msec */
 
 /* debug mask sys interface */
 static int ep_pcie_debug_mask;
@@ -280,6 +284,7 @@ static int ep_pcie_reset_init(struct ep_pcie_dev_t *dev)
 {
 	int i, rc = 0;
 	struct ep_pcie_reset_info_t *reset_info;
+	ktime_t timeout;
 
 	for (i = 0; i < EP_PCIE_MAX_RESET; i++) {
 		reset_info = &dev->reset[i];
@@ -306,8 +311,15 @@ static int ep_pcie_reset_init(struct ep_pcie_dev_t *dev)
 		}
 		EP_PCIE_DBG(dev, "After Reset assert %s\n",
 						reset_info->name);
+
 		/* add a 1ms delay to ensure the reset is asserted */
-		usleep_range(1000, 1005);
+		timeout = ktime_add_us(ktime_get(), 1000);
+		while (1) {
+			if (ktime_after(ktime_get(), timeout))
+				break;
+			udelay(1);
+			cpu_relax();
+		}
 
 		rc = reset_control_deassert(reset_info->hdl);
 		if (rc) {
@@ -2129,6 +2141,27 @@ static void ep_pcie_core_toggle_wake_gpio(bool is_on)
 
 }
 
+static int check_ltssm_detect_timeout(struct ep_pcie_dev_t *dev)
+{
+	/*
+	 * PCIe Base Spec Version 6.0, Section 6.6 PCI Express Reset - Rules,
+	 * Sub Section 6.6.1 Convectional Reset mandates device must enter the
+	 * LTSSM_Detect state, within 20ms(for Gen 1 and Gen 2 Devices) and
+	 * within 100ms (for other Gen devices) of the end of the fundamental reset
+	 * (which includes reset based on PERST#).
+	 */
+	int timeout = GEN_1_2_LTSSM_DETECT_TIMEOUT_MS;
+	int ret = 0;
+
+	if (dev->link_speed > PCI_EXP_LNKSTA_CLS_5_0GB)
+		timeout = GEN_3_ABOVE_LTSSM_DETECT_TIMEOUT_MS;
+
+	ret = ((ktime_to_ms(dev->ltssm_detect_ts) > timeout) ? 1 : 0);
+	dev->ltssm_detect_ts = 0;
+
+	return ret;
+}
+
 int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 {
 	int ret = 0;
@@ -2138,7 +2171,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	bool perst = true;
 	bool ltssm_en = false;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
-	u32 reg;
+	u32 reg, linkup_ts;
+	int timedout = false;
+	unsigned long irqsave_flags;
 
 	EP_PCIE_DBG(dev, "PCIe V%d: options input are 0x%x\n", dev->rev, opt);
 
@@ -2180,7 +2215,9 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			goto clk_fail;
 		}
 
+		spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 		dev->power_on = true;
+		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 		if (!dev->tcsr_not_supported) {
 			EP_PCIE_DBG(dev,
@@ -2206,6 +2243,13 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 			 */
 			writel_relaxed(0, dev->tcsr_perst_en +
 						ep_pcie_dev.tcsr_perst_separation_en_offset);
+
+			/*
+			 * Re-enable hot reset before link up since we disable it
+			 * in pm_turnoff irq.
+			 */
+			ep_pcie_write_reg_field(dev->tcsr_perst_en,
+					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0), BIT(0));
 		}
 
 		 /* check link status during initial bootup */
@@ -2340,23 +2384,10 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	}
 
 	EP_PCIE_DBG(dev, "PCIe V%d: waiting for phy ready...\n", dev->rev);
-	retries = 0;
-	do {
-		if (ep_pcie_phy_is_ready(dev))
-			break;
-		retries++;
-		if (retries % 100 == 0)
-			EP_PCIE_DBG(dev,
-				"PCIe V%d: current number of PHY retries:%d\n",
-				dev->rev, retries);
-		usleep_range(REFCLK_STABILIZATION_DELAY_US_MIN,
-				REFCLK_STABILIZATION_DELAY_US_MAX);
-	} while (retries < PHY_READY_TIMEOUT_COUNT);
 
-	EP_PCIE_DBG(dev, "PCIe V%d: number of PHY retries:%d\n",
-		dev->rev, retries);
-
-	if (retries == PHY_READY_TIMEOUT_COUNT) {
+	timedout = read_poll_timeout_atomic(ep_pcie_phy_is_ready,
+			val, val == true, 1, PHY_READY_TIMEOUT_MS, false, dev);
+	if (timedout) {
 		EP_PCIE_ERR(dev, "PCIe V%d: PCIe PHY  failed to come up\n",
 			dev->rev);
 		ret = EP_PCIE_ERROR;
@@ -2374,6 +2405,8 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 		ep_pcie_write_mask(dev->parf + PCIE20_PARF_LTSSM, 0, BIT(8));
 	else
 		ep_pcie_write_mask(dev->elbi + PCIE20_ELBI_SYS_CTRL, 0, BIT(0));
+
+	dev->ltssm_detect_ts = ktime_sub(ktime_get(), dev->ltssm_detect_ts);
 
 	EP_PCIE_DBG(dev, "PCIe V%d: check if link is up\n", dev->rev);
 
@@ -2406,13 +2439,15 @@ int ep_pcie_core_enable_endpoint(enum ep_pcie_options opt)
 	} else {
 		dev->link_status = EP_PCIE_LINK_UP;
 		dev->l23_ready = false;
-		EP_PCIE_DBG(dev,
-			"PCIe V%d: link is up after %d checkings (%d ms)\n",
-			dev->rev, retries,
-			LINK_UP_TIMEOUT_US_MIN * retries / 1000);
+
+		linkup_ts = LINK_UP_TIMEOUT_US_MIN * retries / 1000;
 		EP_PCIE_INFO(dev,
-			"PCIe V%d: link initialized for LE PCIe endpoint\n",
-			dev->rev);
+			"PCIe V%d: PERST#-deast to LTSSM_Detect took %ld ms, linkup took %ld ms\n",
+			dev->rev, ktime_to_ms(dev->ltssm_detect_ts), linkup_ts);
+		EP_PCIE_INFO(dev, "PCIe V%d: link initialized for LE PCIe endpoint\n", dev->rev);
+
+		if (check_ltssm_detect_timeout(dev))
+			WARN_ON(1);
 	}
 
 checkbme:
@@ -2523,10 +2558,12 @@ int ep_pcie_core_disable_endpoint(void)
 {
 	unsigned long irqsave_flags;
 	struct ep_pcie_dev_t *dev = &ep_pcie_dev;
+	u32 status;
 
 	EP_PCIE_DBG(dev, "PCIe V%d\n", dev->rev);
 
 	mutex_lock(&dev->setup_mtx);
+	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->perst_deast) && !m2_enabled) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: PERST is de-asserted, exiting disable\n",
@@ -2540,6 +2577,15 @@ int ep_pcie_core_disable_endpoint(void)
 			dev->rev);
 		goto out;
 	}
+
+	dev->power_on = false;
+	/*
+	 * In some cases, the device is requesting for an inband pme
+	 * as the wakeup host function is reading l23_ready bit as true.
+	 * Hence, clearing the bit here to avoid such scenarios.
+	 */
+	dev->l23_ready = false;
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 
 	if (!m2_enabled) {
 		dev->link_status = EP_PCIE_LINK_DISABLED;
@@ -2558,6 +2604,13 @@ int ep_pcie_core_disable_endpoint(void)
 					ep_pcie_dev.tcsr_reset_separation_offset,
 					ep_pcie_dev.pcie_disconnect_req_reg_mask, 1);
 
+		/* Reading status to check which global irq was triggered after PERST# assertion */
+		status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+		ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
+		if (status)
+			EP_PCIE_DUMP(dev, "PCIe V%d: Global IRQ received; status:0x%x\n",
+					dev->rev, status);
+
 		ep_pcie_pipe_clk_deinit(dev);
 		ep_pcie_clk_deinit(dev);
 		ep_pcie_vreg_deinit(dev);
@@ -2567,8 +2620,6 @@ int ep_pcie_core_disable_endpoint(void)
 		ep_pcie_vreg_deinit(dev);
 		EP_PCIE_DBG(dev, "PCIe V%d: Resources turned off M2 path\n", dev->rev);
 	}
-
-	dev->power_on = false;
 
 	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 	if (atomic_read(&dev->ep_pcie_dev_wake) &&
@@ -2588,7 +2639,7 @@ int ep_pcie_core_disable_endpoint(void)
 	}
 
 	/*
-	 * In some caes though device requested to do an inband PME
+	 * In some cases though device requested to do an inband PME
 	 * the host might still proceed with PERST assertion, below
 	 * code is to toggle WAKE in such sceanrios.
 	 */
@@ -2598,8 +2649,8 @@ int ep_pcie_core_disable_endpoint(void)
 		ep_pcie_core_wakeup_host_internal(EP_PCIE_EVENT_PM_D3_COLD);
 	}
 
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 out:
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 	mutex_unlock(&dev->setup_mtx);
 	return 0;
 }
@@ -2651,9 +2702,6 @@ int ep_pcie_core_mask_irq_event(enum ep_pcie_irq_event event,
 static irqreturn_t ep_pcie_handle_bme_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->bme_counter++;
 	EP_PCIE_DBG(dev,
@@ -2680,17 +2728,12 @@ static irqreturn_t ep_pcie_handle_bme_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 				"PCIe V%d:BME is still disabled\n", dev->rev);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->linkdown_counter++;
 	EP_PCIE_DBG(dev,
@@ -2705,6 +2748,10 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 			"PCIe V%d:Linkdown IRQ happened when PERST asserted\n",
 			dev->rev);
+	} else if (dev->link_status == EP_PCIE_LINK_IN_L23READY) {
+		EP_PCIE_DBG(dev,
+			"PCIe V%d:Linkdown IRQ happened when link goes to l23ready\n",
+			dev->rev);
 	} else {
 		dev->link_status = EP_PCIE_LINK_DISABLED;
 		EP_PCIE_DBG(dev, "PCIe V%d:PCIe link is down for %ld times\n",
@@ -2713,18 +2760,12 @@ static irqreturn_t ep_pcie_handle_linkdown_irq(int irq, void *data)
 				BIT(EP_PCIE_RES_PARF), true);
 		ep_pcie_notify_event(dev, EP_PCIE_EVENT_LINKDOWN);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_linkup_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dev->linkup_counter++;
 	EP_PCIE_DBG(dev,
@@ -2733,17 +2774,28 @@ static irqreturn_t ep_pcie_handle_linkup_irq(int irq, void *data)
 
 	dev->link_status = EP_PCIE_LINK_UP;
 
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
 
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
+	if (!dev->tcsr_not_supported)
+		/*
+		 * Some hosts will try to recovery link if it doesn't receive PM_L23_Enter
+		 * within 10ms after sending PME turn off, in which case if Hot reset is
+		 * enabled, PERST# timeout circuit will start to work. If it measures that
+		 * the link doesn't enter L0 within a predetermined time, device will crash
+		 * with PERST_TIMEOUT_RESET_STATUS set to 1.
+		 *
+		 * Note that PERST# timeout circuit monitors the Detect to L0 transition and
+		 * it gets activated in two scenario:
+		 * 1) When PERST# gets de-asserted and perst-separation is enabled.
+		 * 2) When hot-reset is enabled and link training is initiated.
+		 */
+		ep_pcie_write_reg_field(dev->tcsr_perst_en,
+					ep_pcie_dev.tcsr_hot_reset_en_offset, BIT(0), 0);
 
 	dev->pm_to_counter++;
 	EP_PCIE_DBG2(dev,
@@ -2751,8 +2803,7 @@ static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 		dev->rev, dev->pm_to_counter);
 	EP_PCIE_DBG2(dev, "PCIe V%d: Put the link into L23\n",	dev->rev);
 	ep_pcie_write_mask(dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(2));
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+	dev->link_status = EP_PCIE_LINK_IN_L23READY;
 
 	return IRQ_HANDLED;
 }
@@ -2760,10 +2811,7 @@ static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	unsigned long irqsave_flags;
 	u32 dstate;
-
-	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
 
 	dstate = readl_relaxed(dev->dm_core +
 			PCIE20_CON_STATUS) & 0x3;
@@ -2821,9 +2869,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 			"PCIe V%d:invalid D state change to 0x%x\n",
 			dev->rev, dstate);
 	}
-
-	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
-
 	return IRQ_HANDLED;
 }
 
@@ -2974,6 +3019,7 @@ static irqreturn_t ep_pcie_handle_perst_irq(int irq, void *data)
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: No. %ld PERST deassertion\n",
 			dev->rev, dev->perst_deast_counter);
+		dev->ltssm_detect_ts = ktime_get();
 		result = IRQ_WAKE_THREAD;
 	} else {
 		atomic_set(&dev->perst_deast, 0);
@@ -3080,17 +3126,26 @@ exit_irq:
 static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 {
 	struct ep_pcie_dev_t *dev = data;
-	int i;
-	u32 status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
-	u32 mask = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_MASK);
+	int i, ret;
+	u32 status;
+	unsigned long irqsave_flags;
 
-	ep_pcie_write_mask(dev->parf + PCIE20_PARF_INT_ALL_CLEAR, 0, status);
+	spin_lock_irqsave(&dev->isr_lock, irqsave_flags);
+	if (!atomic_read(&dev->perst_deast)) {
+		EP_PCIE_ERR(dev,
+			"PCIe V%d: Global irq not processed as PERST# is asserted\n",
+			dev->rev);
+		spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+		return IRQ_HANDLED;
+	}
+
+	status = readl_relaxed(dev->parf + PCIE20_PARF_INT_ALL_STATUS);
+	ep_pcie_write_reg(dev->parf, PCIE20_PARF_INT_ALL_CLEAR, status);
 
 	dev->global_irq_counter++;
 	EP_PCIE_DUMP(dev,
-		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x; mask:0x%x\n",
-		dev->rev, dev->global_irq_counter, irq, status, mask);
-	status &= mask;
+		"PCIe V%d: No. %ld Global IRQ %d received; status:0x%x\n",
+		dev->rev, dev->global_irq_counter, irq, status);
 
 	if (!status)
 		goto sriov_irq;
@@ -3150,7 +3205,9 @@ static irqreturn_t ep_pcie_handle_global_irq(int irq, void *data)
 	}
 
 sriov_irq:
-	return ep_pcie_handle_sriov_irq(irq, data);
+	ret = ep_pcie_handle_sriov_irq(irq, data);
+	spin_unlock_irqrestore(&dev->isr_lock, irqsave_flags);
+	return ret;
 }
 
 int32_t ep_pcie_irq_init(struct ep_pcie_dev_t *dev)
@@ -3414,6 +3471,11 @@ enum ep_pcie_link_status ep_pcie_core_get_linkstatus(void)
 			"PCIe V%d: PCIe endpoint is not powered on\n",
 			dev->rev);
 		return EP_PCIE_LINK_DISABLED;
+	}
+
+	if (dev->link_status == EP_PCIE_LINK_IN_L23READY) {
+		EP_PCIE_DBG(dev, "PCIe V%d: PCIe endpoint has sent PM_ENTER_L23\n", dev->rev);
+		return EP_PCIE_LINK_IN_L23READY;
 	}
 
 	bme = readl_relaxed(dev->dm_core +
@@ -3880,7 +3942,7 @@ static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event)
 		/*D3 cold handling*/
 		ep_pcie_core_toggle_wake_gpio(true);
 		atomic_set(&dev->host_wake_pending, 1);
-	} else if (dev->l23_ready) {
+	} else if (dev->l23_ready && dev->power_on) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: request to assert WAKE# when in D3hot\n",
 			dev->rev);
@@ -4199,6 +4261,19 @@ static void ep_pcie_tcsr_aoss_data_dt(struct platform_device *pdev)
 		EP_PCIE_DBG(&ep_pcie_dev,
 			"PCIe V%d: TCSR Perst Enable Offset: 0x%x\n",
 			ep_pcie_dev.rev, ep_pcie_dev.tcsr_perst_enable_offset);
+
+		ret = of_property_read_u32((&pdev->dev)->of_node, "qcom,tcsr-hot-reset-en-offset",
+					&ep_pcie_dev.tcsr_hot_reset_en_offset);
+		if (ret) {
+			EP_PCIE_DBG(&ep_pcie_dev,
+				"PCIe V%d: TCSR Hot Reset Enable Offset is not supplied from DT",
+				ep_pcie_dev.rev);
+			ep_pcie_dev.tcsr_hot_reset_en_offset = TCSR_HOT_RESET_EN;
+		}
+
+		EP_PCIE_DBG(&ep_pcie_dev,
+			"PCIe V%d: TCSR Hot Reset Enable Offset: 0x%x\n",
+			ep_pcie_dev.rev, ep_pcie_dev.tcsr_hot_reset_en_offset);
 	}
 
 	ep_pcie_dev.aoss_rst_clear = of_property_read_bool((&pdev->dev)->of_node,
