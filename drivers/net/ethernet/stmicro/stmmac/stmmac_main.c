@@ -1294,6 +1294,11 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
 
+	if (!priv) {
+		pr_err("priv is NULL\n");
+		return;
+	}
+
 #if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
 		priv->plat->fix_mac_speed(priv->plat->bsp_priv, SPEED_10);
@@ -7346,7 +7351,7 @@ static u32 stmmac_vid_crc32_le(__le16 vid_le)
 static int stmmac_vlan_update(struct stmmac_priv *priv, bool is_double)
 {
 	u32 crc, hash = 0;
-	__le16 pmatch = 0;
+	u16 pmatch = 0;
 	int count = 0;
 	u16 vid = 0;
 
@@ -7361,7 +7366,7 @@ static int stmmac_vlan_update(struct stmmac_priv *priv, bool is_double)
 		if (count > 2) /* VID = 0 always passes filter */
 			return -EOPNOTSUPP;
 
-		pmatch = cpu_to_le16(vid);
+		pmatch = vid;
 		hash = 0;
 	}
 

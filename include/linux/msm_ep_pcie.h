@@ -18,6 +18,7 @@
 #include <linux/types.h>
 
 enum ep_pcie_link_status {
+	EP_PCIE_LINK_INVALID,
 	EP_PCIE_LINK_DISABLED,
 	EP_PCIE_LINK_UP,
 	EP_PCIE_LINK_ENABLED,
