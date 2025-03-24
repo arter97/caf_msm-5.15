@@ -2794,6 +2794,8 @@ enum nl80211_commands {
  * @NL80211_ATTR_MLD_LINK_MACS: nested attribute to hold MLD mac addrs.
  * @NL80211_ATTR_RECONFIG: whether the operation is reconfiguration or not
  *
+ * @NL80211_ATTR_RADIO_IFACE: radio interface name of vif
+ *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
@@ -3345,6 +3347,8 @@ enum nl80211_attrs {
 	NL80211_ATTR_MLD_LINK_IDS,
 	NL80211_ATTR_MLD_LINK_MACS,
 	NL80211_ATTR_RECONFIG,
+
+	NL80211_ATTR_RADIO_IFACE,
 
 	/* add attributes here, update the policy in nl80211.c */
 

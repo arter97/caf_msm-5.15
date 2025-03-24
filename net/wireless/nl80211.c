@@ -831,6 +831,7 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	[NL80211_ATTR_PUNCT_BITMAP] =
 		NLA_POLICY_FULL_RANGE(NLA_U32, &nl80211_punct_bitmap_range),
 
+	[NL80211_ATTR_RADIO_IFACE] = { .type = NLA_BINARY, .len = IFNAMSIZ - 1 },
 };
 
 /* policy for the key attributes */
@@ -4345,6 +4346,12 @@ static int _nl80211_new_interface(struct sk_buff *skb, struct genl_info *info)
 				nla_data(info->attrs[NL80211_ATTR_MLD_REFERENCE]);
 		else
 			return -EOPNOTSUPP;
+	}
+#else /* CFG80211_PROP_MULTI_LINK_SUPPORT */
+	if (rdev->wiphy.flags & WIPHY_FLAG_SUPPORTS_MLO) {
+		if (info->attrs[NL80211_ATTR_RADIO_IFACE])
+			params.radio_iface =
+				nla_data(info->attrs[NL80211_ATTR_RADIO_IFACE]);
 	}
 #endif /* CFG80211_PROP_MULTI_LINK_SUPPORT */
 
