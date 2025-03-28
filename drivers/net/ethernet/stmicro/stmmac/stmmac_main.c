@@ -6568,7 +6568,7 @@ static void stmmac_set_rx_mode(struct net_device *dev)
 			if (!memcmp(dst_eapol_mac_addr, ha->addr, ETH_ALEN))
 				mka_mcbcq_used = 1;
 		}
-		pr_info("Setting MCBCQ to queue %d\n", mka_mcbcq_used);
+		pr_debug("Setting MCBCQ to queue %d\n", mka_mcbcq_used);
 		stmmac_rx_queue_routing(priv, priv->hw, PACKET_MCBCQ, mka_mcbcq_used);
 	}
 	stmmac_set_filter(priv, priv->hw, dev);
