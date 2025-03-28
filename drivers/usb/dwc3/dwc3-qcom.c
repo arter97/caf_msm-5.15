@@ -472,13 +472,15 @@ static int dwc3_qcom_config_gdsc(struct dwc3_qcom *qcom, int on)
 static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
 {
 	u32 val;
-	int i, ret;
+	int i, ret, num_ports;
 	struct dwc3 *dwc = platform_get_drvdata(qcom->dwc3);
 
 	if (qcom->is_suspended)
 		return 0;
 
-	for (i = 0; i < dwc->num_ports; i++) {
+	num_ports = (dwc != NULL) ? dwc->num_ports : 1;
+
+	for (i = 0; i < num_ports; i++) {
 		val = readl(qcom->qscratch_base + pwr_evnt_irq_stat_reg_offset[i]);
 		if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
 			dev_err(qcom->dev, "HS-PHY%d not in L2\n", i);
