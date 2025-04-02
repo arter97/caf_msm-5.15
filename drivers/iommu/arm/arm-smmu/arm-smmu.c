@@ -4036,6 +4036,8 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 
 static void arm_smmu_device_shutdown(struct platform_device *pdev)
 {
+	if (!strcmp(dev_name(&pdev->dev), "59a0000.kgsl-smmu"))
+		return;
 	arm_smmu_device_remove(pdev);
 }
 
