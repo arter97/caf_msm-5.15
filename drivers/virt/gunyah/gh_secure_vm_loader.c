@@ -197,7 +197,7 @@ static int gh_vm_loader_sec_load(struct gh_sec_vm_dev *vm_dev,
 		return ret;
 	}
 
-	metadata = qcom_mdt_read_metadata(fw, &metadata_size, fw_name, dev);
+	metadata = qcom_mdt_read_metadata(dev, fw, fw_name, &metadata_size, false, NULL);
 	if (IS_ERR(metadata)) {
 		release_firmware(fw);
 		return PTR_ERR(metadata);
