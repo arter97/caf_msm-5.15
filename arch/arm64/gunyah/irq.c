@@ -112,7 +112,6 @@ EXPORT_SYMBOL(gh_put_virq);
 int gh_put_irq(int irq)
 {
 	struct irq_data *irq_data;
-	unsigned long virq;
 
 	if (irq <= 0)
 		return -EINVAL;
@@ -121,10 +120,8 @@ int gh_put_irq(int irq)
 	if (!irq_data)
 		return -EINVAL;
 
-	virq = irq_data->hwirq;
-
 	irq_dispose_mapping(irq);
 
-	return gh_put_virq(virq);
+	return gh_put_virq(irq_data->hwirq);
 }
 EXPORT_SYMBOL(gh_put_irq);

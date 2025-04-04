@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  */
 
@@ -18,6 +18,7 @@ typedef u32 gh_label_t;
 typedef u32 gh_memparcel_handle_t;
 typedef u64 gh_capid_t;
 typedef u64 gh_dbl_flags_t;
+typedef u32 gh_vm_perm_t;
 
 struct gh_vminfo {
 	u8 *guid;
@@ -41,8 +42,7 @@ enum gh_vm_names {
 	GH_CPUSYS_VM,
 	GH_OEM_VM,
 	GH_AUTO_VM,
-	GH_ROBOTICS_VM1,
-	GH_ROBOTICS_VM2,
+	GH_AUTO_VM_LV,
 	GH_VM_MAX
 };
 

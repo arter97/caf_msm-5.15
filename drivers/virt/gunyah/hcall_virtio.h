@@ -121,4 +121,29 @@ gh_hcall_virtio_mmio_backend_ack_reset(gh_capid_t capid)
 			&_resp);
 }
 
+static inline int
+gh_hcall_virtio_mmio_backend_input_configure(gh_capid_t capid,
+		u64 device_id, u64 prop_bits, u64 num_ev_types,
+		u64 num_abs_axes)
+{
+	struct gh_hcall_resp _resp = {0};
+
+	return _gh_hcall(0x605E,
+			(struct gh_hcall_args){ capid, device_id, prop_bits,
+					num_ev_types, num_abs_axes, 0},
+			&_resp);
+}
+
+static inline int
+gh_hcall_virtio_mmio_backend_input_set_data(gh_capid_t capid,
+		u64 sel, u64 subsel, u64 size, void *data)
+{
+	struct gh_hcall_resp _resp = {0};
+
+	return _gh_hcall(0x605F,
+			(struct gh_hcall_args){ capid, sel, subsel, size,
+					(unsigned long)data, 0},
+			&_resp);
+}
+
 #endif

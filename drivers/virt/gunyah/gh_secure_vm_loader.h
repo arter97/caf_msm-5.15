@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _GH_SECURE_VM_LOADER_H
@@ -15,6 +15,8 @@ int gh_secure_vm_loader_init(void);
 void gh_secure_vm_loader_exit(void);
 long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg);
 long gh_vm_ioctl_get_fw_name(struct gh_vm *vm, unsigned long arg);
+long gh_vm_ioctl_get_mem_count(struct gh_vm *vm);
+long gh_vm_ioctl_get_mem_region(struct gh_vm *vm, unsigned long arg);
 int gh_secure_vm_loader_reclaim_fw(struct gh_vm *vm);
 #else
 static int gh_secure_vm_loader_init(void)
@@ -30,6 +32,15 @@ static inline long gh_vm_ioctl_set_fw_name(struct gh_vm *vm,
 	return -EINVAL;
 }
 static inline long gh_vm_ioctl_get_fw_name(struct gh_vm *vm,
+						unsigned long arg)
+{
+	return -EINVAL;
+}
+static inline long gh_vm_ioctl_get_mem_count(struct gh_vm *vm)
+{
+	return -EINVAL;
+}
+static inline long gh_vm_ioctl_get_mem_region(struct gh_vm *vm,
 						unsigned long arg)
 {
 	return -EINVAL;

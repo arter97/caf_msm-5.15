@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_LINUX_GUNYAH
@@ -30,6 +30,11 @@
  */
 struct gh_fw_name {
 	char name[GH_VM_FW_NAME_MAX];
+};
+
+struct gh_fw_name_and_exit_status {
+	char name[GH_VM_FW_NAME_MAX];
+	__u32 reason;
 };
 
 #define VBE_ASSIGN_IOEVENTFD	1
@@ -63,6 +68,15 @@ struct gh_fw_name {
 #define GH_VM_EXIT_REASONS_MAX			8
 
 /*
+ * vm_state specifies the current state of the VCPU/SYSTEM.
+ * VM_STATE_CPU_SUSPENDED corresponds to S2idle (PSCI_CPU_SUSPEND)
+ * while VM_STATE_SYSTEM_SUSPENDED correlates to S2R (PSCI_SYSTEM_SUSPEND).
+ */
+#define VM_STATE_RUNNING			1
+#define VM_STATE_CPU_SUSPENDED			2
+#define VM_STATE_SYSTEM_SUSPENDED		3
+
+/*
  * ioctls for /dev/gunyah fds:
  */
 /**
@@ -75,6 +89,8 @@ struct gh_fw_name {
  */
 #define GH_CREATE_VM			_IO(GH_IOCTL_TYPE, 0x01)
 
+#define GH_VM_WAIT_FOR_EXIT		_IOWR(GH_IOCTL_TYPE, 0x02, \
+						struct gh_fw_name_and_exit_status)
 /*
  * ioctls for VM fd.
  */
@@ -122,6 +138,29 @@ struct gh_fw_name {
  *         -errno on failure
  */
 #define GH_VM_GET_VCPU_COUNT		_IO(GH_IOCTL_TYPE, 0x43)
+/**
+ * GH_VM_GET_MEM_COUNT - Userspace can use this IOCTL to query the number
+ * 			 of memory regions that are provided for the VM.
+ * 			 Userspace can further use this count to fetch the
+ * 			 required information from each memory region to build
+ * 			 a memory FD.
+ *
+ * Return: memory region count on success, -errno on failure
+ */
+#define GH_VM_GET_MEM_COUNT		_IO(GH_IOCTL_TYPE, 0x44)
+/**
+ * GH_VM_GET_MEM_REGION - Userspace can use this IOCTL to query information
+ * 			  for a VM's memory region. Userspace can further use
+ * 			  this information to build a memory FD for this memory
+ * 			  region.
+ *
+ * Input: vm_mem_region structure to be filled with the VM memory
+ * 	  regions' index.
+ * Return: 0 if success and the memory regions' start address, size, and FD
+ * 	  representing the region, -errno on failure
+ */
+#define GH_VM_GET_MEM_REGION		_IOWR(GH_IOCTL_TYPE, 0x45, \
+						struct vm_mem_region)
 /*
  *  IOCTLs supported by virtio backend driver
  */
@@ -256,6 +295,27 @@ struct gh_fw_name {
  */
 #define GH_ACK_RESET		_IOW(GH_IOCTL_TYPE, 0x6d, struct virtio_ack_reset)
 
+/**
+ * GH_SET_INPUT_DEVICE_CONFIG_DATA - This ioctl writes the input device
+ *                          configuration data to a page shared with a guest VM.
+ *
+ *
+ * Input: virtio_input_device_config structure with the required attributes.
+ *
+ * Return: 0 if success, -errno on failure
+ */
+#define GH_SET_INPUT_DEVICE_CONFIG_DATA	_IOW(GH_IOCTL_TYPE, 0x6e, struct virtio_input_device_config)
+
+/**
+ * GH_SET_INPUT_DEVICE_DATA - This ioctl writes the input device data to a page
+ *                          shared with the guest VM.
+ *
+ * Input: virtio_input_device_data structure with the required attributes.
+ *
+ * Return: 0 if success, -errno on failure
+ */
+#define GH_SET_INPUT_DEVICE_DATA _IOW(GH_IOCTL_TYPE, 0x6f, struct virtio_input_device_data)
+
 /*
  * ioctls for vcpu fd.
  */
@@ -271,6 +331,13 @@ struct gh_fw_name {
  * Return: Reason for vm termination, -errno on failure
  */
 #define GH_VCPU_RUN			_IO(GH_IOCTL_TYPE, 0x80)
+
+struct vm_mem_region {
+	__u8 idx;
+	__u64 fw_phys;
+	__u64 fw_size;
+	__s32 fd;
+};
 
 struct virtio_ack_reset {
 	__u32 label;
@@ -333,6 +400,24 @@ struct virtio_irqfd {
 	__u32 flags;
 	__s32 fd;
 	__u32 reserved;
+};
+
+struct virtio_input_device_config {
+	__u32 label;
+	__u64 device_id;
+	__u32 prop_bits;
+	__u8 num_ev_types;
+	__u8 num_abs_axes;
+	__u32 reserved;
+};
+
+struct virtio_input_device_data {
+	__u32 label;
+	__u8 sel;
+	__u8 subsel;
+	__u8 size;
+	__u8 reserved[5];
+	__u8 payload[128];
 };
 
 #endif /* _UAPI_LINUX_GUNYAH */

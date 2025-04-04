@@ -323,6 +323,8 @@ typedef int (*gh_vpm_grp_set_cb_t)(gh_vmid_t vmid, gh_capid_t cap_id, int linux_
 typedef int (*gh_vpm_grp_reset_cb_t)(gh_vmid_t vmid, int *linux_irq);
 typedef void (*gh_all_res_populated_cb_t)(gh_vmid_t vmid, bool res_populated);
 
+void gh_test_static(void);
+
 #if IS_ENABLED(CONFIG_GH_RM_DRV)
 /* RM client registration APIs */
 int gh_rm_register_notifier(struct notifier_block *nb);

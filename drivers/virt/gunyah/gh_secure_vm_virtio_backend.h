@@ -13,6 +13,7 @@ long gh_virtio_backend_ioctl(const char *vm_name, unsigned int cmd,
 							unsigned long arg);
 int gh_parse_virtio_properties(struct device *dev, const char *vm_name);
 int gh_virtio_backend_remove(const char *vm_name);
+void gh_virtio_mmio_app_exit(gh_vmid_t vmid, const char *vm_name);
 int gh_virtio_mmio_exit(gh_vmid_t vmid, const char *vm_name);
 int gh_virtio_backend_init(void);
 void gh_virtio_backend_exit(void);
