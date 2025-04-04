@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __EP_PCIE_COM_H
@@ -568,6 +568,7 @@ struct ep_pcie_dev_t {
 	ulong                        d3_counter;
 	ulong                        perst_ast_counter;
 	ulong                        perst_deast_counter;
+	ulong                        perst_deast_thread_counter;
 	ktime_t                      ltssm_detect_ts;
 	ulong                        wake_counter;
 	ulong                        msi_counter;
