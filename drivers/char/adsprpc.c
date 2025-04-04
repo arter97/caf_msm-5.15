@@ -1203,6 +1203,11 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 				goto bail;
 		}
 	} else if (mflags == FASTRPC_MAP_FD_NOMAP) {
+		if (map->attr & FASTRPC_ATTR_KEEP_MAP) {
+			ADSPRPC_ERR("Invalid attribute 0x%x for fd %d\n", map->attr, fd);
+			err = -EINVAL;
+			goto bail;
+		}
 		VERIFY(err, !IS_ERR_OR_NULL(map->buf = dma_buf_get(fd)));
 		if (err) {
 			ADSPRPC_ERR("dma_buf_get failed for fd %d ret %ld\n",
@@ -3861,7 +3866,7 @@ bail:
 
 static int fastrpc_mmap_remove_pdr(struct fastrpc_file *fl);
 static int fastrpc_channel_open(struct fastrpc_file *fl, uint32_t flags);
-static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked);
+static int fastrpc_dsp_restart_handler(struct fastrpc_file *fl, int locked, bool dump_req);
 
 /*
  * This function makes a call to create a thread group in the root
@@ -4051,6 +4056,8 @@ static int fastrpc_init_create_dynamic_process(struct fastrpc_file *fl,
 		mutex_lock(&fl->map_mutex);
 		err = fastrpc_mmap_create(fl, fl->sharedbuf_info.buf_fd, NULL, 0,
 			0, fl->sharedbuf_info.buf_size, mflags, &sharedbuf_map);
+		if (sharedbuf_map)
+			sharedbuf_map->is_filemap = true;
 		mutex_unlock(&fl->map_mutex);
 		if (err)
 			goto bail;
@@ -5033,8 +5040,8 @@ bail:
 	return err;
 }
 
-
-static int fastrpc_mmap_dump(struct fastrpc_mmap *map, struct fastrpc_file *fl, int locked)
+static int fastrpc_mmap_dump(struct fastrpc_mmap *map,
+				struct fastrpc_file *fl, int locked, bool dump_req)
 {
 	struct fastrpc_mmap *match = map;
 	int err = 0, ret = 0;
@@ -5089,18 +5096,20 @@ static int fastrpc_mmap_dump(struct fastrpc_mmap *map, struct fastrpc_file *fl, 
 		if (err)
 			return err;
 	}
-	memset(&ramdump_segments_rh, 0, sizeof(ramdump_segments_rh));
-	ramdump_segments_rh.da = match->phys;
-	ramdump_segments_rh.va = (void *)page_address((struct page *)match->va);
-	ramdump_segments_rh.size = match->size;
-	INIT_LIST_HEAD(&head);
-	list_add(&ramdump_segments_rh.node, &head);
-	if (me->dev[RH_CID] && dump_enabled() &&
-		me->channel[RH_CID].hib_state == NORMAL_STATE) {
-		ret = qcom_elf_dump(&head, me->dev[RH_CID], ELF_CLASS);
-		if (ret < 0)
-			pr_err("adsprpc: %s: unable to dump heap (err %d)\n",
-						__func__, ret);
+	if (dump_req) {
+		memset(&ramdump_segments_rh, 0, sizeof(ramdump_segments_rh));
+		ramdump_segments_rh.da = match->phys;
+		ramdump_segments_rh.va = (void *)page_address((struct page *)match->va);
+		ramdump_segments_rh.size = match->size;
+		INIT_LIST_HEAD(&head);
+		list_add(&ramdump_segments_rh.node, &head);
+		if (me->dev[RH_CID] && dump_enabled() &&
+			me->channel[RH_CID].hib_state == NORMAL_STATE) {
+			ret = qcom_elf_dump(&head, me->dev[RH_CID], ELF_CLASS);
+			if (ret < 0)
+				pr_err("adsprpc: %s: unable to dump heap (err %d)\n",
+							__func__, ret);
+		}
 	}
 	if (!match->is_persistent) {
 		if (!locked && fl)
@@ -5112,7 +5121,7 @@ static int fastrpc_mmap_dump(struct fastrpc_mmap *map, struct fastrpc_file *fl, 
 	return 0;
 }
 
-static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked)
+static int fastrpc_dsp_restart_handler(struct fastrpc_file *fl, int locked, bool dump_req)
 {
 	struct fastrpc_mmap *match = NULL, *map = NULL;
 	struct hlist_node *n = NULL;
@@ -5146,7 +5155,7 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked)
 		}
 		spin_unlock_irqrestore(&me->hlock, irq_flags);
 		if (match)
-			err = fastrpc_mmap_dump(match, fl, locked);
+			err = fastrpc_mmap_dump(match, fl, locked, dump_req);
 	} while (match && !err);
 bail:
 	if (err && match) {
@@ -5191,7 +5200,7 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_file *fl)
 	}
 	if (me->channel[cid].spd[session].pdrcount !=
 		me->channel[cid].spd[session].prevpdrcount) {
-		err = fastrpc_mmap_remove_ssr(fl, 0);
+		err = fastrpc_dsp_restart_handler(fl, 0, false);
 		if (err)
 			ADSPRPC_WARN("failed to unmap remote heap (err %d)\n",
 					err);
@@ -6222,7 +6231,7 @@ static int fastrpc_channel_open(struct fastrpc_file *fl, uint32_t flags)
 			 me->channel[cid].prevssrcount) {
 		mutex_unlock(&me->channel[cid].smd_mutex);
 		mutex_lock(&fl->map_mutex);
-		err = fastrpc_mmap_remove_ssr(fl, 1);
+		err = fastrpc_dsp_restart_handler(fl, 1, true);
 		mutex_unlock(&fl->map_mutex);
 		if (err)
 			ADSPRPC_WARN(
@@ -7745,7 +7754,8 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 		pr_info("adsprpc: %s: subsystem %s is about to start\n",
 			__func__, gcinfo[cid].subsys);
 		if (cid == CDSP_DOMAIN_ID && dump_enabled() &&
-				ctx->ssrcount) {
+				ctx->ssrcount &&
+				me->channel[cid].hib_state == NORMAL_STATE) {
 			fastrpc_update_ramdump_status(cid);
 			mutex_lock(&me->channel[cid].smd_mutex);
 			fastrpc_print_debug_data(cid);
@@ -7754,7 +7764,8 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 		fastrpc_notify_drivers(me, cid);
 		/* Skip ram dump collection in first boot */
 		if (cid == CDSP_DOMAIN_ID && dump_enabled() &&
-				ctx->ssrcount) {
+				ctx->ssrcount &&
+				me->channel[cid].hib_state == NORMAL_STATE) {
 			ktime_get_real_ts64(&startT);
 			fastrpc_ramdump_collection(cid);
 			pr_info("adsprpc: %s: fastrpc ramdump finished in %lu (us)\n",
@@ -8408,7 +8419,7 @@ static int fastrpc_hibernation_suspend(struct device *dev)
 					"qcom,msm-fastrpc-compute")) {
 		for (cid = 0; cid < NUM_CHANNELS; cid++)
 			me->channel[cid].hib_state = HIBERNATION_SUSPEND;
-		err = fastrpc_mmap_remove_ssr(NULL, 0);
+		err = fastrpc_dsp_restart_handler(NULL, 0, true);
 		if (err)
 			ADSPRPC_WARN("failed to unmap remote heap (err %d)\n",
 					err);

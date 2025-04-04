@@ -531,6 +531,19 @@ static int qti_flash_led_strobe(struct qti_flash_led *led,
 		if (rc < 0)
 			goto error;
 
+		for (i = 0; i < led->num_fnodes; i++) {
+			if ((mask & BIT(led->fnode[i].id)) &&
+				led->fnode[i].configured &&
+				led->fnode[i].type == FLASH_LED_TYPE_TORCH &&
+						led->subtype == 0x6) {
+				rc = qti_flash_led_masked_write(led,
+						FORCE_TORCH_MODE,
+					FORCE_TORCH, FORCE_TORCH);
+				if (rc < 0)
+					goto error;
+			}
+		}
+
 		if (snode && snode->off_time_ms) {
 			pr_debug("Off timer started with delay %d ms\n",
 				snode->off_time_ms);
@@ -553,6 +566,18 @@ static int qti_flash_led_strobe(struct qti_flash_led *led,
 				mask, value);
 		if (rc < 0)
 			goto error;
+
+		for (i = 0; i < led->num_fnodes; i++) {
+			if ((mask & BIT(led->fnode[i].id)) &&
+				led->fnode[i].configured &&
+				led->fnode[i].type == FLASH_LED_TYPE_TORCH &&
+					led->subtype == 0x6) {
+				rc = qti_flash_led_masked_write(led,
+					FORCE_TORCH_MODE, FORCE_TORCH, 0);
+				if (rc < 0)
+					goto error;
+			}
+		}
 
 		if (led->trigger_lmh) {
 			rc = qti_flash_lmh_mitigation_config(led, false);
@@ -611,13 +636,6 @@ static int qti_flash_led_enable(struct flash_node_data *fnode)
 			goto out;
 	}
 
-	if (fnode->type == FLASH_LED_TYPE_TORCH && led->subtype == 0x6) {
-		rc = qti_flash_led_masked_write(led, FORCE_TORCH_MODE,
-					FORCE_TORCH, FORCE_TORCH);
-		if (rc < 0)
-			goto out;
-	}
-
 	fnode->configured = true;
 
 	if ((fnode->strobe_sel == HW_STROBE) &&
@@ -656,13 +674,6 @@ static int qti_flash_led_disable(struct flash_node_data *fnode)
 		goto out;
 
 	fnode->configured = false;
-	if (fnode->type == FLASH_LED_TYPE_TORCH && led->subtype == 0x6) {
-		rc = qti_flash_led_masked_write(led, FORCE_TORCH_MODE,
-						FORCE_TORCH, 0);
-		if (rc < 0)
-			goto out;
-	}
-
 	fnode->current_ma = 0;
 	fnode->user_current_ma = 0;
 
@@ -2314,12 +2325,6 @@ static int qti_flash_led_probe(struct platform_device *pdev)
 	rc = qti_flash_led_register_interrupts(led);
 	if (rc < 0) {
 		pr_err("Failed to register LED interrupts rc=%d\n", rc);
-		return rc;
-	}
-
-	rc = qpnp_flash_register_led_prepare(&pdev->dev, qti_flash_led_prepare);
-	if (rc < 0) {
-		pr_err("Failed to register flash_led_prepare, rc=%d\n", rc);
 		return rc;
 	}
 
