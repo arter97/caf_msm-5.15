@@ -320,7 +320,7 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 	struct device *dev;
 	long ret = -EINVAL;
 
-	if (copy_from_user(&vm_fw_name, arg, sizeof(vm_fw_name)))
+	if (copy_from_user(&vm_fw_name, (void __user *)arg, sizeof(vm_fw_name)))
 		return -EFAULT;
 
 	vm_fw_name.name[GH_VM_FW_NAME_MAX - 1] = '\0';
@@ -488,7 +488,7 @@ long gh_vm_ioctl_get_mem_region(struct gh_vm *vm, unsigned long arg)
 	char name[SZ_16];
 	struct file *file;
 
-	if (copy_from_user(&mem_region, arg,
+	if (copy_from_user(&mem_region, (void __user *)arg,
 				sizeof(mem_region)))
 		return -EFAULT;
 
@@ -530,7 +530,7 @@ long gh_vm_ioctl_get_mem_region(struct gh_vm *vm, unsigned long arg)
 
 	mutex_unlock(&vm->vm_lock);
 
-	if (copy_to_user(arg, &mem_region,
+	if (copy_to_user((void __user *)arg, &mem_region,
 				sizeof(mem_region)))
 		return -EFAULT;
 
