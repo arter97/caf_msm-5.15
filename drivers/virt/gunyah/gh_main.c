@@ -50,6 +50,7 @@ gh_rm_call_and_set_status(vm_start);
 #define gh_wait_for_vm_status(vm, wait_status) 				\
 	wait_event(vm->vm_status_wait, (vm->status.vm_status == wait_status))
 
+/*
 static struct gh_vm* find_vm_by_id(gh_vmid_t vmid)
 {
 	struct gh_vm *vm = NULL, *tmp;
@@ -81,6 +82,7 @@ static struct gh_vm* find_vm_by_susp_irq(int irq)
 
 	return vm;
 }
+*/
 
 int gh_register_vm_notifier(struct notifier_block *nb)
 {
@@ -1123,6 +1125,7 @@ void gh_uevent_notify_change(unsigned int type, struct gh_vm *vm)
 	kfree(env);
 }
 
+/*
 static irqreturn_t gh_susp_irq_handler(int irq, void *data)
 {
 	int ret;
@@ -1203,6 +1206,7 @@ static int reset_vm_vpm_grp_info(gh_vmid_t vmid, int *irq)
 
 	return 0;
 }
+*/
 
 static int __init gh_init(void)
 {
@@ -1216,6 +1220,7 @@ static int __init gh_init(void)
 	if (ret)
 		pr_err("gunyah: proxy scheduler init failed %d\n", ret);
 
+	/*
 	ret = gh_rm_set_vpm_grp_cb(&set_vm_vpm_grp_info);
 	if (ret)
 		pr_err("gunyah: rm set vpm callback failed %d\n", ret);
@@ -1225,6 +1230,7 @@ static int __init gh_init(void)
 		pr_err("gunyah: rm reset vpm callback failed\n");
 		return ret;
 	}
+	*/
 
 	ret = misc_register(&gh_dev);
 	if (ret) {
