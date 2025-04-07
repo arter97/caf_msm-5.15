@@ -37,8 +37,8 @@
 #define DEVICE_NAME			"mhi"
 #define MAX_DEVICE_NAME_SIZE		80
 
-#define MHI_UCI_ASYNC_READ_TIMEOUT	msecs_to_jiffies(100)
-#define MHI_UCI_ASYNC_WRITE_TIMEOUT	msecs_to_jiffies(100)
+#define MHI_UCI_ASYNC_READ_TIMEOUT	msecs_to_jiffies(200)
+#define MHI_UCI_ASYNC_WRITE_TIMEOUT	msecs_to_jiffies(200)
 #define MHI_UCI_AT_CTRL_READ_TIMEOUT	msecs_to_jiffies(1000)
 #define MHI_UCI_WRITE_REQ_AVAIL_TIMEOUT msecs_to_jiffies(1000)
 
