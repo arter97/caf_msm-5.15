@@ -406,6 +406,7 @@
   device_del
   device_destroy
   device_find_child
+  device_find_any_child
   device_for_each_child
   device_get_match_data
   device_get_phy_mode

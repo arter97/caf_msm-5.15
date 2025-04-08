@@ -117,3 +117,7 @@ type 'enum binder_work_type' changed
   enumerator 'BINDER_WORK_FROZEN_BINDER' (10) was added
   ... 1 other enumerator(s) added
 
+type 'struct of_bus' changed
+  member 'bool has_flags' was removed
+  member 'int flag_cells' was added
+

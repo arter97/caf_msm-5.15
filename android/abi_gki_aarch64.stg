@@ -23084,6 +23084,11 @@ pointer_reference {
   pointee_type_id: 0xffbaa126
 }
 pointer_reference {
+  id: 0x357f8a1e
+  kind: POINTER
+  pointee_type_id: 0xffbecee6
+}
+pointer_reference {
   id: 0x3580c00a
   kind: POINTER
   pointee_type_id: 0xfc43e6b5
@@ -32412,6 +32417,11 @@ qualified {
   id: 0xffb7f238
   qualifier: CONST
   qualified_type_id: 0x8e987e6b
+}
+qualified {
+  id: 0xffbecee6
+  qualifier: CONST
+  qualified_type_id: 0x8ebc8d13
 }
 qualified {
   id: 0xffc44b84
@@ -82990,6 +83000,12 @@ member {
   offset: 64
 }
 member {
+  id: 0x8df6fd01
+  name: "flag_cells"
+  type_id: 0x6720d32f
+  offset: 384
+}
+member {
   id: 0xf0176218
   name: "flag_changed"
   type_id: 0x2d4051be
@@ -91368,12 +91384,6 @@ member {
   type_id: 0x4585663f
   offset: 9252
   bitsize: 1
-}
-member {
-  id: 0xd0066583
-  name: "has_flags"
-  type_id: 0x6d7f5ff6
-  offset: 384
 }
 member {
   id: 0x534977b7
@@ -226143,7 +226153,7 @@ struct_union {
     member_id: 0xf5928f7e
     member_id: 0x8dea02a8
     member_id: 0xff7f1dc6
-    member_id: 0xd0066583
+    member_id: 0x8df6fd01
     member_id: 0xbb300b64
   }
 }
@@ -294018,6 +294028,12 @@ function {
   parameter_id: 0xfc0e1dbd
 }
 function {
+  id: 0x9b7a444b
+  return_type_id: 0x6720d32f
+  parameter_id: 0x18bd6530
+  parameter_id: 0x357f8a1e
+}
+function {
   id: 0x9b7aef3b
   return_type_id: 0x6720d32f
   parameter_id: 0x18bd6530
@@ -311451,6 +311467,15 @@ elf_symbol {
   full_name: "__traceiter_android_vh_printk_caller_id"
 }
 elf_symbol {
+  id: 0xe02adb2d
+  name: "__traceiter_android_vh_printk_console_unlock"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0xf27f0de3
+  type_id: 0x9b7a444b
+  full_name: "__traceiter_android_vh_printk_console_unlock"
+}
+elf_symbol {
   id: 0x7d499dab
   name: "__traceiter_android_vh_printk_hotplug"
   is_defined: true
@@ -314833,6 +314858,15 @@ elf_symbol {
   crc: 0x422dde96
   type_id: 0x18ccbd2c
   full_name: "__tracepoint_android_vh_printk_caller_id"
+}
+elf_symbol {
+  id: 0x3baa986b
+  name: "__tracepoint_android_vh_printk_console_unlock"
+  is_defined: true
+  symbol_type: OBJECT
+  crc: 0x6d386454
+  type_id: 0x18ccbd2c
+  full_name: "__tracepoint_android_vh_printk_console_unlock"
 }
 elf_symbol {
   id: 0x49b95a49
@@ -318252,6 +318286,15 @@ elf_symbol {
   crc: 0x123a29e6
   type_id: 0x12c8ce83
   full_name: "blk_mq_quiesce_queue"
+}
+elf_symbol {
+  id: 0x9d72c022
+  name: "blk_mq_quiesce_queue_nowait"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0x806a15c6
+  type_id: 0x12c8ce83
+  full_name: "blk_mq_quiesce_queue_nowait"
 }
 elf_symbol {
   id: 0xcebb0cec
@@ -368564,6 +368607,7 @@ interface {
   symbol_id: 0x5983841b
   symbol_id: 0xfcc5e2bd
   symbol_id: 0xb2fed205
+  symbol_id: 0xe02adb2d
   symbol_id: 0x7d499dab
   symbol_id: 0xeba1d6c7
   symbol_id: 0x204c04f7
@@ -368940,6 +368984,7 @@ interface {
   symbol_id: 0xab37fc55
   symbol_id: 0x6c99d877
   symbol_id: 0x3fef4323
+  symbol_id: 0x3baa986b
   symbol_id: 0x49b95a49
   symbol_id: 0x2bfccca9
   symbol_id: 0x2a85f575
@@ -369320,6 +369365,7 @@ interface {
   symbol_id: 0x16569be2
   symbol_id: 0x43a3424f
   symbol_id: 0x1f81c0c0
+  symbol_id: 0x9d72c022
   symbol_id: 0xcebb0cec
   symbol_id: 0x27ae2b17
   symbol_id: 0x96f2cda8

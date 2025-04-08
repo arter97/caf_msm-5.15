@@ -365,6 +365,7 @@
   devm_pinctrl_register_and_init
   devm_platform_ioremap_resource
   devm_platform_ioremap_resource_byname
+  devm_pm_runtime_enable
   devm_power_supply_get_by_phandle
   devm_power_supply_register
   devm_pwmchip_add
@@ -463,9 +464,11 @@
   dma_get_sgtable_attrs
   dma_heap_add
   dma_heap_buffer_alloc
+  dma_heap_bufferfd_alloc
   dma_heap_buffer_free
   dma_heap_find
   dma_heap_get_dev
+  dma_heap_get_drvdata
   dma_heap_get_name
   dma_heap_put
   dmam_alloc_attrs
@@ -491,6 +494,7 @@
   down
   down_interruptible
   down_read
+  down_read_trylock
   down_timeout
   down_trylock
   down_write
@@ -702,6 +706,7 @@
   get_cpu_idle_time_us
   get_cpu_iowait_time_us
   get_device
+  get_each_dmabuf
   __get_free_pages
   get_kernel_pages
   get_net_ns_by_fd
@@ -813,6 +818,7 @@
   inet_frags_fini
   inet_frags_init
   init_net
+  init_pid_ns
   init_pseudo
   __init_rwsem
   __init_swait_queue_head
@@ -889,7 +895,9 @@
   irq_set_parent
   irq_to_desc
   irq_work_run
+  is_dma_buf_file
   is_vmalloc_addr
+  iterate_fd
   jiffies
   jiffies_64_to_clock_t
   jiffies_to_msecs
@@ -1330,7 +1338,9 @@
   power_supply_get_by_name
   power_supply_get_drvdata
   power_supply_get_property
+  power_supply_register
   power_supply_reg_notifier
+  power_supply_unregister
   prandom_bytes
   prandom_u32
   preempt_schedule
@@ -1432,6 +1442,7 @@
   register_netdevice
   register_netdevice_notifier
   register_net_sysctl
+  register_oom_notifier
   register_pernet_device
   register_pernet_subsys
   register_pm_notifier
@@ -1975,6 +1986,7 @@
   unregister_netdevice_notifier
   unregister_netdevice_queue
   unregister_net_sysctl_table
+  unregister_oom_notifier
   unregister_pernet_device
   unregister_pernet_subsys
   unregister_pm_notifier

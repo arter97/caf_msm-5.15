@@ -2078,6 +2078,7 @@
   __traceiter_android_vh_meminfo_proc_show
   __traceiter_android_vh_oom_check_panic
   __traceiter_android_vh_pcplist_add_cma_pages_bypass
+  __traceiter_android_vh_printk_console_unlock
   __traceiter_android_vh_sysrq_crash
   __traceiter_device_pm_callback_end
   __traceiter_device_pm_callback_start
@@ -2091,6 +2092,7 @@
   __tracepoint_android_vh_meminfo_proc_show
   __tracepoint_android_vh_oom_check_panic
   __tracepoint_android_vh_pcplist_add_cma_pages_bypass
+  __tracepoint_android_vh_printk_console_unlock
   __tracepoint_android_vh_sysrq_crash
   __tracepoint_device_pm_callback_end
   __tracepoint_device_pm_callback_start
