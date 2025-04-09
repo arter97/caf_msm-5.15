@@ -3,7 +3,7 @@
  * QTI TEE shared memory bridge driver
  *
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -83,7 +83,13 @@ struct bridge_list_entry {
 	struct list_head list;
 	phys_addr_t paddr;
 	uint64_t handle;
+	uint64_t *handle_addr;
 	int32_t ref_count;
+
+	uint64_t pfn_and_ns_perm_flags;
+	uint64_t ipfn_and_s_perm_flags;
+	uint64_t size_and_flags;
+	uint64_t ns_vmids;
 };
 
 struct cma_heap_bridge_info {
@@ -143,16 +149,26 @@ bool qtee_shmbridge_is_enabled(void)
 EXPORT_SYMBOL(qtee_shmbridge_is_enabled);
 
 static int32_t qtee_shmbridge_list_add_locked(phys_addr_t paddr,
-						uint64_t handle)
+						uint64_t pfn_and_ns_perm_flags,
+						uint64_t ipfn_and_s_perm_flags,
+						uint64_t size_and_flags,
+						uint64_t ns_vmids,
+						uint64_t *handle)
 {
 	struct bridge_list_entry *entry;
 
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
 		return -ENOMEM;
-	entry->handle = handle;
+	entry->handle = *handle;
+	entry->handle_addr = handle;
 	entry->paddr = paddr;
 	entry->ref_count = 0;
+
+	entry->pfn_and_ns_perm_flags = pfn_and_ns_perm_flags;
+	entry->ipfn_and_s_perm_flags = ipfn_and_s_perm_flags;
+	entry->size_and_flags = size_and_flags;
+	entry->ns_vmids = ns_vmids;
 
 	list_add_tail(&entry->list, &bridge_list_head.head);
 	return 0;
@@ -348,7 +364,8 @@ int32_t qtee_shmbridge_register(
 		}
 	}
 
-	ret = qtee_shmbridge_list_add_locked(paddr, *handle);
+	ret = qtee_shmbridge_list_add_locked(paddr, pfn_and_ns_perm_flags, ipfn_and_s_perm_flags,
+						size_and_flags, ns_vmids, handle);
 bridge_exist:
 	ret = qtee_shmbridge_list_inc_refcount_locked(paddr, handle);
 exit:
@@ -585,6 +602,58 @@ static int qtee_shmbridge_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int qtee_shmbridge_recreate_shm_bridge(struct bridge_list_entry *entry)
+{
+	int ret;
+
+	ret = qcom_scm_create_shm_bridge(entry->pfn_and_ns_perm_flags,
+				entry->ipfn_and_s_perm_flags,
+				entry->size_and_flags,
+				entry->ns_vmids,
+				entry->handle_addr);
+
+	if (ret) {
+		pr_err("%s: create shmbridge failed, ret = %d\n", __func__, ret);
+
+		if (ret == AC_ERR_SHARED_MEMORY_SINGLE_SOURCE)
+			pr_err("%s: bridge %llx exist but not registered in our map\n",
+					__func__, (uint64_t)entry->paddr);
+	}
+
+	return ret;
+}
+
+static int qtee_shmbridge_freeze(struct device *dev)
+{
+	qtee_shmbridge_enable(false);
+	return 0;
+}
+
+static int qtee_shmbridge_restore(struct device *dev)
+{
+	struct bridge_list_entry *entry;
+
+	qtee_shmbridge_enable(true);
+
+	list_for_each_entry(entry, &bridge_list_head.head, list)
+		qtee_shmbridge_recreate_shm_bridge(entry);
+
+	return 0;
+}
+
+static const struct dev_pm_ops qtee_shmbridge_pmops = {
+	.freeze_late = qtee_shmbridge_freeze,
+	.restore_early = qtee_shmbridge_restore,
+	.thaw_early = qtee_shmbridge_restore,
+};
+
+#define QTEE_SHMBRIDGE_PMOPS (&qtee_shmbridge_pmops)
+
+#else
+#define QTEE_SHMBRIDGE_PMOPS NULL
+#endif
+
 static const struct of_device_id qtee_shmbridge_of_match[] = {
 	{ .compatible = "qcom,tee-shared-memory-bridge"},
 	{}
@@ -597,6 +666,7 @@ static struct platform_driver qtee_shmbridge_driver = {
 	.driver = {
 		.name = "shared_memory_bridge",
 		.of_match_table = qtee_shmbridge_of_match,
+		.pm = QTEE_SHMBRIDGE_PMOPS,
 	},
 };
 
