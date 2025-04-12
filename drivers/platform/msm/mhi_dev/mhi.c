@@ -5575,6 +5575,45 @@ int mhi_edma_status(void)
 	return ret;
 }
 
+/**
+ * is_non_pcie_boot - Check if the device is not booting over PCIe
+ *
+ * @pdev: Pointer to the platform device structure
+ *
+ * Returns: true if the device is not booting over PCIe, false otherwise
+ *
+ * This function checks if the device is not booting over PCIe (booting over some
+ * other interface like usb) by reading the "qcom,mhi-ifc-id" property from the
+ * device tree and checking the link status of the corresponding PCIe handle.
+ * If the link status is invalid, it indicates that the device is not booting over PCIe.
+ */
+static bool is_non_pcie_boot(struct platform_device *pdev)
+{
+	int rc = 0;
+	u32 ifc_id;
+	struct ep_pcie_hw *phandle;
+
+	if (pdev->dev.of_node) {
+		rc = of_property_read_u32((&pdev->dev)->of_node,
+				"qcom,mhi-ifc-id", &ifc_id);
+		if (rc) {
+			dev_err(&pdev->dev, "qcom,mhi-ifc-id does not exist\n");
+			return false;
+		}
+
+		phandle = ep_pcie_get_phandle(ifc_id);
+		if (phandle) {
+			if (ep_pcie_get_linkstatus(phandle) == EP_PCIE_LINK_INVALID) {
+				dev_notice(&pdev->dev, "PCIe: not a pcie boot\n");
+				return true;
+			}
+		} else {
+			dev_err(&pdev->dev, "PCIe: Invalid ep-pcie handle\n");
+		}
+	}
+	return false;
+}
+
 int mhi_edma_init(struct device *dev)
 {
 	if (!mhi_hw_ctx->tx_dma_chan) {
@@ -5605,6 +5644,11 @@ static int mhi_dev_probe(struct platform_device *pdev)
 {
 	struct mhi_dev *mhi_pf = NULL;
 	int rc = 0, devfac = 0;
+
+	if (is_non_pcie_boot(pdev)) {
+		dev_notice(&pdev->dev, "PCIe: not a pcie boot\n");
+		return -EPERM;
+	}
 
 	if (pdev->dev.of_node) {
 		rc = mhi_get_device_info(pdev);

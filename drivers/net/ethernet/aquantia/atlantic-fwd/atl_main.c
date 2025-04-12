@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2017 aQuantia Corporation
  * Copyright (C) 2019-2020 Marvell International Ltd.
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -646,9 +647,10 @@ static int atl_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	atl_setup_rss(nic);
 
-	ndev->features |= NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6 |
-		NETIF_F_RXCSUM | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
+	ndev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		NETIF_F_RXHASH;
+
+	ndev->features &= ~(NETIF_F_GSO | NETIF_F_GRO);
 
 	ndev->vlan_features |= ndev->features;
 	ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_CTAG_TX |

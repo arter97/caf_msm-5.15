@@ -276,6 +276,11 @@ static const struct mhi_channel_config modem_qcom_sa525m_mhi_channels[] = {
 	MHI_CHANNEL_CONFIG_DL(5, "DIAG", 64, 3, MHI_EE_AMSS,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false,
 			      false, false, 0, 0),
+	MHI_CHANNEL_CONFIG_UL(8, "QDSS", 64, 1, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
+	MHI_CHANNEL_CONFIG_DL(9, "QDSS", 64, 1, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
+			      false, false, 0, 0),
 	MHI_CHANNEL_CONFIG_UL(20, "IPCR", 32, 2, MHI_EE_AMSS,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false, 0),
 	MHI_CHANNEL_CONFIG_DL(21, "IPCR", 32, 2, MHI_EE_AMSS,
@@ -451,7 +456,7 @@ static const struct mhi_pci_dev_info mhi_qcom_sa525m_info = {
 	.timesync = false,
 	.drv_support = false,
 	.reboot_notify_support = true,
-	.dev_reset_support = false,
+	.dev_reset_support = true,
 };
 
 static const struct mhi_pci_dev_info mhi_qcom_debug_info = {
