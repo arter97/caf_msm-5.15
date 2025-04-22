@@ -3110,6 +3110,8 @@ struct ipa_msg_meta {
  * @name: name of the wlan interface
  * @mac_addr: mac address of wlan client
  * @if_index: netdev interface index
+ * @ast_update: bool for if wlan interface need ast update
+ * @mld_enabled: bool for if wlan interface is mlo enabled/capable
  *
  * wlan drivers need to pass name of wlan iface and mac address of
  * wlan client along with ipa_wlan_event, whenever a wlan client is
@@ -3121,7 +3123,7 @@ struct ipa_wlan_msg {
 	int16_t if_index;
 #define IPA_WDI_AST_UPDATE
 	uint8_t ast_update;
-
+	uint8_t mld_enabled;
 };
 
 /**
