@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022,2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_IPA_H_
@@ -147,6 +147,10 @@
 #define IPA_IOCTL_SET_CONN_TRACK_EXC_RT_TBL_IDX 95
 #define IPA_IOCTL_COAL_EVICT_POLICY             96
 #define IPA_IOCTL_SET_EXT_ROUTER_MODE           97
+#define IPA_IOCTL_GET_CT_IN_SRAM_INFO           98
+#define IPA_IOCTL_UPDATE_L2TP_CONFIG            99
+#define IPA_IOCTL_QOS_PARAM                     100
+#define IPA_IOCTL_GET_QOS_PARAMS                101
 /**
  * max size of the header to be inserted
  */
@@ -2420,6 +2424,7 @@ struct ipa_ioc_query_intf {
  * @alt_dst_pipe: alternate routing output pipe
  * @hdr_name: name of associated header if any, empty string when no header
  * @hdr_l2_type: type of associated header if any, use NONE when no header
+ * @tc_bmap: Bit map indicating the traffic classes associated to the pipe
  */
 struct ipa_ioc_tx_intf_prop {
 	enum ipa_ip_type ip;
@@ -2428,6 +2433,7 @@ struct ipa_ioc_tx_intf_prop {
 	enum ipa_client_type alt_dst_pipe;
 	char hdr_name[IPA_RESOURCE_NAME_MAX];
 	enum ipa_hdr_l2_type hdr_l2_type;
+	uint32_t tc_bmap;
 };
 
 /**
@@ -2484,12 +2490,14 @@ struct ipa_ioc_query_intf_ext_props {
  * @attrib: filtering rule
  * @src_pipe: input pipe
  * @hdr_l2_type: type of associated header if any, use NONE when no header
+ * @tc_bmap: Bit map indicating the traffic classes associated to the pipe
  */
 struct ipa_ioc_rx_intf_prop {
 	enum ipa_ip_type ip;
 	struct ipa_rule_attrib attrib;
 	enum ipa_client_type src_pipe;
 	enum ipa_hdr_l2_type hdr_l2_type;
+	uint32_t tc_bmap;
 };
 
 /**
@@ -2573,6 +2581,8 @@ struct ipa_ioc_ipv6ct_init {
 	uint16_t table_entries;
 	uint16_t expn_table_entries;
 	uint8_t tbl_index;
+	uint8_t  mem_type;
+	uint8_t  focus_change;
 };
 
 /**
@@ -3152,6 +3162,7 @@ enum ipacm_per_client_device_type {
 	IPACM_CLIENT_DEVICE_TYPE_WLAN = 1,
 	IPACM_CLIENT_DEVICE_TYPE_ETH = 2,
 	IPACM_CLIENT_DEVICE_TYPE_ODU = 3,
+	IPACM_CLIENT_DEVICE_TYPE_ETH1 = 4,
 	IPACM_CLIENT_DEVICE_MAX
 };
 
@@ -3216,7 +3227,8 @@ enum ipa_vlan_ifaces {
 	IPA_VLAN_IF_ETH0,
 	IPA_VLAN_IF_ETH1,
 	IPA_VLAN_IF_RNDIS,
-	IPA_VLAN_IF_ECM
+	IPA_VLAN_IF_ECM,
+	IPA_VLAN_IF_MHI_ETH
 };
 
 #define IPA_VLAN_IF_EMAC IPA_VLAN_IF_ETH
@@ -3317,6 +3329,7 @@ struct ipa_ioc_pdn_config {
 	union {
 		struct ipa_pdn_ip_collision_cfg {
 			__u32 pdn_ip_addr;
+                        __u16 vlan_id;
 		} collison_cfg;
 
 		struct ipa_pdn_ip_passthrough_cfg {
@@ -3452,7 +3465,59 @@ struct ipa_ioc_ext_router_info {
 	uint32_t ipv6_addr[4];
 	uint32_t ipv6_mask[4];
 };
+#define IPA_QOS_PARAMS_MAX 64
 
+enum ipa_qos_param_evt {
+	IPA_QOS_PARAM_ADD_EVENT = IPA_SET_EXT_ROUTER_MODE_EVENT_MAX,
+	IPA_QOS_PARAM_DELETE_EVENT,
+	IPA_QOS_PARAM_FLUSH_EVENT,
+	IPA_QOS_PARAM_EVENT_MAX
+#define IPA_QOS_PARAM_EVENT_MAX IPA_QOS_PARAM_EVENT_MAX
+};
+enum ipa_qos_iface_category {
+	IPA_QOS_IFACE_WAN,
+	IPA_QOS_IFACE_LAN
+};
+
+
+struct ipa_ioc_qos_config
+{
+    char dev_name[IPA_RESOURCE_NAME_MAX];
+    enum ipa_qos_param_evt qos_param_evt_type;
+    enum ipa_qos_iface_category iface_cat;
+    uint8_t dir;
+    uint8_t ip_type;
+    uint8_t traffic_class;
+
+    uint32_t src_ip_addr;
+    uint32_t src_subnet;
+    uint32_t dst_ip_addr;
+    uint32_t dst_subnet;
+    uint16_t src_port_start;
+    uint16_t src_port_end;
+    uint16_t dst_port_start;
+    uint16_t dst_port_end;
+    uint8_t protocol;
+
+    uint32_t src_v6_ip_addr[4];
+    uint32_t src_v6_ip_subnet[4];
+    uint32_t dst_v6_ip_addr[4];
+    uint32_t dst_v6_ip_subnet[4];
+
+    uint8_t src_mac_addr[IPA_MAC_ADDR_SIZE];
+    uint8_t dst_mac_addr[IPA_MAC_ADDR_SIZE];
+    uint16_t vlan_count;
+    uint16_t vlan_ids[30];
+    uint8_t dscp;
+    uint8_t pcp;
+    uint32_t qos_rule_hdl;
+};
+
+struct ipa_ioc_get_qos_config
+{
+    uint32_t num_qos_configs;
+    struct ipa_ioc_qos_config qos_config[IPA_QOS_PARAMS_MAX];
+};
 /**
  *   actual IOCTLs supported by IPA driver
  */
@@ -3774,6 +3839,22 @@ struct ipa_ioc_ext_router_info {
 #define IPA_IOC_SET_EXT_ROUTER_MODE _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_SET_EXT_ROUTER_MODE, \
 				struct ipa_ioc_ext_router_info)
+
+#define IPA_IOC_GET_CT_IN_SRAM_INFO _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_GET_CT_IN_SRAM_INFO, \
+				struct ipa_nat_in_sram_info)
+
+#define IPA_IOC_UPDATE_L2TP_CONFIG _IOW(IPA_IOC_MAGIC, \
+				IPA_IOCTL_UPDATE_L2TP_CONFIG, \
+				uint32_t)
+
+#define IPA_IOC_QOS_PARAM  _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_QOS_PARAM, \
+				struct ipa_ioc_qos_config)
+
+#define IPA_IOC_GET_QOS_PARAMS _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_GET_QOS_PARAMS, \
+				struct ipa_ioc_get_qos_config)
 /*
  * unique magic number of the Tethering bridge ioctls
  */
