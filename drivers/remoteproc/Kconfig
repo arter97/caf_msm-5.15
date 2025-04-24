@@ -481,11 +481,12 @@ config QCOM_DS_SKIP_Q6_STOP
 	  If not sure, say N.
 
 config FIRMWARE_FAIL_SAFE
-	bool "Support for reboot if there is corruption in image"
+	bool "Support for reboot if there is firmware image corrupted/invalid"
 	help
-	  This option enables reboot support with reboot reason firmware
-	  auth failed when image authentication fails at kernel level due
-	  to detection of firmware image corruption.
+	  This setting enables the system to reboot with a specific reason (firmware
+	  authentication failed) if the firmware image is either corrupted or invalid.
+	  This can occur due to authentication failures or issues detected at the
+	  kernel level during firmware loading.
 
 	  If not sure, say N.
 
