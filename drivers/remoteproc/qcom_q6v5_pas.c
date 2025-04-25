@@ -648,6 +648,7 @@ static int adsp_start(struct rproc *rproc)
 	struct qcom_adsp *adsp = (struct qcom_adsp *)rproc->priv;
 	int i, ret;
 	const struct firmware *fw = NULL;
+	bool firmware_auth_failed = false;
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_start", "enter");
 
@@ -695,9 +696,15 @@ static int adsp_start(struct rproc *rproc)
 	trace_rproc_qcom_event(dev_name(adsp->dev), "dtb_auth_reset", "enter");
 	if (adsp->dtb_pas_id || adsp->dtb_fw_name) {
 		ret = qcom_scm_pas_auth_and_reset(adsp->dtb_pas_id);
-		if (ret)
+		if (ret) {
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+			firmware_auth_failed = true;
+			scm_pas_disable_bw();
+			goto disable_regulator;
+#endif
 			panic("Panicking, auth and reset failed for remoteproc %s dtb\n",
 				 rproc->name);
+		}
 	}
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_firmware_loading", "enter");
@@ -717,16 +724,13 @@ static int adsp_start(struct rproc *rproc)
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "enter");
 
 	ret = qcom_scm_pas_auth_and_reset(adsp->pas_id);
-#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
 	if (ret) {
-		dev_err(adsp->dev,
-			"Auth and reset failed for remoteproc %s, Rebooting the device for slot switch\n",
-			rproc->name);
-		kernel_restart("firmware auth failed");
-	}
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+		firmware_auth_failed = true;
+		goto free_metadata;
 #endif
-	if (ret)
 		panic("Panicking, auth and reset failed for remoteproc %s\n", rproc->name);
+	}
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "exit");
 
 	/* if needed, signal Q6 to continute booting */
@@ -774,7 +778,9 @@ free_metadata_dtb:
 	scm_pas_disable_bw();
 	if (!ret)
 		goto exit;
-
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+disable_regulator:
+#endif
 	disable_regulators(adsp);
 disable_aggre2_clk:
 	clk_disable_unprepare(adsp->aggre2_clk);
@@ -793,6 +799,14 @@ disable_irqs:
 	qcom_q6v5_unprepare(&adsp->q6v5);
 exit:
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_start", "exit");
+	if (ret && firmware_auth_failed) {
+#if IS_ENABLED(CONFIG_FIRMWARE_FAIL_SAFE)
+		dev_err(adsp->dev,
+			"Auth and reset failed for remoteproc %s, Rebooting the device for slot switch\n",
+			rproc->name);
+		kernel_restart("firmware auth failed");
+#endif
+	}
 	return ret;
 }
 
