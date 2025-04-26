@@ -411,6 +411,9 @@ struct ipa_eth_data {
 		enum ipa_eth_pipe_direction dir
 	);
 
+	int (*ipa_eth_client_enable_pipes)(struct ipa_eth_client *client);
+	int (*ipa_eth_client_disable_pipes)(struct ipa_eth_client *client);
+
 };
 
 #if IS_ENABLED(CONFIG_IPA3)
