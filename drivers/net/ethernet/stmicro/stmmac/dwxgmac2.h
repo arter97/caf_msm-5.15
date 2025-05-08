@@ -489,6 +489,7 @@
 #define XGMAC_NIS			BIT(15)
 #define XGMAC_AIS			BIT(14)
 #define XGMAC_FBE			BIT(12)
+#define XGMAC_RPS			BIT(8)
 #define XGMAC_RBU			BIT(7)
 #define XGMAC_RI			BIT(6)
 #define XGMAC_TBU			BIT(2)
