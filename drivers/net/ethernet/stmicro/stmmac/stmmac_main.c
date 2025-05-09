@@ -7536,6 +7536,9 @@ void stmmac_enable_rx_queue(struct stmmac_priv *priv, u32 queue)
 	stmmac_set_rx_tail_ptr(priv, priv->ioaddr,
 			       rx_q->rx_tail_addr, rx_q->queue_index);
 
+	stmmac_set_rx_ring_len(priv, priv->ioaddr,
+			       (priv->dma_rx_size - 1), queue);
+
 	if (rx_q->xsk_pool && rx_q->buf_alloc_num) {
 		buf_size = xsk_pool_get_rx_frame_size(rx_q->xsk_pool);
 		stmmac_set_dma_bfsize(priv, priv->ioaddr,
@@ -7598,6 +7601,9 @@ void stmmac_enable_tx_queue(struct stmmac_priv *priv, u32 queue)
 	tx_q->tx_tail_addr = tx_q->dma_tx_phy;
 	stmmac_set_tx_tail_ptr(priv, priv->ioaddr,
 			       tx_q->tx_tail_addr, tx_q->queue_index);
+
+	stmmac_set_tx_ring_len(priv, priv->ioaddr,
+			       (priv->dma_tx_size - 1), queue);
 
 	stmmac_start_tx_dma(priv, queue);
 
