@@ -323,4 +323,6 @@ int ipa_eth_qos_get_qos_info(
 	u8 idx,
 	struct ipa_eth_qos_info *info,
 	enum ipa_eth_pipe_direction dir);
+int ipa_eth_client_enable_pipes(struct ipa_eth_client *client);
+int ipa_eth_client_disable_pipes(struct ipa_eth_client *client);
 #endif // _IPA_ETH_H_

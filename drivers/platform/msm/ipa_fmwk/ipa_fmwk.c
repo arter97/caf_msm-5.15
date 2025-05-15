@@ -503,6 +503,10 @@ struct ipa_fmwk_contex {
 	int (*ipa_eth_get_config_type)(enum ipa_eth_client_type client_type,
 		int inst_id, struct ipa_eth_config *eth_config);
 
+	int (*ipa_eth_client_enable_pipes)(struct ipa_eth_client *client);
+
+	int (*ipa_eth_client_disable_pipes)(struct ipa_eth_client *client);
+
 	int (*ipa_add_socksv5_conn)(struct ipa_socksv5_info *info);
 	int (*ipa_del_socksv5_conn)(uint32_t handle);
 
@@ -2607,7 +2611,9 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 		|| ipa_fmwk_ctx->ipa_eth_client_exist
 		|| ipa_fmwk_ctx->ipa_eth_get_config_type
 		|| ipa_fmwk_ctx->ipa_eth_qos_get_num_pipes
-		|| ipa_fmwk_ctx->ipa_eth_qos_get_qos_info) {
+		|| ipa_fmwk_ctx->ipa_eth_qos_get_qos_info
+		|| ipa_fmwk_ctx->ipa_eth_client_enable_pipes
+		|| ipa_fmwk_ctx->ipa_eth_client_disable_pipes) {
 		pr_err("ipa_eth APIs were already initialized\n");
 		return -EPERM;
 	}
@@ -2632,6 +2638,10 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 		in->ipa_eth_qos_get_num_pipes;
 	ipa_fmwk_ctx->ipa_eth_qos_get_qos_info =
 		in->ipa_eth_qos_get_qos_info;
+	ipa_fmwk_ctx->ipa_eth_client_enable_pipes =
+		in->ipa_eth_client_enable_pipes;
+	ipa_fmwk_ctx->ipa_eth_client_disable_pipes =
+		in->ipa_eth_client_disable_pipes;
 
 	pr_info("ipa_eth registered successfully\n");
 
@@ -2803,6 +2813,30 @@ int ipa_eth_qos_get_qos_info(
 	return ret;
 }
 EXPORT_SYMBOL_GPL(ipa_eth_qos_get_qos_info);
+
+int ipa_eth_client_enable_pipes(
+	struct ipa_eth_client *client)
+{
+	int ret;
+
+	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_client_enable_pipes,
+		client);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ipa_eth_client_enable_pipes);
+
+int ipa_eth_client_disable_pipes(
+	struct ipa_eth_client *client)
+{
+	int ret;
+
+	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_client_disable_pipes,
+		client);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ipa_eth_client_disable_pipes);
 
 /* module functions */
 static int __init ipa_fmwk_init(void)
