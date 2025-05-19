@@ -3505,6 +3505,16 @@ struct ipa_lan_client_cntr_index {
 };
 
 /**
+ * struct ipa_wan_client_cntr_index
+ * @wan_cnt_idx: H/w counter index for wan uplink/downlink stats
+ * @lan_cnt_idx: H/w counter index for lan_to_lan downlink/uplink stats
+ */
+struct ipa_lan_wan_client_cntr_index {
+	__u8 wan_cnt_idx;
+	__u8 lan_cnt_idx;
+};
+
+/**
  * struct ipa_tether_device_info - tether device info indicated from IPACM
  * @ul_src_pipe: Source pipe of the lan client.
  * @hdr_len: Header length of the client.
@@ -3519,6 +3529,8 @@ struct ipa_tether_device_info {
 	struct ipa_lan_client lan_client[IPA_MAX_NUM_HW_PATH_CLIENTS];
 	struct ipa_lan_client_cntr_index
 		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
+	struct ipa_lan_wan_client_cntr_index
+		lan_wan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
 };
 
 /**
