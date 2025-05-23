@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2015, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -17,7 +17,7 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_simple_kms_helper.h>
 
-#define MSM_QPIC_EMMC_BUS_VOTE_MAX_RATE  133000000 /* Hz */
+#define MSM_QPIC_EMMC_BUS_VOTE_MAX_RATE  100000000 /* Hz */
 
 #define QPIC_REG_QPIC_LCDC_CTRL				0x22000
 #define QPIC_REG_LCDC_VERSION				0x22004

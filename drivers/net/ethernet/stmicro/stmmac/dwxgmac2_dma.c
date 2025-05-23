@@ -368,12 +368,18 @@ static void dwxgmac2_dma_start_rx(void __iomem *ioaddr, u32 chan)
 
 static void dwxgmac2_dma_stop_rx(void __iomem *ioaddr, u32 chan)
 {
+	int ret;
 	u32 value;
 
 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
 	value |= XGMAC_RPF;
 	value &= ~XGMAC_RXST;
 	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(chan));
+
+	ret = readl_poll_timeout(ioaddr + XGMAC_DMA_CH_STATUS(chan), value,
+				 value & XGMAC_RPS, 1, 100000);
+	if (ret)
+		pr_err("%s Rx DMA (%d) is not in stopped state\n", __func__, chan);
 }
 
 static int dwxgmac2_dma_interrupt(void __iomem *ioaddr,

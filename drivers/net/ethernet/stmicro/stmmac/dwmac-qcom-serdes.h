@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #ifndef	_DWMAC_QCOM_SERDES_H
 #define	_DWMAC_QCOM_SERDES_H
@@ -116,6 +116,7 @@
 #define QSERDES_PCS_TX_LARGE_AMP_POST_EMP_LVL (QSERDES_PCS + 0x24)
 #define QSERDES_PCS_TX_SMALL_AMP_DRV_LVL (QSERDES_PCS + 0x28)
 #define QSERDES_PCS_TX_SMALL_AMP_POST_EMP_LVL (QSERDES_PCS + 0x2C)
+#define QSERDES_PCS_RX_SIGDET_CTRL2 (QSERDES_PCS + 0x8C)
 #define QSERDES_PCS_READY_STATUS (QSERDES_PCS + 0x94)
 #define QSERDES_PCS_TX_MID_TERM_CTRL1 (QSERDES_PCS + 0xD8)
 #define QSERDES_PCS_TX_MID_TERM_CTRL2 (QSERDES_PCS + 0xDC)
