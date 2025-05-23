@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: (GPL-2.0 OR MIT) */
 // Copyright (c) 2018 Synopsys, Inc. and/or its affiliates.
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 // stmmac HW Interface Callbacks
 
 #ifndef __STMMAC_HWIF_H__
@@ -448,6 +449,11 @@ struct stmmac_ops {
 	int (*config_l4_filter_with_route)(struct mac_device_info *hw, u32 filter_no,
 					   bool en, bool udp, bool sa, bool inv,
 					   u32 match, u16 dma_ch);
+	int (*read_l3l4_regs)(struct mac_device_info *hw, u32 filter_no,
+			      u32 *l3l4_ctrl, u32 *l4_addr, u32 *l3_addr0, u32 *l3_addr1,
+			      u32 *l3_addr2, u32 *l3_addr3);
+	int (*read_vlan_regs)(struct net_device *dev, struct mac_device_info *hw, u8 index,
+			      u32 *data);
 	void (*set_arp_offload)(struct mac_device_info *hw, bool en, u32 addr);
 	/* Enable the VLAN MAC configuration for DMA Queue*/
 	void (*qcom_set_vlan)(struct vlan_filter_info *vlan, void __iomem *ioaddr);
@@ -585,6 +591,11 @@ struct stmmac_ops {
 	stmmac_do_void_callback(__priv, mac, config_pfc, __args)
 #define stmmac_configure_pfc_tx_flow_ctrl(__priv, __args...) \
 		stmmac_do_void_callback(__priv, mac, configure_pfc_tx_flow_ctrl, __args)
+#define stmmac_read_l3l4_filter(__priv, __args...) \
+		stmmac_do_callback(__priv, mac, read_l3l4_regs, __args)
+#define stmmac_read_vlan_filter(__priv, __args...) \
+		stmmac_do_callback(__priv, mac, read_vlan_regs, __args)
+
 
 struct stmmac_priv;
 
