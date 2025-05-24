@@ -608,7 +608,7 @@ static int ssctl_request_deepsleep(struct qcom_sysmon *sysmon)
 
 static int ssctl_request_suspend_indication(struct qcom_sysmon *sysmon)
 {
-	struct ssctl_suspend_indication_resp resp;
+	struct ssctl_suspend_indication_resp resp = { { 0, 0 } };
 	struct qmi_txn txn;
 	int ret;
 
@@ -648,7 +648,7 @@ static int ssctl_request_suspend_indication(struct qcom_sysmon *sysmon)
 
 static int ssctl_request_resume_indication(struct qcom_sysmon *sysmon)
 {
-	struct ssctl_resume_indication_resp resp;
+	struct ssctl_resume_indication_resp resp = { { 0, 0 } };
 	struct qmi_txn txn;
 	int ret;
 
