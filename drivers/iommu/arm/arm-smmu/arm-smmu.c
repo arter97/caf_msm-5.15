@@ -4006,6 +4006,7 @@ out_power_off:
 static int arm_smmu_device_remove(struct platform_device *pdev)
 {
 	struct arm_smmu_device *smmu = platform_get_drvdata(pdev);
+        char *sub;
 
 	if (!smmu)
 		return -ENODEV;
@@ -4013,6 +4014,11 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 	if (!bitmap_empty(smmu->context_map, ARM_SMMU_MAX_CBS) ||
 		!bitmap_empty(smmu->secure_context_map, ARM_SMMU_MAX_CBS))
 		dev_notice(&pdev->dev, "disabling translation\n");
+
+        sub = strstr(dev_name(&pdev->dev),".kgsl-smmu");
+        if(sub != NULL && !strcmp(sub,".kgsl-smmu")) {
+           return 0;
+        }
 
 	arm_smmu_bus_init(NULL);
 	iommu_device_unregister(&smmu->iommu);
