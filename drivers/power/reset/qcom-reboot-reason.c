@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/err.h>
@@ -23,6 +23,13 @@
 #endif
 
 #define PON_REASON_PANIC	0x07
+#define INTENT_BIT_SHIFT	6	/* SDAM bit[7] reserved for reboot intent flag */
+#define REASON_MASK		0x3F	/* Lower 6 bits for reboot reason */
+
+enum reboot_reason_category {
+	REBOOT_UNINTENTIONAL = 0,
+	REBOOT_INTENTIONAL = 1,
+};
 
 struct qcom_reboot_reason {
 	struct device *dev;
@@ -41,28 +48,31 @@ struct qcom_reboot_reason {
 struct poweroff_reason {
 	const char *cmd;
 	unsigned char pon_reason;
+	enum reboot_reason_category category;
 };
 
 static struct poweroff_reason reasons[] = {
-	{ "recovery",			0x01 },
-	{ "bootloader",			0x02 },
-	{ "rtc",			0x03 },
-	{ "dm-verity device corrupted",	0x04 },
-	{ "dm-verity enforcing",	0x05 },
-	{ "keys clear",			0x06 },
+	{ "recovery",			0x01,	REBOOT_INTENTIONAL },
+	{ "bootloader",			0x02,	REBOOT_INTENTIONAL },
+	{ "rtc",			0x03,	REBOOT_INTENTIONAL },
+	{ "dm-verity device corrupted",	0x04,	REBOOT_UNINTENTIONAL },
+	{ "dm-verity enforcing",	0x05,	REBOOT_INTENTIONAL },
+	{ "keys clear",			0x06,	REBOOT_INTENTIONAL },
 #if defined(CONFIG_POWER_RESET_QCOM_RESET_REASON) || \
 	defined(CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM)
-	{ "panic",			0x07 },
-	{ "watchdog bark",		0x08 },
+	{ "panic",			0x07,	REBOOT_UNINTENTIONAL },
+	{ "watchdog bark",		0x08,	REBOOT_UNINTENTIONAL },
 #endif
 #ifdef CONFIG_POWER_RESET_QCOM_REBOOT_REASON_BOOTPARAM
-	{ "admin-trigger",		0x09 },
-	{ "user",			0x0A },
-	{ "system-normal",		0x0B },
-	{ "system-abnormal",		0x0C },
+	{ "admin-trigger",		0x09,	REBOOT_INTENTIONAL },
 #endif
 #ifdef CONFIG_FIRMWARE_FAIL_SAFE
-	{ "firmware auth failed",       0x0E },
+	{ "firmware auth failed",       0x0E,	REBOOT_UNINTENTIONAL },
+#endif
+#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
+	{ "user",			0x10,	REBOOT_INTENTIONAL },
+	{ "system-normal",		0x11,	REBOOT_INTENTIONAL },
+	{ "system-abnormal",		0x12,	REBOOT_UNINTENTIONAL },
 #endif
 	{}
 };
@@ -170,14 +180,27 @@ static int reset_reason_sysfs(struct qcom_reboot_reason *reboot)
 static void write_reset_reason(char *cmd, struct nvmem_cell *nvmem_cell)
 {
 	struct poweroff_reason *reason;
+	unsigned char val;
+	int ret;
 
 	for (reason = reasons; reason->cmd; reason++) {
-		if (!strcmp(cmd, reason->cmd)) {
-			nvmem_cell_write(nvmem_cell,
-					&reason->pon_reason,
-					sizeof(reason->pon_reason));
-			break;
-		}
+		if (strcmp(cmd, reason->cmd))
+			continue;
+
+		/*
+		 * SDAM 0x7148 layout:
+		 * bit[7] -> Intentional reboot flag (0 = unintentional, 1 = intentional)
+		 * bits[1:6] -> Reboot reason code
+		 *
+		 * Combine category and reason into one byte:
+		 * - Shift category by INTENT_BIT_SHIFT to position bit[7]
+		 * - Mask reason with REASON_MASK to keep lower 6 bits
+		 */
+		val = ((reason->category & 0x01) << INTENT_BIT_SHIFT) |
+			(reason->pon_reason & REASON_MASK);
+		ret = nvmem_cell_write(nvmem_cell, &val, sizeof(val));
+		pr_info("%s: Value 0x%x, ret %d\n", __func__, val, ret);
+		break;
 	}
 }
 
