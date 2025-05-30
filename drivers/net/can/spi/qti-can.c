@@ -873,11 +873,13 @@ static int qti_can_do_spi_transaction(struct qti_can *priv_data)
 	struct spi_mosi *req;
 	u64 rx_buf_idx, idx = 0;
 
-	if (!priv_data) {
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	xfer = kzalloc(sizeof(*xfer), GFP_KERNEL);
+
+	if (priv_data) {
 		spi = priv_data->spidev;
 		dev = &spi->dev;
-		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		xfer = kzalloc(sizeof(*xfer), GFP_KERNEL);
+
 		if (!xfer || !msg)
 			return -ENOMEM;
 		dev_dbg(&priv_data->spidev->dev, ">%x %2d [%d]\n", priv_data->tx_buf[0],
