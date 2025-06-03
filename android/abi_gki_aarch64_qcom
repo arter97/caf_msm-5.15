@@ -2688,6 +2688,7 @@
   usb_bus_idr
   usb_bus_idr_lock
   usb_check_bulk_endpoints
+  usb_check_int_endpoints
   usb_composite_setup_continue
   usb_control_msg_recv
   usb_control_msg_send

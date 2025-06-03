@@ -1,0 +1,8 @@
+[abi_symbol_list]
+  spi_mem_exec_op
+  spi_mem_dirmap_read
+  spi_mem_dirmap_write
+  spi_mem_driver_register_with_owner
+  spi_mem_get_name
+  devm_spi_mem_dirmap_create
+  spi_mem_driver_unregister
