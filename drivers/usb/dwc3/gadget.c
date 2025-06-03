@@ -4419,7 +4419,7 @@ static irqreturn_t dwc3_check_event_buf(struct dwc3_event_buffer *evt)
 	if (pm_runtime_suspended(dwc->dev)) {
 		dwc->pending_events = true;
 		/*
-		 * Issue runtime resume. The get() function will be balanced
+		 * Trigger runtime resume. The get() function will be balanced
 		 * after processing the pending events in dwc3_process_pending
 		 * events().
 		 */
