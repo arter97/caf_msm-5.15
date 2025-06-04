@@ -67,3 +67,6 @@ blocklist wlan_firmware_service
 blocklist cnss_prealloc
 blocklist cnss_utils
 blocklist icnss2
+blocklist btpower
+blocklist bt_fm_slim
+blocklist btpower_new
