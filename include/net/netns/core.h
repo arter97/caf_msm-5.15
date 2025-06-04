@@ -10,6 +10,8 @@ struct netns_core {
 	struct ctl_table_header	*sysctl_hdr;
 
 	int	sysctl_somaxconn;
+	int	bpf_jit_kallsyms;
+	int 	bpf_jit_enable;
 
 #ifdef CONFIG_PROC_FS
 	int __percpu *sock_inuse;
