@@ -4234,7 +4234,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 			if (err)
 				goto bail;
 			spin_lock_irqsave(&me->hlock, irq_flags);
-			mem->in_use = true;
+			if (mem)
+				mem->in_use = true;
 			spin_unlock_irqrestore(&me->hlock, irq_flags);
 			fastrpc_mmap_add_global(mem);
 		}
