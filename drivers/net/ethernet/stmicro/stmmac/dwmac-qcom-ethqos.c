@@ -2,7 +2,7 @@
 
 // Copyright (c) 2018-19, Linaro Limited
 // Copyright (c) 2021, The Linux Foundation. All rights reserved.
-// Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
 #include <linux/module.h>
 #include <linux/of.h>
@@ -282,6 +282,27 @@ static const u32 mac_reg_sizes[ARRAY_SIZE(mac_reg_offsets)] = {0};
 
 #define DWMAC4_PCS_BASE	0x000000e0
 #define RGMII_CONFIG_10M_CLK_DVD GENMASK(18, 10)
+
+#if IS_ENABLED(CONFIG_DWXGMAC_QCOM_4K)
+	#define XGMAC_MTLQ_BASE_ADDR			0x00008000
+	#define XGMAC_CH_OFFSET					0x00001000
+#else
+	#define XGMAC_MTLQ_BASE_ADDR			0x00001100
+	#define XGMAC_CH_OFFSET					0x00000080
+#endif
+#define XGMAC_MTL_RXQ_DMA_MAP0 0x00001030
+#define XGMAC_MTL_RXQ_DMA_MAP1 0x00001034
+#define XGMAC_MTLQX_BASE_ADDR(x)		(XGMAC_MTLQ_BASE_ADDR + \
+						((x) * XGMAC_CH_OFFSET))
+#define XGMAC_MTL_TCx_QUANTUM_WEIGHT(x)		(XGMAC_MTLQX_BASE_ADDR(x) + 0x18)
+#define XGMAC_MTL_TCx_SENDSLOPE(x)			(XGMAC_MTLQX_BASE_ADDR(x) + 0x1c)
+#define XGMAC_MTL_TCx_HICREDIT(x)			(XGMAC_MTLQX_BASE_ADDR(x) + 0x20)
+#define XGMAC_MTL_TCx_LOCREDIT(x)			(XGMAC_MTLQX_BASE_ADDR(x) + 0x24)
+#define XGMAC_Qx_TX_FLOW_CTRL(x)	(0x00000070 + (x) * 4)
+#define XGMAC_RXQ_CTRL2			0x000000a8
+#define XGMAC_RXQ_CTRL3			0x000000ac
+#define XGMAC_RX_FLOW_CTRL		0x00000090
+#define PCP_UPPER_LIMIT		7
 
 static DECLARE_WAIT_QUEUE_HEAD(mac_rec_wq);
 static bool mac_rec_wq_flag;
@@ -3762,6 +3783,89 @@ static ssize_t read_speed_config(struct file *file,
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
 
+static ssize_t read_qos_regs(struct file *file,
+			     char __user *user_buf,
+			     size_t count, loff_t *ppos)
+{
+	struct qcom_ethqos *ethqos = file->private_data;
+	struct stmmac_priv *priv;
+	char *buf;
+	u32 vlan;
+	u32 quant_weight, send_slope, high_cred, low_cred;
+	u32 l3l4_ctrl, l4_addr, l3_addr0, l3_addr1, l3_addr2, l3_addr3;
+	int len = 0;
+	int ret;
+	int i;
+
+	priv = qcom_ethqos_get_priv(ethqos);
+
+	if (!priv->plat->has_xgmac) {
+		ETHQOSERR("Operation dump_qos_regs only supported for xgmac\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	len += scnprintf(buf + len, count - len, "EMAC: %d\n", priv->plat->port_num);
+	len += scnprintf(buf + len, count - len, "DMA MAP:\n");
+	len += scnprintf(buf + len, count - len, " 0-3: %08X\n",
+					 readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP0));
+	len += scnprintf(buf + len, count - len, "   4: %08X\n",
+					 readl(priv->ioaddr + XGMAC_MTL_RXQ_DMA_MAP1));
+
+	len += scnprintf(buf + len, count - len, "PCP MAP:\n");
+	len += scnprintf(buf + len, count - len, " 0-3: %08X\n",
+		readl(priv->ioaddr + XGMAC_RXQ_CTRL2));
+	len += scnprintf(buf + len, count - len, "   4: %08X\n",
+		readl(priv->ioaddr + XGMAC_RXQ_CTRL3));
+
+	len += scnprintf(buf + len, count - len, "Tx Flow Control:\n");
+	for (i = 0; i <= PCP_UPPER_LIMIT; i++) {
+		len += scnprintf(buf + len, count - len, "%4d: %08X\n",
+				 i, readl(priv->ioaddr + XGMAC_Qx_TX_FLOW_CTRL(i)));
+	}
+
+	len += scnprintf(buf + len, count - len, "Rx Flow Control\n");
+	len += scnprintf(buf + len, count - len, " val: %08X\n",
+			 readl(priv->ioaddr + XGMAC_RX_FLOW_CTRL));
+
+	len += scnprintf(buf + len, count - len, "VLAN Filters:\n");
+	for (i = 0; i < priv->hw->num_vlan; i++) {
+		stmmac_read_vlan_filter(priv, priv->dev, priv->hw, i, &vlan);
+		len += scnprintf(buf + len, count - len, "%4d: %08X\n",
+						 i, vlan);
+	}
+
+	len += scnprintf(buf + len, count - len, "L3L4 Filters:\n");
+	for (i = 0; i < priv->dma_cap.l3l4fnum; i++) {
+		stmmac_read_l3l4_filter(priv, priv->hw, i, &l3l4_ctrl, &l4_addr, &l3_addr0,
+					&l3_addr1, &l3_addr2, &l3_addr3);
+		len += scnprintf(buf + len, count - len, "%4d: %08X %08X %08X %08X %08X %08X\n",
+				 i, l3l4_ctrl, l4_addr, l3_addr0, l3_addr1, l3_addr2, l3_addr3);
+	}
+
+	len += scnprintf(buf + len, count - len, "CBS:\n");
+	for (i = 0; i < priv->plat->tx_qos_queues_to_use; i++) {
+		quant_weight = readl(priv->ioaddr + XGMAC_MTL_TCx_QUANTUM_WEIGHT(i));
+		send_slope = readl(priv->ioaddr + XGMAC_MTL_TCx_SENDSLOPE(i));
+		high_cred = readl(priv->ioaddr + XGMAC_MTL_TCx_HICREDIT(i));
+		low_cred = readl(priv->ioaddr + XGMAC_MTL_TCx_LOCREDIT(i));
+
+		len += scnprintf(buf + len, count - len, "%4d: %08X %08X %08X %08X\n",
+						 i, quant_weight, send_slope, high_cred, low_cred);
+	}
+
+	if (len > count)
+		len = count;
+
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+
+	return ret;
+}
+
 static ssize_t speed_chg_handling_config(struct file *file, const char __user *user_buffer,
 					 size_t count, loff_t *position)
 {
@@ -4133,6 +4237,13 @@ static const struct file_operations fops_enforce_speed = {
 	.llseek = default_llseek,
 };
 
+static const struct file_operations fops_dump_qos_regs = {
+	.read = read_qos_regs,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static const struct file_operations fops_mac_rec = {
 	.read = read_mac_recovery_enable,
 	.write = ethqos_test_mac_recovery,
@@ -4250,6 +4361,7 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 	static struct dentry *mac_write;
 	static struct dentry *phy_reg_read;
 	static struct dentry *phyreg_write;
+	static struct dentry *dump_qos_regs;
 	struct stmmac_priv *priv;
 	char dir_name[32];
 	struct net_device *netdev;
@@ -4337,6 +4449,16 @@ static int ethqos_create_debugfs(struct qcom_ethqos        *ethqos)
 			  (long)enforce_max_speed);
 		goto fail;
 	}
+
+	dump_qos_regs = debugfs_create_file("dump_qos_regs", 0400,
+					    ethqos->debugfs_dir, ethqos,
+					    &fops_dump_qos_regs);
+	if (!dump_qos_regs || IS_ERR(dump_qos_regs)) {
+		ETHQOSERR("Can't create dump_qos_regs %d\n",
+			  (long)dump_qos_regs);
+		goto fail;
+	}
+
 	return 0;
 
 fail:
