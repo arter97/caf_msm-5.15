@@ -619,6 +619,10 @@ static ssize_t sel_write_load(struct file *file, const char __user *buf,
 	ssize_t length;
 	void *data = NULL;
 
+	//load seperatly
+	if (task_active_pid_ns(current) != &init_pid_ns) {
+		return count;
+	}
 	mutex_lock(&fsi->state->policy_mutex);
 
 	length = avc_has_perm(&selinux_state,
