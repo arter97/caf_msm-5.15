@@ -121,6 +121,10 @@
  *   ->tasklist_lock            (memory_failure, collect_procs_ao)
  */
 
+/* Export tracepoints that act as a bare tracehook */
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_filemap_delete_from_page_cache);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_filemap_add_to_page_cache);
+
 static void page_cache_delete(struct address_space *mapping,
 				   struct page *page, void *shadow)
 {
@@ -1707,7 +1711,8 @@ __sched int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 		if (flags & FAULT_FLAG_RETRY_NOWAIT)
 			return 0;
 
-		mmap_read_unlock(mm);
+		if (!(flags & FAULT_FLAG_SPECULATIVE))
+			mmap_read_unlock(mm);
 		if (flags & FAULT_FLAG_KILLABLE)
 			wait_on_page_locked_killable(page);
 		else
@@ -1719,7 +1724,8 @@ __sched int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 
 		ret = __lock_page_killable(page);
 		if (ret) {
-			mmap_read_unlock(mm);
+			if (!(flags & FAULT_FLAG_SPECULATIVE))
+				mmap_read_unlock(mm);
 			return 0;
 		}
 	} else {
@@ -2546,6 +2552,9 @@ retry:
 
 	filemap_get_read_batch(mapping, index, last_index - 1, pvec);
 	if (!pagevec_count(pvec)) {
+		trace_android_vh_page_cache_miss(filp, index,
+				(iter->count + PAGE_SIZE-1) >> PAGE_SHIFT,
+				index, true);
 		if (iocb->ki_flags & IOCB_NOIO)
 			return -EAGAIN;
 		page_cache_sync_readahead(mapping, ra, filp, index,
@@ -2648,6 +2657,15 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		if (unlikely(iocb->ki_pos >= isize))
 			goto put_pages;
 		end_offset = min_t(loff_t, isize, iocb->ki_pos + iter->count);
+
+		/*
+		 * Pairs with a barrier in
+		 * block_write_end()->mark_buffer_dirty() or other page
+		 * dirtying routines like iomap_write_end() to ensure
+		 * changes to page contents are visible before we see
+		 * increased inode size.
+		 */
+		smp_rmb();
 
 		/*
 		 * Once we start copying data, we don't want to be touching any
@@ -3125,6 +3143,7 @@ page_put:
 			mapping_locked = true;
 		}
 	} else {
+		trace_android_vh_page_cache_miss(file, offset, 1, offset, false);
 		/* No page in the page cache at all */
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vmf->vma->vm_mm, PGMAJFAULT);
@@ -3261,7 +3280,7 @@ static bool filemap_map_pmd(struct vm_fault *vmf, struct page *page)
 	    }
 	}
 
-	if (pmd_none(*vmf->pmd)) {
+	if (pmd_none(*vmf->pmd) && vmf->prealloc_pte) {
 		vmf->ptl = pmd_lock(mm, vmf->pmd);
 		if (likely(pmd_none(*vmf->pmd))) {
 			mm_inc_nr_ptes(mm);
@@ -3849,6 +3868,7 @@ again:
 			if (unlikely(status < 0))
 				break;
 		}
+		trace_android_vh_io_statistics(mapping, page->index, 1, false, false);
 		cond_resched();
 
 		if (unlikely(status == 0)) {

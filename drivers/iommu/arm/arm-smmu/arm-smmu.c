@@ -4062,6 +4062,9 @@ static int arm_smmu_device_remove(struct platform_device *pdev)
 		!bitmap_empty(smmu->secure_context_map, ARM_SMMU_MAX_CBS))
 		dev_notice(&pdev->dev, "disabling translation\n");
 
+	if (!strcmp(dev_name(&pdev->dev), "2ca0000.kgsl-smmu"))
+		return 0;
+
 	arm_smmu_bus_init(NULL);
 	iommu_device_unregister(&smmu->iommu);
 	iommu_device_sysfs_remove(&smmu->iommu);

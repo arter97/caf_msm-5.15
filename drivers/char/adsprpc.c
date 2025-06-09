@@ -2581,8 +2581,11 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 			} else {
 				/* map already freed by some other call */
 				mutex_unlock(&ctx->fl->map_mutex);
-				ADSPRPC_ERR("could not find map associated with dma handle fd %d\n",
-					ctx->fds[i]);
+				if (ctx->fds)
+					ADSPRPC_ERR("could not find map associated with dma handle fd %d\n",
+						ctx->fds[i]);
+				else
+					ADSPRPC_ERR("NULL pointer of ctx->fds is detected!");
 				goto bail;
 			}
 		}
@@ -4234,7 +4237,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 			if (err)
 				goto bail;
 			spin_lock_irqsave(&me->hlock, irq_flags);
-			mem->in_use = true;
+			if (mem)
+				mem->in_use = true;
 			spin_unlock_irqrestore(&me->hlock, irq_flags);
 			fastrpc_mmap_add_global(mem);
 		}

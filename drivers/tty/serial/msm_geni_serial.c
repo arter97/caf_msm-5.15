@@ -4624,14 +4624,18 @@ static void msm_geni_serial_cons_pm(struct uart_port *uport,
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 
 	if (new_state == UART_PM_STATE_ON && old_state == UART_PM_STATE_OFF) {
-		msm_geni_serial_resources_on(msm_port);
-		msm_geni_enable_disable_se_clk(uport, true);
-		atomic_set(&msm_port->is_clock_off, 0);
+		if (atomic_read(&msm_port->is_clock_off)) {
+			msm_geni_serial_resources_on(msm_port);
+			msm_geni_enable_disable_se_clk(uport, true);
+			atomic_set(&msm_port->is_clock_off, 0);
+		}
 	} else if (new_state == UART_PM_STATE_OFF &&
 			old_state == UART_PM_STATE_ON) {
-		atomic_set(&msm_port->is_clock_off, 1);
-		msm_geni_enable_disable_se_clk(uport, false);
-		msm_geni_serial_resources_off(msm_port);
+		if (!atomic_read(&msm_port->is_clock_off)) {
+			atomic_set(&msm_port->is_clock_off, 1);
+			msm_geni_enable_disable_se_clk(uport, false);
+			msm_geni_serial_resources_off(msm_port);
+		}
 	}
 }
 
@@ -4654,14 +4658,18 @@ static void msm_geni_serial_hs_pm(struct uart_port *uport,
 	if (old_state == UART_PM_STATE_UNDEFINED)
 		old_state = UART_PM_STATE_OFF;
 	if (new_state == UART_PM_STATE_ON && old_state == UART_PM_STATE_OFF) {
-		msm_geni_serial_resources_on(msm_port);
-		msm_geni_enable_disable_se_clk(uport, true);
-		atomic_set(&msm_port->is_clock_off, 0);
+		if (atomic_read(&msm_port->is_clock_off)) {
+			msm_geni_serial_resources_on(msm_port);
+			msm_geni_enable_disable_se_clk(uport, true);
+			atomic_set(&msm_port->is_clock_off, 0);
+		}
 	} else if (new_state == UART_PM_STATE_OFF &&
 			old_state == UART_PM_STATE_ON) {
-		atomic_set(&msm_port->is_clock_off, 1);
-		msm_geni_enable_disable_se_clk(uport, false);
-		msm_geni_serial_resources_off(msm_port);
+		if (!atomic_read(&msm_port->is_clock_off)) {
+			atomic_set(&msm_port->is_clock_off, 1);
+			msm_geni_enable_disable_se_clk(uport, false);
+			msm_geni_serial_resources_off(msm_port);
+		}
 	}
 }
 
@@ -5403,12 +5411,15 @@ static int msm_geni_serial_runtime_suspend(struct device *dev)
 		UART_LOG_DBG(port->ipc_log_pwr, dev,
 			     "%s: count=%d\n", __func__, count);
 
-	msm_geni_enable_disable_se_clk(&port->uport, false);
-	ret = msm_geni_serial_resources_off(port);
-	if (ret) {
-		dev_err(dev, "%s: Error ret %d\n", __func__, ret);
-		msm_geni_update_uart_error_code(port, UART_ERROR_SE_RESOURCES_OFF_FAIL);
-		goto exit_runtime_suspend;
+	if (!atomic_read(&port->is_clock_off)) {
+		msm_geni_enable_disable_se_clk(&port->uport, false);
+		ret = msm_geni_serial_resources_off(port);
+		if (ret) {
+			dev_err(dev, "%s: Error ret %d\n", __func__, ret);
+			msm_geni_update_uart_error_code(port, UART_ERROR_SE_RESOURCES_OFF_FAIL);
+			goto exit_runtime_suspend;
+		}
+		atomic_set(&port->is_clock_off, 1);
 	}
 
 	/*
@@ -5473,14 +5484,17 @@ static int msm_geni_serial_runtime_resume(struct device *dev)
 	 * Auto RFR.
 	 * Enable IRQ.
 	 */
-	ret = msm_geni_serial_resources_on(port);
-	if (ret) {
-		dev_err(dev, "%s: Error ret %d\n", __func__, ret);
-		msm_geni_update_uart_error_code(port, UART_ERROR_SE_RESOURCES_ON_FAIL);
-		__pm_relax(port->geni_wake);
-		goto exit_runtime_resume;
+	if (atomic_read(&port->is_clock_off)) {
+		ret = msm_geni_serial_resources_on(port);
+		if (ret) {
+			dev_err(dev, "%s: Error ret %d\n", __func__, ret);
+			msm_geni_update_uart_error_code(port, UART_ERROR_SE_RESOURCES_ON_FAIL);
+			__pm_relax(port->geni_wake);
+			goto exit_runtime_resume;
+		}
+		msm_geni_enable_disable_se_clk(&port->uport, true);
+		atomic_set(&port->is_clock_off, 0);
 	}
-	msm_geni_enable_disable_se_clk(&port->uport, true);
 
 	if (port->resuming_from_deep_sleep)
 		msm_geni_serial_port_setup(&port->uport);
@@ -5684,6 +5698,7 @@ static int __init msm_geni_serial_init(void)
 		msm_geni_serial_ports[i].uport.ops = &msm_geni_serial_pops;
 		msm_geni_serial_ports[i].uport.flags = UPF_BOOT_AUTOCONF;
 		msm_geni_serial_ports[i].uport.line = i;
+		atomic_set(&msm_geni_serial_ports[i].is_clock_off, 1);
 	}
 
 	for (i = 0; i < GENI_UART_CONS_PORTS; i++) {
@@ -5691,6 +5706,7 @@ static int __init msm_geni_serial_init(void)
 		msm_geni_console_port.uport.ops = &msm_geni_console_pops;
 		msm_geni_console_port.uport.flags = UPF_BOOT_AUTOCONF;
 		msm_geni_console_port.uport.line = i;
+		atomic_set(&msm_geni_console_port.is_clock_off, 1);
 	}
 
 	ret = uart_register_driver(&msm_geni_serial_hs_driver);
