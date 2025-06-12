@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2019-2020 Linaro Ltd.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -109,6 +109,24 @@ static int qcom_pil_info_init(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_HIBERNATION
+/**
+ * qcom_pil_info_reset() - Reset IMEM
+ *
+ */
+void qcom_pil_info_reset(void)
+{
+	mutex_lock(&pil_reloc_lock);
+	if (_reloc.base) {
+		iounmap(_reloc.base);
+		_reloc.base = NULL;
+		pr_info("PIL INFO IMEM reset.\n");
+	}
+	mutex_unlock(&pil_reloc_lock);
+}
+EXPORT_SYMBOL_GPL(qcom_pil_info_reset);
+#endif
 
 /**
  * qcom_pil_info_store() - store PIL information of image in IMEM
