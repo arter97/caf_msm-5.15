@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/delay.h>
@@ -54,6 +44,7 @@ enum gpios {
 	WAKEUP_IN,
 	ERRFATAL_OUT,
 	ERRFATAL_IN,
+	E911STATUS_OUT,
 	NUM_GPIOS,
 };
 
@@ -69,6 +60,7 @@ static const struct sb_gpio gpiod_map[] = {
 	[WAKEUP_IN] = { .name = "qcom,wakeup-in", .flags = GPIOD_IN },
 	[ERRFATAL_OUT] = { .name = "qcom,errfatal-out", .flags = GPIOD_OUT_HIGH },
 	[ERRFATAL_IN] = { .name = "qcom,errfatal-in", .flags = GPIOD_IN },
+	[E911STATUS_OUT] = { .name = "qcom,e911status-out", .flags = GPIOD_OUT_LOW },
 };
 
 struct gpio_cntrl {
@@ -94,6 +86,7 @@ struct gpio_cntrl {
 	struct class *sb_class;
 	struct class *sb_err_class;
 	struct mutex wakeup_out_lock;
+	struct mutex e911_lock;
 };
 
 static ssize_t set_remote_status_store(struct device *dev,
@@ -151,6 +144,51 @@ static ssize_t policy_store(struct device *dev, struct device_attribute *attr,
 	return -EPERM;
 }
 static DEVICE_ATTR_RW(policy);
+
+static ssize_t e911_show(struct device *dev, struct device_attribute *attr,
+				char *buf)
+{
+	int ret;
+	u32 state;
+	struct gpio_cntrl *mdm = dev_get_drvdata(dev);
+
+	if (mdm->gpios[E911STATUS_OUT] < 0)
+		return -ENXIO;
+
+	mutex_lock(&mdm->e911_lock);
+
+	state = gpiod_get_value(mdm->gpdesc[E911STATUS_OUT]);
+	ret = scnprintf(buf, 2, "%d\n", state);
+
+	mutex_unlock(&mdm->e911_lock);
+
+	return ret;
+}
+
+static ssize_t e911_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct gpio_cntrl *mdm = dev_get_drvdata(dev);
+	int e911;
+
+	if (kstrtoint(buf, 0, &e911))
+		return -EINVAL;
+
+	if (mdm->gpios[E911STATUS_OUT] < 0)
+		return -ENXIO;
+
+	mutex_lock(&mdm->e911_lock);
+
+	if (e911)
+		gpiod_set_value(mdm->gpdesc[E911STATUS_OUT], 1);
+	else
+		gpiod_set_value(mdm->gpdesc[E911STATUS_OUT], 0);
+
+	mutex_unlock(&mdm->e911_lock);
+
+	return count;
+}
+static DEVICE_ATTR_RW(e911);
 
 static int sb_request_remote_wakeup(struct gpio_cntrl *mdm)
 {
@@ -292,9 +330,9 @@ static int setup_ipc(struct gpio_cntrl *mdm)
 				__func__, i, gpiod_map[i].name, i, gpiod_map[i].flags);
 		mdm->gpdesc[i] = gpiod_get(mdm->dev, gpiod_map[i].name, gpiod_map[i].flags);
 		if (IS_ERR(mdm->gpdesc[i])) {
-			dev_err(mdm->dev,
-			"Failed to get GPIO from DT property info\n");
 			ret =  PTR_ERR(mdm->gpdesc[i]);
+			dev_err(mdm->dev,
+			"Failed to get GPIO from DT property info, ret = %d\n", ret);
 			mdm->gpios[i] = -1;
 		} else {
 			mdm->gpios[i] = desc_to_gpio(mdm->gpdesc[i]);
@@ -353,6 +391,11 @@ static int setup_ipc(struct gpio_cntrl *mdm)
 		mdm->err_irq = irq;
 	} else
 		dev_info(mdm->dev, "ERRFATAL_IN not used\n");
+
+	if (mdm->gpios[E911STATUS_OUT] >= 0)
+		gpiod_direction_output(mdm->gpdesc[E911STATUS_OUT], 0);
+	else
+		dev_info(mdm->dev, "E911STATUS_OUT not used\n");
 
 	return 0;
 }
@@ -634,6 +677,7 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 
 	mutex_init(&mdm->policy_lock);
 	mutex_init(&mdm->wakeup_out_lock);
+	mutex_init(&mdm->e911_lock);
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,default-policy-nop"))
 		mdm->policy = SUBSYS_NOP;
 	else
@@ -643,6 +687,12 @@ static int sdx_ext_ipc_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(mdm->dev, "cannot create sysfs attribute\n");
 		goto sys_fail;
+	}
+
+	ret = device_create_file(mdm->dev, &dev_attr_e911);
+	if (ret) {
+		dev_err(mdm->dev, "cannot create sysfs attribute\n");
+		goto sys_fail1;
 	}
 
 	ret = device_create_file(mdm->dev, &dev_attr_set_remote_status);
@@ -813,6 +863,8 @@ fifo_err_fail:
 irq_fail:
 sys_fail:
 	device_remove_file(mdm->dev, &dev_attr_policy);
+sys_fail1:
+	device_remove_file(mdm->dev, &dev_attr_e911);
 sys_fail2:
 	if (mdm->gpios[STATUS_OUT] >= 0)
 		atomic_notifier_chain_unregister(&panic_notifier_list,
@@ -824,6 +876,7 @@ sys_fail2:
 	device_remove_file(mdm->dev, &dev_attr_set_remote_status);
 	mutex_destroy(&mdm->policy_lock);
 	mutex_destroy(&mdm->wakeup_out_lock);
+	mutex_destroy(&mdm->e911_lock);
 
 	return ret;
 }
@@ -857,8 +910,10 @@ static int sdx_ext_ipc_remove(struct platform_device *pdev)
 						&mdm->err_panic_blk);
 	remove_ipc(mdm);
 	device_remove_file(mdm->dev, &dev_attr_policy);
+	device_remove_file(mdm->dev, &dev_attr_e911);
 	mutex_destroy(&mdm->policy_lock);
 	mutex_destroy(&mdm->wakeup_out_lock);
+	mutex_destroy(&mdm->e911_lock);
 
 	return 0;
 }
