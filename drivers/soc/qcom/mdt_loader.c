@@ -267,7 +267,7 @@ static int __qcom_mdt_load(struct device *dev, const struct firmware *fw, const 
 			mdata->size = metadata_len;
 		}
 
-		ret = qcom_scm_pas_init_image(pas_id, metadata, metadata_len, NULL);
+		ret = qcom_scm_pas_init_image(pas_id, metadata_phys, metadata_len, NULL);
 		if (ret) {
 			dev_err(dev, "invalid firmware metadata\n");
 			goto deinit;

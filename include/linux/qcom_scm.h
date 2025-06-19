@@ -147,7 +147,7 @@ struct qcom_scm_pas_metadata {
 	ssize_t size;
 };
 
-extern int qcom_scm_pas_init_image(u32 peripheral, const void *metadata,
+extern int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata,
 				   size_t size,
 				   struct qcom_scm_pas_metadata *ctx);
 void qcom_scm_pas_metadata_release(struct qcom_scm_pas_metadata *ctx);
@@ -179,6 +179,7 @@ extern bool qcom_scm_restore_sec_cfg_available(void);
 extern int qcom_scm_restore_sec_cfg(u32 device_id, u32 spare);
 extern int qcom_scm_iommu_secure_ptbl_size(u32 spare, size_t *size);
 extern int qcom_scm_iommu_secure_ptbl_init(u64 addr, u32 size, u32 spare);
+extern int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size);
 extern int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
 					  u32 cp_nonpixel_start,
 					  u32 cp_nonpixel_size);
@@ -202,7 +203,7 @@ qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
 			    struct qcom_scm_current_perm_info *newvms,
 			    size_t newvms_sz);
 extern int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
-			       unsigned int *src,
+			       u64 *src,
 			       const struct qcom_scm_vmperm *newvm,
 			       unsigned int dest_cnt);
 extern int qcom_scm_mem_protect_sd_ctrl(u32 devid, phys_addr_t mem_addr,

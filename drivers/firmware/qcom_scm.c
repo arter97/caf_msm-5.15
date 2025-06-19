@@ -29,6 +29,11 @@
 #include <linux/spinlock.h>
 #include <linux/ktime.h>
 
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#include <asm/smp_plat.h>
+#include <asm/smp.h>
+#endif
+
 #include "qcom_scm.h"
 #include "qtee_shmbridge_internal.h"
 
@@ -312,15 +317,45 @@ static bool __qcom_scm_is_call_available(struct device *dev, u32 svc_id,
 	return ret ? false : !!res.result[0];
 }
 
-/**
- * qcom_scm_set_warm_boot_addr() - Set the warm boot address for cpus
- * @entry: Entry point function for the cpus
- * @cpus: The cpumask of cpus that will use the entry point
- *
- * Set the Linux entry point for the SCM to transfer control to when coming
- * out of a power down. CPU power down may be executed on cpuidle or hotplug.
- */
-int qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus)
+//#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#if 0
+static int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
+				       unsigned int flags)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_BOOT,
+		.cmd = QCOM_SCM_BOOT_SET_ADDR_MC,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.arginfo = QCOM_SCM_ARGS(6),
+	};
+	unsigned int cpu;
+	u64 map;
+
+	/* Need a device for DMA of the additional arguments */
+	if (!__scm || __get_convention() == SMC_CONVENTION_LEGACY)
+		return -EOPNOTSUPP;
+
+	desc.args[0] = virt_to_phys(entry);
+	for_each_cpu(cpu, cpus) {
+		map = cpu_logical_map(cpu);
+		desc.args[1] |= BIT(MPIDR_AFFINITY_LEVEL(map, 0));
+		desc.args[2] |= BIT(MPIDR_AFFINITY_LEVEL(map, 1));
+		desc.args[3] |= BIT(MPIDR_AFFINITY_LEVEL(map, 2));
+	}
+	desc.args[4] = ~0ULL; /* Reserved for affinity level 3 */
+	desc.args[5] = flags;
+
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+#else
+static inline int __qcom_scm_set_boot_addr_mc(void *entry, const cpumask_t *cpus,
+					      unsigned int flags)
+{
+	return -EINVAL;
+}
+#endif
+
+static int __qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus)
 {
 	int ret;
 	int flags = 0;
@@ -356,17 +391,28 @@ int qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus)
 
 	return ret;
 }
-EXPORT_SYMBOL(qcom_scm_set_warm_boot_addr);
 
 /**
- * qcom_scm_set_cold_boot_addr() - Set the cold boot address for cpus
+ * qcom_scm_set_warm_boot_addr() - Set the warm boot address for cpus
  * @entry: Entry point function for the cpus
  * @cpus: The cpumask of cpus that will use the entry point
  *
- * Set the cold boot address of the cpus. Any cpu outside the supported
- * range would be removed from the cpu present mask.
+ * Set the Linux entry point for the SCM to transfer control to when coming
+ * out of a power down. CPU power down may be executed on cpuidle or hotplug.
  */
-int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
+int qcom_scm_set_warm_boot_addr(void *entry, const cpumask_t *cpus)
+{
+	if (!cpus || cpumask_empty(cpus))
+		return -EINVAL;
+
+	if (__qcom_scm_set_boot_addr_mc(entry, cpus, QCOM_SCM_BOOT_MC_FLAG_WARMBOOT))
+		/* Fallback to old SCM call */
+		return __qcom_scm_set_warm_boot_addr(entry, cpus);
+	return 0;
+}
+EXPORT_SYMBOL(qcom_scm_set_warm_boot_addr);
+
+static int __qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
 {
 	int flags = 0;
 	int cpu;
@@ -383,9 +429,6 @@ int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
 		.owner = ARM_SMCCC_OWNER_SIP,
 	};
 
-	if (!cpus || cpumask_empty(cpus))
-		return -EINVAL;
-
 	for_each_cpu(cpu, cpus) {
 		if (cpu < ARRAY_SIZE(scm_cb_flags))
 			flags |= scm_cb_flags[cpu];
@@ -397,6 +440,25 @@ int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
 	desc.args[1] = virt_to_phys(entry);
 
 	return qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+}
+
+/**
+ * qcom_scm_set_cold_boot_addr() - Set the cold boot address for cpus
+ * @entry: Entry point function for the cpus
+ * @cpus: The cpumask of cpus that will use the entry point
+ *
+ * Set the cold boot address of the cpus. Any cpu outside the supported
+ * range would be removed from the cpu present mask.
+ */
+int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
+{
+	if (!cpus || cpumask_empty(cpus))
+		return -EINVAL;
+
+	if (__qcom_scm_set_boot_addr_mc(entry, cpus, QCOM_SCM_BOOT_MC_FLAG_COLDBOOT))
+		/* Fallback to old SCM call */
+		return __qcom_scm_set_cold_boot_addr(entry, cpus);
+	return 0;
 }
 EXPORT_SYMBOL(qcom_scm_set_cold_boot_addr);
 
@@ -599,7 +661,7 @@ EXPORT_SYMBOL(qcom_scm_config_cpu_errata);
  * track the metadata allocation, this needs to be released by invoking
  * qcom_scm_pas_metadata_release() by the caller.
  */
-int qcom_scm_pas_init_image(u32 peripheral, const void *metadata, size_t size,
+int qcom_scm_pas_init_image(u32 peripheral, dma_addr_t metadata, size_t size,
 			    struct qcom_scm_pas_metadata *ctx)
 {
 	int ret;
@@ -612,24 +674,19 @@ int qcom_scm_pas_init_image(u32 peripheral, const void *metadata, size_t size,
 	};
 	struct qcom_scm_res res;
 
+	/* ctx support depends on dma_alloc_coherent logic which we don't have (yet) */
+	if (ctx)
+		return -ENOTSUPP;
+
 	ret = qcom_scm_clk_enable();
 	if (ret)
-		goto out;
+		return ret;
 
 	desc.args[1] = metadata;
 
 	ret = qcom_scm_call(__scm->dev, &desc, &res);
 
 	qcom_scm_clk_disable();
-
-out:
-	if (ret < 0 || !ctx) {
-		dma_free_coherent(__scm->dev, size, mdata_buf, mdata_phys);
-	} else if (ctx) {
-		ctx->ptr = mdata_buf;
-		ctx->phys = mdata_phys;
-		ctx->size = size;
-	}
 
 	return ret ? : res.result[0];
 }
@@ -1224,6 +1281,21 @@ int qcom_scm_iommu_secure_ptbl_init(u64 addr, u32 size, u32 spare)
 }
 EXPORT_SYMBOL(qcom_scm_iommu_secure_ptbl_init);
 
+int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_MP,
+		.cmd = QCOM_SCM_MP_IOMMU_SET_CP_POOL_SIZE,
+		.arginfo = QCOM_SCM_ARGS(2),
+		.args[0] = size,
+		.args[1] = spare,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+
+	return qcom_scm_call(__scm->dev, &desc, NULL);
+}
+EXPORT_SYMBOL(qcom_scm_iommu_set_cp_pool_size);
+
 int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
 				   u32 cp_nonpixel_start,
 				   u32 cp_nonpixel_size)
@@ -1379,7 +1451,7 @@ static int __qcom_scm_assign_mem(struct device *dev, phys_addr_t mem_region,
  * Return negative errno on failure or 0 on success with @srcvm updated.
  */
 int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
-			unsigned int *srcvm,
+			u64 *srcvm,
 			const struct qcom_scm_vmperm *newvm,
 			unsigned int dest_cnt)
 {
@@ -1396,9 +1468,9 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 	__le32 *src;
 	void *ptr;
 	int ret, i, b;
-	unsigned long srcvm_bits = *srcvm;
+	u64 srcvm_bits = *srcvm;
 
-	src_sz = hweight_long(srcvm_bits) * sizeof(*src);
+	src_sz = hweight64(srcvm_bits) * sizeof(*src);
 	mem_to_map_sz = sizeof(*mem_to_map);
 	dest_sz = dest_cnt * sizeof(*destvm);
 	ptr_sz = ALIGN(src_sz, SZ_64) + ALIGN(mem_to_map_sz, SZ_64) +
@@ -1411,8 +1483,10 @@ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 	/* Fill source vmid detail */
 	src = ptr;
 	i = 0;
-	for_each_set_bit(b, &srcvm_bits, BITS_PER_LONG)
-		src[i++] = cpu_to_le32(b);
+	for (b = 0; b < BITS_PER_TYPE(u64); b++) {
+		if (srcvm_bits & BIT(b))
+			src[i++] = cpu_to_le32(b);
+	}
 
 	/* Fill details of mem buff to map */
 	mem_to_map = ptr + ALIGN(src_sz, SZ_64);
@@ -3282,6 +3356,10 @@ static const struct of_device_id qcom_scm_dt_match[] = {
 	{ .compatible = "qcom,scm-msm8660", .data = (void *) SCM_HAS_CORE_CLK },
 	{ .compatible = "qcom,scm-msm8960", .data = (void *) SCM_HAS_CORE_CLK },
 	{ .compatible = "qcom,scm-msm8916", .data = (void *)(SCM_HAS_CORE_CLK |
+							     SCM_HAS_IFACE_CLK |
+							     SCM_HAS_BUS_CLK)
+	},
+	{ .compatible = "qcom,scm-msm8953", .data = (void *)(SCM_HAS_CORE_CLK |
 							     SCM_HAS_IFACE_CLK |
 							     SCM_HAS_BUS_CLK)
 	},
