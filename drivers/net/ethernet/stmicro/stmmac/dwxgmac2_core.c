@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2018 Synopsys, Inc. and/or its affiliates.
  * stmmac XGMAC support.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/bitrev.h>
@@ -288,6 +289,39 @@ static int dwxgmac2_filter_read(struct mac_device_info *hw, u32 filter_no,
 		return ret;
 
 	*data = readl(ioaddr + XGMAC_L3L4_DATA);
+	return 0;
+}
+
+static int dwxgmac2_l3l4_filter_read(struct mac_device_info *hw, u32 filter_no,
+				     u32 *l3l4_ctrl, u32 *l4_addr, u32 *l3_addr0,
+				     u32 *l3_addr1, u32 *l3_addr2, u32 *l3_addr3)
+{
+	int ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3L4_CTRL, l3l4_ctrl);
+	if (ret)
+		return ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L4_ADDR, l4_addr);
+	if (ret)
+		return ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3_ADDR0, l3_addr0);
+	if (ret)
+		return ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3_ADDR1, l3_addr1);
+	if (ret)
+		return ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XGMAC_L3_ADDR2, l3_addr2);
+	if (ret)
+		return ret;
+
+	ret = dwxgmac2_filter_read(hw, filter_no, XMGAC_L3_ADDR3, l3_addr3);
+	if (ret)
+		return ret;
+
 	return 0;
 }
 
@@ -1997,6 +2031,32 @@ static int dwxgmac2_write_vlan_filter(struct net_device *dev, struct mac_device_
 	return ret;
 }
 
+static int dwxgmac2_read_vlan_filter(struct net_device *dev, struct mac_device_info *hw, u8 index,
+				     u32 *data)
+{
+	void __iomem *ioaddr = (void __iomem *)dev->base_addr;
+	int ret = 0;
+	u32 val;
+
+	if (index >= hw->num_vlan)
+		return -EINVAL;
+
+	val = readl(ioaddr + XGMAC_VLAN_CTRL_TAG);
+	val &= ~(XGMAC_VLAN_TAG_CTRL_OFS_MASK | XGMAC_VLAN_TAG_CTRL_OB);
+	val |= (index << XGMAC_VLAN_TAG_CTRL_OFS_SHIFT) | XGMAC_VLAN_TAG_CTRL_OB |
+			XGMAC_VLAN_TAG_CTRL_CT;
+	writel(val, ioaddr + XGMAC_VLAN_CTRL_TAG);
+
+	ret = readl_poll_timeout(ioaddr + XGMAC_VLAN_CTRL_TAG, val, !(val & XGMAC_VLAN_TAG_CTRL_OB),
+				 XGMAC_VLAN_TAG_CTRL_DELAY, XGMAC_VLAN_TAG_CTRL_TIMEOUT);
+	if (ret == -ETIMEDOUT)
+		netdev_err(dev, "Timeout accessing MAC_VLAN_Tag_Filter\n");
+
+	*data = readl(ioaddr + XGMAC_VLAN_DATA_TAG);
+
+	return ret;
+}
+
 static int dwxgmac2_add_hw_vlan_rx_routing_fltr(struct net_device *dev, struct mac_device_info *hw,
 						u16 vid, u32 dma_ch, bool inv)
 {
@@ -2140,6 +2200,8 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.del_hw_vlan_rx_routing_fltr = dwxgmac2_del_hw_vlan_rx_routing_fltr,
 	.config_pfc = dwxgmac2_config_pfc,
 	.configure_pfc_tx_flow_ctrl = dwxgmac2_pfc_tx_flow_ctrl,
+	.read_l3l4_regs = dwxgmac2_l3l4_filter_read,
+	.read_vlan_regs = dwxgmac2_read_vlan_filter,
 };
 
 static void dwxlgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
