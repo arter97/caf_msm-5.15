@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -79,9 +79,9 @@
 int ignore_ch_channel[IGNORE_CH_SIZE] = {2, 3, 24, 25};
 
 uint32_t bhi_imgtxdb;
-enum mhi_msg_level mhi_msg_lvl = MHI_MSG_ERROR;
+enum mhi_msg_level mhi_msg_lvl = MHI_MSG_NOTICE;
 enum mhi_msg_level mhi_ipc_msg_lvl = MHI_MSG_VERBOSE;
-enum mhi_msg_level mhi_ipc_err_msg_lvl = MHI_MSG_ERROR;
+enum mhi_msg_level mhi_ipc_err_msg_lvl = MHI_MSG_INFO;
 void *mhi_ipc_vf_log[MHI_MAX_NUM_INSTANCES];
 void *mhi_ipc_err_log;
 void *mhi_ipc_default_err_log;
@@ -3967,7 +3967,7 @@ int mhi_dev_channel_isempty(struct mhi_dev_client *handle)
 
 	rc = ch->ring->rd_offset == ch->ring->wr_offset;
 	if (rc)
-		mhi_log(handle->vf_id, MHI_MSG_WARNING, "Chan_id=0x%x is empty rp/wp:%x\n",
+		mhi_log(handle->vf_id, MHI_MSG_DBG, "Chan_id=0x%x is empty rp/wp:%x\n",
 			ch->ch_id,
 			ch->ring->rd_offset);
 
@@ -5134,7 +5134,7 @@ static int mhi_dev_channel_init(struct mhi_dev *mhi, uint32_t ch_id)
 	mhi_ring_init(mhi->ring[mhi->ch_ring_start + ch_id], RING_TYPE_CH,
 			mhi->ch_ring_start + ch_id);
 	mhi_ring_set_cb(mhi->ring[mhi->ch_ring_start + ch_id], mhi_dev_process_tre_ring);
-	mhi_log(mhi->vf_id, MHI_MSG_INFO, "Memory allocated for ring of ch =%d\n",
+	mhi_log(mhi->vf_id, MHI_MSG_DBG, "Memory allocated for ring of ch =%d\n",
 			ch_id);
 
 	return 0;
