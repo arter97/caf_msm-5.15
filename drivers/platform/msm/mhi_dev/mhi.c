@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -4633,11 +4633,6 @@ static void mhi_dev_enable(struct work_struct *work)
 
 	mutex_unlock(&mhi->mhi_lock);
 
-	/* Enable MHI dev network stack Interface */
-	rc = mhi_dev_net_interface_init(&dev_ops, mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
-	if (rc)
-		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
-				"Failed to initialize mhi_dev_net iface\n");
 	return;
 exit:
 	/*
@@ -5511,6 +5506,12 @@ static void mhi_dev_pcie_handle_event(struct work_struct *work)
 			return;
 		}
 	}
+
+	/* Enable MHI dev network stack Interface */
+	rc = mhi_dev_net_interface_init(&dev_ops, mhi->vf_id, mhi_hw_ctx->ep_cap.num_vfs);
+	if (rc)
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+				"Failed to initialize mhi_dev_net iface\n");
 }
 
 static void mhi_dev_setup_virt_device(struct mhi_dev_ctx *mhictx)
