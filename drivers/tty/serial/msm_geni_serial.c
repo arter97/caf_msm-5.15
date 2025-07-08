@@ -5064,6 +5064,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	const struct of_device_id *id;
 	bool is_console = false;
 	char boot_marker[40];
+	unsigned int autosuspend_delay;
 
 	id = of_match_device(msm_geni_device_tbl, &pdev->dev);
 	if (!id) {
@@ -5186,8 +5187,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 			pm_runtime_set_active(&pdev->dev);
 			pm_runtime_forbid(&pdev->dev);
 		} else {
+			if (of_property_read_u32(pdev->dev.of_node, "qcom,autosuspend-delay",
+						&autosuspend_delay))
+				autosuspend_delay = 150;
 			pm_runtime_set_suspended(&pdev->dev);
-			pm_runtime_set_autosuspend_delay(&pdev->dev, 150);
+			pm_runtime_set_autosuspend_delay(&pdev->dev, autosuspend_delay);
 			pm_runtime_use_autosuspend(&pdev->dev);
 			pm_runtime_enable(&pdev->dev);
 		}
