@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright(c) 2020, Analogix Semiconductor. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  */
 #include <linux/gcd.h>
@@ -35,6 +35,7 @@
 
 #include <video/display_timing.h>
 
+#include <soc/qcom/boot_stats.h>
 #include "anx7625.h"
 
 /*
@@ -1578,6 +1579,7 @@ static void anx7625_bridge_enable(struct drm_bridge *bridge)
 	pm_runtime_get_sync(dev);
 
 	anx7625_dp_start(ctx);
+	place_marker("drm_bridge display up");
 }
 
 static void anx7625_bridge_disable(struct drm_bridge *bridge)
