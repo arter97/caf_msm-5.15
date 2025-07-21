@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2017, 2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017-2019, Linaro Ltd.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/debugfs.h>
@@ -1292,6 +1292,8 @@ static const struct soc_id soc_id[] = {
 	{ 668, "QCS_KALAMAP_N"},
 	{ 687, "CROWP" },
 	{ 688, "QCM_KALAMA_N"},
+	{ 716, "QCMPINN"},
+	{ 717, "QCMKUNO"},
 };
 
 static struct qcom_socinfo *qsocinfo;

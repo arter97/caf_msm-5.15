@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _RMNET_IPA_FD_IOCTL_H
@@ -42,6 +42,8 @@
 #define WAN_IOCTL_NOTIFY_DUAL_BACKHAUL_INFO  23
 #define WAN_IOCTL_GET_LAN_CLIENT_INFO        24
 #define WAN_IOCTL_CLEAN_UP                   25
+#define WAN_IOCTL_SET_LAN_CLIENT_INFO_V2     26
+#define WAN_IOCTL_CLEAR_LAN_CLIENT_INFO_V2   27
 
 /* User space may not have this defined. */
 #ifndef IFNAMSIZ
@@ -196,6 +198,25 @@ struct wan_ioctl_lan_client_info {
 	uint8_t dl_cnt_idx;
 };
 
+struct wan_ioctl_lan_client_info_v2 {
+	/* Device type of the client. */
+	enum ipacm_per_client_device_type device_type;
+	/* MAC Address of the client. */
+	uint8_t mac[IPA_MAC_ADDR_SIZE];
+	/* Init client. */
+	uint8_t client_init;
+	/* Client Index */
+	int8_t client_idx;
+	/* Header length of the client. */
+	uint8_t hdr_len;
+	/* Source pipe of the lan client. */
+	enum ipa_client_type ul_src_pipe;
+	/* Counter indices for h/w fnr stats */
+#define IPA_HW_FNR_STATS
+	uint8_t wan_cnt_idx;
+	uint8_t lan_cnt_idx;
+};
+
 struct wan_ioctl_per_client_info {
 	/* MAC Address of the client. */
 	uint8_t mac[IPA_MAC_ADDR_SIZE];
@@ -291,6 +312,10 @@ struct wan_ioctl_query_per_client_stats {
 			WAN_IOCTL_SET_LAN_CLIENT_INFO, \
 			struct wan_ioctl_lan_client_info *)
 
+#define WAN_IOC_SET_LAN_CLIENT_INFO_V2 _IOWR(WAN_IOC_MAGIC, \
+			WAN_IOCTL_SET_LAN_CLIENT_INFO_V2, \
+			struct wan_ioctl_lan_client_info_v2 *)
+
 #define WAN_IOC_SEND_LAN_CLIENT_MSG _IOWR(WAN_IOC_MAGIC, \
 				WAN_IOCTL_SEND_LAN_CLIENT_MSG, \
 				struct wan_ioctl_send_lan_client_msg *)
@@ -298,6 +323,10 @@ struct wan_ioctl_query_per_client_stats {
 #define WAN_IOC_CLEAR_LAN_CLIENT_INFO _IOWR(WAN_IOC_MAGIC, \
 			WAN_IOCTL_CLEAR_LAN_CLIENT_INFO, \
 			struct wan_ioctl_lan_client_info *)
+
+#define WAN_IOC_CLEAR_LAN_CLIENT_INFO_V2 _IOWR(WAN_IOC_MAGIC, \
+			WAN_IOCTL_CLEAR_LAN_CLIENT_INFO_V2, \
+			struct wan_ioctl_lan_client_info_v2 *)
 
 #define WAN_IOC_ADD_OFFLOAD_CONNECTION _IOWR(WAN_IOC_MAGIC, \
 		WAN_IOCTL_ADD_OFFLOAD_CONNECTION, \

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __MHI_H
@@ -695,11 +695,12 @@ enum mhi_id {
 
 enum mhi_msg_level {
 	MHI_MSG_VERBOSE = 0x0,
-	MHI_MSG_INFO = 0x1,
-	MHI_MSG_DBG = 0x2,
-	MHI_MSG_WARNING = 0x3,
-	MHI_MSG_ERROR = 0x4,
-	MHI_MSG_CRITICAL = 0x5,
+	MHI_MSG_DBG = 0x1,
+	MHI_MSG_INFO = 0x2,
+	MHI_MSG_NOTICE = 0x3,
+	MHI_MSG_WARNING = 0x4,
+	MHI_MSG_ERROR = 0x5,
+	MHI_MSG_CRITICAL = 0x6,
 	MHI_MSG_reserved = 0x80000000
 };
 
