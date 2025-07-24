@@ -4804,7 +4804,7 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 		 * If bus suspend feature is enabled, increase the autosuspend delay to default,
 		 * so that the HS-USB re-enumeration isn't interrupted by dwc3 RT suspend.
 		 */
-			if (!event && dwc->runtime_suspend_on_usb_suspend)
+			if (dwc && !event && dwc->runtime_suspend_on_usb_suspend)
 				pm_runtime_set_autosuspend_delay(dwc->dev,
 						DWC3_DEFAULT_AUTOSUSPEND_DELAY);
 			dwc3_override_vbus_status(mdwc, !!event);
