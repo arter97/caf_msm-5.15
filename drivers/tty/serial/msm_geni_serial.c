@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/bitmap.h>
@@ -3235,8 +3235,9 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 		return 0;
 	}
 
-	/* Check RX buffer data for faulty pattern*/
-	check_rx_buf((char *)msm_port->rx_buf, uport, rx_bytes);
+	if (msm_port->wakeup_byte)
+		/* Check RX buffer data for faulty pattern */
+		check_rx_buf((char *)msm_port->rx_buf, uport, rx_bytes);
 
 	if (drop_rx)
 		return 0;
