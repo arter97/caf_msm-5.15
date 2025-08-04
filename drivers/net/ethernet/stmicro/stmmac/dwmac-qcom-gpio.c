@@ -249,9 +249,6 @@ int ethqos_init_pinctrl(struct device *dev, struct qcom_ethqos *ethqos)
 		ETHQOSERR("Failed to get pinctrl, err = %d\n", ret);
 		return ret;
 	}
-	ethqos->pinctrl = pinctrl;
-	ethqos->rgmii_txc_suspend_state = NULL;
-	ethqos->rgmii_txc_resume_state = NULL;
 
 	ethqos->pinctrl = pinctrl;
 	ethqos->rgmii_txc_suspend_state = NULL;
