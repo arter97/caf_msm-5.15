@@ -253,6 +253,10 @@ int ethqos_init_pinctrl(struct device *dev, struct qcom_ethqos *ethqos)
 	ethqos->rgmii_txc_suspend_state = NULL;
 	ethqos->rgmii_txc_resume_state = NULL;
 
+	ethqos->pinctrl = pinctrl;
+	ethqos->rgmii_txc_suspend_state = NULL;
+	ethqos->rgmii_txc_resume_state = NULL;
+
 	num_names = of_property_count_strings(dev->of_node, "pinctrl-names");
 	if (num_names < 0) {
 		dev_err(dev, "Cannot parse pinctrl-names: %d\n",
@@ -279,11 +283,11 @@ int ethqos_init_pinctrl(struct device *dev, struct qcom_ethqos *ethqos)
 
 		if (!strcmp(name, "dev-emac-rgmii_txc_suspend_state")) {
 			ethqos->rgmii_txc_suspend_state = pinctrl_state;
-			ETHQOSINFO("pinctrl_lookup_state %s succeded\n", name);
+			ETHQOSINFO("pinctrl_lookup_state %s succeeded\n", name);
 			continue;
 		} else if (!strcmp(name, "dev-emac-rgmii_txc_resume_state")) {
 			ethqos->rgmii_txc_resume_state = pinctrl_state;
-			ETHQOSINFO("pinctrl_lookup_state %s succeded\n", name);
+			ETHQOSINFO("pinctrl_lookup_state %s succeeded\n", name);
 			continue;
 		}
 
