@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -63,6 +63,9 @@
 
 #define GEN_1_2_LTSSM_DETECT_TIMEOUT_MS	20 /* in msec */
 #define GEN_3_ABOVE_LTSSM_DETECT_TIMEOUT_MS	100 /* in msec */
+
+#define MMIO_OFFSET	0x100
+#define MMIO_RANGE	(0xb80 - MMIO_OFFSET)
 
 /* debug mask sys interface */
 static int ep_pcie_debug_mask;
@@ -155,6 +158,8 @@ static const struct ep_pcie_irq_info_t ep_pcie_irq_info[EP_PCIE_MAX_IRQ] = {
 
 static int ep_pcie_core_wakeup_host_internal(enum ep_pcie_event event);
 static void ep_pcie_config_inbound_iatu(struct ep_pcie_dev_t *dev, bool is_vf);
+static int ep_pcie_backup_mhi_mmio(struct ep_pcie_dev_t *dev);
+static int ep_pcie_restore_mhi_mmio(struct ep_pcie_dev_t *dev);
 
 /*
  * ep_pcie_clk_dump - Clock CBCR reg info will be dumped in Dmesg logs.
@@ -1314,6 +1319,7 @@ static void ep_pcie_core_init(struct ep_pcie_dev_t *dev, bool configured)
 
 	ep_pcie_sriov_init(dev);
 	if (!configured) {
+		ep_pcie_restore_mhi_mmio(dev);
 		ep_pcie_config_mmio(dev);
 		ep_pcie_config_inbound_iatu(dev, PCIE_PHYSICAL_DEVICE);
 	}
@@ -1901,6 +1907,12 @@ static int ep_pcie_get_resources(struct ep_pcie_dev_t *dev,
 		EP_PCIE_ERR(dev,
 			"PCIe V%d: Failed to register bus client for %s,interconnect-names miss\n",
 			dev->rev, dev->pdev->name);
+	}
+
+	dev->mmio_backup = devm_kzalloc(&pdev->dev, MMIO_RANGE, GFP_KERNEL);
+	if (!dev->mmio_backup) {
+		EP_PCIE_ERR(dev, "PCIe V%d: mmio_backup alloc failed\n", dev->rev);
+		ret = -ENOMEM;
 	}
 
 out:
@@ -2703,6 +2715,7 @@ int ep_pcie_core_disable_endpoint(void)
 			EP_PCIE_DUMP(dev, "PCIe V%d: Global IRQ received; status:0x%x\n",
 					dev->rev, status);
 
+		ep_pcie_backup_mhi_mmio(dev);
 		ep_pcie_pipe_clk_deinit(dev);
 		ep_pcie_clk_deinit(dev);
 		ep_pcie_vreg_deinit(dev);
@@ -2903,6 +2916,70 @@ static irqreturn_t ep_pcie_handle_pm_turnoff_irq(int irq, void *data)
 	dev->link_status = EP_PCIE_LINK_IN_L23READY;
 
 	return IRQ_HANDLED;
+}
+
+static int ep_pcie_restore_mhi_mmio(struct ep_pcie_dev_t *dev)
+{
+	int i = 0;
+	void __iomem *reg_cntl_addr;
+
+	if (WARN_ON(!dev) && WARN_ON(!dev->mmio_backup)) {
+		EP_PCIE_ERR(dev, "PCIe V%d: invalid params for mmio restore\n",
+				dev->rev);
+		return -EINVAL;
+	}
+
+	if (!dev->mmio_backed) {
+		EP_PCIE_ERR(dev, "PCIe V%d: no backup for mmio restore\n",
+				dev->rev);
+		return 0;
+	}
+
+	/* disable ctrl/cmdb interrupts */
+	ep_pcie_write_reg(dev->mmio, PCIE20_MMIO_CTRL_INT_MASK_A7, 0);
+
+	/* disable ERDB interrupts */
+	for (i = 0; i < 4; i++)
+		ep_pcie_write_reg(dev->mmio, PCIE20_ERDB_INT_MASK_A7_n(i), 0);
+
+	reg_cntl_addr = (void __iomem *)(dev->mmio + MMIO_OFFSET);
+	memcpy_toio(reg_cntl_addr, dev->mmio_backup, MMIO_RANGE);
+
+	/* clear CHDB interrupts*/
+	for (i = 0; i < 4; i++)
+		ep_pcie_write_reg(dev->mmio, PCIE20_CHDB_INT_CLEAR_A7_n(i), 0xffffffff);
+	/* clear ERDB interrupts*/
+	for (i = 0; i < 4; i++)
+		ep_pcie_write_reg(dev->mmio, PCIE20_ERDB_INT_CLEAR_A7_n(i), 0xffffffff);
+
+	/* clear ctrl/cmdb interrupts */
+	ep_pcie_write_reg(dev->mmio, PCIE20_MMIO_CTRL_INT_CLEAR_A7, 0x7);
+
+	/* enable ctrl/cmdb interrupts */
+	ep_pcie_write_reg(dev->mmio, PCIE20_MMIO_CTRL_INT_MASK_A7, 0x3);
+
+	/* memory barrier to ensure write is visible */
+	mb();
+
+	dev->mmio_backed = false;
+
+	return 0;
+}
+
+static int ep_pcie_backup_mhi_mmio(struct ep_pcie_dev_t *dev)
+{
+	void __iomem *reg_cntl_addr;
+
+	if (WARN_ON(!dev) && WARN_ON(!dev->mmio_backup)) {
+		EP_PCIE_ERR(dev, "PCIe V%d: invalid paramsfor mmio backup\n", dev->rev);
+		return -EINVAL;
+	}
+
+	reg_cntl_addr = (void __iomem *)(dev->mmio + MMIO_OFFSET);
+	memcpy_fromio(dev->mmio_backup, reg_cntl_addr, MMIO_RANGE);
+	dev->mmio_backed = true;
+
+	return 0;
 }
 
 static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)

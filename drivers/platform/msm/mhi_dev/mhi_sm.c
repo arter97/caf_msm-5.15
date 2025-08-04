@@ -1192,9 +1192,6 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 			MHI_SM_DBG(mhi->vf_id, "Flush ring_init_wq before disable endpoint\n");
 			flush_workqueue(mhi->ring_init_wq);
 			mhi->stop_polling_m0 = false;
-			/* Avoid backing up mmio twice */
-			if (old_dstate != EP_PCIE_EVENT_PM_D3_HOT)
-				mhi_dev_backup_mmio(mhi_sm_ctx->mhi_dev);
 		}
 
 		ep_pcie_disable_endpoint(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle);
@@ -1727,7 +1724,6 @@ void mhi_dev_sm_pcie_handler(struct ep_pcie_notify *notify)
 		}
 		spin_unlock_irqrestore(&mhi_sm_ctx->mhi_dev->lock, flags);
 
-		mhi_dev_backup_mmio(mhi_sm_ctx->mhi_dev);
 		MHI_SM_DBG(mhi->vf_id, "Hold wake for D3_HOT event\n");
 		pm_stay_awake(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
 		break;
