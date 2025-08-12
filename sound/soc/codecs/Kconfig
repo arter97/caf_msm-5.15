@@ -1776,6 +1776,7 @@ config SND_SOC_WM8993
 
 config SND_SOC_WM8994
 	tristate
+	depends on MFD_WM8994
 
 config SND_SOC_WM8995
 	tristate
@@ -1947,5 +1948,13 @@ config SND_SOC_LPASS_TX_MACRO
 config SND_SOC_TAS5805M
 	tristate "Texas Instruments TAS5805M audio amplifier"
 	depends on I2C
+
+config SND_SOC_ADD2010
+	tristate "ESMT 24 bits Audio Stereo DAC"
+	depends on I2C
+	help
+	  ESMT ADD2010 is a high-performance digital-to-analog converter.
+	  Select N if you don't have ADD2010 on board.
+	  Select M to build this as module.
 
 endmenu

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.*/
+/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
 
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -170,9 +171,10 @@ static int mhi_uci_release(struct inode *inode, struct file *file)
 {
 	struct uci_dev *uci_dev = file->private_data;
 
+	mutex_lock(&mhi_uci_drv.lock);
 	mutex_lock(&uci_dev->mutex);
 	uci_dev->ref_count--;
-	if (!uci_dev->ref_count) {
+	if (uci_dev->ref_count == 1) {
 		struct uci_buf *itr, *tmp;
 		struct uci_chan *uci_chan;
 
@@ -192,21 +194,12 @@ static int mhi_uci_release(struct inode *inode, struct file *file)
 
 		uci_chan->cur_buf = NULL;
 
-		if (!uci_dev->enabled) {
-			MSG_LOG("Node is deleted, freeing dev node\n");
-			mutex_unlock(&uci_dev->mutex);
-			mutex_destroy(&uci_dev->mutex);
-			mutex_destroy(&uci_dev->dl_chan.chan_lock);
-			mutex_destroy(&uci_dev->ul_chan.chan_lock);
-			clear_bit(MINOR(uci_dev->devt), uci_minors);
-			kfree(uci_dev);
-			return 0;
-		}
 	}
 
 	MSG_LOG("exit: ref_count:%d\n", uci_dev->ref_count);
 
 	mutex_unlock(&uci_dev->mutex);
+	mutex_unlock(&mhi_uci_drv.lock);
 
 	return 0;
 }
@@ -481,16 +474,17 @@ static int mhi_uci_open(struct inode *inode, struct file *filp)
 		goto error_exit;
 
 	mutex_lock(&uci_dev->mutex);
+
 	if (!uci_dev->enabled) {
 		MSG_ERR("Node exist, but not in active state!\n");
 		goto error_open_chan;
 	}
 
 	uci_dev->ref_count++;
-
 	MSG_LOG("Node open, ref counts %u\n", uci_dev->ref_count);
 
-	if (uci_dev->ref_count == 1) {
+	/* ref_count will be incremented at open and probe */
+	if (uci_dev->ref_count == 2) {
 		MSG_LOG("Starting channel\n");
 		ret = mhi_prepare_for_transfer(uci_dev->mhi_dev, 0);
 		if (ret) {
@@ -510,7 +504,8 @@ static int mhi_uci_open(struct inode *inode, struct file *filp)
 
 	return 0;
 
- error_rx_queue:
+error_rx_queue:
+	uci_dev->ref_count--;
 	dl_chan = &uci_dev->dl_chan;
 	mhi_unprepare_from_transfer(uci_dev->mhi_dev);
 	list_for_each_entry_safe(buf_itr, tmp, &dl_chan->pending, node) {
@@ -518,7 +513,7 @@ static int mhi_uci_open(struct inode *inode, struct file *filp)
 		kfree(buf_itr->data);
 	}
 
- error_open_chan:
+error_open_chan:
 	mutex_unlock(&uci_dev->mutex);
 
 error_exit:
@@ -607,6 +602,7 @@ static void mhi_uci_remove(struct mhi_device *mhi_dev)
 	device_destroy(mhi_uci_drv.class, uci_dev->devt);
 	uci_dev->dev = NULL;
 	list_del(&uci_dev->node);
+	uci_dev->ref_count--;
 	sysfs_remove_group(&mhi_dev->dev.kobj, &mhi_uci_group);
 
 	/* safe to free memory only if all file nodes are closed */
@@ -688,6 +684,7 @@ static int mhi_uci_probe(struct mhi_device *mhi_dev,
 	uci_dev->actual_mtu = uci_dev->mtu -  sizeof(struct uci_buf);
 	dev_set_drvdata(&mhi_dev->dev, uci_dev);
 	uci_dev->enabled = true;
+	uci_dev->ref_count++;
 
 	list_add(&uci_dev->node, &mhi_uci_drv.head);
 	mutex_unlock(&mhi_uci_drv.lock);

@@ -625,6 +625,15 @@ config SM_GPUCC_6115
 	  Say Y if you want to support graphics controller devices and
 	  functionality such as 3D graphics.
 
+config SM_LPASS_AUDIOCC_6115
+	tristate "SM6115 Audio Clock Controllers"
+	select SM_GCC_6115
+	help
+	  Support for the LPASS(Low-Power Audio Subsytem) aon & audio clock
+	  controllers on Qualcomm Technologies, Inc SM6115 devices.
+	  Say Y if you want to use LPASS AUDIOCC and AONCC clocks required
+	  to support audio devices and its functionalities.
+
 config SM_DEBUGCC_6115
 	tristate "SM6115 Debug Clock Controller"
 	depends on COMMON_CLK_QCOM
@@ -950,6 +959,15 @@ config SM_GPUCC_KHAJE
 	  Say Y if you want to support graphics controller devices and
 	  functionality such as 3D graphics.
 
+config SM_LPASS_AUDIOCC_KHAJE
+	tristate "KHAJE Audio Clock Controllers"
+	select SM_GCC_KHAJE
+	help
+	  Support for the LPASS(Low-Power Audio Subsytem) aon & audio clock
+	  controllers on Qualcomm Technologies, Inc KHAJE devices.
+	  Say Y if you want to use LPASS AUDIOCC and AONCC clocks required
+	  to support audio devices and its functionalities.
+
 config SM_DEBUGCC_KHAJE
 	tristate "KHAJE Debug Clock Controller"
 	select SM_GCC_KHAJE
@@ -1058,6 +1076,15 @@ config SM_DISPCC_SCUBA
 	  Inc. SCUBA devices.
 	  Say Y if you want to support display devices and functionality such as
 	  splash screen.
+
+config SM_LPASS_AUDIOCC_SCUBA
+	tristate "SCUBA Audio Clock Controllers"
+	select SM_GCC_SCUBA
+	help
+	  Support for the LPASS(Low-Power Audio Subsytem) aon & audio clock
+	  controllers on Qualcomm Technologies, Inc SCUBA devices.
+	  Say Y if you want to use LPASS AUDIOCC and AONCC clocks required
+	  to support audio devices and its functionalities.
 
 config SM_DEBUGCC_SCUBA
 	tristate "SCUBA Debug Clock Controller"
