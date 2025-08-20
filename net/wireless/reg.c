@@ -1816,7 +1816,11 @@ static uint32_t reg_rule_to_chan_bw_flags(const struct ieee80211_regdomain *regd
 			bw_flags |= IEEE80211_CHAN_NO_80MHZ;
 		if (max_bandwidth_khz < MHZ_TO_KHZ(160))
 			bw_flags |= IEEE80211_CHAN_NO_160MHZ;
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+		if (max_bandwidth_khz < MHZ_TO_KHZ(240))
+#else
 		if (max_bandwidth_khz < MHZ_TO_KHZ(320))
+#endif
 			bw_flags |= IEEE80211_CHAN_NO_320MHZ;
 	}
 	return bw_flags;
