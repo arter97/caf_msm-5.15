@@ -1127,6 +1127,8 @@ int smi230_gyro_probe(struct device *dev, struct smi230_dev *smi230_dev)
 
 	p_smi230_dev = smi230_dev;
 
+	p_smi230_dev->gyro_regs_saved = false;
+
 	p_smi230_dev->gyro_sus_etr = SMI230_GYRO_DEEP_SUSPEND;
 
 	p_smi230_dev->gyro_frez_etr = SMI230_GYRO_DEEP_SUSPEND;

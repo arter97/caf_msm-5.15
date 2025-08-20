@@ -1313,6 +1313,9 @@ struct smi230_dev {
 	/*! Structure to save gyro reg values  */
 	struct smi230_gyro_regs gyro_regs;
 
+	/*! flag to indicate if gyro_regs is saved */
+	bool gyro_regs_saved;
+
 	/*! pm suspend entry  */
 	enum smi230_gyro_suspend_mode gyro_sus_etr;
 
