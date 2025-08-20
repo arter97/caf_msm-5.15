@@ -4084,7 +4084,7 @@ static int fastrpc_init_create_dynamic_process(struct fastrpc_file *fl,
 	pages[0].size = imem->size;
 
 	/* Update IOVA of second page shared with DSP */
-	if (inbuf.pageslen > 1) {
+	if (inbuf.pageslen > 1 && sharedbuf_map) {
 		pages[1].addr = sharedbuf_map->phys;
 		pages[1].size = sharedbuf_map->size;
 	}
