@@ -2913,7 +2913,7 @@ static const struct camss_subdev_resources csid_res_8550_gen2[] = {
 	/* CSID3 */
 	{
 		.resource_id = 3,
-		.regulators = {},
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
 		.clock = { "vfe_lite_csid", "vfe_lite_cphy_rx" },
 		.clock_rate = { { 400000000, 480000000 },
 				{ 400000000, 480000000 } },
