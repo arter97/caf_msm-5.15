@@ -200,6 +200,12 @@
 #define IPA_MAX_NUM_HW_PATH_CLIENTS 16
 
 /**
+ * max number of lan clients supported per device type
+ * for LAN stats via HW v2 max.
+ */
+#define IPA_MAX_NUM_HW_PATH_CLIENTS_V2 100
+
+/**
  * max number of destination pipes possible for a client.
  */
 #define QMI_IPA_MAX_CLIENT_DST_PIPES 4
