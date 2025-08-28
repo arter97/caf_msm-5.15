@@ -44,6 +44,15 @@
 
 #define CAMSS_ICC_MAX_PATH_COUNT (20)
 
+enum camss_client {
+	ICC_CAMSS,
+	ICC_CSIPHY,
+	ICC_CSID,
+	ICC_VFE,
+	ICC_ISPIF,
+	ICC_VIDEO,
+};
+
 struct camss_subdev_resources {
 	bool is_disabled;
 	u8   resource_id;
@@ -53,6 +62,7 @@ struct camss_subdev_resources {
 	u32 clock_rate[CAMSS_RES_MAX][CAMSS_RES_MAX];
 	char *reg[CAMSS_RES_MAX];
 	char *interrupt[CAMSS_RES_MAX];
+	char *icc_clk[CAMSS_RES_MAX];
 	union {
 		struct csiphy_subdev_resources csiphy;
 		struct csid_subdev_resources csid;
@@ -68,6 +78,7 @@ struct icc_bw_tbl {
 struct resources_icc {
 	char *name;
 	struct icc_bw_tbl icc_bw_tbl;
+	enum camss_client client;
 };
 
 struct resources_wrapper {
@@ -174,5 +185,6 @@ void camss_delete(struct camss *camss);
 void camss_buf_done(struct camss *camss, int hw_id, int port_id);
 void camss_reg_update(struct camss *camss, int hw_id,
 		      int port_id, bool is_clear);
+int camss_icc_set_clk(struct camss *camss, char *name, u32 avg, u32 peak);
 
 #endif /* QC_MSM_CAMSS_H */
