@@ -103,6 +103,30 @@ struct usb_repeater *devm_usb_get_repeater_by_phandle(struct device *dev,
 }
 EXPORT_SYMBOL(devm_usb_get_repeater_by_phandle);
 
+struct usb_repeater *devm_usb_get_optional_repeater_by_phandle(struct device *dev,
+        const char *phandle, u8 index)
+{
+        struct device_node *node;
+        struct usb_repeater *r;
+
+        if (!dev->of_node) {
+                dev_dbg(dev, "device does not have a device node entry\n");
+		return ERR_PTR(-EINVAL);
+        }
+
+        node = of_parse_phandle(dev->of_node, phandle, index);
+        if (!node) {
+                dev_dbg(dev, "optional phandle '%s' not found in %pOF node\n", phandle,
+                        dev->of_node);
+                return NULL;
+        }
+
+        r = devm_usb_get_repeater_by_node(dev, node);
+        of_node_put(node);
+        return r;
+}
+EXPORT_SYMBOL(devm_usb_get_optional_repeater_by_phandle);
+
 /**
  * usb_add_repeater_dev - Add repeater device
  * @r: repeater device available
