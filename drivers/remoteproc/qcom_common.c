@@ -5,11 +5,12 @@
  * Copyright (C) 2016 Linaro Ltd
  * Copyright (C) 2015 Sony Mobile Communications Inc
  * Copyright (c) 2012-2013, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/firmware.h>
 #include <linux/kernel.h>
+#include <linux/kobject.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/remoteproc.h>
@@ -18,8 +19,9 @@
 #include <linux/slab.h>
 #include <linux/soc/qcom/mdt_loader.h>
 #include <linux/soc/qcom/smem.h>
-#include <trace/hooks/remoteproc.h>
+#include <linux/sysfs.h>
 #include <trace/events/rproc_qcom.h>
+#include <trace/hooks/remoteproc.h>
 
 #include "remoteproc_internal.h"
 #include "qcom_common.h"
@@ -610,6 +612,18 @@ static inline void notify_ssr_clients(struct qcom_rproc_ssr *ssr, struct qcom_ss
 	del_timer_sync(&ssr->timer);
 }
 
+void qcom_rproc_send_ssr_uevent(struct rproc *rproc, const char *action)
+{
+	char action_buf[64];
+	const char *envp[2];
+
+	snprintf(action_buf, sizeof(action_buf), "ACTION=%s", action);
+	envp[0] = action_buf;
+	envp[1] = NULL;
+
+	kobject_uevent_env(&rproc->dev.parent->kobj, KOBJ_CHANGE, (char **)envp);
+}
+
 static int ssr_notify_prepare(struct rproc_subdev *subdev)
 {
 	struct qcom_rproc_ssr *ssr = to_ssr_subdev(subdev);
@@ -622,6 +636,8 @@ static int ssr_notify_prepare(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_BEFORE_POWERUP;
 	notify_ssr_clients(ssr, &data);
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_BEFORE_POWERUP");
+
 	return 0;
 }
 
@@ -637,6 +653,8 @@ static int ssr_notify_start(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_AFTER_POWERUP;
 	notify_ssr_clients(ssr, &data);
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_AFTER_POWERUP");
+
 	return 0;
 }
 
@@ -652,6 +670,7 @@ static void ssr_notify_stop(struct rproc_subdev *subdev, bool crashed)
 
 	ssr->notification = QCOM_SSR_BEFORE_SHUTDOWN;
 	notify_ssr_clients(ssr, &data);
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_BEFORE_SHUTDOWN");
 }
 
 static void ssr_notify_unprepare(struct rproc_subdev *subdev)
@@ -666,6 +685,7 @@ static void ssr_notify_unprepare(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_AFTER_SHUTDOWN;
 	notify_ssr_clients(ssr, &data);
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_AFTER_SHUTDOWN");
 }
 
 static int ssr_notify_resume_prepare(struct rproc_subdev *subdev)
@@ -753,6 +773,7 @@ void qcom_add_ssr_subdev(struct rproc *rproc, struct qcom_rproc_ssr *ssr,
 
 	timer_setup(&ssr->timer, ssr_notif_timeout_handler, 0);
 
+	ssr->rproc = rproc;
 	ssr->info = info;
 	ssr->subdev.prepare = ssr_notify_prepare;
 	ssr->subdev.start = ssr_notify_start;

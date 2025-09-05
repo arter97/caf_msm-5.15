@@ -5091,12 +5091,6 @@ static int mhi_init(struct mhi_dev *mhi, bool init_state)
 	spin_lock_init(&mhi->lock);
 	spin_lock_init(&mhi->msi_lock);
 
-	if (!mhi->mmio_backup)
-		mhi->mmio_backup = devm_kzalloc(&pdev->dev, MHI_DEV_MMIO_RANGE, GFP_KERNEL);
-
-	if (!mhi->mmio_backup)
-		return -ENOMEM;
-
 	return 0;
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -605,8 +605,7 @@ EXPORT_SYMBOL(mhi_dev_mmio_reset);
 int mhi_dev_restore_mmio(struct mhi_dev *dev)
 {
 	int rc = 0;
-	uint32_t i, reg_cntl_value;
-	void *reg_cntl_addr;
+	uint32_t i;
 
 	if (WARN_ON(!dev))
 		return -EINVAL;
@@ -616,13 +615,6 @@ int mhi_dev_restore_mmio(struct mhi_dev *dev)
 	mhi_dev_mmio_disable_cmdb_interrupt(dev);
 
 	mhi_dev_mmio_mask_erdb_interrupts(dev);
-
-	for (i = 0; i < (MHI_DEV_MMIO_RANGE/4); i++) {
-		reg_cntl_addr = dev->mmio_base_addr +
-				MHI_DEV_MMIO_OFFSET + (i * 4);
-		reg_cntl_value = dev->mmio_backup[i];
-		writel_relaxed(reg_cntl_value, reg_cntl_addr);
-	}
 
 	mhi_dev_mmio_clear_interrupts(dev);
 
@@ -655,24 +647,6 @@ int mhi_dev_restore_mmio(struct mhi_dev *dev)
 	return 0;
 }
 EXPORT_SYMBOL(mhi_dev_restore_mmio);
-
-int mhi_dev_backup_mmio(struct mhi_dev *dev)
-{
-	uint32_t i = 0;
-	void __iomem *reg_cntl_addr;
-
-	if (WARN_ON(!dev))
-		return -EINVAL;
-
-	for (i = 0; i < MHI_DEV_MMIO_RANGE/4; i++) {
-		reg_cntl_addr = (void __iomem *) (dev->mmio_base_addr +
-				MHI_DEV_MMIO_OFFSET + (i * 4));
-		dev->mmio_backup[i] = readl_relaxed(reg_cntl_addr);
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL(mhi_dev_backup_mmio);
 
 int mhi_dev_get_mhi_addr(struct mhi_dev *dev)
 {

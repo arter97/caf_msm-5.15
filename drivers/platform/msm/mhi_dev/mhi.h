@@ -435,7 +435,6 @@ static inline void mhi_dev_ring_inc_index(struct mhi_dev_ring *ring,
 #define MHI_DEV_DATA_MAX			512
 
 #define MHI_DEV_MMIO_RANGE			0xb80
-#define MHI_DEV_MMIO_OFFSET			0x100
 
 struct ring_cache_req {
 	struct completion	*done;
@@ -533,7 +532,6 @@ struct mhi_dev {
 	phys_addr_t			mhi_dma_uc_mbox_crdb;
 	phys_addr_t			mhi_dma_uc_mbox_erdb;
 
-	uint32_t			*mmio_backup;
 	struct mhi_config		cfg;
 	u32				msi_data;
 	u32				msi_lower;
