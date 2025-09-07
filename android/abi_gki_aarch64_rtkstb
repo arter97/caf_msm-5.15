@@ -17,6 +17,7 @@
   bpf_trace_run2
   cancel_delayed_work
   cancel_delayed_work_sync
+  cancel_work
   cancel_work_sync
   cdev_add
   cdev_alloc
@@ -97,6 +98,7 @@
   devm_regulator_register
   devm_request_threaded_irq
   __devm_reset_control_get
+  __devm_reset_control_bulk_get
   devm_reset_controller_register
   devres_add
   __devres_alloc_node
@@ -183,6 +185,8 @@
   i2c_get_adapter
   i2c_register_driver
   i2c_transfer
+  i2c_new_smbus_alert_device
+  i2c_smbus_write_block_data
   I_BDEV
   idr_alloc
   idr_destroy
@@ -305,6 +309,7 @@
   of_property_read_string_helper
   of_property_read_u32_index
   of_property_read_variable_u32_array
+  of_i2c_get_board_info
   page_pinner_inited
   __page_pinner_put_page
   panic
@@ -374,6 +379,8 @@
   regulator_get_voltage
   regulator_list_voltage
   regulator_set_voltage
+  regulator_register_supply_alias
+  regulator_unregister_supply_alias
   remap_pfn_range
   remove_proc_entry
   request_threaded_irq
@@ -382,6 +389,9 @@
   __reset_control_get
   reset_control_put
   reset_control_reset
+  reset_control_bulk_acquire
+  reset_control_bulk_deassert
+  reset_control_bulk_release
   rfkill_alloc
   rfkill_destroy
   rfkill_register
@@ -714,6 +724,8 @@
   extcon_sync
   fwnode_gpiod_get_index
   fwnode_property_read_string
+  fwnode_typec_mux_get
+  fwnode_typec_switch_get
   typec_find_port_data_role
   typec_find_port_power_role
   typec_get_drvdata
@@ -721,6 +733,9 @@
   typec_set_data_role
   typec_set_pwr_role
   typec_unregister_port
+  typec_mux_put
+  typec_switch_put
+  typec_switch_set
 
 # required by ftdi-spi.ko
   usb_bulk_msg
@@ -1080,6 +1095,7 @@
   phy_speed_down
   phy_speed_up
   phy_start
+  phy_start_aneg
   phy_stop
   phy_support_asym_pause
   phy_suspend
@@ -1251,6 +1267,7 @@
   drm_connector_cleanup
   drm_connector_init
   drm_connector_update_edid_property
+  drm_connector_set_link_status_property
   drm_crtc_cleanup
   drm_crtc_handle_vblank
   drm_crtc_init_with_planes
@@ -1271,6 +1288,13 @@
   drm_dp_aux_register
   drm_dp_dpcd_read
   drm_dp_dpcd_write
+  drm_dp_read_dpcd_caps
+  drm_dp_read_sink_count_cap
+  drm_dp_read_dpcd_caps
+  drm_dp_read_desc
+  drm_dp_read_sink_count
+  drm_dp_read_downstream_info
+  drm_dp_send_real_edid_checksum
   drm_edid_is_valid
   drm_encoder_cleanup
   drm_encoder_init
@@ -1574,3 +1598,11 @@
   __traceiter_dwc3_writel
   __tracepoint_dwc3_writel
   trace_print_symbols_seq
+  pci_disable_msix
+  pci_enable_msix_range
+  pci_prepare_to_sleep
+  rproc_of_parse_firmware
+  pcim_set_mwi
+  pci_dev_run_wake
+  pci_status_get_and_clear_errors
+  pcie_set_readrq

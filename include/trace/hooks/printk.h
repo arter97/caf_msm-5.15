@@ -9,6 +9,8 @@
 
 #include <trace/hooks/vendor_hooks.h>
 
+struct printk_record;
+
 DECLARE_HOOK(android_vh_printk_hotplug,
 	TP_PROTO(int *flag),
 	TP_ARGS(flag));
@@ -22,6 +24,10 @@ DECLARE_HOOK(android_vh_printk_caller,
 DECLARE_HOOK(android_vh_printk_ext_header,
 	TP_PROTO(char *caller, size_t size, u32 id, int *ret),
 	TP_ARGS(caller, size, id, ret));
+
+DECLARE_HOOK(android_vh_printk_console_unlock,
+	TP_PROTO(const struct printk_record *r),
+	TP_ARGS(r));
 
 #endif /* _TRACE_HOOK_PRINTK_H */
 /* This part must be outside protection */
