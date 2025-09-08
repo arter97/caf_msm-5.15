@@ -7196,11 +7196,37 @@ static void msm_pcie_config_l1_disable_all(struct msm_pcie_dev_t *dev,
 	}
 }
 
+static bool has_no_l1_child(struct pci_dev *pdev)
+{
+	struct pci_dev *child = NULL;
+
+	list_for_each_entry(child, &pdev->subordinate->devices, bus_list) {
+		struct device_node *np = child->dev.of_node;
+
+		if (np && of_property_read_bool(np, "no-l1-supported")) {
+			dev_info(&child->dev, "Child device has no-l1-supported set\n");
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static int msm_pcie_config_l1_enable(struct pci_dev *pdev, void *dev)
 {
 	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
+	struct device_node *np = pdev->dev.of_node;
+
+	if ((np && of_property_read_bool(np, "no-l1-supported")) ||
+	    (pdev->subordinate && has_no_l1_child(pdev))) {
+		PCIE_DBG(pcie_dev, "Skipping L1 enable for device %04x:%02x:%02x.%d\n",
+			 pcie_dev->rc_idx, pdev->bus->number,
+			 PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
+		return 0;
+	}
 
 	msm_pcie_config_l1(pcie_dev, pdev, true);
+
 	return 0;
 }
 
