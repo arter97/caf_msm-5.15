@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.*/
+/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
 
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -286,10 +287,14 @@ static const struct mhi_channel_config modem_qcom_sa525m_mhi_channels[] = {
 	MHI_CHANNEL_CONFIG_DL(47, "IP_SW1", 1024, 5, MHI_EE_AMSS,
 			      MHI_DB_BRST_DISABLE, false, 0, false, false,
 			      false, false, 0, 0),
+	/* Hardware channels */
 	MHI_CHANNEL_CONFIG_UL(100, "IP_HW1", 512, 6, MHI_EE_AMSS,
 			      MHI_DB_BRST_ENABLE, false, 0, false, true, 0),
 	MHI_CHANNEL_CONFIG_DL(101, "IP_HW1", 512, 7, MHI_EE_AMSS,
 			      MHI_DB_BRST_ENABLE, false, 0, false, false,
+			      false, false, 0, 0),
+	MHI_CHANNEL_CONFIG_DL(103, "IP_HW_QDSS", 512, 8, MHI_EE_AMSS,
+			      MHI_DB_BRST_DISABLE, false, 0, false, false,
 			      false, false, 0, 0),
 };
 
@@ -318,6 +323,9 @@ static struct mhi_event_config modem_qcom_sa525m_mhi_events[] = {
 	MHI_EVENT_CONFIG(7, 7, MHI_ER_DATA, 1024, 5,
 			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_ENABLE,
 			true, true, false, 101),
+	MHI_EVENT_CONFIG(8, 8, MHI_ER_DATA, 1024, 5,
+			MHI_ER_PRIORITY_DEFAULT_NOSLEEP, MHI_DB_BRST_DISABLE,
+			true, false, false, 103),
 };
 
 static const struct mhi_controller_config modem_qcom_sdx65_mhi_config = {
