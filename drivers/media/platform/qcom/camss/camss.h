@@ -42,6 +42,8 @@
 
 #define CAMSS_RES_MAX 17
 
+#define CAMSS_ICC_MAX_PATH_COUNT (20)
+
 struct camss_subdev_resources {
 	bool is_disabled;
 	u8   resource_id;
@@ -95,11 +97,6 @@ enum camss_version {
 	CAMSS_X1E80100,
 };
 
-enum icc_count {
-	ICC_DEFAULT_COUNT = 0,
-	ICC_SM8250_COUNT = 4,
-};
-
 struct camss_resources {
 	enum camss_version version;
 	const char *pd_name;
@@ -130,7 +127,7 @@ struct camss {
 	int genpd_num;
 	struct device *genpd;
 	struct device_link *genpd_link;
-	struct icc_path *icc_path[ICC_SM8250_COUNT];
+	struct icc_path *icc_path[CAMSS_ICC_MAX_PATH_COUNT];
 	const struct camss_resources *res;
 	u8 perf_level;
 };
