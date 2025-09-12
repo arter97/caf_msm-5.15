@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -577,6 +577,7 @@ static int gdsc_set_mode(struct regulator_dev *rdev, unsigned int mode)
 	struct regulator_dev *parent_rdev;
 	uint32_t regval;
 	int ret = 0;
+	bool lock = false;
 
 	if (sc->skip_disable) {
 		switch (mode) {
@@ -602,7 +603,8 @@ static int gdsc_set_mode(struct regulator_dev *rdev, unsigned int mode)
 		 * of the GDSC control register for GDSCs whose register access
 		 * is gated by the parent supply enable state in hardware.
 		 */
-		ww_mutex_lock(&parent_rdev->mutex, NULL);
+		if (ww_mutex_trylock(&parent_rdev->mutex))
+			lock = true;
 
 		if (!parent_rdev->use_count) {
 			dev_err(&rdev->dev,
@@ -673,7 +675,7 @@ static int gdsc_set_mode(struct regulator_dev *rdev, unsigned int mode)
 	}
 
 done:
-	if (rdev->supply)
+	if (rdev->supply && lock)
 		ww_mutex_unlock(&parent_rdev->mutex);
 
 	return ret;

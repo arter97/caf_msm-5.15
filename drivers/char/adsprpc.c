@@ -4084,7 +4084,7 @@ static int fastrpc_init_create_dynamic_process(struct fastrpc_file *fl,
 	pages[0].size = imem->size;
 
 	/* Update IOVA of second page shared with DSP */
-	if (inbuf.pageslen > 1) {
+	if (inbuf.pageslen > 1 && sharedbuf_map) {
 		pages[1].addr = sharedbuf_map->phys;
 		pages[1].size = sharedbuf_map->size;
 	}
@@ -4242,13 +4242,15 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 			spin_unlock_irqrestore(&me->hlock, irq_flags);
 			fastrpc_mmap_add_global(mem);
 		}
-		phys = mem->phys;
-		size = mem->size;
+		if (mem) {
+			phys = mem->phys;
+			size = mem->size;
+		}
 		/*
 		 * If remote-heap VMIDs are defined in DTSI, then do
 		 * hyp_assign from HLOS to those VMs (LPASS, ADSP).
 		 */
-		if (rhvm->vmid && mem->refs == 1 && size) {
+		if (rhvm->vmid && mem && mem->refs == 1 && size) {
 			err = hyp_assign_phys(phys, (uint64_t)size,
 				hlosvm, 1,
 				rhvm->vmid, rhvm->vmperm, rhvm->vmcount);
@@ -4262,7 +4264,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 			rh_hyp_done = 1;
 		}
 		me->staticpd_flags = 1;
-		mem->is_persistent = true;
+		if (mem)
+			mem->is_persistent = true;
 	}
 
 	/*
@@ -4313,7 +4316,8 @@ bail:
 					hyp_err, phys, size);
 		}
 		mutex_lock(&fl->map_mutex);
-		fastrpc_mmap_free(mem, 0);
+		if (mem)
+			fastrpc_mmap_free(mem, 0);
 		mutex_unlock(&fl->map_mutex);
 	}
 	return err;
