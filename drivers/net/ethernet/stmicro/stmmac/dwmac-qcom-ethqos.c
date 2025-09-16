@@ -2635,7 +2635,7 @@ static void ethqos_phy_irq_disable(void *priv_n)
 	}
 }
 
-static int ethqos_request_phy_intr(struct qcom_ethqos *ethqos)
+static int ethqos_phy_intr_enable(struct qcom_ethqos *ethqos)
 {
 	int ret = 0;
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
@@ -2644,14 +2644,14 @@ static int ethqos_request_phy_intr(struct qcom_ethqos *ethqos)
 	init_completion(&ethqos->clk_enable_done);
 
 	ret = request_irq(ethqos->phy_intr, ETHQOS_PHY_ISR,
-			  IRQF_SHARED | IRQF_NO_AUTOEN, "emac_phy_intr", ethqos);
+			  IRQF_SHARED, "emac_phy_intr", ethqos);
 	if (ret) {
 		ETHQOSERR("Unable to register PHY IRQ %d\n",
 			  ethqos->phy_intr);
 		return ret;
 	}
 	priv->plat->phy_intr_en_extn_stm = true;
-	priv->phy_irq_enabled = false;
+	priv->phy_irq_enabled = true;
 	return ret;
 }
 
@@ -7906,7 +7906,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
 		if (!ethqos_phy_intr_config(ethqos))
-			ethqos_request_phy_intr(ethqos);
+			ethqos_phy_intr_enable(ethqos);
 		else
 			ETHQOSERR("Phy interrupt configuration failed");
 
