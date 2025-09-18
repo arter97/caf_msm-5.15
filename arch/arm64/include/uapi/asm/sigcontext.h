@@ -74,7 +74,11 @@ struct fpsimd_context {
 	struct _aarch64_ctx head;
 	__u32 fpsr;
 	__u32 fpcr;
+#if defined(__aarch64__)
 	__uint128_t vregs[32];
+#else
+	__u64 vregs[32];
+#endif
 };
 
 /*
