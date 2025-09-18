@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _UAPI_MSM_IPA_H_
@@ -161,6 +161,7 @@
 #define IPA_IOCTL_FLUSH_QOS_PARAM               105
 #define IPA_IOCTL_GET_QOS_PARAMS                106
 #define IPA_IOCTL_ADD_PPPOE_MAPPING             107
+#define IPA_IOCTL_SET_TUPLE_INFO                108
 
 /**
  * max size of the header to be inserted
@@ -199,6 +200,12 @@
 #define IPA_MAX_NUM_HW_PATH_CLIENTS 16
 
 /**
+ * max number of lan clients supported per device type
+ * for LAN stats via HW v2 max.
+ */
+#define IPA_MAX_NUM_HW_PATH_CLIENTS_V2 100
+
+/**
  * max number of destination pipes possible for a client.
  */
 #define QMI_IPA_MAX_CLIENT_DST_PIPES 4
@@ -209,7 +216,7 @@
 
 #define IPA_MAX_NUM_MAC_FLT 32
 #define IPA_MAX_NUM_IPv4_SEGS_FLT 16
-#define IPA_MAX_NUM_IFACE_FLT 75
+#define IPA_MAX_NUM_IFACE_FLT 83
 
 
 /**
@@ -3505,6 +3512,16 @@ struct ipa_lan_client_cntr_index {
 };
 
 /**
+ * struct ipa_wan_client_cntr_index
+ * @wan_cnt_idx: H/w counter index for wan uplink/downlink stats
+ * @lan_cnt_idx: H/w counter index for lan_to_lan downlink/uplink stats
+ */
+struct ipa_lan_wan_client_cntr_index {
+	__u8 wan_cnt_idx;
+	__u8 lan_cnt_idx;
+};
+
+/**
  * struct ipa_tether_device_info - tether device info indicated from IPACM
  * @ul_src_pipe: Source pipe of the lan client.
  * @hdr_len: Header length of the client.
@@ -3519,6 +3536,8 @@ struct ipa_tether_device_info {
 	struct ipa_lan_client lan_client[IPA_MAX_NUM_HW_PATH_CLIENTS];
 	struct ipa_lan_client_cntr_index
 		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
+	struct ipa_lan_wan_client_cntr_index
+		lan_wan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
 };
 
 /**
@@ -3859,6 +3878,21 @@ struct ipa_ioc_pppoe_info {
 	char dev_name[IPA_RESOURCE_NAME_MAX];
 	uint16_t vlan_id;
 	char pppoe_dev_name[IPA_RESOURCE_NAME_MAX];
+};
+
+struct tuple_flow_stats {
+	int is_active;
+	int is_ipv4;
+	uint16_t entry_idx;
+	uint32_t src_ip[4];
+	uint32_t dest_ip[4];
+	uint16_t src_port;
+	uint16_t dest_port;
+	uint16_t protocol;
+	uint64_t uplink_packets;
+	uint64_t uplink_bytes;
+	uint64_t downlink_packets;
+	uint64_t downlink_bytes;
 };
 
 /**
@@ -4229,6 +4263,10 @@ struct ipa_ioc_pppoe_info {
 #define IPA_IOC_ADD_PPPOE_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_PPPOE_MAPPING, \
 				struct ipa_ioc_pppoe_info)
+
+#define IPA_IOC_SET_TUPLE_INFO _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_SET_TUPLE_INFO, \
+				struct tuple_flow_stats)
 
 /*
  * unique magic number of the Tethering bridge ioctls

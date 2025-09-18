@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __MHI_H
@@ -435,7 +435,6 @@ static inline void mhi_dev_ring_inc_index(struct mhi_dev_ring *ring,
 #define MHI_DEV_DATA_MAX			512
 
 #define MHI_DEV_MMIO_RANGE			0xb80
-#define MHI_DEV_MMIO_OFFSET			0x100
 
 struct ring_cache_req {
 	struct completion	*done;
@@ -533,7 +532,6 @@ struct mhi_dev {
 	phys_addr_t			mhi_dma_uc_mbox_crdb;
 	phys_addr_t			mhi_dma_uc_mbox_erdb;
 
-	uint32_t			*mmio_backup;
 	struct mhi_config		cfg;
 	u32				msi_data;
 	u32				msi_lower;
@@ -695,11 +693,12 @@ enum mhi_id {
 
 enum mhi_msg_level {
 	MHI_MSG_VERBOSE = 0x0,
-	MHI_MSG_INFO = 0x1,
-	MHI_MSG_DBG = 0x2,
-	MHI_MSG_WARNING = 0x3,
-	MHI_MSG_ERROR = 0x4,
-	MHI_MSG_CRITICAL = 0x5,
+	MHI_MSG_DBG = 0x1,
+	MHI_MSG_INFO = 0x2,
+	MHI_MSG_NOTICE = 0x3,
+	MHI_MSG_WARNING = 0x4,
+	MHI_MSG_ERROR = 0x5,
+	MHI_MSG_CRITICAL = 0x6,
 	MHI_MSG_reserved = 0x80000000
 };
 

@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023,2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -133,6 +133,10 @@ enum ipa_eth_hw_config_enum_v01 {
 	/**<  Ethernet HW VLAN+IP supported \n  */
 	IPA_QMI_ETH_HW_NON_VLAN_IP_V01 = 0x02,
 	/**<  Ethernet HW NON_VLAN+IP supported   */
+	IPA_QMI_ETH_IPA_HW_PPPOE_VLAN_IP_V01 = 0x03,
+	/**<  Ethernet HW PPPoE+VLAN+IP supported  \n   */
+	IPA_QMI_ETH_IPA_HW_VLAN_VLAN_IP_V01 = 0x04,
+	/**<  Ethernet HW VLAN+VLAN+IP supported  */
 	IPA_QMI_ETH_HW_CONFIG_ENUM_MAX_ENUM_VAL_V01 = 2147483647
 	/**< To force a 32 bit signed enum.  Do not change or use*/
 };
