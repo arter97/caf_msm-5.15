@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -21,7 +21,7 @@
 	mhi_log(vf_id, MHI_MSG_DBG, fmt, ##args)
 
 #define MHI_SM_CONSOLE_DBG(vf_id, fmt, args...) \
-	mhi_log(vf_id, MHI_MSG_DBG, fmt, ##args)
+	mhi_log(vf_id, MHI_MSG_NOTICE, fmt, ##args)
 
 #define MHI_SM_ERR(vf_id, fmt, args...) \
 	mhi_log(vf_id, MHI_MSG_ERROR, fmt, ##args)
@@ -732,7 +732,7 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 
 	old_state = mhi_sm_ctx->mhi_state;
 	if (old_state == new_state) {
-		MHI_SM_ERR(mhi->vf_id, "Nothing to do, already in %d state\n", old_state);
+		MHI_SM_CONSOLE_DBG(mhi->vf_id, "Nothing to do, already in %d state\n", old_state);
 		res = 0;
 		goto exit;
 	}
@@ -828,7 +828,7 @@ static int mhi_sm_prepare_suspend(struct mhi_sm_dev *mhi_sm_ctx, enum mhi_dev_st
 				(mhi->vf_id, "Fail to disable DMA for M3\n");
 			goto exit;
 		}
-		MHI_SM_ERR(mhi->vf_id, "MHI DMA successfully disabled\n");
+		MHI_SM_CONSOLE_DBG(mhi->vf_id, "MHI DMA successfully disabled\n");
 		/* edma completely resets when link goes to susupend state */
 		if (mhi_sm_ctx->mhi_dev->use_edma)
 			mhi_edma_release();
@@ -1027,7 +1027,7 @@ static void mhi_sm_dev_event_manager(struct work_struct *work)
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
 	mutex_lock(&mhi_sm_ctx->mhi_state_lock);
-	MHI_SM_CONSOLE_DBG(mhi->vf_id, "Handling %s event, current states: %s & %s\n",
+	MHI_SM_DBG(mhi->vf_id, "Handling %s event, current states: %s & %s\n",
 			mhi_sm_dev_event_str(chg_event->event),
 			mhi_sm_mstate_str(mhi_sm_ctx->mhi_state),
 			mhi_sm_dstate_str(mhi_sm_ctx->d_state));
@@ -1126,7 +1126,7 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 	mutex_lock(&mhi_sm_ctx->mhi_state_lock);
 	old_dstate = mhi_sm_ctx->d_state;
 
-	MHI_SM_CONSOLE_DBG(mhi->vf_id, "Handling %s event, current states: %s and %s\n",
+	MHI_SM_DBG(mhi->vf_id, "Handling %s event, current states: %s and %s\n",
 			mhi_sm_pcie_event_str(chg_event->event),
 			mhi_sm_mstate_str(mhi_sm_ctx->mhi_state),
 			mhi_sm_dstate_str(old_dstate));
@@ -1192,9 +1192,6 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 			MHI_SM_DBG(mhi->vf_id, "Flush ring_init_wq before disable endpoint\n");
 			flush_workqueue(mhi->ring_init_wq);
 			mhi->stop_polling_m0 = false;
-			/* Avoid backing up mmio twice */
-			if (old_dstate != EP_PCIE_EVENT_PM_D3_HOT)
-				mhi_dev_backup_mmio(mhi_sm_ctx->mhi_dev);
 		}
 
 		ep_pcie_disable_endpoint(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->phandle);
@@ -1589,7 +1586,7 @@ int mhi_dev_notify_sm_event(struct mhi_dev *mhi, enum mhi_dev_event event)
 		return -EFAULT;
 	}
 
-	MHI_SM_ERR(mhi->vf_id, "received: %s\n",
+	MHI_SM_CONSOLE_DBG(mhi->vf_id, "received: %s\n",
 		mhi_sm_dev_event_str(event));
 
 	switch (event) {
@@ -1727,7 +1724,6 @@ void mhi_dev_sm_pcie_handler(struct ep_pcie_notify *notify)
 		}
 		spin_unlock_irqrestore(&mhi_sm_ctx->mhi_dev->lock, flags);
 
-		mhi_dev_backup_mmio(mhi_sm_ctx->mhi_dev);
 		MHI_SM_DBG(mhi->vf_id, "Hold wake for D3_HOT event\n");
 		pm_stay_awake(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
 		break;

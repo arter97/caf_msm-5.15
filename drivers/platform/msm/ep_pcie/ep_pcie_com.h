@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __EP_PCIE_COM_H
@@ -206,6 +206,13 @@
 #define PCIE20_BHI_VERSION_LOWER	0x200
 #define PCIE20_BHI_VERSION_UPPER	0x204
 #define PCIE20_BHI_INTVEC		0x220
+
+#define PCIE20_MMIO_CTRL_INT_MASK_A7    0x94
+#define PCIE20_ERDB_INT_MASK_A7_n(n)    (0x00c8 + 0x4 * (n))
+#define PCIE20_CHDB_INT_CLEAR_A7_n(n)   (0x0070 + 0x4 * (n))
+#define PCIE20_ERDB_INT_CLEAR_A7_n(n)   (0x0080 + 0x4 * (n))
+#define PCIE20_MMIO_CTRL_INT_CLEAR_A7   0x4c
+
 
 #define PCIE20_AUX_CLK_FREQ_REG        0xB40
 #define PCIE20_GEN3_RELATED_OFF		0x890
@@ -544,6 +551,7 @@ struct ep_pcie_dev_t {
 	u32			     msix_cap;
 	u32			     sriov_cap;
 	u32			     num_vfs;
+	u32			     *mmio_backup;
 	/* sriov_mask signifies the BME bit positions in PARF_INT_ALL_3_STATUS register */
 	ulong                        sriov_mask;
 	ulong                        sriov_enumerated;
@@ -593,6 +601,7 @@ struct ep_pcie_dev_t {
 	struct ep_pcie_msi_config    msi_cfg[MAX_PCIE_INSTANCES];
 	bool                         conf_ipa_msi_iatu[MAX_PCIE_INSTANCES];
 	bool                         use_iatu_msi;
+	bool			     mmio_backed;
 
 	struct ep_pcie_register_event *event_reg;
 	struct work_struct           handle_bme_work;
