@@ -5713,7 +5713,7 @@ static void read_mac_addr_from_fuse_reg(struct device_node *np)
 				mac_addr = mac_addr >> 8;
 			}
 			if (is_valid_ether_addr(temp_mac_addr)) {
-				strscpy(pparams.mac_addr, temp_mac_addr, sizeof(pparams.mac_addr));
+				memcpy(pparams.mac_addr, temp_mac_addr, sizeof(pparams.mac_addr));
 				pparams.is_valid_mac_addr = true;
 			} else {
 				ETHQOSERR("Fuse Mac address is invalid\n");
