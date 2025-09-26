@@ -995,15 +995,12 @@ struct inode *new_inode_pseudo(struct super_block *sb)
 struct inode *new_inode(struct super_block *sb)
 {
 	struct inode *inode;
-	unsigned long flags;
 
-	spin_lock_irqsave(&sb->s_inode_list_lock, flags);
+	spin_lock_prefetch(&sb->s_inode_list_lock);
 
 	inode = new_inode_pseudo(sb);
 	if (inode)
 		inode_sb_list_add(inode);
-	spin_unlock_irqrestore(&sb->s_inode_list_lock, flags);
-
 	return inode;
 }
 EXPORT_SYMBOL(new_inode);
