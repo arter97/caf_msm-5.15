@@ -2696,6 +2696,7 @@ static void gsi_resume(struct usb_function *f)
 {
 	struct f_gsi *gsi = func_to_gsi(f);
 	struct usb_composite_dev *cdev = f->config->cdev;
+	struct gsi_ctrl_pkt *cpkt_notify_connect;
 
 	log_event_dbg("%s for prot_id:%d", __func__, gsi->prot_id);
 
@@ -2710,6 +2711,20 @@ static void gsi_resume(struct usb_function *f)
 		config_ep_by_speed(cdev->gadget, f, gsi->c_port.notify);
 
 	gsi->c_port.is_suspended = false;
+
+	if (gsi->prot_id == IPA_USB_ECM) {
+		cpkt_notify_connect = gsi_ctrl_pkt_alloc(0, GFP_ATOMIC);
+		if (IS_ERR(cpkt_notify_connect)) {
+			log_event_dbg("%s: err cpkt_notify_connect\n", __func__);
+			return;
+		}
+		cpkt_notify_connect->type = GSI_CTRL_NOTIFY_CONNECT;
+
+		spin_lock(&gsi->c_port.lock);
+		list_add_tail(&cpkt_notify_connect->list,
+				&gsi->c_port.cpkt_resp_q);
+		spin_unlock(&gsi->c_port.lock);
+	}
 
 	/* Check any pending cpkt, and queue immediately on resume */
 	gsi_ctrl_send_notification(gsi);
