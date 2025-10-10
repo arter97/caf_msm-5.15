@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define KMSG_COMPONENT "QDSS diag bridge"
@@ -895,12 +895,14 @@ static int qdss_mhi_probe(struct mhi_device *mhi_dev,
 		  curr_chan);
 
 	if (dev_state == INIT_STATUS) {
-		if (strcmp(mhi_dev->name, DEFAULT_CHANNEL))
-			return -EINVAL;
-		if (!strcmp(id->chan, "QDSS"))
+		if (!strcmp(id->chan, "QDSS")) {
 			curr_chan = QDSS;
-		if (!strcmp(id->chan, "IP_HW_QDSS"))
+		} else if (!strcmp(id->chan, "IP_HW_QDSS")) {
 			curr_chan = QDSS_HW;
+		} else {
+			pr_err("Unsupported channel.\n");
+			return -EINVAL;
+		}
 	} else if (dev_state == MHI_STATE_RESET) {
 		if (strcmp(id->chan, str_mhi_curr_chan[curr_chan]))
 			return -EINVAL;
