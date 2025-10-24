@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _RMNET_IPA_FD_IOCTL_H
@@ -44,6 +44,8 @@
 #define WAN_IOCTL_CLEAN_UP                   25
 #define WAN_IOCTL_SET_LAN_CLIENT_INFO_V2     26
 #define WAN_IOCTL_CLEAR_LAN_CLIENT_INFO_V2   27
+#define WAN_IOCTL_QUERY_PER_CLIENT_STATS_V2  28
+
 
 /* User space may not have this defined. */
 #ifndef IFNAMSIZ
@@ -244,6 +246,27 @@ struct wan_ioctl_query_per_client_stats {
 		client_info[IPA_MAX_NUM_HW_PATH_CLIENTS];
 };
 
+struct wan_ioctl_query_per_client_stats_v2 {
+	/* Device type of the client. */
+	enum ipacm_per_client_device_type device_type;
+	/* Indicate whether to reset the stats (use 1) or not */
+	uint8_t reset_stats;
+	/* Indicates whether client is disconnected. */
+	uint8_t disconnect_clnt;
+	/* Number of clients. */
+	uint8_t num_clients;
+	/* Whether to query what client stats, lan2lan or wan */
+	uint8_t stats_type;
+	/* Client stats information either wan or lan2lan */
+	struct wan_ioctl_per_client_info
+		client_info[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	/* To query and store client lan2lan stats */
+	struct wan_ioctl_per_client_info
+		lan2lan_client_info[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	/* Reserved */
+	uint64_t reserved;
+};
+
 #define WAN_IOC_ADD_FLT_RULE _IOWR(WAN_IOC_MAGIC, \
 		WAN_IOCTL_ADD_FLT_RULE, \
 		struct ipa_install_fltr_rule_req_msg_v01 *)
@@ -307,6 +330,10 @@ struct wan_ioctl_query_per_client_stats {
 #define WAN_IOC_QUERY_PER_CLIENT_STATS _IOWR(WAN_IOC_MAGIC, \
 		WAN_IOCTL_QUERY_PER_CLIENT_STATS, \
 		struct wan_ioctl_query_per_client_stats *)
+
+#define WAN_IOC_QUERY_PER_CLIENT_STATS_V2 _IOWR(WAN_IOC_MAGIC, \
+			WAN_IOCTL_QUERY_PER_CLIENT_STATS_V2, \
+			struct wan_ioctl_query_per_client_stats_v2 *)
 
 #define WAN_IOC_SET_LAN_CLIENT_INFO _IOWR(WAN_IOC_MAGIC, \
 			WAN_IOCTL_SET_LAN_CLIENT_INFO, \

@@ -1175,10 +1175,25 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
 		prohibited_flags |= IEEE80211_CHAN_NO_320MHZ;
 		width = 320;
 
+#ifdef CFG80211_PROP_MULTI_LINK_SUPPORT
+		if (chandef->chan->band == NL80211_BAND_2GHZ)
+			return false;
+
+		if (chandef->chan->band == NL80211_BAND_5GHZ) {
+			sband = wiphy->bands[NL80211_BAND_5GHZ];
+		} else if (chandef->chan->band == NL80211_BAND_6GHZ) {
+			sband = wiphy->bands[NL80211_BAND_6GHZ];
+		} else {
+			pr_err("Unknown band %d\n", chandef->chan->band);
+			sband = NULL;
+		}
+#else
 		if (chandef->chan->band != NL80211_BAND_6GHZ)
 			return false;
 
 		sband = wiphy->bands[NL80211_BAND_6GHZ];
+#endif
+
 		if (!sband)
 			return false;
 

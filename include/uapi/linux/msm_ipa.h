@@ -161,6 +161,7 @@
 #define IPA_IOCTL_FLUSH_QOS_PARAM               105
 #define IPA_IOCTL_GET_QOS_PARAMS                106
 #define IPA_IOCTL_ADD_PPPOE_MAPPING             107
+#define IPA_IOCTL_SET_TUPLE_INFO                108
 
 /**
  * max size of the header to be inserted
@@ -197,6 +198,12 @@
  * for LAN stats via HW.
  */
 #define IPA_MAX_NUM_HW_PATH_CLIENTS 16
+
+/**
+ * max number of lan clients supported per device type
+ * for LAN stats via HW v2 max.
+ */
+#define IPA_MAX_NUM_HW_PATH_CLIENTS_V2 100
 
 /**
  * max number of destination pipes possible for a client.
@@ -3873,6 +3880,21 @@ struct ipa_ioc_pppoe_info {
 	char pppoe_dev_name[IPA_RESOURCE_NAME_MAX];
 };
 
+struct tuple_flow_stats {
+	int is_active;
+	int is_ipv4;
+	uint16_t entry_idx;
+	uint32_t src_ip[4];
+	uint32_t dest_ip[4];
+	uint16_t src_port;
+	uint16_t dest_port;
+	uint16_t protocol;
+	uint64_t uplink_packets;
+	uint64_t uplink_bytes;
+	uint64_t downlink_packets;
+	uint64_t downlink_bytes;
+};
+
 /**
  *   actual IOCTLs supported by IPA driver
  */
@@ -4241,6 +4263,10 @@ struct ipa_ioc_pppoe_info {
 #define IPA_IOC_ADD_PPPOE_MAPPING _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_PPPOE_MAPPING, \
 				struct ipa_ioc_pppoe_info)
+
+#define IPA_IOC_SET_TUPLE_INFO _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_SET_TUPLE_INFO, \
+				struct tuple_flow_stats)
 
 /*
  * unique magic number of the Tethering bridge ioctls
