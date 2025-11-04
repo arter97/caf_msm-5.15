@@ -4561,8 +4561,8 @@ static int camss_configure_pd(struct camss *camss)
 						      "power-domains",
 						      "#power-domain-cells");
 	if (camss->genpd_num < 0) {
-		dev_err(dev, "Power domains are not defined for camss\n");
-		return camss->genpd_num;
+		dev_warn(dev, "Power domains are not defined for camss\n");
+		camss->genpd_num = 1;
 	}
 
 	/*
