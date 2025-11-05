@@ -12,6 +12,9 @@
 
 #include "common.h"
 
+/* Misc */
+#define GMAC_JUMBO_LEN			16368
+
 /*  MAC registers */
 #define GMAC_CONFIG			0x00000000
 #define GMAC_EXT_CONFIG			0x00000004
@@ -230,9 +233,11 @@ enum power_event {
 #define GMAC_CONFIG_IPC			BIT(27)
 #define GMAC_CONFIG_IPG			GENMASK(26, 24)
 #define GMAC_CONFIG_IPG_SHIFT		24
+#define GMAC_CONFIG_GPSLCE		BIT(23)
 #define GMAC_CONFIG_2K			BIT(22)
 #define GMAC_CONFIG_CST			BIT(21)
 #define GMAC_CONFIG_ACS			BIT(20)
+#define GMAC_CONFIG_WD			BIT(19)
 #define GMAC_CONFIG_BE			BIT(18)
 #define GMAC_CONFIG_JD			BIT(17)
 #define GMAC_CONFIG_JE			BIT(16)
