@@ -27,9 +27,13 @@
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/pid_namespace.h>
 
 static bool con_enabled = IS_ENABLED(CONFIG_SERIAL_QCOM_GENI_CONSOLE_DEFAULT_ENABLED);
 module_param(con_enabled, bool, 0644);
+
+static bool lxclog_disabled = false;
+module_param(lxclog_disabled, bool, 0644);
 
 /* UART specific GENI registers */
 #define SE_UART_LOOPBACK_CFG		0x22c
@@ -486,6 +490,9 @@ static void qcom_geni_serial_console_write(struct console *co, const char *s,
 	unsigned long flags;
 	u32 geni_status;
 	u32 irq_en;
+
+	if (lxclog_disabled && (task_active_pid_ns(current) != &init_pid_ns))
+		return;
 
 	WARN_ON(co->index < 0 || co->index >= GENI_UART_CONS_PORTS);
 
