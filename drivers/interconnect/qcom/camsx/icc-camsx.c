@@ -108,6 +108,13 @@ int qcom_icc_camsx_probe(struct platform_device *pdev)
 	if (IS_ERR(sxp->regmap))
 		return PTR_ERR(sxp->regmap);
 
+	sxp->icp_clk = devm_clk_get(dev, "icp_clk");
+	if (IS_ERR(sxp->icp_clk))
+		return -ENOENT;
+
+	if (of_property_read_u32(dev->of_node, "icp-clock-frequency", &sxp->icp_clk_freq))
+		return -ENOENT;
+
 	sxp->dev = dev;
 
 	provider = &sxp->provider;
@@ -125,6 +132,12 @@ int qcom_icc_camsx_probe(struct platform_device *pdev)
 	ret = icc_camsx_clk_register(dev, sxp);
 	if (ret) {
 		dev_err(dev, "ICC clocks registration failed.\n");
+		return ret;
+	}
+
+	ret = icc_camsx_cpas_register(dev, sxp);
+	if (ret) {
+		dev_err(dev, "CPAS registration failed: %d\n", ret);
 		return ret;
 	}
 

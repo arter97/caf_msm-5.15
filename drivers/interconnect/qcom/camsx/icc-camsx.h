@@ -11,6 +11,7 @@
 #include <dt-bindings/interconnect/qcom,icc.h>
 
 #include "icc-camsx-clk.h"
+#include "icc-camsx-cpas.h"
 
 #define to_qcom_camsx_provider(_provider) \
 	container_of(_provider, struct qcom_icc_camsx_provider, provider)
@@ -34,6 +35,11 @@ struct qcom_icc_camsx_provider {
 	struct icc_provider provider;
 	struct device *dev;
 	struct regmap *regmap;
+	struct clk *icp_clk;
+	u32 icp_clk_freq;
+	size_t qchan_clks_num;
+	const char **qchan_clks;
+	/* keep last */
 	struct icc_onecell_data *onecell;
 };
 
