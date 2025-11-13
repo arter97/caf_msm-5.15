@@ -2178,13 +2178,6 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 		goto err_pdr_alloc;
 	}
 
-	pds = pdr_add_lookup(ctrl->pdr, "avs/audio", "msm/adsp/audio_pd");
-	if (IS_ERR(pds) && PTR_ERR(pds) != -EALREADY) {
-		ret = PTR_ERR(pds);
-		dev_err(dev, "pdr add lookup failed: %d\n", ret);
-		goto err_pdr_lookup;
-	}
-
 	ret = of_qcom_slim_ngd_register(dev, ctrl);
 	if (ret) {
 		SLIM_ERR(ctrl, "qcom_slim_ngd_register failed ret:%d\n", ret);
@@ -2193,6 +2186,13 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 
 	platform_driver_register(&qcom_slim_ngd_driver);
 	SLIM_INFO(ctrl, "NGD SB controller is up!\n");
+
+	pds = pdr_add_lookup(ctrl->pdr, "avs/audio", "msm/adsp/audio_pd");
+	if (IS_ERR(pds) && PTR_ERR(pds) != -EALREADY) {
+		ret = PTR_ERR(pds);
+		dev_err(dev, "pdr add lookup failed: %d\n", ret);
+		goto err_pdr_lookup;
+	}
 	return 0;
 
 err_pdr_lookup:
