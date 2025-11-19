@@ -740,6 +740,7 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 
 		csid->res->hw_ops->hw_version(csid);
 	} else {
+		csid->res->hw_ops->reset(csid);
 		disable_irq(csid->irq);
 		camss_disable_clocks(csid->nclocks, csid->clock);
 		regulator_bulk_disable(csid->num_supplies,
