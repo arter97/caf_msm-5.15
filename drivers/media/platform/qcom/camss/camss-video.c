@@ -590,21 +590,41 @@ static int video_open(struct file *file)
 	struct camss_video *video = video_drvdata(file);
 	int ret;
 
-	ret = v4l2_pipeline_pm_get(&vdev->entity);
+	mutex_lock(&video->lock);
+
+	ret = v4l2_fh_open(file);
 	if (ret < 0) {
-		dev_err(video->camss->dev, "Failed to power up pipeline: %d\n",
-			ret);
-		return ret;
+		dev_err(video->camss->dev, "Failed to open video node: %d\n", ret);
+		goto err_mutex_unlock;
 	}
 
-	return 0;
+	ret = v4l2_pipeline_pm_get(&vdev->entity);
+	if (ret < 0) {
+		dev_err(video->camss->dev, "Failed to power up pipeline: %d\n", ret);
+		goto err_vb2_fop_release;
+	}
+
+	mutex_unlock(&video->lock);
+
+	return ret;
+
+err_vb2_fop_release:
+	vb2_fop_release(file);
+err_mutex_unlock:
+	mutex_unlock(&video->lock);
+
+	return ret;
 }
 
 static int video_release(struct file *file)
 {
 	struct video_device *vdev = video_devdata(file);
+	struct camss_video *video = video_drvdata(file);
 
+	mutex_lock(&video->lock);
 	v4l2_pipeline_pm_put(&vdev->entity);
+	vb2_fop_release(file);
+	mutex_unlock(&video->lock);
 
 	return 0;
 }
