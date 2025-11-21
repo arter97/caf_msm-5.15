@@ -50,7 +50,14 @@ static void dwmac4_core_init(struct mac_device_info *hw,
 	if (hw->crc_strip_en)
 		value |= GMAC_CONFIG_CST;
 
+	value |= GMAC_CONFIG_GPSLCE;
+	value |= GMAC_CONFIG_WD;
+
 	writel(value, ioaddr + GMAC_CONFIG);
+
+	value = readl(ioaddr + GMAC_EXT_CONFIG);
+	value |= GMAC_JUMBO_LEN;
+	writel(value, ioaddr + GMAC_EXT_CONFIG);
 
 	/* Configure LPI 1us counter to number of CSR clock ticks in 1us - 1 */
 	clk_rate = clk_get_rate(priv->plat->stmmac_clk);
