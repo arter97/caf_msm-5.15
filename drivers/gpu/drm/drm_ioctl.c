@@ -232,7 +232,7 @@ static int drm_getstats(struct drm_device *dev, void *data,
 /*
  * Get device/driver capabilities
  */
-int drm_getcap(struct drm_device *dev, void *data, struct drm_file *file_priv)
+static int drm_getcap(struct drm_device *dev, void *data, struct drm_file *file_priv)
 {
 	struct drm_get_cap *req = data;
 	struct drm_crtc *crtc;
@@ -311,7 +311,7 @@ int drm_getcap(struct drm_device *dev, void *data, struct drm_file *file_priv)
 /*
  * Set device/driver capabilities
  */
-int
+static int
 drm_setclientcap(struct drm_device *dev, void *data, struct drm_file *file_priv)
 {
 	struct drm_set_client_cap *req = data;

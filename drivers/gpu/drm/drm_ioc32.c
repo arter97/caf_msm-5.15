@@ -30,7 +30,6 @@
 #include <linux/compat.h>
 #include <linux/ratelimit.h>
 #include <linux/export.h>
-#include <drm/drm_ioctl.h>
 
 #include <drm/drm_file.h>
 #include <drm/drm_print.h>
@@ -44,8 +43,6 @@
 #define DRM_IOCTL_GET_MAP32		DRM_IOWR(0x04, drm_map32_t)
 #define DRM_IOCTL_GET_CLIENT32		DRM_IOWR(0x05, drm_client32_t)
 #define DRM_IOCTL_GET_STATS32		DRM_IOR( 0x06, drm_stats32_t)
-#define DRM_IOCTL_GET_CAP32            	DRM_IOWR(0x0c, drm_get_cap32_t)
-#define DRM_IOCTL_SET_CLIENT_CAP32     	DRM_IOW(0x0d, drm_set_client_cap32_t)
 
 #define DRM_IOCTL_SET_UNIQUE32		DRM_IOW( 0x10, drm_unique32_t)
 #define DRM_IOCTL_ADD_MAP32		DRM_IOWR(0x15, drm_map32_t)
@@ -309,75 +306,6 @@ static int compat_drm_getstats(struct file *file, unsigned int cmd,
 	if (clear_user(argp, sizeof(drm_stats32_t)))
 		return -EFAULT;
 	return 0;
-}
-
-/* DRM_IOCTL_GET_CAP ioctl argument type */
-typedef struct drm_get_cap32 {
-        u32 capability;
-        u32 value;
-} drm_get_cap32_t;
-
-/*
- * Get device/driver capabilities
- */
-static int compat_drm_getcap(struct file *file, unsigned int cmd,
-                               unsigned long arg)
-{
-
-       drm_get_cap32_t c32 ;
-       drm_get_cap32_t __user *argp = (void __user*)arg  ;
-       struct drm_get_cap cap ;
-       int err ;
-       if(copy_from_user(&c32, argp, sizeof(c32))){
-               return -EFAULT ;
-       }
-       cap = (struct drm_get_cap){c32.capability, c32.value} ;
-
-
-       err =  drm_ioctl_kernel(file, drm_getcap, &cap, DRM_RENDER_ALLOW);
-       if(err)
-               return err;
-
-       c32 = (drm_get_cap32_t){cap.capability, cap.value} ;
-
-       if(copy_to_user(argp, &c32, sizeof(c32)))
-               return -EFAULT;
-
-       return 0 ;
-
-}
-
-/* DRM_IOCTL_SET_CLIENT_CAP ioctl argument type */
-typedef struct drm_set_client_cap32 {
-        u32 capability;
-        u32 value;
-} drm_set_client_cap32_t;
-
-/*
- * Set device/driver capabilities
- */
-static int
-compat_drm_setclientcap(struct file *file, unsigned int cmd,
-                               unsigned long arg)
-{
-       drm_set_client_cap32_t c32 ;
-       drm_set_client_cap32_t __user *argp = (void __user*)arg  ;
-       struct drm_set_client_cap cap ;
-       int err ;
-       if(copy_from_user(&c32, argp, sizeof(c32))){
-               return -EFAULT ;
-       }
-       cap = (struct drm_set_client_cap){c32.capability,c32.value} ;
-
-       err =  drm_ioctl_kernel(file, drm_setclientcap, &cap, 0);
-       if(err)
-               return err;
-
-       c32 =  (drm_set_client_cap32_t){cap.capability, cap.value} ;
-       if(copy_to_user(argp, &c32, sizeof(c32)))
-               return -EFAULT;
-
-       return 0 ;
 }
 
 #if IS_ENABLED(CONFIG_DRM_LEGACY)
@@ -991,8 +919,6 @@ static struct {
 #endif
 	DRM_IOCTL32_DEF(DRM_IOCTL_GET_CLIENT, compat_drm_getclient),
 	DRM_IOCTL32_DEF(DRM_IOCTL_GET_STATS, compat_drm_getstats),
-	DRM_IOCTL32_DEF(DRM_IOCTL_GET_CAP, compat_drm_getcap),
-        DRM_IOCTL32_DEF(DRM_IOCTL_SET_CLIENT_CAP, compat_drm_setclientcap),
 	DRM_IOCTL32_DEF(DRM_IOCTL_SET_UNIQUE, compat_drm_setunique),
 #if IS_ENABLED(CONFIG_DRM_LEGACY)
 	DRM_IOCTL32_DEF(DRM_IOCTL_ADD_MAP, compat_drm_addmap),
