@@ -229,6 +229,15 @@
 #define IPA_MAX_FLT_RT_CLIENTS 60
 
 /**
+ * MAX number of the FLT_RT stats counter supported for v2.
+ */
+#define IPA_MAX_FLT_RT_CNT_INDEX_V2 (255)
+#define IPA_FLT_RT_HW_COUNTER_V2 (200)
+#define IPA_FLT_RT_SW_COUNTER_V2 \
+	(IPA_MAX_FLT_RT_CNT_INDEX_V2 - IPA_FLT_RT_HW_COUNTER_V2)
+#define IPA_MAX_FLT_RT_CLIENTS_V2 100
+
+/**
  * Max number of ports/IPs IPPT exception
  */
 
@@ -3538,6 +3547,25 @@ struct ipa_tether_device_info {
 		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
 	struct ipa_lan_wan_client_cntr_index
 		lan_wan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS];
+};
+
+/**
+ * struct ipa_tether_device_info_v2 - tether device info indicated from IPACM
+ * @ul_src_pipe: Source pipe of the lan client.
+ * @hdr_len: Header length of the client.
+ * @num_clients: Number of clients connected.
+ */
+struct ipa_tether_device_info_v2 {
+	__s32 ul_src_pipe;
+	__u8 hdr_len;
+	__u8 padding1;
+	__u16 padding2;
+	__u32 num_clients;
+	struct ipa_lan_client lan_client[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	struct ipa_lan_client_cntr_index
+		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	struct ipa_lan_wan_client_cntr_index
+		lan_wan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
 };
 
 /**
