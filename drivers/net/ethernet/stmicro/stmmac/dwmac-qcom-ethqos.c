@@ -29,6 +29,7 @@
 #include <linux/if_arp.h>
 #include <linux/inet.h>
 #include <net/inet_common.h>
+#include <linux/clk-provider.h>
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -1845,7 +1846,7 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 	if (priv->plat->pclk)
 		clk_disable_unprepare(priv->plat->pclk);
 
-	if (priv->plat->clk_ptp_ref)
+	if (priv->plat->clk_ptp_ref && __clk_is_enabled(priv->plat->clk_ptp_ref))
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 
 	if (ethqos->rgmii_clk)
