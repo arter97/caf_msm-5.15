@@ -445,22 +445,34 @@ static void dwxgmac2_flow_ctrl(struct mac_device_info *hw, unsigned int duplex,
 			       u32 tx_cnt)
 {
 	void __iomem *ioaddr = hw->pcsr;
-	u32 i;
-	u32 flow = readl(ioaddr + XGMAC_RX_FLOW_CTRL);
+	unsigned int flow = 0;
+	u32 queue = 0;
 
-	if (!fc)
-		writel(flow & (~XGMAC_RFE), ioaddr + XGMAC_RX_FLOW_CTRL);
-	if (fc & FLOW_RX)
-		writel(XGMAC_RFE, ioaddr + XGMAC_RX_FLOW_CTRL);
+	pr_debug("DWXGMAC2 Flow-Control:\n");
+	if (fc & FLOW_RX) {
+		pr_debug("\tReceive Flow-Control ON\n");
+		flow |= XGMAC_RFE;
+	} else {
+		pr_debug("\tReceive Flow-Control OFF\n");
+	}
+	writel(flow, ioaddr + XGMAC_RX_FLOW_CTRL);
+
 	if (fc & FLOW_TX) {
-		for (i = 0; i < tx_cnt; i++) {
-			u32 value = XGMAC_TFE;
+		pr_debug("\tTransmit Flow-Control ON\n");
+
+		if (duplex)
+			pr_debug("\tduplex mode: PAUSE %d\n", pause_time);
+
+		for (queue = 0; queue < tx_cnt; queue++) {
+			flow = XGMAC_TFE;
 
 			if (duplex)
-				value |= pause_time << XGMAC_PT_SHIFT;
-
-			writel(value, ioaddr + XGMAC_Qx_TX_FLOW_CTRL(i));
+				flow |= (pause_time << XGMAC_PT_SHIFT);
+			writel(flow, ioaddr + XGMAC_Qx_TX_FLOW_CTRL(queue));
 		}
+	} else {
+		for (queue = 0; queue < tx_cnt; queue++)
+			writel(0, ioaddr + XGMAC_Qx_TX_FLOW_CTRL(queue));
 	}
 }
 
