@@ -576,6 +576,8 @@ static int csid_set_clock_rates(struct csid_device *csid)
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
 
+			camss_set_perf_level(csid->camss, j);
+
 			rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (rate < 0) {
 				dev_err(dev, "clk round rate failed: %ld\n",
@@ -589,7 +591,10 @@ static int csid_set_clock_rates(struct csid_device *csid)
 				return ret;
 			}
 		} else if (clock->nfreqs) {
-			clk_set_rate(clock->clk, clock->freq[0]);
+			u32 perf_level = min(camss_get_perf_level(csid->camss), clock->nfreqs - 1);
+
+			dev_dbg(dev, "%s Clock: %s, Level: %d", __func__, clock->name, perf_level);
+			clk_set_rate(clock->clk, clock->freq[perf_level]);
 		}
 	}
 
@@ -1233,7 +1238,7 @@ void msm_csid_get_csid_id(struct media_entity *entity, u8 *id)
  *
  * Return lane assign
  */
-static u32 csid_get_lane_assign(struct csiphy_lanes_cfg *lane_cfg)
+static u32 __maybe_unused csid_get_lane_assign(struct csiphy_lanes_cfg *lane_cfg)
 {
 	u32 lane_assign = 0;
 	int i;
@@ -1266,8 +1271,6 @@ static int csid_link_setup(struct media_entity *entity,
 		struct v4l2_subdev *sd;
 		struct csid_device *csid;
 		struct csiphy_device *csiphy;
-		struct csiphy_lanes_cfg *lane_cfg;
-
 		sd = media_entity_to_v4l2_subdev(entity);
 		csid = v4l2_get_subdevdata(sd);
 
@@ -1280,16 +1283,13 @@ static int csid_link_setup(struct media_entity *entity,
 		sd = media_entity_to_v4l2_subdev(remote->entity);
 		csiphy = v4l2_get_subdevdata(sd);
 
-		/* If a sensor is not linked to CSIPHY */
-		/* do no allow a link from CSIPHY to CSID */
-		if (!csiphy->cfg.csi2)
-			return -EPERM;
-
 		csid->phy.csiphy_id = csiphy->id;
 
-		lane_cfg = &csiphy->cfg.csi2->lane_cfg;
-		csid->phy.lane_cnt = lane_cfg->num_data;
-		csid->phy.lane_assign = csid_get_lane_assign(lane_cfg);
+		/* Allow a link from CSIPHY to CSID in test mode */
+		if (csiphy->cfg.csi2) {
+			csid->phy.lane_cnt = csiphy->cfg.csi2->lane_cfg.num_data;
+			csid->phy.lane_assign = csid_get_lane_assign(&csiphy->cfg.csi2->lane_cfg);
+		}
 	}
 	/* Decide which virtual channels to enable based on which source pads are enabled */
 	if (local->flags & MEDIA_PAD_FL_SOURCE) {

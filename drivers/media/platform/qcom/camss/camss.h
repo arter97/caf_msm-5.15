@@ -43,6 +43,8 @@
 #define CAMSS_RES_MAX 17
 
 struct camss_subdev_resources {
+	bool is_disabled;
+	u8   resource_id;
 	char *regulators[CAMSS_RES_MAX];
 	char *clock[CAMSS_RES_MAX];
 	char *clock_for_reset[CAMSS_RES_MAX];
@@ -128,6 +130,7 @@ struct camss {
 	struct device_link *genpd_link;
 	struct icc_path *icc_path[ICC_SM8250_COUNT];
 	const struct camss_resources *res;
+	u8 perf_level;
 };
 
 struct camss_camera_interface {
@@ -152,6 +155,9 @@ struct parent_dev_ops {
 	int (*put)(struct camss *camss, int id);
 	void __iomem *(*get_base_address)(struct camss *camss, int id);
 };
+
+void camss_set_perf_level(struct camss *camss, u32 level);
+u32 camss_get_perf_level(struct camss *camss);
 
 void camss_add_clock_margin(u64 *rate);
 int camss_enable_clocks(int nclocks, struct camss_clock *clock,

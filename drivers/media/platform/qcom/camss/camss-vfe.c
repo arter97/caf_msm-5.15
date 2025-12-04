@@ -995,6 +995,8 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
 
+			camss_set_perf_level(vfe->camss, j);
+
 			rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (rate < 0) {
 				dev_err(dev, "clk round rate failed: %ld\n",
@@ -1007,6 +1009,11 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 				dev_err(dev, "clk set rate failed: %d\n", ret);
 				return ret;
 			}
+		} else if (clock->nfreqs) {
+			u32 perf_level = min(camss_get_perf_level(vfe->camss), clock->nfreqs - 1);
+
+			dev_dbg(dev, "%s Clock: %s, Level: %d", __func__, clock->name, perf_level);
+			clk_set_rate(clock->clk, clock->freq[perf_level]);
 		}
 	}
 
