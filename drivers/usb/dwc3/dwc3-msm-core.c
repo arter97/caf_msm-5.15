@@ -510,6 +510,12 @@ struct dwc3_msm {
 	struct clk		*bus_aggr_clk;
 	struct clk		*noc_aggr_clk;
 	struct clk		*cfg_ahb_clk;
+	struct clk		*cfg_noc_clk;
+	struct clk		*noc_aggr_north_ahb_clk;
+	struct clk		*noc_aggr_south_ahb_clk;
+	struct clk		*noc_aggr_north_axi_clk;
+	struct clk		*noc_aggr_south_axi_clk;
+	struct clk		*noc_sys_clk;
 	struct reset_control	*core_reset;
 	struct regulator	*dwc3_gdsc;
 
@@ -3821,7 +3827,7 @@ static int dwc3_clk_enable_disable(struct dwc3_msm *mdwc, bool enable, bool togg
 	long core_clk_rate;
 
 	if (!enable)
-		goto disable_bus_aggr_clk;
+		goto disable_noc_sys_clk;
 
 	if (toggle_sleep) {
 		ret = clk_prepare_enable(mdwc->sleep_clk);
@@ -3872,9 +3878,56 @@ static int dwc3_clk_enable_disable(struct dwc3_msm *mdwc, bool enable, bool togg
 		goto disable_utmi_clk;
 	}
 
+	ret = clk_prepare_enable(mdwc->cfg_noc_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: cfg_noc_clk enable failed\n", __func__);
+		goto disable_bus_aggr_clk;
+	}
+
+	ret = clk_prepare_enable(mdwc->noc_aggr_north_ahb_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: noc_aggr_north_ahb_clk enable failed\n", __func__);
+		goto disable_cfg_noc_clk;
+	}
+
+	ret = clk_prepare_enable(mdwc->noc_aggr_south_ahb_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: noc_aggr_south_ahb_clk enable failed\n", __func__);
+		goto disable_noc_aggr_north_ahb_clk;
+	}
+
+	ret = clk_prepare_enable(mdwc->noc_aggr_north_axi_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: noc_aggr_north_axi_clk enable failed\n", __func__);
+		goto disable_noc_aggr_south_ahb_clk;
+	}
+
+	ret = clk_prepare_enable(mdwc->noc_aggr_south_axi_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: noc_aggr_south_axi_clk enable failed\n", __func__);
+		goto disable_noc_aggr_north_axi_clk;
+	}
+
+	ret = clk_prepare_enable(mdwc->noc_sys_clk);
+	if (ret < 0) {
+		dev_err(mdwc->dev, "%s: noc_sys_clk enable failed\n", __func__);
+		goto disable_noc_aggr_south_axi_clk;
+	}
 	return 0;
 
 	/* Disable clocks */
+disable_noc_sys_clk:
+	clk_disable_unprepare(mdwc->noc_sys_clk);
+disable_noc_aggr_south_axi_clk:
+	clk_disable_unprepare(mdwc->noc_aggr_south_axi_clk);
+disable_noc_aggr_north_axi_clk:
+	clk_disable_unprepare(mdwc->noc_aggr_north_axi_clk);
+disable_noc_aggr_south_ahb_clk:
+	clk_disable_unprepare(mdwc->noc_aggr_south_ahb_clk);
+disable_noc_aggr_north_ahb_clk:
+	clk_disable_unprepare(mdwc->noc_aggr_north_ahb_clk);
+disable_cfg_noc_clk:
+	clk_disable_unprepare(mdwc->cfg_noc_clk);
 disable_bus_aggr_clk:
 	clk_disable_unprepare(mdwc->bus_aggr_clk);
 disable_utmi_clk:
@@ -4692,6 +4745,30 @@ static int dwc3_msm_get_clk_gdsc(struct dwc3_msm *mdwc)
 			return ret;
 		}
 	}
+
+	mdwc->cfg_noc_clk = devm_clk_get(mdwc->dev, "cfg_noc_clk");
+	if (IS_ERR(mdwc->cfg_noc_clk))
+		mdwc->cfg_noc_clk = NULL;
+
+	mdwc->noc_aggr_north_ahb_clk = devm_clk_get(mdwc->dev, "noc_aggr_north_ahb_clk");
+	if (IS_ERR(mdwc->noc_aggr_north_ahb_clk))
+		mdwc->noc_aggr_north_ahb_clk = NULL;
+
+	mdwc->noc_aggr_south_ahb_clk = devm_clk_get(mdwc->dev, "noc_aggr_south_ahb_clk");
+	if (IS_ERR(mdwc->noc_aggr_south_ahb_clk))
+		mdwc->noc_aggr_south_ahb_clk = NULL;
+
+	mdwc->noc_aggr_north_axi_clk = devm_clk_get(mdwc->dev, "noc_aggr_north_axi_clk");
+	if (IS_ERR(mdwc->noc_aggr_north_axi_clk))
+		mdwc->noc_aggr_north_axi_clk = NULL;
+
+	mdwc->noc_aggr_south_axi_clk = devm_clk_get(mdwc->dev, "noc_aggr_south_axi_clk");
+	if (IS_ERR(mdwc->noc_aggr_south_axi_clk))
+		mdwc->noc_aggr_south_axi_clk = NULL;
+
+	mdwc->noc_sys_clk = devm_clk_get(mdwc->dev, "noc_sys_clk");
+	if (IS_ERR(mdwc->noc_sys_clk))
+		mdwc->noc_sys_clk = NULL;
 
 	return 0;
 }
