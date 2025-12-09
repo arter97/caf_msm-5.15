@@ -914,6 +914,7 @@ static bool csiphy_is_gen2(u32 version)
 	case CAMSS_8300:
 	case CAMSS_845:
 	case CAMSS_8550:
+	case CAMSS_8550GEN2:
 	case CAMSS_8775P:
 	case CAMSS_X1E80100:
 		ret = true;
@@ -1014,6 +1015,7 @@ static int csiphy_init(struct csiphy_device *csiphy)
 		regs->offset = 0x1000;
 		break;
 	case CAMSS_8550:
+	case CAMSS_8550GEN2:
 		regs->lane_regs = &lane_regs_sm8550[0];
 		regs->lane_array_size = ARRAY_SIZE(lane_regs_sm8550);
 		regs->offset = 0x1000;

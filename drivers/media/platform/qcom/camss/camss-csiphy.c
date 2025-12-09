@@ -137,15 +137,17 @@ static u8 csiphy_get_bpp(const struct csiphy_format_info *formats,
 static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 {
 	struct device *dev = csiphy->camss->dev;
-	s64 link_freq;
+	s64 link_freq = -1;
 	int i, j;
 	int ret;
 
 	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
 				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
-	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
+	if (csiphy->cfg.csi2) {
+		link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp,
+						csiphy->cfg.csi2->lane_cfg.num_data);
+	}
 
-	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
 	if (link_freq < 0)
 		link_freq  = 0;
 
@@ -172,6 +174,8 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 			/* set highest possible CSIPHY clock rate */
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
+
+			camss_set_perf_level(csiphy->camss, j);
 
 			round_rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (round_rate < 0) {
@@ -265,14 +269,16 @@ static int csiphy_set_power(struct v4l2_subdev *sd, int on)
 static int csiphy_stream_on(struct csiphy_device *csiphy)
 {
 	struct csiphy_config *cfg = &csiphy->cfg;
-	s64 link_freq;
-	u8 lane_mask = csiphy->res->hw_ops->get_lane_mask(&cfg->csi2->lane_cfg);
+	s64 link_freq = -1;
 	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
 				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
-	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
-	u8 val;
+	u8 val, lane_mask = 0;
 
-	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
+	if (csiphy->cfg.csi2) {
+		lane_mask = csiphy->res->hw_ops->get_lane_mask(&cfg->csi2->lane_cfg);
+		link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp,
+						csiphy->cfg.csi2->lane_cfg.num_data);
+	}
 
 	if (link_freq < 0) {
 		dev_err(csiphy->camss->dev,
@@ -690,7 +696,10 @@ int msm_csiphy_subdev_init(struct camss *camss,
 				continue;
 		}
 
-		csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d", csiphy->id);
+		if (camss->res->version != CAMSS_8550GEN2)
+			csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d",
+								      csiphy->id);
+
 	}
 
 	/* CSIPHY supplies */

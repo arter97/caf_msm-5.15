@@ -168,9 +168,9 @@ static const struct camss_format_info formats_rdi_845[] = {
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 14) },
 	{ MEDIA_BUS_FMT_Y8_1X8, 8, V4L2_PIX_FMT_GREY, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 8) },
-	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_Y10P, 1,
+	{ MEDIA_BUS_FMT_Y10_1X10, 10, V4L2_PIX_FMT_Y10, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 10) },
-	{ MEDIA_BUS_FMT_Y10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_Y10, 1,
+	{ MEDIA_BUS_FMT_Y10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_Y10P, 1,
 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
 };
 
@@ -348,6 +348,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 	case CAMSS_8300:
 	case CAMSS_845:
 	case CAMSS_8550:
+	case CAMSS_8550GEN2:
 	case CAMSS_8775P:
 	case CAMSS_X1E80100:
 		switch (sink_code) {
@@ -995,6 +996,8 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
 
+			camss_set_perf_level(vfe->camss, j);
+
 			rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (rate < 0) {
 				dev_err(dev, "clk round rate failed: %ld\n",
@@ -1007,6 +1010,11 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 				dev_err(dev, "clk set rate failed: %d\n", ret);
 				return ret;
 			}
+		} else if (clock->nfreqs) {
+			u32 perf_level = min(camss_get_perf_level(vfe->camss), clock->nfreqs - 1);
+
+			dev_dbg(dev, "%s Clock: %s, Level: %d", __func__, clock->name, perf_level);
+			clk_set_rate(clock->clk, clock->freq[perf_level]);
 		}
 	}
 
@@ -1996,6 +2004,7 @@ static int vfe_bpl_align(struct vfe_device *vfe)
 	case CAMSS_8300:
 	case CAMSS_845:
 	case CAMSS_8550:
+	case CAMSS_8550GEN2:
 	case CAMSS_8775P:
 	case CAMSS_X1E80100:
 		ret = 16;
