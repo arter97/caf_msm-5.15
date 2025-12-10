@@ -17,7 +17,7 @@
 int qcom_icc_camsx_cpas_update_state(struct icc_node *node)
 {
 	int cnt;
-	bool en = true;
+	bool en = false;
 	bool needs_update = false;
 	struct icc_node *n;
 	struct camsx_node *csxnode;
@@ -45,10 +45,10 @@ int qcom_icc_camsx_cpas_update_state(struct icc_node *node)
 	 */
 	for (cnt = 0; cnt < sxp->qchan_clks_num; cnt++) {
 		list_for_each_entry(n, &sxp->provider.nodes, node_list) {
-			csxnode = node->data;
+			csxnode = n->data;
 			clk_node = &csxnode->clock;
 			if (!strcmp(sxp->qchan_clks[cnt], n->name))
-				en &= clk_node->enabled;
+				en |= clk_node->enabled;
 		}
 	}
 
