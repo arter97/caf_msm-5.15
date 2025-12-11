@@ -1195,6 +1195,13 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 	else
 		cmd |= DWC3_DEPCMD_CMDACT;
 
+	if (!(cmd & DWC3_DEPCMD_CMDACT) ||
+		(DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_ENDTRANSFER &&
+		!(cmd & DWC3_DEPCMD_CMDIOC))) {
+		ret = 0;
+		goto skip_status;
+	}
+
 	dwc3_msm_ep_writel(dep->regs, DWC3_DEPCMD, cmd);
 	do {
 		reg = dwc3_msm_ep_readl(dep->regs, DWC3_DEPCMD);
@@ -1237,6 +1244,7 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		cmd_status = -ETIMEDOUT;
 	}
 
+skip_status:
 	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_STARTTRANSFER) {
 		if (ret == 0) {
 			if (mdwc->hw_eps[dep->number].mode == USB_EP_GSI)
@@ -1253,6 +1261,10 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 			dep->resource_index = DWC3_DEPCMD_GET_RSC_IDX(res_id);
 		}
 	}
+
+	if (DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_ENDTRANSFER &&
+	    !(cmd & DWC3_DEPCMD_CMDIOC))
+		mdelay(1);
 
 	if (saved_config) {
 		reg = dwc3_msm_read_reg(mdwc->base, DWC3_GUSB2PHYCFG(0));
