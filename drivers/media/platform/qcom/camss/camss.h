@@ -90,6 +90,7 @@ enum camss_version {
 	CAMSS_8300,
 	CAMSS_845,
 	CAMSS_8550,
+	CAMSS_8550GEN2,
 	CAMSS_8775P,
 	CAMSS_X1E80100,
 };
@@ -112,6 +113,7 @@ struct camss_resources {
 	const unsigned int csiphy_num;
 	const unsigned int csid_num;
 	const unsigned int vfe_num;
+	int (*link_entities)(struct camss *camss);
 };
 
 struct camss {

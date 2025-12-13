@@ -696,7 +696,10 @@ int msm_csiphy_subdev_init(struct camss *camss,
 				continue;
 		}
 
-		csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d", csiphy->id);
+		if (camss->res->version != CAMSS_8550GEN2)
+			csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d",
+								      csiphy->id);
+
 	}
 
 	/* CSIPHY supplies */

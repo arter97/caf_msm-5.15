@@ -584,11 +584,36 @@ static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
  * V4L2 file operations
  */
 
+static int video_open(struct file *file)
+{
+	struct video_device *vdev = video_devdata(file);
+	struct camss_video *video = video_drvdata(file);
+	int ret;
+
+	ret = v4l2_pipeline_pm_get(&vdev->entity);
+	if (ret < 0) {
+		dev_err(video->camss->dev, "Failed to power up pipeline: %d\n",
+			ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int video_release(struct file *file)
+{
+	struct video_device *vdev = video_devdata(file);
+
+	v4l2_pipeline_pm_put(&vdev->entity);
+
+	return 0;
+}
+
 static const struct v4l2_file_operations msm_vid_fops = {
 	.owner          = THIS_MODULE,
 	.unlocked_ioctl = video_ioctl2,
-	.open           = v4l2_fh_open,
-	.release        = vb2_fop_release,
+	.open           = video_open,
+	.release        = video_release,
 	.poll           = vb2_fop_poll,
 	.mmap		= vb2_fop_mmap,
 	.read		= vb2_fop_read,
