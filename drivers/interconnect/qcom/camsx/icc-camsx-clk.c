@@ -292,6 +292,7 @@ int qcom_icc_camsx_clk_set(struct icc_node *src, struct icc_node *dst)
 
 			qn->enabled = false;
 			pr_debug("%s %d: %s disable\n", __func__, __LINE__, src->name);
+			qcom_icc_camsx_cpas_update_state(src);
 			goto dst;
 		}
 
@@ -302,6 +303,7 @@ int qcom_icc_camsx_clk_set(struct icc_node *src, struct icc_node *dst)
 
 			qn->enabled = true;
 			pr_debug("%s %d: %s enable\n", __func__, __LINE__, src->name);
+			qcom_icc_camsx_cpas_update_state(src);
 		}
 	}
 
