@@ -1195,6 +1195,8 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 	else
 		cmd |= DWC3_DEPCMD_CMDACT;
 
+	dwc3_msm_ep_writel(dep->regs, DWC3_DEPCMD, cmd);
+
 	if (!(cmd & DWC3_DEPCMD_CMDACT) ||
 		(DWC3_DEPCMD_CMD(cmd) == DWC3_DEPCMD_ENDTRANSFER &&
 		!(cmd & DWC3_DEPCMD_CMDIOC))) {
@@ -1202,7 +1204,6 @@ static int dwc3_core_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned int cmd,
 		goto skip_status;
 	}
 
-	dwc3_msm_ep_writel(dep->regs, DWC3_DEPCMD, cmd);
 	do {
 		reg = dwc3_msm_ep_readl(dep->regs, DWC3_DEPCMD);
 		if (!(reg & DWC3_DEPCMD_CMDACT)) {
