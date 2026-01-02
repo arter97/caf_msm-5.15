@@ -213,7 +213,6 @@ struct qmi_msg_handler {
  * @txn_lock:	lock for modifications of @txns
  * @handlers:	list of handlers for incoming messages
  * @svc_id:	service that this handle is associated with
- * @qmi_wq_lock:	lock to protect access to wq
  */
 struct qmi_handle {
 	struct socket *sock;
@@ -239,7 +238,6 @@ struct qmi_handle {
 	const struct qmi_msg_handler *handlers;
 
 	unsigned int svc_id;
-	spinlock_t qmi_wq_lock;
 };
 
 int qmi_add_lookup(struct qmi_handle *qmi, unsigned int service,
