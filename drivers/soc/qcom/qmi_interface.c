@@ -615,7 +615,6 @@ static void qmi_data_ready_work(struct work_struct *work)
 static void qmi_data_ready(struct sock *sk)
 {
 	struct qmi_handle *qmi = NULL;
-	unsigned long flags;
 
 	/*
 	 * This will be NULL if we receive data while being in
@@ -629,10 +628,8 @@ static void qmi_data_ready(struct sock *sk)
 		QMI_INFO("qmi recv pkt queued for svc_id:0x%x sock[0x%x:0x%x]\n",
 			 qmi->svc_id, qmi->sq.sq_node, qmi->sq.sq_port);
 
-		spin_lock_irqsave(&qmi->qmi_wq_lock, flags);
 		if (qmi->wq)
 			queue_work(qmi->wq, &qmi->work);
-		spin_unlock_irqrestore(&qmi->qmi_wq_lock, flags);
 	}
 	rcu_read_unlock();
 }
@@ -727,7 +724,6 @@ int qmi_handle_init(struct qmi_handle *qmi, size_t recv_buf_size,
 		goto err_free_recv_buf;
 	}
 
-	spin_lock_init(&qmi->qmi_wq_lock);
 	qmi->sock = qmi_sock_create(qmi, &qmi->sq);
 	if (IS_ERR(qmi->sock)) {
 		if (PTR_ERR(qmi->sock) == -EAFNOSUPPORT) {
@@ -763,7 +759,6 @@ void qmi_handle_release(struct qmi_handle *qmi)
 {
 	struct socket *sock;
 	struct qmi_service *svc, *tmp;
-	unsigned long flags;
 	struct qmi_txn *txn;
 	int txn_id;
 
@@ -775,14 +770,12 @@ void qmi_handle_release(struct qmi_handle *qmi)
 	qmi->sock = NULL;
 	mutex_unlock(&qmi->sock_lock);
 
-	spin_lock_irqsave(&qmi->qmi_wq_lock, flags);
 	cancel_work_sync(&qmi->work);
 
 	qmi_recv_del_server(qmi, -1, -1);
 
 	destroy_workqueue(qmi->wq);
 	qmi->wq = NULL;
-	spin_unlock_irqrestore(&qmi->qmi_wq_lock, flags);
 
 	mutex_lock(&qmi->txn_lock);
 	idr_for_each_entry(&qmi->txns, txn, txn_id) {
