@@ -587,11 +587,13 @@ static inline u32 stmmac_cdc_adjust(struct stmmac_priv *priv)
 static void stmmac_get_tx_hwtstamp(struct stmmac_priv *priv,
 				   struct dma_desc *p, struct sk_buff *skb, u32 queue)
 {
+	struct stmmac_tx_queue *tx_q = &priv->tx_queue[queue];
 	u32 pktid;
 	void __iomem *ioaddr = priv->hw->pcsr;
 	bool found = false;
 	struct skb_shared_hwtstamps shhwtstamp;
 	u64 ns = 0;
+	u32 tstamp_fifo_level = 0;
 
 	if (!priv->hwts_tx_en)
 		return;
@@ -600,8 +602,27 @@ static void stmmac_get_tx_hwtstamp(struct stmmac_priv *priv,
 	if (likely(!skb || !(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS)))
 		return;
 
-	if (priv->plat->insert_ts_pktid)
-		pktid = readl(ioaddr + XGMAC_TXTIMESTAMP_PKTID);
+	if (priv->plat->insert_ts_pktid) {
+		do {
+			pktid = readl(ioaddr + XGMAC_TXTIMESTAMP_PKTID);
+			if (pktid == 0) {
+				pr_info("Received packet with pktid = 0\n");
+				break;
+			}
+			if (pktid != tx_q->pid) {
+				pr_info("pktid = %d, txq_pktid = %d\n", pktid, tx_q->pid);
+				if (!stmmac_get_mac_tx_timestamp(priv, priv->hw, &ns))
+					pr_info("Stale Timestamp flushed out\n");
+				else
+					pr_info("Stale timestamp flush failed\n");
+			}
+			tstamp_fifo_level = readl(ioaddr + XGMAC_TIMESTAMP_STATUS);
+			tstamp_fifo_level = ((tstamp_fifo_level & GENMASK(14, 10)) >> 10);
+			if (tstamp_fifo_level == 0)
+				break;
+		} while (pktid != tx_q->pid);
+	}
+
 	/* check tx tstamp status */
 	if (stmmac_get_tx_timestamp_status(priv, p)) {
 		stmmac_get_timestamp(priv, p, priv->adv_ts, &ns);
@@ -1272,6 +1293,10 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 {
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
+	u32 tstamp_fifo_level = 0;
+	int i = 0;
+	int val = 0;
+	u64 ns = 0;
 
 #if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
@@ -1290,6 +1315,17 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
+
+	tstamp_fifo_level = readl(priv->ioaddr + XGMAC_TIMESTAMP_STATUS);
+	tstamp_fifo_level = ((tstamp_fifo_level & GENMASK(14, 10)) >> 10);
+	pr_info("Timestamp fifo fill level = %d\n", tstamp_fifo_level);
+	for (i = 0; i < tstamp_fifo_level; i++) {
+		val = readl(priv->ioaddr + XGMAC_TXTIMESTAMP_PKTID);
+		if (!stmmac_get_mac_tx_timestamp(priv, priv->hw, &ns))
+			pr_info("Stale Timestamp flushed out during link down\n");
+		else
+			pr_info("Stale timestamp flush out failed during link down\n");
+	}
 
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
