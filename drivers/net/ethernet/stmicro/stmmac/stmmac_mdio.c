@@ -100,6 +100,10 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	priv->plat->mdio_op_busy = true;
 	reinit_completion(&priv->plat->mdio_op);
 
+	/* Vote ICC SPEED_peak just for this MDIO transaction */
+	if (priv->plat->set_icc_peak_vote)
+		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 1);
+
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
 			       !(tmp & MII_XGMAC_BUSY), 100, 10000)) {
@@ -152,6 +156,9 @@ err_disable_clks:
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
 
+	if (priv->plat->set_icc_peak_vote)
+		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 0);
+
 	return ret;
 }
 
@@ -176,6 +183,10 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 
 	priv->plat->mdio_op_busy = true;
 	reinit_completion(&priv->plat->mdio_op);
+
+	/* Vote ICC SPEED_peak just for this MDIO transaction */
+	if (priv->plat->set_icc_peak_vote)
+		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 1);
 
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
@@ -223,6 +234,9 @@ err_disable_clks:
 
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
+
+	if (priv->plat->set_icc_peak_vote)
+		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 0);
 
 	return ret;
 }
