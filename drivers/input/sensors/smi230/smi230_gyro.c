@@ -467,6 +467,7 @@ int8_t smi230_gyro_set_power_mode(struct smi230_dev *dev)
 				    (data == SMI230_GYRO_PM_DEEP_SUSPEND)) {
 					PINFO("SMI230 gyro restore context");
 					rslt = smi230_gyro_restore_context(dev);
+					dev->delay_ms(100);
 					if (rslt != SMI230_OK) {
 						return rslt;
 					}
