@@ -541,6 +541,8 @@ static int csid_set_clock_rates(struct csid_device *csid)
 	s64 link_freq;
 	int i, j;
 	int ret;
+	u32 curr_rate;
+	u32 perf_rate;
 
 	fmt = csid_get_fmt_entry(csid->res->formats->formats, csid->res->formats->nformats,
 				 csid->fmt[MSM_CSIPHY_PAD_SINK].code);
@@ -551,6 +553,7 @@ static int csid_set_clock_rates(struct csid_device *csid)
 
 	for (i = 0; i < csid->nclocks; i++) {
 		struct camss_clock *clock = &csid->clock[i];
+		curr_rate = clk_get_rate(clock->clk);
 
 		if (!strcmp(clock->name, "csi0") ||
 		    !strcmp(clock->name, "csi1") ||
@@ -576,6 +579,8 @@ static int csid_set_clock_rates(struct csid_device *csid)
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
 
+			camss_set_perf_level(csid->camss, j);
+
 			rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (rate < 0) {
 				dev_err(dev, "clk round rate failed: %ld\n",
@@ -589,7 +594,19 @@ static int csid_set_clock_rates(struct csid_device *csid)
 				return ret;
 			}
 		} else if (clock->nfreqs) {
-			clk_set_rate(clock->clk, clock->freq[0]);
+			u32 perf_level = min(camss_get_perf_level(csid->camss), clock->nfreqs - 1);
+			clk_set_rate(clock->clk, clock->freq[perf_level]);
+			perf_rate = clock->freq[perf_level];
+		}
+	}
+
+	for (i = 0; i < csid->nicc_clks; i++) {
+		u32 avg = link_freq, peak = link_freq;
+
+		ret = camss_icc_set_clk(csid->camss, csid->icc_clk[i].name, avg, peak);
+		if (ret < 0) {
+			dev_err(dev, "icc clk set rate failed: %d\n", ret);
+			return ret;
 		}
 	}
 
@@ -735,6 +752,7 @@ static int csid_set_power(struct v4l2_subdev *sd, int on)
 
 		csid->res->hw_ops->hw_version(csid);
 	} else {
+		csid->res->hw_ops->reset(csid);
 		disable_irq(csid->irq);
 		camss_disable_clocks(csid->nclocks, csid->clock);
 		regulator_bulk_disable(csid->num_supplies,
@@ -1186,6 +1204,25 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 			clock->freq[j] = res->clock_rate[i][j];
 	}
 
+	/* ICC CLK */
+	csid->nicc_clks = 0;
+	for (i = 0; i < camss->res->icc_path_num; i++)
+		if (camss->res->icc_res[i].client == ICC_CSID)
+			csid->nicc_clks++;
+
+	csid->icc_clk = devm_kcalloc(dev,
+				     csid->nicc_clks, sizeof(*csid->icc_clk),
+				     GFP_KERNEL);
+	if (!csid->icc_clk)
+		return -ENOMEM;
+
+	for (i = 0, j = 0; i < camss->res->icc_path_num; i++) {
+		if (camss->res->icc_res[i].client == ICC_CSID) {
+			csid->icc_clk[j] = camss->res->icc_res[i];
+			j++;
+		}
+	}
+
 	/* Regulator */
 	for (i = 0; i < ARRAY_SIZE(res->regulators); i++) {
 		if (res->regulators[i])
@@ -1233,7 +1270,7 @@ void msm_csid_get_csid_id(struct media_entity *entity, u8 *id)
  *
  * Return lane assign
  */
-static u32 csid_get_lane_assign(struct csiphy_lanes_cfg *lane_cfg)
+static u32 __maybe_unused csid_get_lane_assign(struct csiphy_lanes_cfg *lane_cfg)
 {
 	u32 lane_assign = 0;
 	int i;
@@ -1266,8 +1303,6 @@ static int csid_link_setup(struct media_entity *entity,
 		struct v4l2_subdev *sd;
 		struct csid_device *csid;
 		struct csiphy_device *csiphy;
-		struct csiphy_lanes_cfg *lane_cfg;
-
 		sd = media_entity_to_v4l2_subdev(entity);
 		csid = v4l2_get_subdevdata(sd);
 
@@ -1280,16 +1315,13 @@ static int csid_link_setup(struct media_entity *entity,
 		sd = media_entity_to_v4l2_subdev(remote->entity);
 		csiphy = v4l2_get_subdevdata(sd);
 
-		/* If a sensor is not linked to CSIPHY */
-		/* do no allow a link from CSIPHY to CSID */
-		if (!csiphy->cfg.csi2)
-			return -EPERM;
-
 		csid->phy.csiphy_id = csiphy->id;
 
-		lane_cfg = &csiphy->cfg.csi2->lane_cfg;
-		csid->phy.lane_cnt = lane_cfg->num_data;
-		csid->phy.lane_assign = csid_get_lane_assign(lane_cfg);
+		/* Allow a link from CSIPHY to CSID in test mode */
+		if (csiphy->cfg.csi2) {
+			csid->phy.lane_cnt = csiphy->cfg.csi2->lane_cfg.num_data;
+			csid->phy.lane_assign = csid_get_lane_assign(&csiphy->cfg.csi2->lane_cfg);
+		}
 	}
 	/* Decide which virtual channels to enable based on which source pads are enabled */
 	if (local->flags & MEDIA_PAD_FL_SOURCE) {
