@@ -3440,8 +3440,8 @@ static ssize_t ethqos_mac_recovery_enable(struct file *file,
 					  const char __user *user_buf,
 					  size_t count, loff_t *ppos)
 {
-	char *in_buf = kstrdup(user_buf, GFP_KERNEL);
-	int i;
+	static unsigned char in_buf[15] = {0};
+	int i, ret;
 	struct qcom_ethqos *ethqos = pethqos[0];
 
 	if (sizeof(in_buf) < count) {
@@ -3449,13 +3449,16 @@ static ssize_t ethqos_mac_recovery_enable(struct file *file,
 		return -EFAULT;
 	}
 
+	memset(in_buf, 0,  sizeof(in_buf));
+	ret = copy_from_user(in_buf, user_buf, count);
+
 	for (i = 0; i < MAC_ERR_CNT; i++) {
 		if (in_buf[i] == '1')
 			ethqos->mac_rec_en[i] = true;
 		else
 			ethqos->mac_rec_en[i] = false;
 	}
-	kfree(in_buf);
+
 	return count;
 }
 
