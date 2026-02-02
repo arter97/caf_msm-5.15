@@ -137,20 +137,24 @@ static u8 csiphy_get_bpp(const struct csiphy_format_info *formats,
 static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 {
 	struct device *dev = csiphy->camss->dev;
-	s64 link_freq;
+	s64 link_freq = -1;
 	int i, j;
 	int ret;
+	u32 curr_rate;
 
 	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
 				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
-	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
+	if (csiphy->cfg.csi2) {
+		link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp,
+						csiphy->cfg.csi2->lane_cfg.num_data);
+	}
 
-	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
 	if (link_freq < 0)
 		link_freq  = 0;
 
 	for (i = 0; i < csiphy->nclocks; i++) {
 		struct camss_clock *clock = &csiphy->clock[i];
+		curr_rate = clk_get_rate(clock->clk);
 
 		if (csiphy->rate_set[i]) {
 			u64 min_rate = link_freq / 4;
@@ -173,6 +177,8 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 			if (min_rate == 0)
 				j = clock->nfreqs - 1;
 
+			camss_set_perf_level(csiphy->camss, j);
+
 			round_rate = clk_round_rate(clock->clk, clock->freq[j]);
 			if (round_rate < 0) {
 				dev_err(dev, "clk round rate failed: %ld\n",
@@ -185,6 +191,19 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
 			ret = clk_set_rate(clock->clk, csiphy->timer_clk_rate);
 			if (ret < 0) {
 				dev_err(dev, "clk set rate failed: %d\n", ret);
+				return ret;
+			}
+		}
+	}
+
+	/* FIXME: Temporary solution, should be reworked at all */
+	for (i = 0; i < csiphy->nicc_clks; i++) {
+		u32 avg = 400000000, peak = 400000000;
+
+		if (strchr(csiphy->icc_clk[i].name, csiphy->id + '0') != NULL) {
+			ret = camss_icc_set_clk(csiphy->camss, csiphy->icc_clk[i].name, avg, peak);
+			if (ret < 0) {
+				dev_err(dev, "icc clk set rate failed: %d\n", ret);
 				return ret;
 			}
 		}
@@ -265,14 +284,16 @@ static int csiphy_set_power(struct v4l2_subdev *sd, int on)
 static int csiphy_stream_on(struct csiphy_device *csiphy)
 {
 	struct csiphy_config *cfg = &csiphy->cfg;
-	s64 link_freq;
-	u8 lane_mask = csiphy->res->hw_ops->get_lane_mask(&cfg->csi2->lane_cfg);
+	s64 link_freq = -1;
 	u8 bpp = csiphy_get_bpp(csiphy->res->formats->formats, csiphy->res->formats->nformats,
 				csiphy->fmt[MSM_CSIPHY_PAD_SINK].code);
-	u8 num_lanes = csiphy->cfg.csi2->lane_cfg.num_data;
-	u8 val;
+	u8 val, lane_mask = 0;
 
-	link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp, num_lanes);
+	if (csiphy->cfg.csi2) {
+		lane_mask = csiphy->res->hw_ops->get_lane_mask(&cfg->csi2->lane_cfg);
+		link_freq = camss_get_link_freq(&csiphy->subdev.entity, bpp,
+						csiphy->cfg.csi2->lane_cfg.num_data);
+	}
 
 	if (link_freq < 0) {
 		dev_err(csiphy->camss->dev,
@@ -690,7 +711,31 @@ int msm_csiphy_subdev_init(struct camss *camss,
 				continue;
 		}
 
-		csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d", csiphy->id);
+		if (camss->res->version != CAMSS_8550GEN2)
+			csiphy->rate_set[i] = csiphy_match_clock_name(clock->name, "csiphy%d",
+								      csiphy->id);
+
+	}
+
+	/* ICC CLK */
+	csiphy->nicc_clks = 0;
+	for (i = 0; i < CAMSS_RES_MAX; i++)
+		if (res->icc_clk[i])
+			csiphy->nicc_clks++;
+
+	csiphy->icc_clk = devm_kcalloc(dev,
+				       csiphy->nicc_clks, sizeof(*csiphy->icc_clk),
+				       GFP_KERNEL);
+	if (!csiphy->icc_clk)
+		return -ENOMEM;
+
+	for (i = 0, j = 0; i < camss->res->icc_path_num && j < csiphy->nicc_clks; i++) {
+		if (camss->res->icc_res[i].client == ICC_CSIPHY) {
+			if (!strcmp(res->icc_clk[j], camss->res->icc_res[i].name)) {
+				csiphy->icc_clk[j] = camss->res->icc_res[i];
+				j++;
+			}
+		}
 	}
 
 	/* CSIPHY supplies */
