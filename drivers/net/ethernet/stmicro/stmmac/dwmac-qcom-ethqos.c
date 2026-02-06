@@ -6689,9 +6689,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 	struct qcom_ethqos *ethqos = priv;
 	int ret = 0;
 
-	if (ethqos->emac_ver != EMAC_HW_v4_0_0)
-		return -EINVAL;
-
 	if (ethqos->power_state == power_state)
 		return -EINVAL;
 
@@ -6701,11 +6698,9 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			if (ret < 0)
 				return ret;
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 			ret = qcom_ethqos_enable_serdes_clocks(ethqos);
 			if (ret)
 				return -EINVAL;
-#endif
 
 			if (needs_serdes_reset)
 				qcom_ethqos_serdes_soft_reset(ethqos);
@@ -6713,11 +6708,9 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 			ETHQOSINFO("power saving turned off\n");
 		}
 	} else {
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 		qcom_ethqos_serdes_power_down(ethqos);
 
 		qcom_ethqos_disable_serdes_clocks(ethqos);
-#endif
 		if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
 			ret = ethqos_disable_serdes_consumers(ethqos);
 			if (ret < 0)
@@ -6730,7 +6723,6 @@ static int ethqos_serdes_power_saving(struct net_device *ndev, void *priv,
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 {
 	int ret = 0;
@@ -6739,8 +6731,9 @@ static int __ethqos_emac_power_down(struct stmmac_priv *priv)
 	ethqos_update_bus_cfg(ethqos, SPEED_10);
 
 	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 		ethqos_disable_sgmii_usxgmii_clks(ethqos);
-
+#endif
 		if (priv->plat->serdes_powersaving)
 			ret = priv->plat->serdes_powersaving(priv->dev,
 							     priv->plat->bsp_priv,
@@ -6773,11 +6766,13 @@ static int __ethqos_emac_power_up(struct stmmac_priv *priv)
 			}
 		}
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
 		if (ret < 0) {
 			ETHQOSERR("Failed to enable sgmii/usxgmii clocks\n");
 			goto err;
 		}
+#endif
 	}
 
 	ethqos_update_bus_cfg(ethqos, ethqos->speed);
@@ -6858,7 +6853,6 @@ int ethqos_enable_power_saving(struct net_device *ndev, bool enable)
 
 	return ret;
 }
-#endif
 
 static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 {
@@ -7546,12 +7540,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	ethqos->pdev = pdev;
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	/* Set ref count to 1 as clocks are initially turned on */
 	refcount_set(&ethqos->ps_refcount, 1);
 	mutex_init(&ethqos->ps_lock);
 	ethqos->clk_active = true;
-#endif
 
 	ethqos_init_regulators(ethqos);
 
@@ -7726,9 +7718,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #endif
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	plat_dat->enable_power_saving = ethqos_enable_power_saving;
-#endif
 	plat_dat->plat_wait_for_emac_rx_clk_en = of_property_read_bool(np, "wait_for_rx_clk_rdy");
 	plat_dat->rx_clk_rdy = false;
 
@@ -8016,15 +8006,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #endif
 	ethqos_create_sysfs_nodes(ethqos);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving)
 		priv->plat->enable_power_saving(ndev, true);
-#endif
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	/* Send the probe completion event early so that early eth is not impacted. */
 	complete_all(&priv->probe_done);
-#endif
 
 	if (ethqos->early_eth_enabled) {
 		if (plat_dat->probe_invoke_if_up || plat_dat->fixed_phy_mode ||
@@ -8075,9 +8061,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	struct qcom_ethqos *ethqos;
 	int i, ret;
 	struct stmmac_priv *priv;
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	struct net_device *ndev = platform_get_drvdata(pdev);
-#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,emac-smmu-embedded")) {
 		of_platform_depopulate(&pdev->dev);
@@ -8106,9 +8090,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	ethqos_thermal_netlink_cleanup_sysfs(ethqos);
 	ret = stmmac_pltfr_remove(pdev);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	ethqos_enable_clock_gating(ndev);
-#endif
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	if (ethqos->emac_ver == EMAC_HW_v4_0_0) {
@@ -8127,15 +8109,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	if (ethqos->rgmii_clk)
 		clk_disable_unprepare(ethqos->rgmii_clk);
-#if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
-	if (priv->plat->phy_interface == PHY_INTERFACE_MODE_SGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_USXGMII ||
-	    priv->plat->phy_interface ==  PHY_INTERFACE_MODE_2500BASEX ||
-	    priv->plat->phy_interface == PHY_INTERFACE_MODE_5GBASER) {
-		ethqos_disable_sgmii_usxgmii_clks(ethqos);
-		qcom_ethqos_disable_serdes_clocks(ethqos);
-	}
-#endif
+
 	icc_put(ethqos->axi_icc_path);
 
 	icc_put(ethqos->apb_icc_path);
@@ -8168,9 +8142,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	if (priv->plat->phy_intr_en_extn_stm)
 		cancel_work_sync(&ethqos->emac_phy_work);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	mutex_destroy(&ethqos->ps_lock);
-#endif
 
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
@@ -8220,12 +8192,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 	if (!ndev)
 		return -EINVAL;
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving) {
 		if (priv->plat->enable_power_saving(ndev, false) < 0)
 			return -EINVAL;
 	}
-#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY ||
 	    ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
@@ -8236,20 +8206,10 @@ static int qcom_ethqos_suspend(struct device *dev)
 
 	disable_irq(priv->dev->irq);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving) {
 		if (priv->plat->enable_power_saving(ndev, true) < 0)
 			return -EINVAL;
 	}
-#else
-	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-		ethqos_disable_sgmii_usxgmii_clks(ethqos);
-		qcom_ethqos_disable_serdes_clocks(ethqos);
-
-		if (priv->plat->serdes_powersaving)
-			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, false, false);
-	}
-#endif
 
 	qcom_ethqos_phy_suspend_clks(ethqos);
 
@@ -8266,9 +8226,8 @@ static int qcom_ethqos_suspend(struct device *dev)
 		}
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	ethqos_enable_clock_gating(ndev);
-#endif
+
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	place_marker("M - Ethernet Suspend End");
 #endif
@@ -8317,9 +8276,7 @@ static int qcom_ethqos_resume(struct device *dev)
 		return -EINVAL;
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	ethqos_disable_clock_gating(ndev);
-#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_SUSPEND_ENABLE_RESUME) {
 		ETHQOSINFO("enable phy at resume\n");
@@ -8333,26 +8290,10 @@ static int qcom_ethqos_resume(struct device *dev)
 
 	enable_irq(priv->dev->irq);
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving) {
 		if (priv->plat->enable_power_saving(ndev, false) < 0)
 			return -EINVAL;
 	}
-#else
-	if (ethqos->vreg_a_sgmii_1p2 && ethqos->vreg_a_sgmii_0p9) {
-
-		ret = qcom_ethqos_enable_serdes_clocks(ethqos);
-		if (ret)
-			return -EINVAL;
-
-		ret = ethqos_resume_sgmii_usxgmii_clks(ethqos);
-		if (ret)
-			return -EINVAL;
-
-		if (priv->plat->serdes_powersaving && priv->speed != SPEED_UNKNOWN)
-			priv->plat->serdes_powersaving(ndev, priv->plat->bsp_priv, true, true);
-	}
-#endif
 
 	if (ethqos->current_phy_mode == DISABLE_PHY_AT_SUSPEND_ONLY) {
 		/* Temp Enable LOOPBACK_EN.
@@ -8397,10 +8338,9 @@ static int qcom_ethqos_resume(struct device *dev)
 		ETHQOSINFO("Loopback EN Disabled\n");
 	}
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving)
 		ret = priv->plat->enable_power_saving(ndev, true);
-#endif
+
 #ifdef CONFIG_MSM_BOOT_TIME_MARKER
 	update_marker("M - Ethernet Resume End");
 #endif
