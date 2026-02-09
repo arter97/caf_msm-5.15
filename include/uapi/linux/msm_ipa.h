@@ -162,6 +162,7 @@
 #define IPA_IOCTL_GET_QOS_PARAMS                106
 #define IPA_IOCTL_ADD_PPPOE_MAPPING             107
 #define IPA_IOCTL_SET_TUPLE_INFO                108
+#define IPA_IOCTL_ADD_RGIP                      109
 
 /**
  * max size of the header to be inserted
@@ -1115,7 +1116,13 @@ enum ipa_pppoe_event {
 #define IPA_PPPOE_EVENT_MAX IPA_PPPOE_EVENT_MAX
 };
 
-#define IPA_EVENT_MAX_NUM (IPA_PPPOE_EVENT_MAX)
+enum ipa_rgip_event {
+	IPA_RGIP_ADD_EVENT = IPA_PPPOE_EVENT_MAX,
+	IPA_RGIP_EVENT_MAX
+#define IPA_RGIP_EVENT_MAX IPA_RGIP_EVENT_MAX
+};
+
+#define IPA_EVENT_MAX_NUM (IPA_RGIP_EVENT_MAX)
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
 
 /**
@@ -1634,9 +1641,11 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_MARK_DSCP,
 	IPA_HDR_PROC_PPPOE_HEADER_ADD,
 	IPA_HDR_PROC_GRE_HEADER_ADD,
-	IPA_HDR_PROC_GRE_HEADER_REMOVE
+	IPA_HDR_PROC_GRE_HEADER_REMOVE,
+	IPA_HDR_PROC_IPOGRE_HEADER_ADD,
+	IPA_HDR_PROC_IPOGRE_HEADER_REMOVE
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_GRE_HEADER_REMOVE + 1)
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_IPOGRE_HEADER_REMOVE + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule
@@ -1923,6 +1932,49 @@ struct ipa_gre_hdr_proc_ctx_params {
 	struct ipa_gre_header_remove_procparams hdr_remove_param;
 };
 
+
+/**
+ * struct ipa_gre_header_add_procparams -
+ * @eth_hdr_retained:  Specifies if Ethernet header is retained or not
+ * @input_ip_version:  Specifies if Input header is IPV4(0) or IPV6(1)
+ * @output_ip_version: Specifies if template header's outer IP is IPV4(0) or IPV6(1)
+ * @second_pass:       Specifies if the data should be processed again.
+ * @is_mpls:           Specifies if ucp cmd is for legacy EoGRE(0) or MPLSoGRE(1)
+ * @tag_remove_len:    Specifies amount to be removed for the tags
+ */
+struct ipa_ipogre_header_add_procparams {
+	uint32_t input_ip_version :1;
+	uint32_t output_ip_version :1;
+	uint32_t Tunnel_Id : 4;
+	uint32_t Mux_Id : 8;
+	uint32_t reserved :18;
+};
+
+/**
+ * struct ipa_gre_header_remove_procparams -
+ * @hdr_len_remove:    Specifies how much (in bytes) of the header needs
+ *                     to be removed
+ * @outer_ip_version:  Specifies if template header's outer IP is IPV4(0) or IPV6(1)
+ * @is_mpls:           Specifies if ucp cmd is for legacy EoGRE(0) or MPLSoGRE(1)
+ * @tag_add_len:       Specifies amount to be added for the tags
+ */
+struct ipa_ipogre_header_remove_procparams {
+	uint32_t hdr_len_remove :8; /* 44 bytes for IPV6, 24 for IPV4 */
+	uint32_t input_ip_version :1;
+	uint32_t Tunnel_Id :4;
+	uint32_t reserved2 :19;
+};
+
+/**
+ * struct ipa_gre_hdr_proc_ctx_params -
+ * @hdr_add_param: parameters for header add
+ * @hdr_remove_param: parameters for header remove
+ */
+struct ipa_ipogre_hdr_proc_ctx_params {
+	struct ipa_ipogre_header_add_procparams hdr_add_param;
+	struct ipa_ipogre_header_remove_procparams hdr_remove_param;
+};
+
 /**
  * struct ipa_pppoe_header_add_proc params -
  * @reserved:<Reserved for future purpose>.
@@ -2068,6 +2120,7 @@ struct ipa_hdr_proc_ctx_add {
 	struct ipa_pdn_dscp_procparams pdn_dscp_params;
 	struct ipa_pppoe_header_add_procparams pppoe_params;
 	struct ipa_gre_hdr_proc_ctx_params gre_params;
+	struct ipa_ipogre_hdr_proc_ctx_params ipogre_params;
 };
 
 #define IPA_L2TP_HDR_PROC_SUPPORT
@@ -3974,6 +4027,11 @@ struct tuple_flow_stats {
 	uint64_t downlink_bytes;
 };
 
+struct rgip_info {
+	uint32_t rgip_v4;
+	char rgip_iface_name[IPA_RESOURCE_NAME_MAX];
+};
+
 /**
  *   actual IOCTLs supported by IPA driver
  */
@@ -4347,6 +4405,9 @@ struct tuple_flow_stats {
 				IPA_IOCTL_SET_TUPLE_INFO, \
 				struct tuple_flow_stats)
 
+#define IPA_IOC_ADD_RGIP _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_ADD_RGIP, \
+				struct rgip_info)
 /*
  * unique magic number of the Tethering bridge ioctls
  */
