@@ -3504,7 +3504,7 @@ static ssize_t loopback_arg_parse(struct qcom_ethqos *ethqos, const char *buf,
 		return -EINVAL;
 	}
 
-	if (priv->current_loopback == ENABLE_PHY_LOOPBACK &&
+	if (*config == ENABLE_PHY_LOOPBACK &&
 	    (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)) {
 		ETHQOSINFO("Not supported with Mac2Mac enabled\n");
 		return -EOPNOTSUPP;
