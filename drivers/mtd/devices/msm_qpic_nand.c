@@ -393,6 +393,7 @@ static int msm_nand_resume(struct device *dev)
 static int msm_nand_get_device(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
 
 	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
@@ -400,6 +401,27 @@ static int msm_nand_get_device(struct device *dev)
 		msm_nand_print_rpm_info(dev);
 	} else { /* Reset to success */
 		ret = 0;
+		/*
+		 * .suspend callback registered with pm framework,
+		 * invokes the driver's .runtime_suspend callback
+		 * and turns OFF QPIC clock.
+		 *
+		 * Post suspend, if a late i/o request arrives from
+		 * kernel non-freezable work queue and if
+		 * dev->power.runtime_status is RPM_ACTIVE,
+		 * pm_runtime_get_sync() returns no error and may
+		 * not call driver's .runtime_resume function. This
+		 * leaves QPIC clocks disabled and can lead to NOC
+		 * errors when HW registers are accessed.
+		 *
+		 * So, add an explicit clock state check and ensure
+		 * QPIC clocks are enabled.
+		 */
+		if (!atomic_read(&info->clk_data.clk_enabled)) {
+			ret = msm_nand_setup_clocks_and_bus_bw(info, true);
+			if (ret)
+				pr_err("Failed to resume %d\n", ret);
+		}
 	}
 	return ret;
 }

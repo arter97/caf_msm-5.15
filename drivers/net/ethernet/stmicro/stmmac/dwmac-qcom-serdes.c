@@ -10,7 +10,6 @@
 
 #include "dwmac-qcom-serdes.h"
 
-#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 {
 	writel_relaxed(0x08, ethqos->sgmii_base + QSERDES_PCS_TX_MID_TERM_CTRL2);
@@ -23,7 +22,6 @@ void qcom_ethqos_serdes_power_down(struct qcom_ethqos *ethqos)
 	/* Set current speed to 0 so that serdes will be reprogrammed on next link up. */
 	ethqos->curr_serdes_speed = 0;
 }
-#endif
 
 void qcom_ethqos_serdes_soft_reset(struct qcom_ethqos *ethqos)
 {
