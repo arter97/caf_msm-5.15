@@ -3092,10 +3092,10 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 		clk_disable_unprepare(priv->plat->pclk);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 #else
-	if (priv->plat->clk_ptp_ref)
+	if (priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 #endif
 
@@ -3357,10 +3357,10 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 		clk_prepare_enable(priv->plat->pclk);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_prepare_enable(priv->plat->clk_ptp_ref);
 #else
-	if (priv->plat->clk_ptp_ref)
+	if (priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_prepare_enable(priv->plat->clk_ptp_ref);
 #endif
 
