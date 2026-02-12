@@ -61,7 +61,7 @@
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
 #define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
 #define EFUSE_MAC_ADDR_MASK 16
-
+#define EMAC_SPEED_PEAK_IDX 7
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
 static int phy_digital_loopback_config(struct qcom_ethqos *ethqos, int speed, int config);
@@ -2640,6 +2640,31 @@ static int ethqos_serdes_update(void *priv_n, unsigned int speed)
 	}
 
 	return ret;
+}
+
+static void ethqos_set_icc_peak_vote(void *priv, bool is_peak)
+{
+	struct qcom_ethqos *ethqos = priv;
+	int idx;
+
+	if (is_peak)
+		idx = EMAC_SPEED_PEAK_IDX;
+	else
+		idx = ethqos->vote_idx;
+
+	/* Apply AXI bandwidth vote */
+	if (ethqos->axi_icc_path) {
+		icc_set_bw(ethqos->axi_icc_path,
+			   emac_axi_icc_data[idx].average_bandwidth,
+			   emac_axi_icc_data[idx].peak_bandwidth);
+	}
+
+	/* Apply APB bandwidth vote */
+	if (ethqos->apb_icc_path) {
+		icc_set_bw(ethqos->apb_icc_path,
+			   emac_apb_icc_data[idx].average_bandwidth,
+			   emac_apb_icc_data[idx].peak_bandwidth);
+	}
 }
 
 static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
@@ -8295,6 +8320,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	plat_dat->early_eth = ethqos->early_eth_enabled;
 	plat_dat->bsp_priv = ethqos;
+	plat_dat->set_icc_peak_vote = ethqos_set_icc_peak_vote;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->serdes_update_speed = ethqos_serdes_update;
 	plat_dat->dump_debug_regs = rgmii_dump;
