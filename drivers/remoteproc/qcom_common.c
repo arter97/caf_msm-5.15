@@ -612,16 +612,16 @@ static inline void notify_ssr_clients(struct qcom_rproc_ssr *ssr, struct qcom_ss
 	del_timer_sync(&ssr->timer);
 }
 
-void qcom_rproc_send_ssr_uevent(struct rproc *rproc, const char *action)
+void qcom_rproc_send_ssr_uevent(struct rproc *rproc, const char *event)
 {
-	char action_buf[64];
-	const char *envp[2];
+	char event_buf[64];
+	char *envp[] = {
+		event_buf,
+		NULL,
+	};
 
-	snprintf(action_buf, sizeof(action_buf), "ACTION=%s", action);
-	envp[0] = action_buf;
-	envp[1] = NULL;
-
-	kobject_uevent_env(&rproc->dev.parent->kobj, KOBJ_CHANGE, (char **)envp);
+	snprintf(event_buf, sizeof(event_buf), "QCOM_SSR_EVENT=%s", event);
+	kobject_uevent_env(&rproc->dev.kobj, KOBJ_CHANGE, envp);
 }
 
 static int ssr_notify_prepare(struct rproc_subdev *subdev)
@@ -636,7 +636,7 @@ static int ssr_notify_prepare(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_BEFORE_POWERUP;
 	notify_ssr_clients(ssr, &data);
-	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_BEFORE_POWERUP");
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "BEFORE_POWERUP");
 
 	return 0;
 }
@@ -653,7 +653,7 @@ static int ssr_notify_start(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_AFTER_POWERUP;
 	notify_ssr_clients(ssr, &data);
-	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_AFTER_POWERUP");
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "AFTER_POWERUP");
 
 	return 0;
 }
@@ -670,7 +670,7 @@ static void ssr_notify_stop(struct rproc_subdev *subdev, bool crashed)
 
 	ssr->notification = QCOM_SSR_BEFORE_SHUTDOWN;
 	notify_ssr_clients(ssr, &data);
-	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_BEFORE_SHUTDOWN");
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "BEFORE_SHUTDOWN");
 }
 
 static void ssr_notify_unprepare(struct rproc_subdev *subdev)
@@ -685,7 +685,7 @@ static void ssr_notify_unprepare(struct rproc_subdev *subdev)
 
 	ssr->notification = QCOM_SSR_AFTER_SHUTDOWN;
 	notify_ssr_clients(ssr, &data);
-	qcom_rproc_send_ssr_uevent(ssr->rproc, "QCOM_SSR_AFTER_SHUTDOWN");
+	qcom_rproc_send_ssr_uevent(ssr->rproc, "AFTER_SHUTDOWN");
 }
 
 static int ssr_notify_resume_prepare(struct rproc_subdev *subdev)
