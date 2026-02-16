@@ -36,6 +36,9 @@
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/gunyah/gh_vm.h>
 #include <linux/gunyah/gh_rm_drv.h>
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#include <soc/qcom/minidump.h>
+#endif
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -7025,6 +7028,50 @@ static void qcom_ethqos_unregister_panic_notifier(struct qcom_ethqos *ethqos)
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static void ethqos_qcom_register_minidump(uintptr_t vaddr, u64 size,
+					  const char *buf_name)
+{
+	struct md_region md_entry;
+	int ret;
+
+	if (!msm_minidump_enabled()) {
+		ETHQOSERR("Minidump not enabled, skipping registration\n");
+		return;
+	}
+
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s", buf_name);
+	md_entry.virt_addr = vaddr;
+	md_entry.phys_addr = virt_to_phys((void *)vaddr);
+	md_entry.size = size;
+
+	ret = msm_minidump_add_region(&md_entry);
+	if (ret < 0)
+		ETHQOSERR("Failed to register EMAC buffer %s in Minidump ret %d\n", buf_name, ret);
+}
+
+static void ethqos_qcom_unregister_minidump(uintptr_t vaddr, u64 size,
+					    const char *buf_name)
+{
+	struct md_region md_entry;
+	int ret;
+
+	if (!msm_minidump_enabled()) {
+		ETHQOSERR("Minidump not enabled, skipping unregistration\n");
+		return;
+	}
+
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s", buf_name);
+	md_entry.virt_addr = vaddr;
+	md_entry.phys_addr = virt_to_phys((void *)vaddr);
+	md_entry.size = size;
+
+	ret = msm_minidump_remove_region(&md_entry);
+	if (ret < 0)
+		ETHQOSERR("Failed to remove EMAC buffer %s from Minidump ret %d\n", buf_name, ret);
+}
+#endif
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static void ethqos_xpcs_power_saving(struct net_device *ndev, bool enable)
 {
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -8145,6 +8192,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	u32 err = 0;
 #endif
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	char md_name[13];
+#endif
 
 	ret = pinctrl_pm_select_default_state(&pdev->dev);
 	if (ret)
@@ -8602,6 +8652,14 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (qcom_ethqos_register_panic_notifier(ethqos))
 		ETHQOSERR("Failed to register panic notifier");
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	scnprintf(md_name, sizeof(md_name), "emac%d_ethqos", priv->plat->port_num);
+	ethqos_qcom_register_minidump((uintptr_t)ethqos, sizeof(struct qcom_ethqos), md_name);
+
+	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
+	ethqos_qcom_register_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+#endif
+
 	if (ethqos->qoe_mode) {
 		ethqos_create_emac_device_node(&ethqos->emac_dev_t,
 					       &ethqos->emac_cdev,
@@ -8720,6 +8778,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	int i, ret;
 	struct stmmac_priv *priv;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	char md_name[13];
 	struct net_device *ndev = platform_get_drvdata(pdev);
 #endif
 
@@ -8820,6 +8879,14 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	cancel_work_sync(&ethqos->emac_phy_state_work);
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	scnprintf(md_name, sizeof(md_name), "emac%d_ethqos", priv->plat->port_num);
+	ethqos_qcom_unregister_minidump((uintptr_t)ethqos, sizeof(struct qcom_ethqos), md_name);
+
+	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
+	ethqos_qcom_unregister_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+#endif
 	qcom_ethqos_unregister_panic_notifier(ethqos);
 
 	for (i = 0; i < ETH_MAX_NICS; i++) {
