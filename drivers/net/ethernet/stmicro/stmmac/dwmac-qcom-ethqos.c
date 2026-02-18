@@ -3985,24 +3985,27 @@ static void ethqos_pcs_loopback(struct qcom_ethqos *ethqos, int config)
 static void ethqos_serdes_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	int duplex = DUPLEX_FULL;
 
 	if (IS_ERR_OR_NULL(priv)) {
 		ETHQOSERR("priv is NULL or Error\n");
 		return;
 	}
 
-	if (IS_ERR_OR_NULL(priv->dev)) {
-		ETHQOSERR("priv->dev is NULL or Error\n");
+	/* Ensure PCS context exists */
+	if (IS_ERR_OR_NULL(priv->hw) || IS_ERR_OR_NULL(priv->hw->qxpcs)) {
+		ETHQOSERR("QXPCS is NULL or Error\n");
 		return;
 	}
 
-	if (IS_ERR_OR_NULL(priv->dev->phydev)) {
-		ETHQOSERR("priv->dev->phydev is NULL or Error\n");
-		return;
-	}
+	/* In mac2mac/fixed-link mode, PHY may be absent (phydev == NULL).
+	 * Default to full duplex if PHY is not present and still configure
+	 * PCS link parameters for SERDES loopback.
+	 */
+	if (!IS_ERR_OR_NULL(priv->dev) && !IS_ERR_OR_NULL(priv->dev->phydev))
+		duplex = priv->dev->phydev->duplex;
 
-	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-			  speed, priv->dev->phydev->duplex);
+	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface, speed, duplex);
 
 	if (config == 1)
 		qcom_xpcs_serdes_loopback(priv->hw->qxpcs, 1);
