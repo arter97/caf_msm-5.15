@@ -300,6 +300,9 @@ DECLARE_HOOK(android_vh_alloc_pages_entry,
 DECLARE_HOOK(android_vh_isolate_freepages,
 	TP_PROTO(struct compact_control *cc, struct page *page, bool *bypass),
 	TP_ARGS(cc, page, bypass));
+DECLARE_HOOK(android_vh_mem_cgroup_charge,
+	TP_PROTO(struct page *page, struct mem_cgroup **memcg),
+	TP_ARGS(page, memcg));
 DECLARE_HOOK(android_vh_should_fault_around,
 	TP_PROTO(struct vm_fault *vmf, bool *should_around),
 	TP_ARGS(vmf, should_around));
@@ -319,6 +322,9 @@ DECLARE_HOOK(android_vh_do_swap_page_spf,
 DECLARE_HOOK(android_vh_tune_fault_around_bytes,
 	TP_PROTO(unsigned long *fault_around_bytes),
 	TP_ARGS(fault_around_bytes));
+DECLARE_HOOK(android_vh_count_workingset_refault,
+	TP_PROTO(struct page *page),
+	TP_ARGS(page));
 DECLARE_HOOK(android_vh_swapmem_gather_init,
 	TP_PROTO(struct mm_struct *mm),
 	TP_ARGS(mm));
@@ -374,6 +380,10 @@ DECLARE_HOOK(android_vh_filemap_page_mapped,
 DECLARE_HOOK(android_vh_zap_pte_range_page_remove_rmap,
 	TP_PROTO(struct page *page),
 	TP_ARGS(page));
+DECLARE_HOOK(android_vh_filemap_add_to_page_cache,
+	TP_PROTO(struct address_space *mapping, struct page *page,
+		pgoff_t offset),
+	TP_ARGS(mapping, page, offset));
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */
