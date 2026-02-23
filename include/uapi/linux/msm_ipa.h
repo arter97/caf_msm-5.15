@@ -1615,6 +1615,9 @@ enum ipa_hdr_l2_type {
  * IPA_HDR_PROC_PPPOE_HEADER_ADD:       Add PPPoE Header
  * IPA_HDR_PROC_GRE_HEADER_ADD,         Add IPV[46] and IP-GRE header
  * IPA_HDR_PROC_GRE_HEADER_REMOVE,      Remove IPV[46] and IP-GRE header
+ * IPA_HDR_PROC_MAPE_HEADER_ADD,        Add BR IPv6 Header for the v4 packet
+ * IPA_HDR_PROC_MAPE_FMR_HEADER_ADD     Add CE IPv6 Header for the v4 packet
+ * IPA_HDR_PROC_MAPE_HEADER_REMOVE      Remove Ipv6 Header for the incoming packet
  */
 enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_NONE,
@@ -1643,9 +1646,13 @@ enum ipa_hdr_proc_type {
 	IPA_HDR_PROC_GRE_HEADER_ADD,
 	IPA_HDR_PROC_GRE_HEADER_REMOVE,
 	IPA_HDR_PROC_IPOGRE_HEADER_ADD,
-	IPA_HDR_PROC_IPOGRE_HEADER_REMOVE
+	IPA_HDR_PROC_IPOGRE_HEADER_REMOVE,
+	IPA_HDR_PROC_MAPE_HEADER_ADD,
+	IPA_HDR_PROC_MAPE_FMR_HEADER_ADD,
+	IPA_HDR_PROC_MAPE_HEADER_REMOVE,
 };
-#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_IPOGRE_HEADER_REMOVE + 1)
+
+#define IPA_HDR_PROC_MAX (IPA_HDR_PROC_MAPE_HEADER_REMOVE + 1)
 
 /**
  * struct ipa_rt_rule - attributes of a routing rule
@@ -1984,6 +1991,14 @@ struct ipa_pppoe_header_add_procparams {
 };
 
 /**
+ * struct ipa_mape_header_add_proc params -
+ * @reserved:<Reserved for future purpose>.
+ */
+struct ipa_mape_header_add_procparams {
+	uint32_t reserved;
+};
+
+/**
  * struct ipa_eth_II_to_eth_II_ex_procparams -
  * @input_ethhdr_negative_offset: Specifies where the ethernet hdr offset is
  *	(in bytes) from the start of the input IP hdr
@@ -2102,6 +2117,7 @@ struct ipa_pdn_dscp_procparams {
  * @generic_params: generic proc_ctx params
  * @generic_params_v2: generic proc_ctx params for bridging
  * @ipsec_params: IPsec params
+ * @mape_params: mape params, reserved for future
  * @proc_ctx_hdl: out parameter, handle to proc_ctx, valid when status is 0
  * @status:	out parameter, status of header add operation,
  *		0 for success,
@@ -2121,6 +2137,7 @@ struct ipa_hdr_proc_ctx_add {
 	struct ipa_pppoe_header_add_procparams pppoe_params;
 	struct ipa_gre_hdr_proc_ctx_params gre_params;
 	struct ipa_ipogre_hdr_proc_ctx_params ipogre_params;
+	struct ipa_mape_header_add_procparams mape_params;
 };
 
 #define IPA_L2TP_HDR_PROC_SUPPORT
