@@ -1292,8 +1292,8 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	}
 
 	/* Stop DMA RX TX ch 0 before Link down */
-	stmmac_stop_rx_dma(priv, 0);
-	stmmac_stop_tx_dma(priv, 0);
+	stmmac_stop_rx(priv, priv->ioaddr, 0);
+	stmmac_stop_tx(priv, priv->ioaddr, 0);
 
 	/* Flush MTL TX Queue 0 to drain any frames staged in the FIFO */
 	stmmac_flush_tx_mtl(priv, priv->hw, 0);
