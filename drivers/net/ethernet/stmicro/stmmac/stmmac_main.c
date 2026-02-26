@@ -3779,6 +3779,10 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 		priv->hw->rx_csum = 0;
 	}
 
+	/* Enable the MAC Rx/Tx */
+	if (priv->plat->interface != PHY_INTERFACE_MODE_RGMII)
+		stmmac_mac_set(priv, priv->ioaddr, true);
+
 	/* Set the HW DMA mode and the COE */
 	stmmac_dma_operation_mode(priv);
 
