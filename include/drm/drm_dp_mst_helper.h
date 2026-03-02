@@ -65,6 +65,7 @@ struct drm_dp_vcpi {
 /**
  * struct drm_dp_mst_port - MST port
  * @port_num: port number
+ * @fixed_port_num: fixed port number
  * @input: if this port is an input port. Protected by
  * &drm_dp_mst_topology_mgr.base.lock.
  * @mcs: message capability status - DP 1.2 spec. Protected by
@@ -118,6 +119,7 @@ struct drm_dp_mst_port {
 #endif
 
 	u8 port_num;
+	u8 fixed_port_num;
 	bool input;
 	bool mcs;
 	bool ddps;

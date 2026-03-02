@@ -1235,7 +1235,7 @@ build_query_stream_enc_status(struct drm_dp_sideband_msg_tx *msg, u8 stream_id,
 }
 
 static int drm_dp_mst_assign_payload_id(struct drm_dp_mst_topology_mgr *mgr,
-					struct drm_dp_vcpi *vcpi)
+					struct drm_dp_vcpi *vcpi, u8 fixed_id)
 {
 	int ret, vcpi_ret;
 
@@ -1247,7 +1247,18 @@ static int drm_dp_mst_assign_payload_id(struct drm_dp_mst_topology_mgr *mgr,
 		goto out_unlock;
 	}
 
-	vcpi_ret = find_first_zero_bit(&mgr->vcpi_mask, mgr->max_payloads + 1);
+	if (fixed_id > 0) {
+		vcpi_ret = fixed_id - 1;
+		if (test_bit(vcpi_ret, &mgr->vcpi_mask)) {
+			ret = -EINVAL;
+			drm_dbg_kms(mgr->dev, "vcpi %d is used \n", fixed_id);
+			goto out_unlock;
+		}
+		drm_dbg_kms(mgr->dev, "use fixed vcpi: %d\n", fixed_id);
+	} else {
+		vcpi_ret = find_first_zero_bit(&mgr->vcpi_mask, mgr->max_payloads + 1);
+	}
+
 	if (vcpi_ret > mgr->max_payloads) {
 		ret = -EINVAL;
 		drm_dbg_kms(mgr->dev, "out of vcpi ids %d\n", ret);
@@ -1257,6 +1268,7 @@ static int drm_dp_mst_assign_payload_id(struct drm_dp_mst_topology_mgr *mgr,
 	set_bit(ret, &mgr->payload_mask);
 	set_bit(vcpi_ret, &mgr->vcpi_mask);
 	vcpi->vcpi = vcpi_ret + 1;
+	drm_dbg_kms(mgr->dev, "use vcpi: %d\n", vcpi->vcpi);
 	mgr->proposed_vcpis[ret - 1] = vcpi;
 out_unlock:
 	mutex_unlock(&mgr->payload_lock);
@@ -4331,7 +4343,7 @@ int drm_dp_find_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr,
 EXPORT_SYMBOL(drm_dp_find_vcpi_slots);
 
 static int drm_dp_init_vcpi(struct drm_dp_mst_topology_mgr *mgr,
-			    struct drm_dp_vcpi *vcpi, int pbn, int slots)
+			    struct drm_dp_vcpi *vcpi, int pbn, int slots, u8 fixed_id)
 {
 	int ret;
 
@@ -4343,7 +4355,7 @@ static int drm_dp_init_vcpi(struct drm_dp_mst_topology_mgr *mgr,
 	vcpi->aligned_pbn = slots * mgr->pbn_div;
 	vcpi->num_slots = slots;
 
-	ret = drm_dp_mst_assign_payload_id(mgr, vcpi);
+	ret = drm_dp_mst_assign_payload_id(mgr, vcpi, fixed_id);
 	if (ret < 0)
 		return ret;
 	return 0;
@@ -4539,7 +4551,7 @@ bool drm_dp_mst_allocate_vcpi(struct drm_dp_mst_topology_mgr *mgr,
 		}
 	}
 
-	ret = drm_dp_init_vcpi(mgr, &port->vcpi, pbn, slots);
+	ret = drm_dp_init_vcpi(mgr, &port->vcpi, pbn, slots, port->fixed_port_num);
 	if (ret) {
 		drm_dbg_kms(mgr->dev, "failed to init vcpi slots=%d max=63 ret=%d\n",
 			    DIV_ROUND_UP(pbn, mgr->pbn_div), ret);
