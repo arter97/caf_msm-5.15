@@ -231,7 +231,7 @@ void gh_destroy_vm(struct gh_vm *vm)
 		vcpu_id++;
 	}
 
-	if (ret == 0)
+	if (ret == 0 || vm->status.vm_status == GH_RM_VM_STATUS_EXITED)
 		gh_notify_clients(vm, GH_VM_EARLY_POWEROFF);
 	gh_vm_cleanup(vm);
 
@@ -335,7 +335,7 @@ start_vcpu_run:
 						0, 0, 0, &vcpu_run);
 		if (ret < 0) {
 			pr_err("Failed vcpu_run %d\n", ret);
-			return ret;
+			goto err_powerup;
 		}
 	} else {
 		gh_wait_for_vm_status(vm, GH_RM_VM_STATUS_EXITED);
