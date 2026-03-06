@@ -7886,6 +7886,7 @@ int stmmac_resume(struct device *dev)
 	stmmac_reinit_rx_buffers(priv);
 	stmmac_free_tx_skbufs(priv);
 	stmmac_clear_descriptors(priv);
+	init_dma_tx_desc_rings(ndev);
 
 	stmmac_hw_setup(ndev, false);
 
