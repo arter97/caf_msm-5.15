@@ -305,6 +305,7 @@ struct qti_can_ioctl_req {
 } __packed;
 
 static int qti_can_rx_message(struct qti_can *priv_data);
+static int time_request_update(struct qti_can *priv_data);
 
 u64 getValue(u64 data, u8 lbit, u8 hbit)
 {
@@ -1791,6 +1792,9 @@ static int qti_can_netdev_do_ioctl(struct net_device *netdev,
 		dev_info(&priv_data->spidev->dev, "timestamp Configuration %d\n",
 			 priv_data->ts_conf);
 		mutex_unlock(&priv_data->spi_lock);
+		ret = time_request_update(priv_data);
+		if (ret)
+			dev_err(&priv_data->spidev->dev, "Failed to send time sync cmd\n");
 		break;
 	}
 	dev_dbg(&priv_data->spidev->dev, "%s ret %d\n", __func__, ret);
