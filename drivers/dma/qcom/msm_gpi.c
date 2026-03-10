@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/atomic.h>
@@ -2632,6 +2632,12 @@ struct dma_async_tx_descriptor *gpi_prep_slave_sg(struct dma_chan *chan,
 	/* copy each tre into transfer ring */
 	for_each_sg(sgl, sg, sg_len, i) {
 		tre = sg_virt(sg);
+
+		if (!tre) {
+			kfree(gpi_desc);
+			GPII_ERR(gpii, gpii_chan->chid, "TRE address is null\n");
+			return NULL;
+		}
 
 		if (sg_len == 1) {
 			tre_type =
