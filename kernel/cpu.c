@@ -1,8 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /* CPU control.
  * (C) 2001, 2002, 2003, 2004 Rusty Russell
  *
  * This code is licenced under the GPL.
  */
+
 #include <linux/sched/mm.h>
 #include <linux/proc_fs.h>
 #include <linux/smp.h>
@@ -1109,8 +1112,8 @@ static void cpuhp_complete_idle_dead(void *arg)
 
 void cpuhp_report_idle_dead(void)
 {
+	unsigned int cpu;
 	struct cpuhp_cpu_state *st = this_cpu_ptr(&cpuhp_state);
-
 	BUG_ON(st->state != CPUHP_AP_OFFLINE);
 	rcu_report_dead(smp_processor_id());
 	st->state = CPUHP_AP_IDLE_DEAD;
@@ -1118,8 +1121,11 @@ void cpuhp_report_idle_dead(void)
 	 * We cannot call complete after rcu_report_dead() so we delegate it
 	 * to an online cpu.
 	 */
-	smp_call_function_single(cpumask_first(cpu_online_mask),
-				 cpuhp_complete_idle_dead, st, 0);
+	cpu = cpumask_first(cpu_online_mask);
+	if (cpu >= nr_cpu_ids)
+		return;
+
+	smp_call_function_single(cpu, cpuhp_complete_idle_dead, st, 0);
 }
 
 static int cpuhp_down_callbacks(unsigned int cpu, struct cpuhp_cpu_state *st,
