@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2015, Sony Mobile Communications AB.
  * Copyright (c) 2012-2013, 2019 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/hwspinlock.h>
@@ -524,6 +524,9 @@ static void *qcom_smem_get_global(struct qcom_smem *smem,
 	unsigned i;
 
 	header = smem->regions[0].virt_base;
+	if (item >= SMEM_ITEM_COUNT)
+		return ERR_PTR(-EINVAL);
+
 	entry = &header->toc[item];
 	if (!entry->allocated)
 		return ERR_PTR(-ENXIO);
