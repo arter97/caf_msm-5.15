@@ -454,8 +454,8 @@ struct stmmac_priv {
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	bool ptp_init;
-	struct completion probe_done;
 #endif
+	struct completion probe_done;
 };
 
 enum stmmac_state {

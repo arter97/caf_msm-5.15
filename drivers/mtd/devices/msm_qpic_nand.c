@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "msm_qpic_nand.h"
@@ -393,6 +393,7 @@ static int msm_nand_resume(struct device *dev)
 static int msm_nand_get_device(struct device *dev)
 {
 	int ret = 0;
+	struct msm_nand_info *info = dev_get_drvdata(dev);
 
 	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
@@ -400,6 +401,27 @@ static int msm_nand_get_device(struct device *dev)
 		msm_nand_print_rpm_info(dev);
 	} else { /* Reset to success */
 		ret = 0;
+		/*
+		 * .suspend callback registered with pm framework,
+		 * invokes the driver's .runtime_suspend callback
+		 * and turns OFF QPIC clock.
+		 *
+		 * Post suspend, if a late i/o request arrives from
+		 * kernel non-freezable work queue and if
+		 * dev->power.runtime_status is RPM_ACTIVE,
+		 * pm_runtime_get_sync() returns no error and may
+		 * not call driver's .runtime_resume function. This
+		 * leaves QPIC clocks disabled and can lead to NOC
+		 * errors when HW registers are accessed.
+		 *
+		 * So, add an explicit clock state check and ensure
+		 * QPIC clocks are enabled.
+		 */
+		if (!atomic_read(&info->clk_data.clk_enabled)) {
+			ret = msm_nand_setup_clocks_and_bus_bw(info, true);
+			if (ret)
+				pr_err("Failed to resume %d\n", ret);
+		}
 	}
 	return ret;
 }
@@ -2267,7 +2289,7 @@ free_dma:
 			if (last_pos < ecc_bytes_percw_in_bits)
 				num_zero_bits++;
 
-			if (num_zero_bits > 4) {
+			if (num_zero_bits > info->flash_dev.ecc_capability) {
 				*erased_page = false;
 				goto free_mem;
 			}
@@ -2278,8 +2300,8 @@ free_dma:
 		num_zero_bits = last_pos = next_pos = 0;
 		ecc_temp += chip->ecc_parity_bytes;
 	}
-
-	if ((n == cwperpage) && (num_zero_bits <= 4))
+	if ((n == cwperpage) &&
+			(num_zero_bits <= info->flash_dev.ecc_capability))
 		*erased_page = true;
 free_mem:
 	kfree(ecc);
@@ -2482,6 +2504,33 @@ static int msm_nand_read_pagescope(struct mtd_info *mtd, loff_t from,
 			goto free_dma;
 		/* Check for flash status errors */
 		pageerr = rawerr = 0;
+
+		/*
+		 * PAGE_ERASED bit will set only if all
+		 * CODEWORD_ERASED bit of all codewords
+		 * of the page is set.
+		 *
+		 * PAGE_ERASED bit is a 'logical and' of all
+		 * CODEWORD_ERASED bit of all codewords i.e.
+		 * even if one codeword is detected as not
+		 * an erased codeword, PAGE_ERASED bit will unset.
+		 */
+		for (n = rw_params.start_sector; n < cwperpage; n++) {
+			if ((dma_buffer->result[n].erased_cw_status &
+					(1 << PAGE_ERASED)) &&
+					(dma_buffer->result[n].buffer_status &
+					 NUM_ERRORS)) {
+				err = msm_nand_is_erased_page_ps(mtd,
+						from, ops,
+						&rw_params,
+						&erased_page);
+				if (err)
+					goto free_dma;
+				if (erased_page)
+					rawerr = -EIO;
+				break;
+			}
+		}
 		for (n = rw_params.start_sector; n < cwperpage; n++) {
 			if (dma_buffer->result[n].flash_status & (FS_OP_ERR |
 					FS_MPU_ERR)) {
@@ -2836,6 +2885,33 @@ static int msm_nand_read_multipage(struct mtd_info *mtd, loff_t from,
 
 		/* Check for flash status errors */
 		pageerr = rawerr = 0;
+
+		/*
+		 * PAGE_ERASED bit will set only if all
+		 * CODEWORD_ERASED bit of all codewords
+		 * of the page is set.
+		 *
+		 * PAGE_ERASED bit is a 'logical and' of all
+		 * CODEWORD_ERASED bit of all codewords i.e.
+		 * even if one codeword is detected as not
+		 * an erased codeword, PAGE_ERASED bit will unset.
+		 */
+		for (n = rw_params.start_sector; n < (cwperpage * mp_to_read); n++) {
+			if ((dma_buffer->result[n].erased_cw_status &
+					(1 << PAGE_ERASED)) &&
+					(dma_buffer->result[n].buffer_status &
+					 NUM_ERRORS)) {
+				err = msm_nand_is_erased_page_ps(mtd,
+						from, ops,
+						&rw_params,
+						&erased_page);
+				if (err)
+					goto free_dma;
+				if (erased_page)
+					rawerr = -EIO;
+				break;
+			}
+		}
 		for (n = rw_params.start_sector; n < (cwperpage * mp_to_read); n++) {
 			if (dma_buffer->result[n].flash_status & (FS_OP_ERR |
 					FS_MPU_ERR)) {
@@ -3216,7 +3292,7 @@ free_dma:
 			if (last_pos < ecc_bytes_percw_in_bits)
 				num_zero_bits++;
 
-			if (num_zero_bits > 4) {
+			if (num_zero_bits > info->flash_dev.ecc_capability) {
 				*erased_page = false;
 				goto free_mem;
 			}
@@ -3228,7 +3304,8 @@ free_dma:
 		ecc_temp += chip->ecc_parity_bytes;
 	}
 
-	if ((n == cwperpage) && (num_zero_bits <= 4))
+	if ((n == cwperpage) &&
+			(num_zero_bits <= info->flash_dev.ecc_capability))
 		*erased_page = true;
 free_mem:
 	kfree(ecc);
@@ -3408,6 +3485,33 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			goto free_dma;
 		/* Check for flash status errors */
 		pageerr = rawerr = 0;
+
+		/*
+		 * PAGE_ERASED bit will set only if all
+		 * CODEWORD_ERASED bit of all codewords
+		 * of the page is set.
+		 *
+		 * PAGE_ERASED bit is a 'logical and' of all
+		 * CODEWORD_ERASED bit of all codewords i.e.
+		 * even if one codeword is detected as not
+		 * an erased codeword, PAGE_ERASED bit will unset.
+		 */
+		for (n = rw_params.start_sector; n < cwperpage; n++) {
+			if ((dma_buffer->result[n].erased_cw_status &
+					(1 << PAGE_ERASED)) &&
+					(dma_buffer->result[n].buffer_status &
+					 NUM_ERRORS)) {
+				err = msm_nand_is_erased_page(mtd,
+						from, ops,
+						&rw_params,
+						&erased_page);
+				if (err)
+					goto free_dma;
+				if (erased_page)
+					rawerr = -EIO;
+				break;
+			}
+		}
 		for (n = rw_params.start_sector; n < cwperpage; n++) {
 			if (dma_buffer->result[n].flash_status & (FS_OP_ERR |
 					FS_MPU_ERR)) {

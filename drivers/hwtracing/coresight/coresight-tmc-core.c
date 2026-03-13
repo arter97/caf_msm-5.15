@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright (c) 2012, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Description: CoreSight Trace Memory Controller driver
  */
@@ -793,7 +793,7 @@ static void tmc_shutdown(struct amba_device *adev)
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 
-	if (drvdata->mode == CS_MODE_DISABLED)
+	if (drvdata->mode == CS_MODE_DISABLED || drvdata->mode == CS_MODE_SEC)
 		goto out;
 
 	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR &&
