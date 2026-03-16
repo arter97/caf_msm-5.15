@@ -2724,6 +2724,248 @@ static const struct camss_subdev_resources vfe_res_8550[] = {
 	},
 };
 
+static const struct camss_subdev_resources csiphy_res_8550_gen2[] = {
+	/* CSIPHY0 */
+	{
+		.resource_id = 0,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy0_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy0" },
+		.interrupt = { "csiphy0" },
+		.icc_clk = { "csiphy0_clk" },
+		.csiphy = {
+			.id = 0,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY1 */
+	{
+		.is_disabled = true,
+		.resource_id = 1,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy1_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy1" },
+		.interrupt = { "csiphy1" },
+		.icc_clk = { "csiphy1_clk" },
+		.csiphy = {
+			.id = 1,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY2 */
+	{
+		.is_disabled = true,
+		.resource_id = 2,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy2_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy2" },
+		.interrupt = { "csiphy2" },
+		.icc_clk = { "csiphy2_clk" },
+		.csiphy = {
+			.id = 2,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY3 */
+	{
+		.is_disabled = true,
+		.resource_id = 3,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy3_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy3" },
+		.interrupt = { "csiphy3" },
+		.icc_clk = { "csiphy3_clk" },
+		.csiphy = {
+			.id = 3,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY4 */
+	{
+		.is_disabled = true,
+		.resource_id = 4,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy4_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy4" },
+		.interrupt = { "csiphy4" },
+		.icc_clk = { "csiphy4_clk" },
+		.csiphy = {
+			.id = 4,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY5 */
+	{
+		.is_disabled = true,
+		.resource_id = 5,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy5_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy5" },
+		.interrupt = { "csiphy5" },
+		.icc_clk = { "csiphy5_clk" },
+		.csiphy = {
+			.id = 5,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY6 */
+	{
+		.is_disabled = true,
+		.resource_id = 6,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy6_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy6" },
+		.interrupt = { "csiphy6" },
+		.icc_clk = { "csiphy6_clk" },
+		.csiphy = {
+			.id = 6,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	},
+	/* CSIPHY7 */
+	{
+		.is_disabled = true,
+		.resource_id = 7,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.clock = {
+			"csiphy7_timer",
+		},
+		.clock_rate = {
+			{ 400000000, 400000000, 400000000, 400000000 },
+		},
+		.reg = { "csiphy7" },
+		.interrupt = { "csiphy7" },
+		.icc_clk = { "csiphy7_clk" },
+		.csiphy = {
+			.id = 7,
+			.hw_ops = &csiphy_ops_3ph_1_0,
+			.formats = &csiphy_formats_sdm845
+		}
+	}
+};
+
+static const struct camss_subdev_resources csid_res_8550_gen2[] = {
+	/* CSID0 */
+	{
+		.is_disabled = true,
+		.resource_id = 0,
+	},
+	/* CSID1 */
+	{
+		.is_disabled = true,
+		.resource_id = 1,
+	},
+	/* CSID2 */
+	{
+		.is_disabled = true,
+		.resource_id = 2,
+	},
+	/* CSID3 */
+	{
+		.resource_id = 3,
+		.regulators = { "cam_cc_titan_top_gdsc", "vdda-phy", "vdda-pll" },
+		.reg = { "csid_lite0" },
+		.interrupt = { "csid_lite0" },
+		.icc_clk = { "csid_csiphy_rx_clk",
+			    "ife_lite_cphy_rx_clk",
+			    "ife_lite_csid_clk" },
+		.csid = {
+			.is_lite = true,
+			.parent_dev_ops = &vfe_parent_dev_ops,
+			.hw_ops = &csid_ops_gen3,
+			.formats = &csid_formats_gen2
+		}
+	},
+	/* CSID4 */
+	{
+		.is_disabled = true,
+		.resource_id = 4,
+	}
+};
+
+static const struct camss_subdev_resources vfe_res_8550_gen2[] = {
+	/* VFE0 */
+	{
+		.is_disabled = true,
+		.resource_id = 0,
+	},
+	/* VFE1 */
+	{
+		.is_disabled = true,
+		.resource_id = 1,
+	},
+	/* VFE2 */
+	{
+		.is_disabled = true,
+		.resource_id = 2,
+	},
+	/* VFE3 lite */
+	{
+		.resource_id = 3,
+		.regulators = {},
+		.clock = { "gcc_axi_hf"},
+		.clock_rate = {	{ 0 } },
+		.reg = { "vfe_lite0" },
+		.interrupt = { "vfe_lite0" },
+		.icc_clk = { "cpas_ahb_clk", "ife_lite_ahb_clk", "cpas_fast_ahb_clk",
+			     "camnoc_axi_clk", "cpas_ife_lite_clk", "ife_lite_clk" },
+		.vfe = {
+			.line_num = 4,
+			.is_lite = true,
+			.hw_ops = &vfe_ops_gen3,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
+		}
+	},
+	/* VFE4 lite */
+	{
+		.is_disabled = true,
+		.resource_id = 4,
+	},
+};
+
 static const struct resources_icc icc_res_sm8550[] = {
 	{
 		.name = "ahb",
@@ -2734,6 +2976,95 @@ static const struct resources_icc icc_res_sm8550[] = {
 		.name = "hf_0_mnoc",
 		.icc_bw_tbl.avg = 2097152,
 		.icc_bw_tbl.peak = 2097152,
+	},
+};
+
+static const struct resources_icc icc_res_sm8550_gen2[] = {
+	{
+		.name = "ahb",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+		.client = ICC_CAMSS,
+	},
+	{
+		.name = "hf_0_mnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+		.client = ICC_CAMSS,
+	},
+	{
+		.name = "csiphy0_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy1_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy2_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy3_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy4_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy5_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy6_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csiphy7_clk",
+		.client	= ICC_CSIPHY,
+	},
+	{
+		.name = "csid_csiphy_rx_clk",
+		.client	= ICC_CSID,
+	},
+	{
+		.name = "ife_lite_cphy_rx_clk",
+		.client = ICC_CSID,
+	},
+	{
+		.name = "ife_lite_csid_clk",
+		.client = ICC_CSID,
+	},
+	{
+		.name = "cpas_ahb_clk",
+		.icc_bw_tbl.peak = 80000000,
+		.client = ICC_VFE,
+	},
+	{
+		.name = "ife_lite_ahb_clk",
+		.icc_bw_tbl.peak = 300000000,
+		.client = ICC_VFE,
+	},
+	{
+		.name = "cpas_fast_ahb_clk",
+		.icc_bw_tbl.peak = 300000000,
+		.client = ICC_VFE,
+	},
+	{
+		.name = "camnoc_axi_clk",
+		.icc_bw_tbl.peak = 300000000,
+		.client = ICC_VFE,
+	},
+	{
+		.name = "cpas_ife_lite_clk",
+		.icc_bw_tbl.peak = 300000000,
+		.client = ICC_VFE,
+	},
+	{
+		.name = "ife_lite_clk",
+		.icc_bw_tbl.peak = 400000000,
+		.client = ICC_VFE,
 	},
 };
 
@@ -3692,6 +4023,21 @@ void camss_pm_domain_off(struct camss *camss, int id)
 	}
 }
 
+int camss_icc_set_clk(struct camss *camss, char *name, u32 avg, u32 peak)
+{
+	int i, ret;
+
+	for (i = 0; i < camss->res->icc_path_num; i++) {
+		if (!strcmp(camss->res->icc_res[i].name, name)) {
+			ret = icc_set_bw(camss->icc_path[i], avg, peak);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int vfe_parent_dev_ops_get(struct camss *camss, int id)
 {
 	int ret = -EINVAL;
@@ -4306,8 +4652,8 @@ static int camss_configure_pd(struct camss *camss)
 						      "power-domains",
 						      "#power-domain-cells");
 	if (camss->genpd_num < 0) {
-		dev_err(dev, "Power domains are not defined for camss\n");
-		return camss->genpd_num;
+		dev_warn(dev, "Power domains are not defined for camss\n");
+		camss->genpd_num = 1;
 	}
 
 	/*
@@ -4533,7 +4879,6 @@ err_media_device_cleanup:
 	media_device_cleanup(&camss->media_dev);
 err_genpd_cleanup:
 	camss_genpd_cleanup(camss);
-
 	return ret;
 }
 
@@ -4743,6 +5088,19 @@ static const struct camss_resources x1e80100_resources = {
 	.vfe_num = ARRAY_SIZE(vfe_res_x1e80100),
 };
 
+static const struct camss_resources sm8550_gen2_resources = {
+	.version = CAMSS_8550GEN2,
+	.csiphy_res = csiphy_res_8550_gen2,
+	.csid_res = csid_res_8550_gen2,
+	.vfe_res = vfe_res_8550_gen2,
+	.icc_res = icc_res_sm8550_gen2,
+	.icc_path_num = ARRAY_SIZE(icc_res_sm8550_gen2),
+	.csiphy_num = ARRAY_SIZE(csiphy_res_8550_gen2),
+	.csid_num = ARRAY_SIZE(csid_res_8550_gen2),
+	.vfe_num = ARRAY_SIZE(vfe_res_8550_gen2),
+	.link_entities = camss_link_entities
+};
+
 static const struct of_device_id camss_dt_match[] = {
 	{ .compatible = "qcom,msm8916-camss", .data = &msm8916_resources },
 	{ .compatible = "qcom,msm8953-camss", .data = &msm8953_resources },
@@ -4757,6 +5115,7 @@ static const struct of_device_id camss_dt_match[] = {
 	{ .compatible = "qcom,sdm845-camss", .data = &sdm845_resources },
 	{ .compatible = "qcom,sm8250-camss", .data = &sm8250_resources },
 	{ .compatible = "qcom,sm8550-camss", .data = &sm8550_resources },
+	{ .compatible = "qcom,sm8550-camss-gen2", .data = &sm8550_gen2_resources },
 	{ .compatible = "qcom,x1e80100-camss", .data = &x1e80100_resources },
 	{ }
 };
@@ -4786,11 +5145,13 @@ static int __maybe_unused camss_runtime_resume(struct device *dev)
 	int ret;
 
 	for (i = 0; i < camss->res->icc_path_num; i++) {
-		ret = icc_set_bw(camss->icc_path[i],
-				 icc_res[i].icc_bw_tbl.avg,
-				 icc_res[i].icc_bw_tbl.peak);
-		if (ret)
-			return ret;
+		if (icc_res[i].client == ICC_CAMSS) {
+			ret = icc_set_bw(camss->icc_path[i],
+					 icc_res[i].icc_bw_tbl.avg,
+					 icc_res[i].icc_bw_tbl.peak);
+			if (ret)
+				return ret;
+		}
 	}
 
 	return 0;
