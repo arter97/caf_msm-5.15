@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -509,6 +509,7 @@ enum sdxbaagha_functions {
 	msm_mux_sdc43,
 	msm_mux_sdc4_clk,
 	msm_mux_sdc4_cmd,
+	msm_mux_sdc4_data,
 	msm_mux_sdc4_tb_trig,
 	msm_mux_sgmii_phy_intr,
 	msm_mux_spmi_coex_clk,
@@ -1067,6 +1068,9 @@ static const char * const sdc4_clk_groups[] = {
 static const char * const sdc4_cmd_groups[] = {
 	"gpio102",
 };
+static const char * const sdc4_data_groups[] = {
+	"gpio104", "gpio105", "gpio106", "gpio107",
+};
 static const char * const sdc4_tb_trig_groups[] = {
 	"gpio101",
 };
@@ -1371,6 +1375,7 @@ static const struct msm_function sdxbaagha_functions[] = {
 	FUNCTION(sdc43),
 	FUNCTION(sdc4_clk),
 	FUNCTION(sdc4_cmd),
+	FUNCTION(sdc4_data),
 	FUNCTION(sdc4_tb_trig),
 	FUNCTION(sgmii_phy_intr),
 	FUNCTION(spmi_coex_clk),
@@ -1600,10 +1605,10 @@ static const struct msm_pingroup sdxbaagha_groups[] = {
 	[102] = PINGROUP(102, sdc4_cmd, qdss_cti_trig1, qdss_cti_trig0, NA, NA,
 			 NA, NA, NA, NA, 0x6E008, 15),
 	[103] = PINGROUP(103, sdc4_clk, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 16),
-	[104] = PINGROUP(104, sdc40, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 17),
-	[105] = PINGROUP(105, sdc41, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 18),
-	[106] = PINGROUP(106, sdc42, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 19),
-	[107] = PINGROUP(107, sdc43, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 20),
+	[104] = PINGROUP(104, sdc4_data, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 17),
+	[105] = PINGROUP(105, sdc4_data, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 18),
+	[106] = PINGROUP(106, sdc4_data, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 19),
+	[107] = PINGROUP(107, sdc4_data, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 20),
 	[108] = PINGROUP(108, NA, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
 	[109] = PINGROUP(109, NA, NA, NA, NA, NA, NA, NA, NA, NA, 0x6E008, 21),
 };
