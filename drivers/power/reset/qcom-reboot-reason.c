@@ -69,11 +69,9 @@ static struct poweroff_reason reasons[] = {
 #ifdef CONFIG_FIRMWARE_FAIL_SAFE
 	{ "firmware auth failed",       0x0E,	REBOOT_UNINTENTIONAL },
 #endif
-#ifdef CONFIG_POWER_RESET_QCOM_RESET_REASON
 	{ "user",			0x10,	REBOOT_INTENTIONAL },
 	{ "system-normal",		0x11,	REBOOT_INTENTIONAL },
 	{ "system-abnormal",		0x12,	REBOOT_UNINTENTIONAL },
-#endif
 	{}
 };
 
