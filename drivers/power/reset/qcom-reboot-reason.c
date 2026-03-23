@@ -53,10 +53,10 @@ static struct poweroff_reason reasons[] = {
 #if defined(CONFIG_POWER_RESET_QCOM_RESET_REASON)
 	{ "panic",			0x07,	REBOOT_UNINTENTIONAL },
 	{ "watchdog bark",		0x08,	REBOOT_UNINTENTIONAL },
+#endif
 	{ "user",			0x10,	REBOOT_INTENTIONAL },
 	{ "system-normal",		0x11,	REBOOT_INTENTIONAL },
 	{ "system-abnormal",		0x12,	REBOOT_UNINTENTIONAL },
-#endif
 	{}
 };
 
