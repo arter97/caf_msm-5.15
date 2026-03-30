@@ -3,7 +3,7 @@
  * drivers/mmc/host/sdhci-msm.c - Qualcomm SDHCI Platform driver
  *
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -4819,7 +4819,7 @@ static int sdhci_qcom_read_boot_config(struct platform_device *pdev)
 	return is_bootdevice_sdhci;
 }
 
-static void sdhci_msm_set_sdio_pm_flag(void *unused, struct mmc_host *host)
+static void __maybe_unused sdhci_msm_set_sdio_pm_flag(void *unused, struct mmc_host *host)
 {
 	host->pm_flags &= ~MMC_PM_WAKE_SDIO_IRQ;
 }
@@ -4829,7 +4829,7 @@ static int mmc_sleep_busy_cb(void *cb_data, bool *busy)
 	*busy = host->ops->card_busy(host);
 	return 0;
 }
-static int mmc_sleepawake(struct mmc_host *host)
+static int __maybe_unused mmc_sleepawake(struct mmc_host *host)
 {
 	struct mmc_command cmd = {};
 	struct mmc_card *card = host->card;
@@ -4912,7 +4912,7 @@ static int mmc_test_awake_ext_csd(struct mmc_host *mmc)
 
 	return err;
 }
-static int mmc_cache_card_ext_csd(struct mmc_host *mmc)
+static int __maybe_unused mmc_cache_card_ext_csd(struct mmc_host *mmc)
 {
 	int err;
 	u8 *ext_csd;
@@ -4939,7 +4939,7 @@ static int mmc_cache_card_ext_csd(struct mmc_host *mmc)
 	return 0;
 }
 
-static int mmc_partial_init(struct mmc_host *mmc)
+static int __maybe_unused mmc_partial_init(struct mmc_host *mmc)
 {
 	int err = 0;
 	struct mmc_card *card = mmc->card;
@@ -4988,7 +4988,7 @@ out:
 	return err;
 }
 
-static void mmc_cache_card(void *unused, struct mmc_host *mmc)
+static void __maybe_unused mmc_cache_card(void *unused, struct mmc_host *mmc)
 {
 
 	struct sdhci_host *host = mmc_priv(mmc);
@@ -5006,12 +5006,12 @@ static void mmc_cache_card(void *unused, struct mmc_host *mmc)
 #endif
 }
 
-static int mmc_can_sleep(struct mmc_card *card)
+static int __maybe_unused mmc_can_sleep(struct mmc_card *card)
 {
 	return card->ext_csd.rev >= 3;
 }
 
-static void partial_init(void *unused, struct mmc_host *host, bool *partial_init)
+static void __maybe_unused partial_init(void *unused, struct mmc_host *host, bool *partial_init)
 {
 	int err;
 	struct sdhci_host *shost = mmc_priv(host);
@@ -5418,6 +5418,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
 
+#if IS_ENABLED(CONFIG_TRACEPOINTS) && IS_ENABLED(CONFIG_ANDROID_VENDOR_HOOKS)
 	if (msm_host->mmc->card && mmc_card_sdio(msm_host->mmc->card))
 		register_trace_android_vh_mmc_sdio_pm_flag_set(sdhci_msm_set_sdio_pm_flag, NULL);
 
@@ -5425,6 +5426,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		register_trace_android_rvh_mmc_cache_card_properties(mmc_cache_card, NULL);
 		register_trace_android_rvh_partial_init(partial_init, NULL);
 	}
+#endif
 	return 0;
 
 pm_runtime_disable:
@@ -5574,7 +5576,6 @@ static __maybe_unused int sdhci_msm_runtime_resume(struct device *dev)
 
 	sdhci_msm_vote_pmqos(msm_host->mmc,
 			msm_host->sdhci_qos->active_mask);
-
 	ret = sdhci_msm_ice_resume(msm_host);
 	if (ret)
 		return ret;
