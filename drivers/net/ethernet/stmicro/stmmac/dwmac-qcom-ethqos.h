@@ -561,6 +561,7 @@ struct qcom_ethqos {
 	struct notifier_block panic_nb;
 	struct notifier_block vm_nb;
 	bool panic_notifier_registered;
+	unsigned long mac_reg_count;
 
 	struct stmmac_priv *priv;
 
