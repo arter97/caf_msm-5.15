@@ -7054,6 +7054,77 @@ out:
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static int qcom_ethqos_va_md_notifier(struct notifier_block *nb, unsigned long event, void *ptr)
+{
+	int i, queue, ret;
+	u32 rx_count, tx_count;
+	struct va_md_entry entry;
+	struct qcom_ethqos *ethqos = NULL;
+	struct stmmac_priv *priv = NULL;
+
+	for (i = 0; i < ETH_MAX_NICS; i++) {
+		if (!pethqos[i])
+			continue;
+
+		ethqos = pethqos[i];
+		priv = ethqos->priv;
+
+		rx_count = priv->plat->rx_queues_to_use;
+		tx_count = priv->plat->tx_queues_to_use;
+
+		for (queue = 0; queue < rx_count; queue++) {
+			if (priv->plat->rx_queues_cfg[queue].skip_sw)
+				continue;
+
+			if (priv->extend_desc) {
+				entry.vaddr = (unsigned long)priv->rx_queue[queue].dma_erx;
+				entry.size = priv->dma_rx_size * sizeof(struct dma_extended_desc);
+			} else {
+				entry.vaddr = (unsigned long)priv->rx_queue[queue].dma_rx;
+				entry.size = priv->dma_rx_size * sizeof(struct dma_desc);
+			}
+
+			scnprintf(entry.owner, sizeof(entry.owner), "emac%d_rx%ddes",
+				  priv->plat->port_num, queue);
+			ret = qcom_va_md_add_region(&entry);
+			if (ret)
+				ETHQOSERR("Failed to add region %s in minidump ret: %d\n",
+					  entry.owner, ret);
+		}
+
+		for (queue = 0; queue < tx_count; queue++) {
+			if (priv->plat->tx_queues_cfg[queue].skip_sw)
+				continue;
+
+			if (priv->extend_desc) {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_etx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_extended_desc);
+			} else if (priv->tx_queue[queue].tbs & STMMAC_TBS_AVAIL) {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_entx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_edesc);
+			} else {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_tx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_desc);
+			}
+
+			scnprintf(entry.owner, sizeof(entry.owner), "emac%d_tx%ddes",
+				  priv->plat->port_num, queue);
+			ret = qcom_va_md_add_region(&entry);
+			if (ret)
+				ETHQOSERR("Failed to add region %s in minidump ret: %d\n",
+					  entry.owner, ret);
+		}
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block qcom_va_md_dma_notif_blk = {
+	.notifier_call = qcom_ethqos_va_md_notifier,
+	.priority = INT_MAX,
+};
+#endif
+
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
@@ -8282,6 +8353,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #endif
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	char md_name[13];
+	int res;
 #endif
 
 	ret = pinctrl_pm_select_default_state(&pdev->dev);
@@ -8758,6 +8830,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 					      ethqos->mac_reg_count * sizeof(struct mac_csr_data),
 					      md_name);
 	}
+
+	if (qcom_va_md_enabled()) {
+		res = qcom_va_md_register("emac", &qcom_va_md_dma_notif_blk);
+
+		if (res && res != -EEXIST)
+			ETHQOSERR("Failed to register emac to VA-Minidump, err: %d\n", res);
+	}
 #endif
 
 	if (ethqos->qoe_mode) {
@@ -8879,6 +8958,7 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	struct stmmac_priv *priv;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	char md_name[13];
+	bool last_nic = true;
 	struct net_device *ndev = platform_get_drvdata(pdev);
 #endif
 
@@ -8992,6 +9072,21 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 		ethqos_qcom_unregister_minidump((uintptr_t)ethqos->mac_reg_list,
 						ethqos->mac_reg_count * sizeof(struct mac_csr_data),
 						md_name);
+	}
+
+	if (qcom_va_md_enabled()) {
+		for (i = 0; i < ETH_MAX_NICS; i++) {
+			if (pethqos[i] && pethqos[i] != ethqos) {
+				last_nic = false;
+				break;
+			}
+		}
+		if (last_nic) {
+			ret = qcom_va_md_unregister("emac", &qcom_va_md_dma_notif_blk);
+			if (ret)
+				ETHQOSERR("Failed to unregister emac from VA-Minidump, err: %d\n",
+					  ret);
+		}
 	}
 #endif
 	qcom_ethqos_unregister_panic_notifier(ethqos);
