@@ -333,13 +333,14 @@ static void inetdev_destroy(struct in_device *in_dev)
 
 static int __init inet_blackhole_dev_init(void)
 {
-	struct in_device *in_dev;
+	int err = 0;
 
 	rtnl_lock();
-	in_dev = inetdev_init(blackhole_netdev);
+	if (!inetdev_init(blackhole_netdev))
+		err = -ENOMEM;
 	rtnl_unlock();
 
-	return PTR_ERR_OR_ZERO(in_dev);
+	return err;
 }
 late_initcall(inet_blackhole_dev_init);
 

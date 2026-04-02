@@ -1605,7 +1605,7 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 
 	ret = get_user(ch, ubuf++);
 	if (ret)
-		goto fail;
+		goto out;
 
 	read++;
 	cnt--;
@@ -1619,7 +1619,7 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 		while (cnt && isspace(ch)) {
 			ret = get_user(ch, ubuf++);
 			if (ret)
-				goto fail;
+				goto out;
 			read++;
 			cnt--;
 		}
@@ -1629,7 +1629,8 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 		/* only spaces were written */
 		if (isspace(ch) || !ch) {
 			*ppos += read;
-			return read;
+			ret = read;
+			goto out;
 		}
 	}
 
@@ -1639,12 +1640,11 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 			parser->buffer[parser->idx++] = ch;
 		else {
 			ret = -EINVAL;
-			goto fail;
+			goto out;
 		}
-
 		ret = get_user(ch, ubuf++);
 		if (ret)
-			goto fail;
+			goto out;
 		read++;
 		cnt--;
 	}
@@ -1660,13 +1660,13 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 		parser->buffer[parser->idx] = 0;
 	} else {
 		ret = -EINVAL;
-		goto fail;
+		goto out;
 	}
 
 	*ppos += read;
-	return read;
-fail:
-	trace_parser_fail(parser);
+	ret = read;
+
+out:
 	return ret;
 }
 
@@ -2135,10 +2135,10 @@ int __init register_tracer(struct tracer *type)
 	mutex_unlock(&trace_types_lock);
 
 	if (ret || !default_bootup_tracer)
-		return ret;
+		goto out_unlock;
 
 	if (strncmp(default_bootup_tracer, type->name, MAX_TRACER_SIZE))
-		return 0;
+		goto out_unlock;
 
 	printk(KERN_INFO "Starting tracer '%s'\n", type->name);
 	/* Do we want this tracer to start on bootup? */
@@ -2150,7 +2150,8 @@ int __init register_tracer(struct tracer *type)
 	/* disable other selftests, since this will break it. */
 	disable_tracing_selftest("running a tracer");
 
-	return 0;
+ out_unlock:
+	return ret;
 }
 
 static void tracing_reset_cpu(struct array_buffer *buf, int cpu)
@@ -7196,7 +7197,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	entry = ring_buffer_event_data(event);
 	entry->ip = _THIS_IP_;
 
-	len = copy_from_user_nofault(&entry->buf, ubuf, cnt);
+	len = __copy_from_user_inatomic(&entry->buf, ubuf, cnt);
 	if (len) {
 		memcpy(&entry->buf, FAULTED_STR, FAULTED_SIZE);
 		cnt = FAULTED_SIZE;
@@ -7271,7 +7272,7 @@ tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 
 	entry = ring_buffer_event_data(event);
 
-	len = copy_from_user_nofault(&entry->id, ubuf, cnt);
+	len = __copy_from_user_inatomic(&entry->id, ubuf, cnt);
 	if (len) {
 		entry->id = -1;
 		memcpy(&entry->buf, FAULTED_STR, FAULTED_SIZE);
@@ -8627,10 +8628,11 @@ ftrace_trace_snapshot_callback(struct trace_array *tr, struct ftrace_hash *hash,
  out_reg:
 	ret = tracing_alloc_snapshot_instance(tr);
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	ret = register_ftrace_function_probe(glob, tr, ops, count);
 
+ out:
 	return ret < 0 ? ret : 0;
 }
 
@@ -10066,10 +10068,10 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 			ret = print_trace_line(&iter);
 			if (ret != TRACE_TYPE_NO_CONSUME)
 				trace_consume(&iter);
-
-			trace_printk_seq(&iter.seq);
 		}
 		touch_nmi_watchdog();
+
+		trace_printk_seq(&iter.seq);
 	}
 
 	if (!cnt)
@@ -10173,7 +10175,7 @@ __init static int tracer_alloc_buffers(void)
 	BUILD_BUG_ON(TRACE_ITER_LAST_BIT > TRACE_FLAGS_MAX_SIZE);
 
 	if (!alloc_cpumask_var(&tracing_buffer_mask, GFP_KERNEL))
-		return -ENOMEM;
+		goto out;
 
 	if (!alloc_cpumask_var(&global_trace.tracing_cpumask, GFP_KERNEL))
 		goto out_free_buffer_mask;
@@ -10282,6 +10284,7 @@ out_free_cpumask:
 	free_cpumask_var(global_trace.tracing_cpumask);
 out_free_buffer_mask:
 	free_cpumask_var(tracing_buffer_mask);
+out:
 	return ret;
 }
 

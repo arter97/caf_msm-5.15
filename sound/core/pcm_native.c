@@ -24,7 +24,6 @@
 #include <sound/minors.h>
 #include <linux/uio.h>
 #include <linux/delay.h>
-#include <linux/bitops.h>
 
 #include "pcm_local.h"
 
@@ -3114,23 +3113,13 @@ struct snd_pcm_sync_ptr32 {
 static snd_pcm_uframes_t recalculate_boundary(struct snd_pcm_runtime *runtime)
 {
 	snd_pcm_uframes_t boundary;
-	snd_pcm_uframes_t border;
-	int order;
 
 	if (! runtime->buffer_size)
 		return 0;
-
-	border = 0x7fffffffUL - runtime->buffer_size;
-	if (runtime->buffer_size > border)
-		return runtime->buffer_size;
-
-	order = __fls(border) - __fls(runtime->buffer_size);
-	boundary = runtime->buffer_size << order;
-
-	if (boundary <= border)
-		return boundary;
-	else
-		return boundary / 2;
+	boundary = runtime->buffer_size;
+	while (boundary * 2 <= 0x7fffffffUL - runtime->buffer_size)
+		boundary *= 2;
+	return boundary;
 }
 
 static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,

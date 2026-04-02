@@ -1125,9 +1125,7 @@ static int acpi_processor_get_lpi_info(struct acpi_processor *pr)
 
 	status = acpi_get_parent(handle, &pr_ahandle);
 	while (ACPI_SUCCESS(status)) {
-		if (acpi_bus_get_device(pr_ahandle, &d))
-			break;
-
+		acpi_bus_get_device(pr_ahandle, &d);
 		handle = pr_ahandle;
 
 		if (strcmp(acpi_device_hid(d), ACPI_PROCESSOR_CONTAINER_HID))
