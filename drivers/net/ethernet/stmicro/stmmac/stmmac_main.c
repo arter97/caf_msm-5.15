@@ -2719,6 +2719,10 @@ static void stmmac_stop_rx_dma(struct stmmac_priv *priv, u32 chan)
 static void stmmac_stop_tx_dma(struct stmmac_priv *priv, u32 chan)
 {
 	netdev_dbg(priv->dev, "DMA TX processes stopped in channel %d\n", chan);
+
+	if (chan > priv->plat->tx_queues_to_use)
+		return;
+
 	if (priv->plat->tx_queues_cfg[chan].skip_sw)
 		return;
 	stmmac_stop_tx(priv, priv->ioaddr, chan);
