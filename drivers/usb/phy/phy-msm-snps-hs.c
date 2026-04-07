@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -28,6 +27,7 @@
 #include <linux/debugfs.h>
 #include <linux/qcom_scm.h>
 #include <linux/types.h>
+#include <linux/pm_wakeup.h>
 
 #define USB2_PHY_USB_PHY_UTMI_CTRL0		(0x3c)
 #define OPMODE_MASK				(0x3 << 3)
@@ -186,6 +186,7 @@ struct msm_hsphy {
 	u8			param_ovrd2;
 	u8			param_ovrd3;
 	const struct hs_phy_priv_data *phy_priv_data;
+	struct wakeup_source	*ws;
 };
 
 static void msm_hsphy_enable_clocks(struct msm_hsphy *phy, bool on)
@@ -632,6 +633,9 @@ static int msm_hsphy_set_suspend(struct usb_phy *uphy, int suspend)
 	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
 	bool eud_active = false;
 
+	dev_dbg(uphy->dev, " set_suspend for %s called (prev %d)\n",
+			(suspend ? "suspend" : "resume"), phy->suspended);
+
 	if (phy->suspended && suspend) {
 		if (phy->phy.flags & PHY_SUS_OVERRIDE)
 			goto suspend;
@@ -827,7 +831,7 @@ static enum usb_charger_type usb_phy_drive_dp_pulse(struct usb_phy *uphy)
 	msm_hsphy_put_phy_in_non_driving_mode(phy, 0);
 
 	msleep(20);
-	if (!phy->cable_connected) {
+	if (!phy->cable_connected && phy->suspended) {
 		msm_hsphy_enable_clocks(phy, false);
 		ret = msm_hsphy_enable_power(phy, false);
 		if (ret < 0) {
@@ -964,9 +968,13 @@ static int msm_hsphy_vbus_notifier(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 
+	/* Keep the APPS awake till the charger detection is done */
+	pm_wakeup_ws_event(phy->ws, 2000, true);
+	__pm_stay_awake(phy->ws);
+
 	phy->vbus_active = !!event;
 	dev_dbg(phy->phy.dev, "Got VBUS notification: %u\n", event);
-	queue_delayed_work(system_freezable_wq, &phy->port_det_w, 0);
+	queue_delayed_work(system_highpri_wq, &phy->port_det_w, 0);
 
 	return NOTIFY_DONE;
 }
@@ -995,7 +1003,7 @@ static int msm_hsphy_id_notifier(struct notifier_block *nb,
 
 	phy->id_state = !event;
 	dev_dbg(phy->phy.dev, "Got id notification: %u\n", event);
-	queue_delayed_work(system_freezable_wq, &phy->port_det_w, 0);
+	queue_delayed_work(system_highpri_wq, &phy->port_det_w, 0);
 
 	return NOTIFY_DONE;
 }
@@ -1056,6 +1064,9 @@ static void msm_hsphy_notify_extcon(struct msm_hsphy *phy,
 	}
 
 	extcon_set_state_sync(phy->usb_extcon, extcon_id, event);
+
+	/* Remove the wakeup source vote, dwc3-msm should take care of it from here */
+	__pm_relax(phy->ws);
 }
 
 static bool msm_hsphy_chg_det_status(struct msm_hsphy *phy,
@@ -1337,6 +1348,8 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 			msm_hsphy_notify_charger(phy,
 						POWER_SUPPLY_TYPE_USB_DCP);
 			dev_info(phy->phy.dev, "Connected to DCP\n");
+			/* Remove the wakeup source vote */
+			__pm_relax(phy->ws);
 		} else {
 			msm_hsphy_notify_charger(phy,
 						POWER_SUPPLY_TYPE_USB_CDP);
@@ -1377,7 +1390,7 @@ static void msm_hsphy_port_state_work(struct work_struct *w)
 	dev_dbg(phy->phy.dev, "%s status:%d vbus_state:%d delay:%d\n",
 				__func__, status, phy->vbus_active, delay);
 
-	queue_delayed_work(system_freezable_wq,
+	queue_delayed_work(system_highpri_wq,
 			&phy->port_det_w, msecs_to_jiffies(delay));
 }
 
@@ -1591,6 +1604,10 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	phy->phy.type			= USB_PHY_TYPE_USB2;
 	phy->phy.charger_detect		= usb_phy_drive_dp_pulse;
 
+	phy->ws = wakeup_source_register(NULL, dev_name(phy->phy.dev));
+	if (!phy->ws)
+		return -ENOMEM;
+
 	if (of_property_read_bool(dev->of_node, "extcon")) {
 		INIT_DELAYED_WORK(&phy->port_det_w, msm_hsphy_port_state_work);
 
@@ -1601,11 +1618,14 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	}
 
 	ret = usb_add_phy_dev(&phy->phy);
-	if (ret)
+	if (ret) {
+		wakeup_source_unregister(phy->ws);
 		return ret;
+	}
 
 	ret = msm_hsphy_regulator_init(phy);
 	if (ret) {
+		wakeup_source_unregister(phy->ws);
 		usb_remove_phy(&phy->phy);
 		return ret;
 	}
@@ -1657,6 +1677,7 @@ static int msm_hsphy_remove(struct platform_device *pdev)
 
 	msm_hsphy_enable_clocks(phy, false);
 	msm_hsphy_enable_power(phy, false);
+	wakeup_source_unregister(phy->ws);
 	return 0;
 }
 
