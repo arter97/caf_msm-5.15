@@ -87,6 +87,7 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	unsigned int mii_data = priv->hw->mii.data;
 	u32 tmp, addr, value = MII_XGMAC_BUSY;
 	int ret;
+	bool disable_mdio_peak_vote = priv->plat->disable_mdio_ahb_vote;
 
 	if (atomic_read(&priv->plat->phy_clks_suspended))
 		return -EBUSY;
@@ -101,7 +102,7 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	reinit_completion(&priv->plat->mdio_op);
 
 	/* Vote ICC SPEED_peak just for this MDIO transaction */
-	if (priv->plat->set_icc_peak_vote)
+	if (priv->plat->set_icc_peak_vote && !disable_mdio_peak_vote)
 		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 1);
 
 	/* Wait until any existing MII operation is complete */
@@ -156,7 +157,7 @@ err_disable_clks:
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
 
-	if (priv->plat->set_icc_peak_vote)
+	if (priv->plat->set_icc_peak_vote && !disable_mdio_peak_vote)
 		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 0);
 
 	return ret;
@@ -171,6 +172,7 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 	unsigned int mii_data = priv->hw->mii.data;
 	u32 addr, tmp, value = MII_XGMAC_BUSY;
 	int ret;
+	bool disable_mdio_peak_vote = priv->plat->disable_mdio_ahb_vote;
 
 	if (atomic_read(&priv->plat->phy_clks_suspended))
 		return -EBUSY;
@@ -185,7 +187,7 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 	reinit_completion(&priv->plat->mdio_op);
 
 	/* Vote ICC SPEED_peak just for this MDIO transaction */
-	if (priv->plat->set_icc_peak_vote)
+	if (priv->plat->set_icc_peak_vote && !disable_mdio_peak_vote)
 		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 1);
 
 	/* Wait until any existing MII operation is complete */
@@ -235,7 +237,7 @@ err_disable_clks:
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
 
-	if (priv->plat->set_icc_peak_vote)
+	if (priv->plat->set_icc_peak_vote && !disable_mdio_peak_vote)
 		priv->plat->set_icc_peak_vote(priv->plat->bsp_priv, 0);
 
 	return ret;
