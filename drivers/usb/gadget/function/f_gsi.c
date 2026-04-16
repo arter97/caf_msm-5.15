@@ -2721,8 +2721,8 @@ static void gsi_resume(struct usb_function *f)
 		cpkt_notify_connect->type = GSI_CTRL_NOTIFY_CONNECT;
 
 		spin_lock(&gsi->c_port.lock);
-		list_add_tail(&cpkt_notify_connect->list,
-				&gsi->c_port.cpkt_resp_q);
+		list_add(&cpkt_notify_connect->list,
+			 &gsi->c_port.cpkt_resp_q);
 		spin_unlock(&gsi->c_port.lock);
 	}
 
