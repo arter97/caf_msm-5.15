@@ -1280,6 +1280,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 	}
 #endif
 
+	/* Stop DMA RX TX ch 0 before Link down */
+	stmmac_stop_rx(priv, priv->ioaddr, 0);
+	stmmac_stop_tx(priv, priv->ioaddr, 0);
+
+	/* Flush MTL TX Queue 0 to drain any frames staged in the FIFO */
+	stmmac_flush_tx_mtl(priv, priv->hw, 0);
+
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
 
 	if (priv->hw->qxpcs) {
