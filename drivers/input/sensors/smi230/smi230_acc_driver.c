@@ -237,6 +237,10 @@ static ssize_t smi230_acc_store_acc_pwr_cfg(struct device *dev,
 		p_smi230_dev->accel_cfg.power = SMI230_ACCEL_PM_ACTIVE;
 		err = smi230_acc_set_power_mode(p_smi230_dev);
 		client_data->timestamp_old = ktime_get_boottime_ns();
+	} else {
+		PERR("invalid param");
+		err = -EINVAL;
+
 	}
 
 	PINFO("set power cfg to %ld, err %d", pwr_cfg, err);
@@ -1558,6 +1562,7 @@ static ssize_t smi230_acc_show_self_test(struct device *dev,
 {
 	int err, rslt;
 
+	mutex_lock(&interrupt_handling_lock);
 	smi230_acc_get_power_mode(p_smi230_dev);
 	if (p_smi230_dev->accel_cfg.power != 0x00)
 		return snprintf(buf, PAGE_SIZE,
@@ -1567,9 +1572,11 @@ static ssize_t smi230_acc_show_self_test(struct device *dev,
 	err = smi230_acc_configuration(p_smi230_dev);
 	if (err != SMI230_OK) {
 		dev_err(dev, "Sensor initialization failed.\n");
+		mutex_unlock(&interrupt_handling_lock);
 		return -EIO;
 	}
 
+	mutex_unlock(&interrupt_handling_lock);
 	if (rslt != SMI230_OK)
 		return scnprintf(buf, PAGE_SIZE, "self test failure\n");
 	else
@@ -2203,6 +2210,8 @@ static void smi230_acc_fifo_wm_handle(struct smi230_client_data *client_data)
 			PERR("FIFO read fifo_length error!");
 			return;
 		}
+		if (p_smi230_dev->accel_cfg.power == SMI230_ACCEL_PM_SUSPEND)
+			break;
 		repeat = true;
 	}
 }
