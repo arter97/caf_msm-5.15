@@ -383,5 +383,6 @@ struct plat_stmmacenet_data {
 	bool enable_aux_ts;
 	bool tc_select_queue;
 	bool insert_ts_pktid;
+	bool disable_mdio_ahb_vote;
 };
 #endif

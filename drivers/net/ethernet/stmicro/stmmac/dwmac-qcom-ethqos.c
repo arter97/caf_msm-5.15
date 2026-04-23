@@ -5391,6 +5391,71 @@ static ssize_t store_tc_queue_select_sysfs(struct device *dev, struct device_att
 static DEVICE_ATTR(tc_queue_select, ETHQOS_SYSFS_DEV_ATTR_PERMS,
 		   show_tc_queue_select_sysfs, store_tc_queue_select_sysfs);
 
+static ssize_t show_disable_mdio_ahb_vote(struct device *dev,
+					  struct device_attribute *attr, char *user_buf)
+{
+	struct device *parent = NULL;
+	struct net_device *netdev;
+	struct stmmac_priv *priv;
+
+	parent = kobj_to_dev(dev->kobj.parent);
+	netdev = to_net_dev(parent);
+	if (!netdev) {
+		pr_err("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		pr_err("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	return scnprintf(user_buf, BUFF_SZ, "%d\n", priv->plat->disable_mdio_ahb_vote);
+}
+
+static ssize_t store_disable_mdio_ahb_vote(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *user_buf, size_t count)
+{
+	struct device *parent = NULL;
+	struct net_device *netdev;
+	struct stmmac_priv *priv;
+	s8 input = 0;
+
+	parent = kobj_to_dev(dev->kobj.parent);
+	netdev = to_net_dev(parent);
+	if (!netdev) {
+		pr_err("netdev is NULL\n");
+		return -EINVAL;
+	}
+
+	priv = netdev_priv(netdev);
+	if (!priv) {
+		pr_err("priv is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos8(user_buf, 0, &input)) {
+		ETHQOSERR("unable to copy from user\n");
+		return -EINVAL;
+	}
+
+	if (input != 0 && input != 1) {
+		ETHQOSERR("Invalid value. Use 0 or 1\n");
+		return -EINVAL;
+	}
+
+	priv->plat->disable_mdio_ahb_vote = (input == 1) ? true : false;
+
+	ETHQOSINFO("disable_mdio_ahb_vote set to %d\n", input);
+
+	return count;
+}
+
+static DEVICE_ATTR(disable_mdio_ahb_vote, ETHQOS_SYSFS_DEV_ATTR_PERMS,
+		   show_disable_mdio_ahb_vote, store_disable_mdio_ahb_vote);
+
 static int ethqos_create_sysfs_nodes(struct qcom_ethqos *ethqos)
 {
 	struct stmmac_priv *priv;
@@ -5457,6 +5522,12 @@ static int ethqos_create_sysfs_nodes(struct qcom_ethqos *ethqos)
 	ret = sysfs_create_file(ethqos->sysfs_kobj, &dev_attr_tc_queue_select.attr);
 	if (ret) {
 		ETHQOSERR("unable to create sysfs tc_queue_select node\n");
+		goto fail;
+	}
+
+	ret = sysfs_create_file(ethqos->sysfs_kobj, &dev_attr_disable_mdio_ahb_vote.attr);
+	if (ret) {
+		ETHQOSERR("unable to create sysfs disable_mdio_ahb_vote node\n");
 		goto fail;
 	}
 
