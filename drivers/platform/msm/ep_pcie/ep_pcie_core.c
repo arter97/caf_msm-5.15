@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -2717,6 +2717,7 @@ int ep_pcie_core_disable_endpoint(void)
 		EP_PCIE_DBG(dev, "PCIe V%d: Released wakelock\n", dev->rev);
 		atomic_set(&dev->ep_pcie_dev_wake, 0);
 		pm_relax(&dev->pdev->dev);
+		update_marker("PCIe - link de-initialized for LE PCIe endpoint\n");
 	} else if (m2_enabled && atomic_read(&dev->ep_pcie_dev_wake)) {
 		EP_PCIE_DBG(dev,
 			"PCIe V%d: Released wakelock for autonomus M2\n", dev->rev);
