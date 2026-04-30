@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.*/
+/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.*/
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -1095,6 +1096,11 @@ static void mhi_netdev_remove(struct mhi_device *mhi_dev)
 
 	if (!IS_ERR_OR_NULL(mhi_netdev->dentry))
 		debugfs_remove_recursive(mhi_netdev->dentry);
+
+	if (!IS_ERR_OR_NULL(mhi_netdev->ipc_log)) {
+		ipc_log_context_destroy(mhi_netdev->ipc_log);
+		mhi_netdev->ipc_log = NULL;
+	}
 
 	/* For non rsc-channels, we need to explicitly clean the
 	 *  buffer pool.
