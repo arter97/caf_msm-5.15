@@ -7322,6 +7322,7 @@ static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 {
 	struct qcom_ethqos *ethqos = priv_n;
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	u32 retry = 10;
 
 	if (!priv || !priv->hw->qxpcs) {
 		ETHQOSERR("QXPCS doesn't exist");
@@ -7335,6 +7336,15 @@ static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 	else if (priv->dev->phydev)
 		qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
 				  speed, priv->dev->phydev->duplex);
+
+	/* Check PCS link up and do serdes reset when client reconnects */
+	do {
+		if (!qcom_xpcs_verify_lnk_status_usxgmii(priv->hw->qxpcs))
+			break;
+		if (priv->plat->serdes_phy_soft_reset)
+			priv->plat->serdes_phy_soft_reset(priv->plat->bsp_priv);
+		usleep_range(15000, 20000);
+	} while (--retry);
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
@@ -8118,6 +8128,13 @@ static int qcom_ethqos_probe_config_dt(struct platform_device *pdev,
 	return ret;
 }
 
+static void ethqos_serdes_phy_soft_reset(void *priv)
+{
+	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv;
+
+	qcom_ethqos_serdes_phy_soft_reset(ethqos);
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -8302,6 +8319,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->bsp_priv = ethqos;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->serdes_update_speed = ethqos_serdes_update;
+	plat_dat->serdes_phy_soft_reset = ethqos_serdes_phy_soft_reset;
 	plat_dat->dump_debug_regs = rgmii_dump;
 	plat_dat->tx_select_queue = dwmac_qcom_select_queue;
 	plat_dat->get_plat_tx_coal_frames =  dwmac_qcom_get_plat_tx_coal_frames;
