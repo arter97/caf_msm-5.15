@@ -41,7 +41,7 @@
 #define MHI_SUSPEND_MIN			100
 #define MHI_SUSPEND_TIMEOUT		600
 /* Wait time for completion */
-#define DMA_READ_TOUT_MS		3000
+#define DMA_READ_TOUT_MS		5000
 /* Wait time on the device for Host to set BHI_INTVEC */
 #define MHI_BHI_INTVEC_MAX_CNT			200
 #define MHI_BHI_INTVEC_WAIT_MS		50
