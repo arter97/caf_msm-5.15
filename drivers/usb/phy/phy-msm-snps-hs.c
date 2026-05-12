@@ -1089,7 +1089,7 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	 */
 	if (phy->eud_enable_reg) {
 		msm_hsphy_enable_clocks(phy, true);
-		if(readl_relaxed(phy->eud_enable_reg))
+		if (readl_relaxed(phy->eud_enable_reg))
 			msm_hsphy_enable_power(phy, true);
 
 	}
