@@ -4531,7 +4531,7 @@ static int stmmac_open(struct net_device *dev)
 	int mode = priv->plat->phy_interface;
 	int bfsize = 0;
 	u32 chan;
-	int ret;
+	int ret, res;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
@@ -4728,8 +4728,8 @@ init_phy_error:
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving) {
-		ret = priv->plat->enable_power_saving(priv->dev, true);
-		netdev_info(priv->dev, "%s enable power saving for error case", __func__, ret);
+		res = priv->plat->enable_power_saving(priv->dev, true);
+		netdev_info(priv->dev, "%s enable power saving for error case", __func__, res);
 	}
 #endif
 
