@@ -61,6 +61,7 @@
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
 #define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
 #define EFUSE_MAC_ADDR_MASK 16
+#define EMAC_SPEED_PEAK_IDX 7
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -2640,6 +2641,87 @@ static int ethqos_serdes_update(void *priv_n, unsigned int speed)
 	}
 
 	return ret;
+}
+
+static void ethqos_set_icc_peak_vote(struct qcom_ethqos *ethqos, bool is_peak)
+{
+	int idx, ret;
+
+	if (is_peak)
+		idx = EMAC_SPEED_PEAK_IDX;
+	else
+		idx = ethqos->vote_idx;
+
+	if (ethqos->axi_icc_path) {
+		ret = icc_set_bw(ethqos->axi_icc_path,
+				 emac_axi_icc_data[idx].average_bandwidth,
+				 emac_axi_icc_data[idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("AXI ICC vote failed (idx=%d): %d\n", idx, ret);
+	}
+
+	if (ethqos->apb_icc_path) {
+		ret = icc_set_bw(ethqos->apb_icc_path,
+				 emac_apb_icc_data[idx].average_bandwidth,
+				 emac_apb_icc_data[idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("APB ICC vote failed (idx=%d): %d\n", idx, ret);
+	}
+}
+
+#define MDIO_ICC_IDLE_MS 5
+
+static void ethqos_mdio_icc_idle_handler(struct work_struct *work)
+{
+	struct qcom_ethqos *ethqos =
+		container_of(work, struct qcom_ethqos, mdio_icc_idle_work.work);
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	mutex_lock(&ethqos->mdio_icc_lock);
+	if (priv->plat->mdio_op_busy) {
+		mutex_unlock(&ethqos->mdio_icc_lock);
+		schedule_delayed_work(&ethqos->mdio_icc_idle_work,
+				      msecs_to_jiffies(MDIO_ICC_IDLE_MS));
+		return;
+	}
+
+	ethqos_set_icc_peak_vote(ethqos, false);
+	ethqos->mdio_icc_peak_active = false;
+	mutex_unlock(&ethqos->mdio_icc_lock);
+}
+
+static void ethqos_mdio_icc_acquire(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	mutex_lock(&ethqos->mdio_icc_lock);
+	cancel_delayed_work(&ethqos->mdio_icc_idle_work);
+	if (!ethqos->mdio_icc_peak_active) {
+		ethqos_set_icc_peak_vote(ethqos, true);
+		ethqos->mdio_icc_peak_active = true;
+	}
+	mutex_unlock(&ethqos->mdio_icc_lock);
+}
+
+static void ethqos_mdio_icc_release(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	schedule_delayed_work(&ethqos->mdio_icc_idle_work,
+			      msecs_to_jiffies(MDIO_ICC_IDLE_MS));
+}
+
+static void ethqos_mdio_icc_cancel(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	cancel_delayed_work_sync(&ethqos->mdio_icc_idle_work);
+	mutex_lock(&ethqos->mdio_icc_lock);
+	if (ethqos->mdio_icc_peak_active) {
+		ethqos_set_icc_peak_vote(ethqos, false);
+		ethqos->mdio_icc_peak_active = false;
+	}
+	mutex_unlock(&ethqos->mdio_icc_lock);
 }
 
 static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
@@ -8296,6 +8378,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	plat_dat->early_eth = ethqos->early_eth_enabled;
 	plat_dat->bsp_priv = ethqos;
+	mutex_init(&ethqos->mdio_icc_lock);
+	INIT_DELAYED_WORK(&ethqos->mdio_icc_idle_work, ethqos_mdio_icc_idle_handler);
+	plat_dat->mdio_icc_acquire = ethqos_mdio_icc_acquire;
+	plat_dat->mdio_icc_release = ethqos_mdio_icc_release;
+	plat_dat->mdio_icc_cancel  = ethqos_mdio_icc_cancel;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->serdes_update_speed = ethqos_serdes_update;
 	plat_dat->dump_debug_regs = rgmii_dump;
