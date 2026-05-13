@@ -591,13 +591,17 @@ static ssize_t smi230_gyro_show_self_test(struct device *dev,
 {
 	int rslt;
 
+	mutex_lock(&interrupt_handling_lock);
 	smi230_gyro_get_power_mode(p_smi230_dev);
 
-	if (p_smi230_dev->gyro_cfg.power != 0x00)
+	if (p_smi230_dev->gyro_cfg.power != 0x00) {
+		mutex_unlock(&interrupt_handling_lock);
 		return snprintf(buf, PAGE_SIZE,
 				"gyro disabled, enable it firstly\n");
+	}
 
 	rslt = smi230_gyro_perform_selftest(p_smi230_dev);
+	mutex_unlock(&interrupt_handling_lock);
 	if (rslt != SMI230_GYRO_SELF_TEST_OK)
 		return snprintf(buf, PAGE_SIZE, "self test fail\n");
 	else
@@ -962,6 +966,9 @@ static void smi230_gyro_fifo_wm_handle(struct smi230_client_data *client_data)
 			PERR("FIFO read fifo_length error!");
 			return;
 		}
+		if (p_smi230_dev->gyro_cfg.power == SMI230_GYRO_PM_SUSPEND ||
+		    p_smi230_dev->gyro_cfg.power == SMI230_GYRO_PM_DEEP_SUSPEND)
+			break;
 		repeat = true;
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -16,6 +16,7 @@
 #include "mhi_sm.h"
 #include <linux/interrupt.h>
 #include <linux/delay.h>
+#include <soc/qcom/boot_stats.h>
 
 #define MHI_SM_DBG(vf_id, fmt, args...) \
 	mhi_log(vf_id, MHI_MSG_DBG, fmt, ##args)
@@ -1223,6 +1224,7 @@ static void mhi_sm_pcie_event_manager(struct work_struct *work)
 		mhi_sm_ctx->one_d3 = true;
 		MHI_SM_DBG(mhi->vf_id, "Release wake for D3_COLD event\n");
 		pm_relax(mhi_sm_ctx->mhi_dev->mhi_hw_ctx->dev);
+		update_marker("MHI - Device is in D3_COLD State\n");
 		break;
 	case EP_PCIE_EVENT_PM_RST_DEAST:
 		if (old_dstate == MHI_SM_EP_PCIE_D0_STATE) {

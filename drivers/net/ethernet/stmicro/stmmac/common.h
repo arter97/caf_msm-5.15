@@ -72,7 +72,7 @@ struct stmmac_txq_stats {
 	unsigned long txch_desc_ring_len;
 	unsigned long txch_desc_tail;
 	unsigned long tx_buf_unav_irq;
-
+	unsigned long tx_fifo_sz_bytes;
 };
 
 struct stmmac_rxq_stats {
@@ -83,6 +83,9 @@ struct stmmac_rxq_stats {
 	unsigned long rxch_desc_list_laddr;
 	unsigned long rxch_desc_ring_len;
 	unsigned long rxch_desc_tail;
+	unsigned long rx_fifo_sz_bytes;
+	unsigned long rx_flow_control_dact_val;
+	unsigned long rx_flow_control_act_val;
 
 };
 
@@ -141,6 +144,7 @@ struct stmmac_extra_stats {
 	unsigned long tx_normal_irq_n;
 	unsigned long tx_clean;
 	unsigned long tx_set_ic_bit;
+	unsigned long netdev_watchdog_timer_msec;
 	unsigned long irq_receive_pmt_irq_n;
 	/* MMC info */
 	unsigned long mmc_tx_irq_n;

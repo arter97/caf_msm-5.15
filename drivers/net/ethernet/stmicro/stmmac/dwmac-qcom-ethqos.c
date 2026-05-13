@@ -3504,7 +3504,7 @@ static ssize_t loopback_arg_parse(struct qcom_ethqos *ethqos, const char *buf,
 		return -EINVAL;
 	}
 
-	if (priv->current_loopback == ENABLE_PHY_LOOPBACK &&
+	if (*config == ENABLE_PHY_LOOPBACK &&
 	    (priv->plat->mac2mac_en || priv->plat->fixed_phy_mode)) {
 		ETHQOSINFO("Not supported with Mac2Mac enabled\n");
 		return -EOPNOTSUPP;
@@ -3960,24 +3960,27 @@ static void ethqos_pcs_loopback(struct qcom_ethqos *ethqos, int config)
 static void ethqos_serdes_loopback(struct qcom_ethqos *ethqos, int speed, int config)
 {
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	int duplex = DUPLEX_FULL;
 
 	if (IS_ERR_OR_NULL(priv)) {
 		ETHQOSERR("priv is NULL or Error\n");
 		return;
 	}
 
-	if (IS_ERR_OR_NULL(priv->dev)) {
-		ETHQOSERR("priv->dev is NULL or Error\n");
+	/* Ensure PCS context exists */
+	if (IS_ERR_OR_NULL(priv->hw) || IS_ERR_OR_NULL(priv->hw->qxpcs)) {
+		ETHQOSERR("QXPCS is NULL or Error\n");
 		return;
 	}
 
-	if (IS_ERR_OR_NULL(priv->dev->phydev)) {
-		ETHQOSERR("priv->dev->phydev is NULL or Error\n");
-		return;
-	}
+	/* In mac2mac/fixed-link mode, PHY may be absent (phydev == NULL).
+	 * Default to full duplex if PHY is not present and still configure
+	 * PCS link parameters for SERDES loopback.
+	 */
+	if (!IS_ERR_OR_NULL(priv->dev) && !IS_ERR_OR_NULL(priv->dev->phydev))
+		duplex = priv->dev->phydev->duplex;
 
-	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
-			  speed, priv->dev->phydev->duplex);
+	qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface, speed, duplex);
 
 	if (config == 1)
 		qcom_xpcs_serdes_loopback(priv->hw->qxpcs, 1);
@@ -4078,9 +4081,9 @@ static ssize_t read_qos_regs(struct file *file,
 	struct qcom_ethqos *ethqos = file->private_data;
 	struct stmmac_priv *priv;
 	char *buf;
-	u32 vlan;
+	u32 vlan = 0;
 	u32 quant_weight, send_slope, high_cred, low_cred;
-	u32 l3l4_ctrl, l4_addr, l3_addr0, l3_addr1, l3_addr2, l3_addr3;
+	u32 l3l4_ctrl = 0, l4_addr = 0, l3_addr0 = 0, l3_addr1 = 0, l3_addr2 = 0, l3_addr3 = 0;
 	int len = 0;
 	int ret;
 	int i;
@@ -6404,19 +6407,17 @@ static ssize_t ethqos_mac_recovery_enable(struct file *file,
 					  const char __user *user_buf,
 					  size_t count, loff_t *ppos)
 {
-	char *in_buf = kstrdup(user_buf, GFP_KERNEL);
-	int i;
+	static unsigned char in_buf[15] = {0};
+	int i, ret;
 	struct qcom_ethqos *ethqos = pethqos[0];
-
-	if (!in_buf) {
-		ETHQOSERR("Error in allocating memory for in_buf\n");
-		return -EINVAL;
-	}
 
 	if (sizeof(in_buf) < count) {
 		ETHQOSERR("emac string is too long - count=%u\n", count);
 		return -EFAULT;
 	}
+
+	memset(in_buf, 0,  sizeof(in_buf));
+	ret = copy_from_user(in_buf, user_buf, count);
 
 	for (i = 0; i < MAC_ERR_CNT; i++) {
 		if (in_buf[i] == '1')
@@ -6424,7 +6425,7 @@ static ssize_t ethqos_mac_recovery_enable(struct file *file,
 		else
 			ethqos->mac_rec_en[i] = false;
 	}
-	kfree(in_buf);
+
 	return count;
 }
 
@@ -7319,6 +7320,7 @@ static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 {
 	struct qcom_ethqos *ethqos = priv_n;
 	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+	u32 retry = 10;
 
 	if (!priv || !priv->hw->qxpcs) {
 		ETHQOSERR("QXPCS doesn't exist");
@@ -7332,6 +7334,15 @@ static void ethqos_xpcs_link_up(void *priv_n, unsigned int speed)
 	else if (priv->dev->phydev)
 		qcom_xpcs_link_up(&priv->hw->qxpcs->pcs, 1, priv->plat->interface,
 				  speed, priv->dev->phydev->duplex);
+
+	/* Check PCS link up and do serdes reset when client reconnects */
+	do {
+		if (!qcom_xpcs_verify_lnk_status_usxgmii(priv->hw->qxpcs))
+			break;
+		if (priv->plat->serdes_phy_soft_reset)
+			priv->plat->serdes_phy_soft_reset(priv->plat->bsp_priv);
+		usleep_range(15000, 20000);
+	} while (--retry);
 }
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_HOSTVM)
@@ -7648,15 +7659,19 @@ int qcom_ethqos_bring_up_phy_if(struct device *dev, bool client_mode)
 	}
 
 	if (!priv->plat->mac2mac_en && !priv->plat->fixed_phy_mode) {
-		if (priv->phydev && priv->phydev->drv->get_features &&
-		    priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII &&
-		    !priv->plat->mac2mac_en)
-			priv->phydev->drv->get_features(priv->phydev);
-
 		if (!priv->plat->mac2mac_en) {
 			phydev = priv->phydev;
+			if (!phydev) {
+				ETHQOSERR("phydev is NULL\n");
+				goto error;
+			}
+
+			if (phydev->drv->get_features &&
+			    priv->plat->interface ==  PHY_INTERFACE_MODE_USXGMII)
+				phydev->drv->get_features(phydev);
+
 			rtnl_lock();
-			phylink_connect_phy(priv->phylink, priv->phydev);
+			phylink_connect_phy(priv->phylink, phydev);
 			rtnl_unlock();
 
 			if (phydev->drv->phy_id == ETH_RTK_PHY_ID_RTL8261N) {
@@ -7684,7 +7699,7 @@ int qcom_ethqos_bring_up_phy_if(struct device *dev, bool client_mode)
 				}
 			}
 
-			if (priv->plat->phy_intr_en_extn_stm && phydev) {
+			if (priv->plat->phy_intr_en_extn_stm) {
 				ETHQOSDBG("PHY interrupt Mode enabled\n");
 				phydev->irq = PHY_MAC_INTERRUPT;
 				phydev->interrupts =  PHY_INTERRUPT_ENABLED;
@@ -7692,12 +7707,9 @@ int qcom_ethqos_bring_up_phy_if(struct device *dev, bool client_mode)
 				if (phydev->drv->config_intr &&
 				    !phydev->drv->config_intr(phydev))
 					ETHQOSDBG("config_phy_intr successful after phy on\n");
-			} else if (!priv->plat->phy_intr_en_extn_stm && phydev) {
+			} else {
 				phydev->irq = PHY_POLL;
 				ETHQOSDBG("PHY Polling Mode enabled\n");
-			} else {
-				ETHQOSERR("phydev is null , intr value=%d\n",
-					  priv->plat->phy_intr_en_extn_stm);
 			}
 
 			if (!priv->phy_irq_enabled && !priv->plat->mac2mac_en)
@@ -8114,6 +8126,13 @@ static int qcom_ethqos_probe_config_dt(struct platform_device *pdev,
 	return ret;
 }
 
+static void ethqos_serdes_phy_soft_reset(void *priv)
+{
+	struct qcom_ethqos *ethqos = (struct qcom_ethqos *)priv;
+
+	qcom_ethqos_serdes_phy_soft_reset(ethqos);
+}
+
 static int qcom_ethqos_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -8298,6 +8317,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	plat_dat->bsp_priv = ethqos;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->serdes_update_speed = ethqos_serdes_update;
+	plat_dat->serdes_phy_soft_reset = ethqos_serdes_phy_soft_reset;
 	plat_dat->dump_debug_regs = rgmii_dump;
 	plat_dat->tx_select_queue = dwmac_qcom_select_queue;
 	plat_dat->get_plat_tx_coal_frames =  dwmac_qcom_get_plat_tx_coal_frames;

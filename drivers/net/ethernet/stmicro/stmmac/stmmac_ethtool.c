@@ -14,6 +14,7 @@
 #include <linux/mii.h>
 #include <linux/phylink.h>
 #include <linux/net_tstamp.h>
+#include <linux/jiffies.h>
 #include <asm/io.h>
 
 #include "stmmac.h"
@@ -104,6 +105,7 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 	STMMAC_STAT(tx_normal_irq_n),
 	STMMAC_STAT(tx_clean),
 	STMMAC_STAT(tx_set_ic_bit),
+	STMMAC_STAT(netdev_watchdog_timer_msec),
 	STMMAC_STAT(irq_receive_pmt_irq_n),
 	/* MMC info */
 	STMMAC_STAT(mmc_tx_irq_n),
@@ -297,6 +299,20 @@ static const char stmmac_qstats_rx_string[][ETH_GSTRING_LEN] = {
 	"rxch_desc_tail",
 #define STMMAC_RXQ_STATS ARRAY_SIZE(stmmac_qstats_rx_string)
 };
+
+static const char stmmac_qdma_status_tx_string[][ETH_GSTRING_LEN] = {
+	"tx_fifo_sz_bytes",
+};
+
+#define STMMAC_TXQ_DMA_STATUS ARRAY_SIZE(stmmac_qdma_status_tx_string)
+
+static const char stmmac_qdma_status_rx_string[][ETH_GSTRING_LEN] = {
+	"rx_fifo_sz_bytes",
+	"rx_rfd",
+	"rx_rfa",
+};
+
+#define STMMAC_RXQ_DMA_STATUS ARRAY_SIZE(stmmac_qdma_status_rx_string)
 
 static void stmmac_ethtool_getdrvinfo(struct net_device *dev,
 				      struct ethtool_drvinfo *info)
@@ -619,18 +635,18 @@ stmmac_set_pauseparam(struct net_device *netdev,
 	}
 }
 
-static void stmmac_get_per_qstats(struct stmmac_priv *priv, u64 *data)
+static int stmmac_get_per_qstats(struct stmmac_priv *priv, u64 *data)
 {
 	u32 tx_cnt = priv->plat->tx_queues_to_use;
 	u32 rx_cnt = priv->plat->rx_queues_to_use;
-	int q, stat;
+	int q, stat, i = 0;
 	char *p;
 
 	for (q = 0; q < tx_cnt; q++) {
 		p = (char *)priv + offsetof(struct stmmac_priv,
 					    xstats.txq_stats[q].tx_pkt_n);
 		for (stat = 0; stat < STMMAC_TXQ_STATS; stat++) {
-			*data++ = (*(unsigned long *)p);
+			data[i++] = (*(unsigned long *)p);
 			p += sizeof(unsigned long);
 		}
 	}
@@ -638,10 +654,40 @@ static void stmmac_get_per_qstats(struct stmmac_priv *priv, u64 *data)
 		p = (char *)priv + offsetof(struct stmmac_priv,
 					    xstats.rxq_stats[q].rx_pkt_n);
 		for (stat = 0; stat < STMMAC_RXQ_STATS; stat++) {
-			*data++ = (*(unsigned long *)p);
+			data[i++] = (*(unsigned long *)p);
 			p += sizeof(unsigned long);
 		}
 	}
+
+	return i;
+}
+
+static int stmmac_get_per_qdma_status(struct stmmac_priv *priv, u64 *data)
+{
+	u32 tx_cnt = priv->plat->tx_queues_to_use;
+	u32 rx_cnt = priv->plat->rx_queues_to_use;
+	int q, stat, i = 0;
+	char *p;
+
+	for (q = 0; q < tx_cnt; q++) {
+		p = (char *)priv + offsetof(struct stmmac_priv,
+					    xstats.txq_stats[q].tx_fifo_sz_bytes);
+		for (stat = 0; stat < STMMAC_TXQ_DMA_STATUS; stat++) {
+			data[i++] = (*(unsigned long *)p);
+			p += sizeof(unsigned long);
+		}
+	}
+
+	for (q = 0; q < rx_cnt; q++) {
+		p = (char *)priv + offsetof(struct stmmac_priv,
+					    xstats.rxq_stats[q].rx_fifo_sz_bytes);
+		for (stat = 0; stat < STMMAC_RXQ_DMA_STATUS; stat++) {
+			data[i++] = (*(unsigned long *)p);
+			p += sizeof(unsigned long);
+		}
+	}
+
+	return i;
 }
 
 static void stmmac_get_ethtool_stats(struct net_device *dev,
@@ -692,17 +738,24 @@ static void stmmac_get_ethtool_stats(struct net_device *dev,
 					(void *)&priv->xstats,
 					rx_queues_count, tx_queues_count);
 
-		if (priv->synopsys_id == DWXLGMAC_CORE_3_10)
+		if (priv->synopsys_id == DWXLGMAC_CORE_3_10) {
 			stmmac_desc_stats(priv, priv->ioaddr, &priv->xstats,
 					  priv->plat->tx_queues_to_use,
 					  priv->plat->rx_queues_to_use);
+
+			stmmac_dma_status(priv, priv->ioaddr, &priv->xstats,
+					  priv->plat->tx_queues_to_use,
+					  priv->plat->rx_queues_to_use);
+		}
 	}
+	priv->xstats.netdev_watchdog_timer_msec = jiffies_to_msecs(priv->dev->watchdog_timeo);
 	for (i = 0; i < STMMAC_STATS_LEN; i++) {
 		char *p = (char *)priv + stmmac_gstrings_stats[i].stat_offset;
 		data[j++] = (stmmac_gstrings_stats[i].sizeof_stat ==
 			     sizeof(u64)) ? (*(u64 *)p) : (*(u32 *)p);
 	}
-	stmmac_get_per_qstats(priv, &data[j]);
+	j += stmmac_get_per_qstats(priv, &data[j]);
+	j += stmmac_get_per_qdma_status(priv, &data[j]);
 }
 
 static int stmmac_get_sset_count(struct net_device *netdev, int sset)
@@ -716,7 +769,9 @@ static int stmmac_get_sset_count(struct net_device *netdev, int sset)
 	case ETH_SS_STATS:
 		len = STMMAC_STATS_LEN +
 		      STMMAC_TXQ_STATS * tx_cnt +
-		      STMMAC_RXQ_STATS * rx_cnt;
+		      STMMAC_RXQ_STATS * rx_cnt +
+		      STMMAC_TXQ_DMA_STATUS * tx_cnt +
+		      STMMAC_RXQ_DMA_STATUS * rx_cnt;
 
 		if (priv->dma_cap.rmon)
 			len += STMMAC_MMC_STATS_LEN;
@@ -739,7 +794,7 @@ static int stmmac_get_sset_count(struct net_device *netdev, int sset)
 	}
 }
 
-static void stmmac_get_qstats_string(struct stmmac_priv *priv, u8 *data)
+static void stmmac_get_qstats_string(struct stmmac_priv *priv, u8 **data)
 {
 	u32 tx_cnt = priv->plat->tx_queues_to_use;
 	u32 rx_cnt = priv->plat->rx_queues_to_use;
@@ -747,16 +802,39 @@ static void stmmac_get_qstats_string(struct stmmac_priv *priv, u8 *data)
 
 	for (q = 0; q < tx_cnt; q++) {
 		for (stat = 0; stat < STMMAC_TXQ_STATS; stat++) {
-			snprintf(data, ETH_GSTRING_LEN, "q%d_%s", q,
+			snprintf(*data, ETH_GSTRING_LEN, "q%d_%s", q,
 				 stmmac_qstats_tx_string[stat]);
-			data += ETH_GSTRING_LEN;
+			*data += ETH_GSTRING_LEN;
 		}
 	}
 	for (q = 0; q < rx_cnt; q++) {
 		for (stat = 0; stat < STMMAC_RXQ_STATS; stat++) {
-			snprintf(data, ETH_GSTRING_LEN, "q%d_%s", q,
+			snprintf(*data, ETH_GSTRING_LEN, "q%d_%s", q,
 				 stmmac_qstats_rx_string[stat]);
-			data += ETH_GSTRING_LEN;
+			*data += ETH_GSTRING_LEN;
+		}
+	}
+}
+
+static void stmmac_get_qdma_status_string(struct stmmac_priv *priv, u8 **data)
+{
+	u32 tx_cnt = priv->plat->tx_queues_to_use;
+	u32 rx_cnt = priv->plat->rx_queues_to_use;
+	int q, stat;
+
+	for (q = 0; q < tx_cnt; q++) {
+		for (stat = 0; stat < STMMAC_TXQ_DMA_STATUS; stat++) {
+			snprintf(*data, ETH_GSTRING_LEN, "q%d_%s", q,
+				 stmmac_qdma_status_tx_string[stat]);
+			*data += ETH_GSTRING_LEN;
+		}
+	}
+
+	for (q = 0; q < rx_cnt; q++) {
+		for (stat = 0; stat < STMMAC_RXQ_DMA_STATUS; stat++) {
+			snprintf(*data, ETH_GSTRING_LEN, "q%d_%s", q,
+				 stmmac_qdma_status_rx_string[stat]);
+			*data += ETH_GSTRING_LEN;
 		}
 	}
 }
@@ -791,7 +869,8 @@ static void stmmac_get_strings(struct net_device *dev, u32 stringset, u8 *data)
 				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
-		stmmac_get_qstats_string(priv, p);
+		stmmac_get_qstats_string(priv, &p);
+		stmmac_get_qdma_status_string(priv, &p);
 		break;
 	case ETH_SS_TEST:
 		stmmac_selftest_get_strings(priv, p);

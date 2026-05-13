@@ -343,7 +343,9 @@ int cti_add_default_connection(struct device *dev, struct cti_drvdata *drvdata)
 	int ret = 0;
 	int n_trigs = drvdata->config.nr_trig_max;
 	struct cti_trig_con *tc = NULL;
-
+	/* Can't fit more than 32 triggers in a u32 mask */
+	if (n_trigs > 32)
+		return -EINVAL;
 	/*
 	 * Assume max trigs for in and out,
 	 * all used, default sig types allocated
@@ -351,7 +353,6 @@ int cti_add_default_connection(struct device *dev, struct cti_drvdata *drvdata)
 	tc = cti_allocate_trig_con(dev, n_trigs, n_trigs);
 	if (!tc)
 		return -ENOMEM;
-
 	bitmap_fill(tc->con_in->used_mask, n_trigs);
 	bitmap_fill(tc->con_out->used_mask, n_trigs);
 	ret = cti_add_connection_entry(dev, drvdata, tc, NULL, "default");

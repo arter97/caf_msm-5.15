@@ -684,6 +684,33 @@ static void dwxgmac2_desc_stats(void __iomem *ioaddr,
 	}
 }
 
+static void dwxgmac2_dma_status(void __iomem *ioaddr,
+				struct stmmac_extra_stats *xstats,
+				u32 tx_queues,
+				u32 rx_queues)
+{
+	u32 val;
+	u32 chno;
+
+	for (chno = 0; chno < tx_queues; chno++) {
+		val = readl(ioaddr + XGMAC_MTL_TXQ_OPMODE(chno));
+		val = (val & XGMAC_TQS) >> XGMAC_TQS_SHIFT;
+		xstats->txq_stats[chno].tx_fifo_sz_bytes = (val + 1) * 256;
+	}
+
+	for (chno = 0; chno < rx_queues; chno++) {
+		val = readl(ioaddr + XGMAC_MTL_RXQ_OPMODE(chno));
+		val = (val & XGMAC_RQS) >> XGMAC_RQS_SHIFT;
+		xstats->rxq_stats[chno].rx_fifo_sz_bytes = (val + 1) * 256;
+
+		val = readl(ioaddr + XGMAC_MTL_RXQ_FLOW_CONTROL(chno));
+		xstats->rxq_stats[chno].rx_flow_control_dact_val =
+					(val & XGMAC_RFD) >> XGMAC_RFD_SHIFT;
+		xstats->rxq_stats[chno].rx_flow_control_act_val =
+					(val & XGMAC_RFA) >> XGMAC_RFA_SHIFT;
+	}
+}
+
 const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.reset = dwxgmac2_dma_reset,
 	.init = dwxgmac2_dma_init,
@@ -715,4 +742,5 @@ const struct stmmac_dma_ops dwxgmac210_dma_ops = {
 	.enable_sph = dwxgmac2_enable_sph,
 	.enable_tbs = dwxgmac2_enable_tbs,
 	.desc_stats = dwxgmac2_desc_stats,
+	.dma_status = dwxgmac2_dma_status,
 };
