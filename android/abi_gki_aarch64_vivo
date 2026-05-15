@@ -25,6 +25,8 @@
   __alloc_skb
   alloc_skb_with_frags
   alloc_workqueue
+  alloc_workqueue_attrs
+  apply_workqueue_attrs
   amba_bustype
   amba_driver_register
   amba_driver_unregister
@@ -877,6 +879,7 @@
   freq_qos_add_request
   freq_qos_remove_request
   freq_qos_update_request
+  free_workqueue_attrs
   fsync_bdev
   fwnode_find_reference
   fwnode_get_next_child_node
@@ -2023,6 +2026,7 @@
   set_normalized_timespec64
   set_page_dirty_lock
   __SetPageMovable
+  __set_task_comm
   set_task_cpu
   set_user_nice
   sg_alloc_table
@@ -2362,6 +2366,9 @@
   __traceiter_android_vh_binder_wakeup_ilocked
   __traceiter_android_vh_blk_alloc_rqs
   __traceiter_android_vh_blk_rq_ctx_init
+  __traceiter_android_rvh_alloc_and_link_pwqs
+  __traceiter_android_vh_blk_mq_delay_run_hw_queue
+  __traceiter_android_vh_blk_mq_kick_requeue_list
   __traceiter_android_vh_clear_rwsem_reader_owned
   __traceiter_android_vh_clear_rwsem_writer_owned
   __traceiter_android_vh_cpu_idle_enter
@@ -2448,6 +2455,7 @@
   __traceiter_sys_exit
   __traceiter_usb_gadget_connect
   __traceiter_usb_gadget_disconnect
+  __traceiter_android_rvh_create_worker
   __tracepoint_android_rvh_account_irq
   __tracepoint_android_rvh_after_dequeue_task
   __tracepoint_android_rvh_after_enqueue_task
@@ -2504,6 +2512,9 @@
   __tracepoint_android_vh_binder_wakeup_ilocked
   __tracepoint_android_vh_blk_alloc_rqs
   __tracepoint_android_vh_blk_rq_ctx_init
+  __tracepoint_android_rvh_alloc_and_link_pwqs
+  __tracepoint_android_vh_blk_mq_kick_requeue_list
+  __tracepoint_android_vh_blk_mq_delay_run_hw_queue
   __tracepoint_android_vh_clear_rwsem_reader_owned
   __tracepoint_android_vh_clear_rwsem_writer_owned
   __tracepoint_android_vh_cpu_idle_enter
@@ -2593,6 +2604,7 @@
   __tracepoint_sys_exit
   __tracepoint_usb_gadget_connect
   __tracepoint_usb_gadget_disconnect
+  __tracepoint_android_rvh_create_worker
   trace_print_array_seq
   trace_print_flags_seq
   trace_print_hex_seq
