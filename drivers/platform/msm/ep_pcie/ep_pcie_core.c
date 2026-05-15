@@ -488,8 +488,8 @@ static int ep_pcie_vreg_enable(struct ep_pcie_dev_t *dev)
 				EP_PCIE_ERR(dev,
 					"PCIe V%d:  can't set voltage for %s: %d\n",
 					dev->rev, info->name, rc);
+				break;
 			}
-			break;
 		}
 
 		EP_PCIE_DBG(dev, "PCIe V%d: Vreg %s is being enabled\n",
