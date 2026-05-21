@@ -3056,6 +3056,7 @@ static int mhi_dev_abort(struct mhi_dev *mhi)
 	mhi_update_state_info_all(mhi, MHI_STATE_DISCONNECTED);
 	mhi_uci_chan_state_notify_all(mhi, MHI_STATE_DISCONNECTED);
 
+	flush_workqueue(mhi->pcie_event_wq);
 	flush_workqueue(mhi->ring_init_wq);
 	flush_workqueue(mhi->pending_ring_wq);
 
