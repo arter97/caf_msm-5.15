@@ -347,6 +347,9 @@ DECLARE_HOOK(android_vh_do_swap_page,
 	TP_PROTO(struct page *page, pte_t *pte, struct vm_fault *vmf,
 		swp_entry_t entry),
 	TP_ARGS(page, pte, vmf, entry));
+DECLARE_HOOK(android_vh_do_swap_page_lock_check,
+	TP_PROTO(struct page *page, struct vm_fault *vmf),
+	TP_ARGS(page, vmf));
 DECLARE_HOOK(android_vh_do_wp_page,
 	TP_PROTO(struct page *page),
 	TP_ARGS(page));

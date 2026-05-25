@@ -2377,6 +2377,7 @@
   __traceiter_android_vh_cpuidle_psci_exit
   __traceiter_android_vh_do_anonymous_page
   __traceiter_android_vh_do_swap_page
+  __traceiter_android_vh_do_swap_page_lock_check
   __traceiter_android_vh_do_wp_page
   __traceiter_android_vh_dup_task_struct
   __traceiter_android_vh_ftrace_dump_buffer
@@ -2415,6 +2416,8 @@
   __traceiter_android_vh_show_resume_epoch_val
   __traceiter_android_vh_show_suspend_epoch_val
   __traceiter_android_vh_shrink_slab_bypass
+  __traceiter_android_vh_shrink_page_lock_owner_set
+  __traceiter_android_vh_shrink_page_lock_owner_clear
   __traceiter_android_vh_swapmem_gather_add_bypass
   __traceiter_android_vh_swapmem_gather_finish
   __traceiter_android_vh_swapmem_gather_init
@@ -2523,6 +2526,7 @@
   __tracepoint_android_vh_cpuidle_psci_exit
   __tracepoint_android_vh_do_anonymous_page
   __tracepoint_android_vh_do_swap_page
+  __tracepoint_android_vh_do_swap_page_lock_check
   __tracepoint_android_vh_do_wp_page
   __tracepoint_android_vh_dup_task_struct
   __tracepoint_android_vh_ftrace_dump_buffer
@@ -2561,6 +2565,8 @@
   __tracepoint_android_vh_show_resume_epoch_val
   __tracepoint_android_vh_show_suspend_epoch_val
   __tracepoint_android_vh_shrink_slab_bypass
+  __tracepoint_android_vh_shrink_page_lock_owner_set
+  __tracepoint_android_vh_shrink_page_lock_owner_clear
   __tracepoint_android_vh_swapmem_gather_add_bypass
   __tracepoint_android_vh_swapmem_gather_finish
   __tracepoint_android_vh_swapmem_gather_init
