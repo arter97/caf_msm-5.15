@@ -3132,8 +3132,8 @@ int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 
 	if (unlikely(netif_tx_queue_stopped(netdev_get_tx_queue(priv->dev,
 								queue))) &&
-	    stmmac_tx_avail(priv, queue) > STMMAC_TX_THRESH(priv)) {
-
+	    (stmmac_tx_avail(priv, queue) > STMMAC_TX_THRESH(priv)) &&
+	    !priv->plat->mac_suspended) {
 		netif_dbg(priv, tx_done, priv->dev,
 			  "%s: restart transmit\n", __func__);
 		netif_tx_wake_queue(netdev_get_tx_queue(priv->dev, queue));
@@ -5272,6 +5272,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	int entry, first_tx;
 	dma_addr_t des;
 	unsigned int int_mod;
+
+	if (priv->plat->mac_suspended)
+		return NETDEV_TX_BUSY;
 
 	tx_q = &priv->tx_queue[queue];
 	first_tx = tx_q->cur_tx;
