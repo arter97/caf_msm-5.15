@@ -529,17 +529,13 @@ int stmmac_mdio_register(struct net_device *ndev)
 	else if (priv->plat->has_c45_mdio_probe_capability)
 		new_bus->probe_capabilities = MDIOBUS_C45;
 	else
-		new_bus->probe_capabilities = MDIOBUS_C22_C45;
-
-	if (priv->plat->is_valid_eth_intf && priv->plat->interface ==  PHY_INTERFACE_MODE_RGMII)
 		new_bus->probe_capabilities = MDIOBUS_C22;
 
 	if (priv->plat->has_xgmac) {
-		if (priv->plat->is_valid_eth_intf &&
-		    (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_5GBASER))
+		if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_5GBASER)
 			new_bus->probe_capabilities = MDIOBUS_C45;
 
 		new_bus->read = &stmmac_xgmac2_mdio_read;
