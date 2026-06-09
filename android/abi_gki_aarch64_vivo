@@ -2376,16 +2376,22 @@
   __traceiter_android_vh_cpuidle_psci_enter
   __traceiter_android_vh_cpuidle_psci_exit
   __traceiter_android_vh_do_anonymous_page
+  __traceiter_android_vh_do_async_mmap_readahead
+  __traceiter_android_vh_do_new_mount_fc
   __traceiter_android_vh_do_swap_page
   __traceiter_android_vh_do_swap_page_lock_check
   __traceiter_android_vh_do_wp_page
   __traceiter_android_vh_dup_task_struct
+  __traceiter_android_vh_f2fs_file_open
   __traceiter_android_vh_ftrace_dump_buffer
   __traceiter_android_vh_ftrace_format_check
   __traceiter_android_vh_ftrace_oops_enter
   __traceiter_android_vh_ftrace_oops_exit
   __traceiter_android_vh_ftrace_size_check
   __traceiter_android_vh_fuse_request_end
+  __traceiter_android_vh_filemap_update_page
+  __traceiter_android_vh_lock_folio_drop_mmap_end
+  __traceiter_android_vh_lock_folio_drop_mmap_start
   __traceiter_android_vh_gic_resume
   __traceiter_android_vh_init_adjust_zone_wmark
   __traceiter_android_vh_ipi_stop
@@ -2393,6 +2399,9 @@
   __traceiter_android_vh_jiffies_update
   __traceiter_android_vh_logbuf
   __traceiter_android_vh_logbuf_pr_cont
+  __traceiter_android_vh_lruvec_add_folio
+  __traceiter_android_vh_lruvec_del_folio
+  __traceiter_android_vh_mm_free_page
   __traceiter_android_vh_mmap_region
   __traceiter_android_vh_mmc_attach_sd
   __traceiter_android_vh_mmc_blk_mq_rw_recovery
@@ -2525,16 +2534,22 @@
   __tracepoint_android_vh_cpuidle_psci_enter
   __tracepoint_android_vh_cpuidle_psci_exit
   __tracepoint_android_vh_do_anonymous_page
+  __tracepoint_android_vh_do_async_mmap_readahead
+  __tracepoint_android_vh_do_new_mount_fc
   __tracepoint_android_vh_do_swap_page
   __tracepoint_android_vh_do_swap_page_lock_check
   __tracepoint_android_vh_do_wp_page
   __tracepoint_android_vh_dup_task_struct
+  __tracepoint_android_vh_f2fs_file_open
   __tracepoint_android_vh_ftrace_dump_buffer
   __tracepoint_android_vh_ftrace_format_check
   __tracepoint_android_vh_ftrace_oops_enter
   __tracepoint_android_vh_ftrace_oops_exit
   __tracepoint_android_vh_ftrace_size_check
   __tracepoint_android_vh_fuse_request_end
+  __tracepoint_android_vh_filemap_update_page
+  __tracepoint_android_vh_lock_folio_drop_mmap_end
+  __tracepoint_android_vh_lock_folio_drop_mmap_start
   __tracepoint_android_vh_gic_resume
   __tracepoint_android_vh_init_adjust_zone_wmark
   __tracepoint_android_vh_ipi_stop
@@ -2542,6 +2557,9 @@
   __tracepoint_android_vh_jiffies_update
   __tracepoint_android_vh_logbuf
   __tracepoint_android_vh_logbuf_pr_cont
+  __tracepoint_android_vh_lruvec_add_folio
+  __tracepoint_android_vh_lruvec_del_folio
+  __tracepoint_android_vh_mm_free_page
   __tracepoint_android_vh_mmap_region
   __tracepoint_android_vh_mmc_attach_sd
   __tracepoint_android_vh_mmc_blk_mq_rw_recovery
