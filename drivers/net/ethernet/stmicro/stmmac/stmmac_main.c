@@ -1293,6 +1293,10 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 {
 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
 	int ret = 0;
+	u32 tstamp_fifo_level = 0;
+	int i = 0;
+	int val = 0;
+	u64 ns = 0;
 
 #if IS_ENABLED(CONFIG_DWMAC_QCOM_VER3)
 	if (priv->plat->fix_mac_speed) {
@@ -1318,6 +1322,17 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 
 	if (priv->plat->pcs_v3)
 		qcom_serdes_loopback_v3_1(priv->plat, true);
+
+	tstamp_fifo_level = readl(priv->ioaddr + XGMAC_TIMESTAMP_STATUS);
+	tstamp_fifo_level = ((tstamp_fifo_level & GENMASK(14, 10)) >> 10);
+	pr_debug("Timestamp fifo fill level = %d\n", tstamp_fifo_level);
+	for (i = 0; i < tstamp_fifo_level; i++) {
+		val = readl(priv->ioaddr + XGMAC_TXTIMESTAMP_PKTID);
+		if (!stmmac_get_mac_tx_timestamp(priv, priv->hw, &ns))
+			pr_debug("Stale Timestamp flushed out during link down\n");
+		else
+			pr_debug("Stale timestamp flush out failed during link down\n");
+	}
 
 	priv->eee_active = false;
 	priv->tx_lpi_enabled = false;
