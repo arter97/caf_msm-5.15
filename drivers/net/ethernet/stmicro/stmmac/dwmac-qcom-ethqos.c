@@ -7058,27 +7058,28 @@ static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
 	size_t i;
-	unsigned long num_registers = 0;
 
 	if (ethqos->panic_notifier_registered)
 		return 0;
 
+	ethqos->mac_reg_count = 0;
 	for (i = 0; i < ARRAY_SIZE(mac_reg_sizes); i++) {
 		if (mac_reg_sizes[i] % MAC_REG_SIZE) {
 			ETHQOSERR("Invalid register size in mac_reg_sizes found at index %u: %u\n",
 				  i, mac_reg_sizes[i]);
 			return -EINVAL;
 		}
-		num_registers += (mac_reg_sizes[i] / MAC_REG_SIZE);
+		ethqos->mac_reg_count += (mac_reg_sizes[i] / MAC_REG_SIZE);
 	}
 
-	if (num_registers == 0) {
+	if (ethqos->mac_reg_count == 0) {
 		ETHQOSDBG("Panic notifier not registered: no registers to capture\n");
 		return 0;
 	}
 
-	ETHQOSDBG("Allocating memory for %lu registers", num_registers);
-	ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data), GFP_KERNEL);
+	ETHQOSDBG("Allocating memory for %lu registers", ethqos->mac_reg_count);
+	ethqos->mac_reg_list = kcalloc(ethqos->mac_reg_count, sizeof(struct mac_csr_data),
+				       GFP_KERNEL);
 	if (!ethqos->mac_reg_list) {
 		ETHQOSERR("Failed to allocate memory for panic notifier register dump\n");
 		return -ENOMEM;
@@ -7089,10 +7090,14 @@ static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 
 	ret = atomic_notifier_chain_register(&panic_notifier_list,
 					     &ethqos->panic_nb);
-	if (ret)
+	if (ret) {
 		ETHQOSERR("Failed to register panic notifier\n");
-	else
+		kfree(ethqos->mac_reg_list);
+		ethqos->mac_reg_list = NULL;
+		ethqos->mac_reg_count = 0;
+	} else {
 		ethqos->panic_notifier_registered = true;
+	}
 
 	return ret;
 }
@@ -7101,6 +7106,7 @@ static void qcom_ethqos_unregister_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	kfree(ethqos->mac_reg_list);
 	ethqos->mac_reg_list = NULL;
+	ethqos->mac_reg_count = 0;
 
 	if (ethqos->panic_notifier_registered) {
 		atomic_notifier_chain_unregister(&panic_notifier_list,
@@ -8745,6 +8751,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
 	ethqos_qcom_register_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+
+	if (ethqos->mac_reg_list && ethqos->mac_reg_count) {
+		scnprintf(md_name, sizeof(md_name), "emac%d_macreg", priv->plat->port_num);
+		ethqos_qcom_register_minidump((uintptr_t)ethqos->mac_reg_list,
+					      ethqos->mac_reg_count * sizeof(struct mac_csr_data),
+					      md_name);
+	}
 #endif
 
 	if (ethqos->qoe_mode) {
@@ -8973,6 +8986,13 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 
 	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
 	ethqos_qcom_unregister_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+
+	if (ethqos->mac_reg_list && ethqos->mac_reg_count) {
+		scnprintf(md_name, sizeof(md_name), "emac%d_macreg", priv->plat->port_num);
+		ethqos_qcom_unregister_minidump((uintptr_t)ethqos->mac_reg_list,
+						ethqos->mac_reg_count * sizeof(struct mac_csr_data),
+						md_name);
+	}
 #endif
 	qcom_ethqos_unregister_panic_notifier(ethqos);
 
