@@ -66,6 +66,14 @@ NSB_LO_IP=172.16.2.2
 NSA_LO_IP6=2001:db8:2::1
 NSB_LO_IP6=2001:db8:2::2
 
+# non-local addresses for freebind tests
+NL_IP=172.17.1.1
+NL_IP6=2001:db8:4::1
+
+# multicast and broadcast addresses
+MCAST_IP=224.0.0.1
+BCAST_IP=255.255.255.255
+
 MD5_PW=abc123
 MD5_WRONG_PW=abc1234
 
@@ -186,7 +194,7 @@ show_hint()
 kill_procs()
 {
 	killall nettest ping ping6 >/dev/null 2>&1
-	sleep 1
+	slowwait 2 sh -c 'test -z "$(pgrep '"'^(nettest|ping|ping6)$'"')"'
 }
 
 do_run_cmd()
@@ -311,6 +319,9 @@ addr2str()
 	127.0.0.1) echo "loopback";;
 	::1) echo "IPv6 loopback";;
 
+	${BCAST_IP}) echo "broadcast";;
+	${MCAST_IP}) echo "multicast";;
+
 	${NSA_IP})	echo "ns-A IP";;
 	${NSA_IP6})	echo "ns-A IPv6";;
 	${NSA_LO_IP})	echo "ns-A loopback IP";;
@@ -322,6 +333,9 @@ addr2str()
 	${NSB_LO_IP})	echo "ns-B loopback IP";;
 	${NSB_LO_IP6})	echo "ns-B loopback IPv6";;
 	${NSB_LINKIP6}|${NSB_LINKIP6}%*) echo "ns-B IPv6 LLA";;
+
+	${NL_IP})       echo "nonlocal IP";;
+	${NL_IP6})      echo "nonlocal IPv6";;
 
 	${VRF_IP})	echo "VRF IP";;
 	${VRF_IP6})	echo "VRF IPv6";;
@@ -409,6 +423,8 @@ create_ns()
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.keep_addr_on_down=1
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.forwarding=1
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.default.forwarding=1
+	ip netns exec ${ns} sysctl -qw net.ipv6.conf.default.accept_dad=0
+	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.accept_dad=0
 }
 
 # create veth pair to connect namespaces and apply addresses.
@@ -1795,6 +1811,27 @@ ipv4_addr_bind_novrf()
 	done
 
 	#
+	# raw socket with nonlocal bind
+	#
+	a=${NL_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -f -l ${a} -I ${NSA_DEV} -b
+	log_test_addr ${a} $? 0 "Raw socket bind to nonlocal address after device bind"
+
+	#
+	# check that ICMP sockets cannot bind to broadcast and multicast addresses
+	#
+	a=${BCAST_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -l ${a} -b
+	log_test_addr ${a} $? 1 "ICMP socket bind to broadcast address"
+
+	a=${MCAST_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -f -l ${a} -b
+	log_test_addr ${a} $? 1 "ICMP socket bind to multicast address"
+
+	#
 	# tcp sockets
 	#
 	a=${NSA_IP}
@@ -1842,6 +1879,27 @@ ipv4_addr_bind_vrf()
 	show_hint "Address on loopback is out of VRF scope"
 	run_cmd nettest -s -R -P icmp -l ${a} -I ${VRF} -b
 	log_test_addr ${a} $? 1 "Raw socket bind to out of scope address after VRF bind"
+
+	#
+	# raw socket with nonlocal bind
+	#
+	a=${NL_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -f -l ${a} -I ${VRF} -b
+	log_test_addr ${a} $? 0 "Raw socket bind to nonlocal address after VRF bind"
+
+	#
+	# check that ICMP sockets cannot bind to broadcast and multicast addresses
+	#
+	a=${BCAST_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -l ${a} -I ${VRF} -b
+	log_test_addr ${a} $? 1 "ICMP socket bind to broadcast address after VRF bind"
+
+	a=${MCAST_IP}
+	log_start
+	run_cmd nettest -s -R -P icmp -f -l ${a} -I ${VRF} -b
+	log_test_addr ${a} $? 1 "ICMP socket bind to multicast address after VRF bind"
 
 	#
 	# tcp sockets
@@ -1993,6 +2051,7 @@ ipv4_rt()
 
 	a=${NSA_IP}
 	log_start
+
 	run_cmd nettest ${varg} -s &
 	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
@@ -3441,6 +3500,14 @@ ipv6_addr_bind_novrf()
 	done
 
 	#
+	# raw socket with nonlocal bind
+	#
+	a=${NL_IP6}
+	log_start
+	run_cmd nettest -6 -s -R -P icmp -f -l ${a} -I ${NSA_DEV} -b
+	log_test_addr ${a} $? 0 "Raw socket bind to nonlocal address"
+
+	#
 	# tcp sockets
 	#
 	a=${NSA_IP6}
@@ -3483,6 +3550,14 @@ ipv6_addr_bind_vrf()
 	show_hint "Address on loopback is out of VRF scope"
 	run_cmd nettest -6 -s -R -P ipv6-icmp -l ${a} -I ${VRF} -b
 	log_test_addr ${a} $? 1 "Raw socket bind to invalid local address after vrf bind"
+
+	#
+	# raw socket with nonlocal bind
+	#
+	a=${NL_IP6}
+	log_start
+	run_cmd nettest -6 -s -R -P icmp -f -l ${a} -I ${VRF} -b
+	log_test_addr ${a} $? 0 "Raw socket bind to nonlocal address after VRF bind"
 
 	#
 	# tcp sockets
