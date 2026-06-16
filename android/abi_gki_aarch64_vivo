@@ -2468,6 +2468,8 @@
   __traceiter_usb_gadget_connect
   __traceiter_usb_gadget_disconnect
   __traceiter_android_rvh_create_worker
+  __traceiter_android_rvh_balance_fair
+  __traceiter_android_rvh_before_pick_task_fair
   __tracepoint_android_rvh_account_irq
   __tracepoint_android_rvh_after_dequeue_task
   __tracepoint_android_rvh_after_enqueue_task
@@ -2629,6 +2631,8 @@
   __tracepoint_usb_gadget_connect
   __tracepoint_usb_gadget_disconnect
   __tracepoint_android_rvh_create_worker
+  __tracepoint_android_rvh_balance_fair
+  __tracepoint_android_rvh_before_pick_task_fair
   trace_print_array_seq
   trace_print_flags_seq
   trace_print_hex_seq
