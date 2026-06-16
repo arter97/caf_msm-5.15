@@ -94,6 +94,14 @@ static int walt_suspend(void)
 {
 	sched_clock_last = sched_clock();
 	walt_clock_suspended = true;
+
+	/*
+	 * Reset last_time for all CPUs. This prevents a negative diff
+	 * when sched_update_nr_prod is called early in the resume path
+	 * (e.g., via timekeeping_resume -> ttwu) before walt_resume runs.
+	 */
+	walt_reset_last_time();
+
 	return 0;
 }
 
