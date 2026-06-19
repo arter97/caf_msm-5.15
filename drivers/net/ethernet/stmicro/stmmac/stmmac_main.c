@@ -3282,7 +3282,7 @@ static void stmmac_dma_interrupt(struct stmmac_priv *priv)
 	u32 channels_to_check = tx_channel_count > rx_channel_count ?
 				tx_channel_count : rx_channel_count;
 	int chan;
-	int status[max_t(u32, MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES)];
+	int status[MAX_T(u32, MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES)];
 
 	/* Make sure we never check beyond our status buffer. */
 	if (WARN_ON_ONCE(channels_to_check > ARRAY_SIZE(status)))
@@ -4525,7 +4525,7 @@ static int stmmac_open(struct net_device *dev)
 	int mode = priv->plat->phy_interface;
 	int bfsize = 0;
 	u32 chan;
-	int ret;
+	int ret, res;
 	u32 rx_channel_count = priv->plat->rx_queues_to_use;
 
 	/* We cannot wait indefinitely as we are holding the RTNL lock. */
@@ -4715,8 +4715,8 @@ init_phy_error:
 	pm_runtime_put(priv->device);
 
 	if (priv->plat->enable_power_saving) {
-		ret = priv->plat->enable_power_saving(priv->dev, true);
-		netdev_info(priv->dev, "%s enable power saving for error case", __func__, ret);
+		res = priv->plat->enable_power_saving(priv->dev, true);
+		netdev_info(priv->dev, "%s enable power saving for error case", __func__, res);
 	}
 
 	return ret;

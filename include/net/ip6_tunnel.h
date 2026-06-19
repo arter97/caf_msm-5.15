@@ -18,6 +18,18 @@
 /* determine capability on a per-packet basis */
 #define IP6_TNL_F_CAP_PER_PACKET 0x40000
 
+/* IPv6 tunnel FMR */
+struct __ip6_tnl_fmr {
+	struct __ip6_tnl_fmr *next; /* next fmr in list */
+	struct in6_addr ip6_prefix;
+	struct in_addr ip4_prefix;
+
+	__u8 ip6_prefix_len;
+	__u8 ip4_prefix_len;
+	__u8 ea_len;
+	__u8 offset;
+};
+
 struct __ip6_tnl_parm {
 	char name[IFNAMSIZ];	/* name of tunnel device */
 	int link;		/* ifindex of underlying L2 interface */
@@ -25,10 +37,12 @@ struct __ip6_tnl_parm {
 	__u8 encap_limit;	/* encapsulation limit for tunnel */
 	__u8 hop_limit;		/* hop limit for tunnel */
 	bool collect_md;
+	__u8 draft03;		/* FMR using draft03 of map-e */
 	__be32 flowinfo;	/* traffic class and flowlabel for tunnel */
 	__u32 flags;		/* tunnel flags */
 	struct in6_addr laddr;	/* local tunnel end-point address */
 	struct in6_addr raddr;	/* remote tunnel end-point address */
+	struct __ip6_tnl_fmr *fmrs;	/* FMRs */
 
 	__be16			i_flags;
 	__be16			o_flags;

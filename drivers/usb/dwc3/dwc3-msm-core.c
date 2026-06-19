@@ -3382,12 +3382,6 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 		mdwc3_update_u1u2_value(dwc);
 		set_bit(CONN_DONE, &mdwc->inputs);
 		queue_work(mdwc->sm_usb_wq, &mdwc->sm_work);
-		/*
-		 * Since connection is done reduce the autosuspend
-		 * delay to a smaller value.
-		 */
-		if (dwc->runtime_suspend_on_usb_suspend)
-			pm_runtime_set_autosuspend_delay(dwc->dev, 1000);
 		break;
 	case DWC3_GSI_EVT_BUF_ALLOC:
 		dev_dbg(mdwc->dev, "DWC3_GSI_EVT_BUF_ALLOC\n");
@@ -3397,12 +3391,12 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_PULLUP_ENTER %d\n", value);
 
 		/*
-		 * Set autosuspend delay back to default value during pullup(0) if cable
-		 * is connected. Events like adb root calls usb_gadget_disconnect which
-		 * causes system to suspend immediately even before adbd restarts.
+		 * Reset the autosuspend idle timer on pullup(0) to prevent
+		 * premature runtime suspend before adbd restarts during events
+		 * like "adb root".
 		 */
 		if (dwc->runtime_suspend_on_usb_suspend && mdwc->vbus_active && !value)
-			pm_runtime_set_autosuspend_delay(dwc->dev, DWC3_DEFAULT_AUTOSUSPEND_DELAY);
+			pm_runtime_mark_last_busy(dwc->dev);
 
 		/* ignore pullup when role switch from device to host */
 		if (mdwc->vbus_active)
