@@ -1267,6 +1267,36 @@ static void stmmac_fpe_link_state_handle(struct stmmac_priv *priv, bool is_up)
 	}
 }
 
+/**
+ * stmmac_stop_rx_dma - stop RX DMA channel
+ * @priv: driver private structure
+ * @chan: RX channel index
+ * Description:
+ * This stops a RX DMA channel
+ */
+static void stmmac_stop_rx_dma(struct stmmac_priv *priv, u32 chan)
+{
+	netdev_dbg(priv->dev, "DMA RX processes stopped in channel %d\n", chan);
+	if (priv->plat->rx_queues_cfg[chan].skip_sw)
+		return;
+	stmmac_stop_rx(priv, priv->ioaddr, chan);
+}
+
+/**
+ * stmmac_stop_tx_dma - stop TX DMA channel
+ * @priv: driver private structure
+ * @chan: TX channel index
+ * Description:
+ * This stops a TX DMA channel
+ */
+static void stmmac_stop_tx_dma(struct stmmac_priv *priv, u32 chan)
+{
+	netdev_dbg(priv->dev, "DMA TX processes stopped in channel %d\n", chan);
+	if (priv->plat->tx_queues_cfg[chan].skip_sw)
+		return;
+	stmmac_stop_tx(priv, priv->ioaddr, chan);
+}
+
 static void stmmac_mac_link_down(struct phylink_config *config,
 				 unsigned int mode, phy_interface_t interface)
 {
@@ -1279,6 +1309,13 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 		netdev_info(priv->dev, "Bringing down the link speed to 10Mbps\n");
 	}
 #endif
+
+	/* Stop DMA RX TX ch 0 before Link down */
+	stmmac_stop_rx_dma(priv, 0);
+	stmmac_stop_tx_dma(priv, 0);
+
+	/* Flush MTL TX Queue 0 to drain any frames staged in the FIFO */
+	stmmac_flush_tx_mtl(priv, priv->hw, 0);
 
 	qcom_ethstate_update(priv->plat, EMAC_LINK_DOWN);
 
@@ -2692,36 +2729,6 @@ static void stmmac_start_tx_dma(struct stmmac_priv *priv, u32 chan)
 	if (priv->plat->tx_queues_cfg[chan].skip_sw)
 		return;
 	stmmac_start_tx(priv, priv->ioaddr, chan);
-}
-
-/**
- * stmmac_stop_rx_dma - stop RX DMA channel
- * @priv: driver private structure
- * @chan: RX channel index
- * Description:
- * This stops a RX DMA channel
- */
-static void stmmac_stop_rx_dma(struct stmmac_priv *priv, u32 chan)
-{
-	netdev_dbg(priv->dev, "DMA RX processes stopped in channel %d\n", chan);
-	if (priv->plat->rx_queues_cfg[chan].skip_sw)
-		return;
-	stmmac_stop_rx(priv, priv->ioaddr, chan);
-}
-
-/**
- * stmmac_stop_tx_dma - stop TX DMA channel
- * @priv: driver private structure
- * @chan: TX channel index
- * Description:
- * This stops a TX DMA channel
- */
-static void stmmac_stop_tx_dma(struct stmmac_priv *priv, u32 chan)
-{
-	netdev_dbg(priv->dev, "DMA TX processes stopped in channel %d\n", chan);
-	if (priv->plat->tx_queues_cfg[chan].skip_sw)
-		return;
-	stmmac_stop_tx(priv, priv->ioaddr, chan);
 }
 
 static void stmmac_enable_all_dma_irq(struct stmmac_priv *priv)
