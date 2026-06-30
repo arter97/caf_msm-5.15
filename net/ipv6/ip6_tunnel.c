@@ -825,7 +825,7 @@ EXPORT_SYMBOL_GPL(ip6_tnl_rcv_ctl);
  **/
 static void ip4ip6_fmr_calc(struct in6_addr *dest,
 			    const struct iphdr *iph, const uint8_t *end,
-			    const struct __ip6_tnl_fmr *fmr, bool xmit)
+		const struct __ip6_tnl_fmr *fmr, bool xmit, bool draft03)
 {
 	int psidlen = fmr->ea_len - (32 - fmr->ip4_prefix_len);
 	u8 *portp = NULL;
@@ -916,6 +916,25 @@ static void ip4ip6_fmr_calc(struct in6_addr *dest,
 			<< (64 - fmr->ea_len - fromrem));
 		t = cpu_to_be64(t | (eabits >> fromrem));
 		memcpy(&dest->s6_addr[frombyte], &t, bytes);
+		if (draft03) {
+			/**
+			 * Draft03 IPv6 address format
+			 * +--+---+---+---+---+---+---+---+---+
+			 * |PL|   8  16  24  32   40  48  56  |
+			 * +--+---+---+---+---+---+---+---+---+
+			 * |64| u | IPv4 address  |PSID   |0  |
+			 * +--+---+---+---+---+---+---+---+---+
+			 * Final specification IPv6 address format
+			 * +--+---+---+---+---+---+---+---+---+
+			 * |PL|   8  16  24  32   40  48  56  |
+			 * +--+---+---+---+---+---+---+---+---+
+			 * |64|   0   | IPv4 address  |PSID   |
+			 * +--+---+---+---+---+---+---+---+---+
+			 * We need move last six Bytes 1 byte forward
+			 */
+			memmove(&dest->s6_addr[9], &dest->s6_addr[10], 6);
+			dest->s6_addr[15] = 0;
+		}
 	}
 }
 
@@ -986,7 +1005,8 @@ static int __ip6_tnl_rcv(struct ip6_tnl *tunnel, struct sk_buff *skb,
 		/* Check that IPv6 matches IPv4 source to prevent spoofing */
 		if (fmr)
 			ip4ip6_fmr_calc(&expected, ip_hdr(skb),
-					skb_tail_pointer(skb), fmr, false);
+						skb_tail_pointer(skb), fmr, false,
+						tunnel->parms.draft03);
 
 		if (!ipv6_addr_equal(&ipv6h->saddr, &expected)) {
 			rcu_read_unlock();
@@ -1384,8 +1404,7 @@ route_lookup:
 	 */
 	max_headroom = LL_RESERVED_SPACE(dst->dev) + sizeof(struct ipv6hdr)
 			+ dst->header_len + t->hlen;
-	if (max_headroom > READ_ONCE(dev->needed_headroom))
-		WRITE_ONCE(dev->needed_headroom, max_headroom);
+	ip_tunnel_adj_headroom(dev, max_headroom);
 
 	err = ip6_tnl_encap(skb, t, &proto, fl6);
 	if (err)
@@ -1536,7 +1555,8 @@ ipxip6_tnl_xmit(struct sk_buff *skb, struct net_device *dev,
 
 	/* change dstaddr according to FMR */
 	if (fmr)
-		ip4ip6_fmr_calc(&fl6.daddr, ip_hdr(skb), skb_tail_pointer(skb), fmr, true);
+		ip4ip6_fmr_calc(&fl6.daddr, ip_hdr(skb), skb_tail_pointer(skb), fmr,
+				true, t->parms.draft03);
 
 	if (iptunnel_handle_offloads(skb, SKB_GSO_IPXIP6))
 		return -1;
@@ -2173,6 +2193,9 @@ static void ip6_tnl_netlink_parms(struct nlattr *data[],
 
 	if (data[IFLA_IPTUN_FWMARK])
 		parms->fwmark = nla_get_u32(data[IFLA_IPTUN_FWMARK]);
+
+	if (data[IFLA_IPTUN_DRAFT03])
+		parms->draft03 = nla_get_u8(data[IFLA_IPTUN_DRAFT03]);
 
 	/* METHOD 3: Check During Configuration */
 	if (data[IFLA_IPTUN_FMRS]) {

@@ -1954,7 +1954,8 @@ struct ipa_ipogre_header_add_procparams {
 	uint32_t output_ip_version :1;
 	uint32_t Tunnel_Id : 4;
 	uint32_t Mux_Id : 8;
-	uint32_t reserved :18;
+	uint32_t non_ipogre: 1;
+	uint32_t reserved :17;
 };
 
 /**

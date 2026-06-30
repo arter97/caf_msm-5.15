@@ -1,0 +1,39 @@
+################################################################################
+### Inheriting MSM configs
+. "${KERNEL_DIR}"/build.config.msm.sdxbaagha.common
+
+################################################################################
+## Variant setup
+MSM_ARCH=sdxbaagha-nbntn
+
+################################################################################
+
+## Inheriting MSM configs
+. "${KERNEL_DIR}"/build.config.msm.common
+
+DEFCONFIG="generic_csm_defconfig"
+function build_defconfig_fragments() {
+        if [[ "${VARIANT}" =~ ^(perf_defconfig|debug_defconfig)$ ]]; then
+                config_128m="${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/sdxbaagha-128m.config
+                [ -e "${config_128m}" ] && apply_defconfig_fragment "${config_128m}" vendor/"${MSM_ARCH}"_defconfig
+
+                config="${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/sdxbaagha.config
+                [ -e "${config}" ] && apply_defconfig_fragment "${config}" vendor/"${MSM_ARCH}"_defconfig
+
+                if [ "${VARIANT}" = perf_defconfig ]; then
+                        return
+                fi
+
+                config_128m_debug="${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/sdxbaagha-128m_debug.config
+                [ -e "${config_128m_debug}" ] && apply_defconfig_fragment "${config_128m_debug}" vendor/"${MSM_ARCH}"_defconfig
+
+                config_debug="${KERNEL_DIR}"/arch/"${ARCH}"/configs/vendor/sdxbaagha_debug.config
+                [ -e "${config_debug}" ] && apply_defconfig_fragment "${config_debug}" vendor/"${MSM_ARCH}"_defconfig
+        else
+                echo "Variant '${VARIANT}' unsupported by ntn"
+                exit 1
+        fi
+}
+
+build_defconfig_fragments
+
