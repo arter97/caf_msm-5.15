@@ -1216,12 +1216,13 @@ int __pm_runtime_set_status(struct device *dev, unsigned int status)
 {
 	struct device *parent = dev->parent;
 	bool notify_parent = false;
+	unsigned long flags;
 	int error = 0;
 
 	if (status != RPM_ACTIVE && status != RPM_SUSPENDED)
 		return -EINVAL;
 
-	spin_lock_irq(&dev->power.lock);
+	spin_lock_irqsave(&dev->power.lock, flags);
 
 	/*
 	 * Prevent PM-runtime from being enabled for the device or return an
@@ -1232,7 +1233,7 @@ int __pm_runtime_set_status(struct device *dev, unsigned int status)
 	else
 		error = -EAGAIN;
 
-	spin_unlock_irq(&dev->power.lock);
+	spin_unlock_irqrestore(&dev->power.lock, flags);
 
 	if (error)
 		return error;
@@ -1253,7 +1254,7 @@ int __pm_runtime_set_status(struct device *dev, unsigned int status)
 		device_links_read_unlock(idx);
 	}
 
-	spin_lock_irq(&dev->power.lock);
+	spin_lock_irqsave(&dev->power.lock, flags);
 
 	if (dev->power.runtime_status == status || !parent)
 		goto out_set;
@@ -1294,7 +1295,7 @@ int __pm_runtime_set_status(struct device *dev, unsigned int status)
 		dev->power.runtime_error = 0;
 
  out:
-	spin_unlock_irq(&dev->power.lock);
+	spin_unlock_irqrestore(&dev->power.lock, flags);
 
 	if (notify_parent)
 		pm_request_idle(parent);
