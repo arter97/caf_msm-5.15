@@ -100,6 +100,9 @@ static int stmmac_xgmac2_mdio_read(struct mii_bus *bus, int phyaddr, int phyreg)
 	priv->plat->mdio_op_busy = true;
 	reinit_completion(&priv->plat->mdio_op);
 
+	if (priv->plat->mdio_icc_acquire)
+		priv->plat->mdio_icc_acquire(priv->plat->bsp_priv);
+
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
 			       !(tmp & MII_XGMAC_BUSY), 100, 10000)) {
@@ -152,6 +155,9 @@ err_disable_clks:
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
 
+	if (priv->plat->mdio_icc_release)
+		priv->plat->mdio_icc_release(priv->plat->bsp_priv);
+
 	return ret;
 }
 
@@ -176,6 +182,9 @@ static int stmmac_xgmac2_mdio_write(struct mii_bus *bus, int phyaddr,
 
 	priv->plat->mdio_op_busy = true;
 	reinit_completion(&priv->plat->mdio_op);
+
+	if (priv->plat->mdio_icc_acquire)
+		priv->plat->mdio_icc_acquire(priv->plat->bsp_priv);
 
 	/* Wait until any existing MII operation is complete */
 	if (readl_poll_timeout(priv->ioaddr + mii_data, tmp,
@@ -223,6 +232,9 @@ err_disable_clks:
 
 	priv->plat->mdio_op_busy = false;
 	complete_all(&priv->plat->mdio_op);
+
+	if (priv->plat->mdio_icc_release)
+		priv->plat->mdio_icc_release(priv->plat->bsp_priv);
 
 	return ret;
 }
@@ -517,17 +529,13 @@ int stmmac_mdio_register(struct net_device *ndev)
 	else if (priv->plat->has_c45_mdio_probe_capability)
 		new_bus->probe_capabilities = MDIOBUS_C45;
 	else
-		new_bus->probe_capabilities = MDIOBUS_C22_C45;
-
-	if (priv->plat->is_valid_eth_intf && priv->plat->interface ==  PHY_INTERFACE_MODE_RGMII)
 		new_bus->probe_capabilities = MDIOBUS_C22;
 
 	if (priv->plat->has_xgmac) {
-		if (priv->plat->is_valid_eth_intf &&
-		    (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
-		     priv->plat->interface == PHY_INTERFACE_MODE_5GBASER))
+		if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_USXGMII ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_2500BASEX ||
+		    priv->plat->interface == PHY_INTERFACE_MODE_5GBASER)
 			new_bus->probe_capabilities = MDIOBUS_C45;
 
 		new_bus->read = &stmmac_xgmac2_mdio_read;

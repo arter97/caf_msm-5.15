@@ -36,6 +36,9 @@
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/gunyah/gh_vm.h>
 #include <linux/gunyah/gh_rm_drv.h>
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+#include <soc/qcom/minidump.h>
+#endif
 #include "stmmac.h"
 #include "stmmac_platform.h"
 #include "dwmac-qcom-ethqos.h"
@@ -61,6 +64,7 @@
 #define TN_SYSFS_DEV_ATTR_PERMS 0644
 #define ETH_RTK_PHY_ID_RTL8261N 0x001CCAF3
 #define EFUSE_MAC_ADDR_MASK 16
+#define EMAC_SPEED_PEAK_IDX 7
 
 static void ethqos_rgmii_io_macro_loopback(struct qcom_ethqos *ethqos,
 					   int mode);
@@ -2642,6 +2646,87 @@ static int ethqos_serdes_update(void *priv_n, unsigned int speed)
 	return ret;
 }
 
+static void ethqos_set_icc_peak_vote(struct qcom_ethqos *ethqos, bool is_peak)
+{
+	int idx, ret;
+
+	if (is_peak)
+		idx = EMAC_SPEED_PEAK_IDX;
+	else
+		idx = ethqos->vote_idx;
+
+	if (ethqos->axi_icc_path) {
+		ret = icc_set_bw(ethqos->axi_icc_path,
+				 emac_axi_icc_data[idx].average_bandwidth,
+				 emac_axi_icc_data[idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("AXI ICC vote failed (idx=%d): %d\n", idx, ret);
+	}
+
+	if (ethqos->apb_icc_path) {
+		ret = icc_set_bw(ethqos->apb_icc_path,
+				 emac_apb_icc_data[idx].average_bandwidth,
+				 emac_apb_icc_data[idx].peak_bandwidth);
+		if (ret)
+			ETHQOSERR("APB ICC vote failed (idx=%d): %d\n", idx, ret);
+	}
+}
+
+#define MDIO_ICC_IDLE_MS 5
+
+static void ethqos_mdio_icc_idle_handler(struct work_struct *work)
+{
+	struct qcom_ethqos *ethqos =
+		container_of(work, struct qcom_ethqos, mdio_icc_idle_work.work);
+	struct stmmac_priv *priv = qcom_ethqos_get_priv(ethqos);
+
+	mutex_lock(&ethqos->mdio_icc_lock);
+	if (priv->plat->mdio_op_busy) {
+		mutex_unlock(&ethqos->mdio_icc_lock);
+		schedule_delayed_work(&ethqos->mdio_icc_idle_work,
+				      msecs_to_jiffies(MDIO_ICC_IDLE_MS));
+		return;
+	}
+
+	ethqos_set_icc_peak_vote(ethqos, false);
+	ethqos->mdio_icc_peak_active = false;
+	mutex_unlock(&ethqos->mdio_icc_lock);
+}
+
+static void ethqos_mdio_icc_acquire(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	mutex_lock(&ethqos->mdio_icc_lock);
+	cancel_delayed_work(&ethqos->mdio_icc_idle_work);
+	if (!ethqos->mdio_icc_peak_active) {
+		ethqos_set_icc_peak_vote(ethqos, true);
+		ethqos->mdio_icc_peak_active = true;
+	}
+	mutex_unlock(&ethqos->mdio_icc_lock);
+}
+
+static void ethqos_mdio_icc_release(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	schedule_delayed_work(&ethqos->mdio_icc_idle_work,
+			      msecs_to_jiffies(MDIO_ICC_IDLE_MS));
+}
+
+static void ethqos_mdio_icc_cancel(void *priv)
+{
+	struct qcom_ethqos *ethqos = priv;
+
+	cancel_delayed_work_sync(&ethqos->mdio_icc_idle_work);
+	mutex_lock(&ethqos->mdio_icc_lock);
+	if (ethqos->mdio_icc_peak_active) {
+		ethqos_set_icc_peak_vote(ethqos, false);
+		ethqos->mdio_icc_peak_active = false;
+	}
+	mutex_unlock(&ethqos->mdio_icc_lock);
+}
+
 static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed)
 {
 	struct qcom_ethqos *ethqos = priv_n;
@@ -3007,10 +3092,10 @@ static void qcom_ethqos_phy_suspend_clks(struct qcom_ethqos *ethqos)
 		clk_disable_unprepare(priv->plat->pclk);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 #else
-	if (priv->plat->clk_ptp_ref)
+	if (priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_disable_unprepare(priv->plat->clk_ptp_ref);
 #endif
 
@@ -3272,10 +3357,10 @@ static void qcom_ethqos_phy_resume_clks(struct qcom_ethqos *ethqos)
 		clk_prepare_enable(priv->plat->pclk);
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
-	if (priv->ptp_init && priv->plat->clk_ptp_ref)
+	if (priv->ptp_init && priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_prepare_enable(priv->plat->clk_ptp_ref);
 #else
-	if (priv->plat->clk_ptp_ref)
+	if (priv->plat->clk_ptp_ref && netif_running(priv->dev))
 		clk_prepare_enable(priv->plat->clk_ptp_ref);
 #endif
 
@@ -6969,31 +7054,103 @@ out:
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static int qcom_ethqos_va_md_notifier(struct notifier_block *nb, unsigned long event, void *ptr)
+{
+	int i, queue, ret;
+	u32 rx_count, tx_count;
+	struct va_md_entry entry;
+	struct qcom_ethqos *ethqos = NULL;
+	struct stmmac_priv *priv = NULL;
+
+	for (i = 0; i < ETH_MAX_NICS; i++) {
+		if (!pethqos[i])
+			continue;
+
+		ethqos = pethqos[i];
+		priv = ethqos->priv;
+
+		rx_count = priv->plat->rx_queues_to_use;
+		tx_count = priv->plat->tx_queues_to_use;
+
+		for (queue = 0; queue < rx_count; queue++) {
+			if (priv->plat->rx_queues_cfg[queue].skip_sw)
+				continue;
+
+			if (priv->extend_desc) {
+				entry.vaddr = (unsigned long)priv->rx_queue[queue].dma_erx;
+				entry.size = priv->dma_rx_size * sizeof(struct dma_extended_desc);
+			} else {
+				entry.vaddr = (unsigned long)priv->rx_queue[queue].dma_rx;
+				entry.size = priv->dma_rx_size * sizeof(struct dma_desc);
+			}
+
+			scnprintf(entry.owner, sizeof(entry.owner), "emac%d_rx%ddes",
+				  priv->plat->port_num, queue);
+			ret = qcom_va_md_add_region(&entry);
+			if (ret)
+				ETHQOSERR("Failed to add region %s in minidump ret: %d\n",
+					  entry.owner, ret);
+		}
+
+		for (queue = 0; queue < tx_count; queue++) {
+			if (priv->plat->tx_queues_cfg[queue].skip_sw)
+				continue;
+
+			if (priv->extend_desc) {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_etx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_extended_desc);
+			} else if (priv->tx_queue[queue].tbs & STMMAC_TBS_AVAIL) {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_entx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_edesc);
+			} else {
+				entry.vaddr = (unsigned long)priv->tx_queue[queue].dma_tx;
+				entry.size = priv->dma_tx_size * sizeof(struct dma_desc);
+			}
+
+			scnprintf(entry.owner, sizeof(entry.owner), "emac%d_tx%ddes",
+				  priv->plat->port_num, queue);
+			ret = qcom_va_md_add_region(&entry);
+			if (ret)
+				ETHQOSERR("Failed to add region %s in minidump ret: %d\n",
+					  entry.owner, ret);
+		}
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block qcom_va_md_dma_notif_blk = {
+	.notifier_call = qcom_ethqos_va_md_notifier,
+	.priority = INT_MAX,
+};
+#endif
+
 static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	int ret;
 	size_t i;
-	unsigned long num_registers = 0;
 
 	if (ethqos->panic_notifier_registered)
 		return 0;
 
+	ethqos->mac_reg_count = 0;
 	for (i = 0; i < ARRAY_SIZE(mac_reg_sizes); i++) {
 		if (mac_reg_sizes[i] % MAC_REG_SIZE) {
 			ETHQOSERR("Invalid register size in mac_reg_sizes found at index %u: %u\n",
 				  i, mac_reg_sizes[i]);
 			return -EINVAL;
 		}
-		num_registers += (mac_reg_sizes[i] / MAC_REG_SIZE);
+		ethqos->mac_reg_count += (mac_reg_sizes[i] / MAC_REG_SIZE);
 	}
 
-	if (num_registers == 0) {
+	if (ethqos->mac_reg_count == 0) {
 		ETHQOSDBG("Panic notifier not registered: no registers to capture\n");
 		return 0;
 	}
 
-	ETHQOSDBG("Allocating memory for %lu registers", num_registers);
-	ethqos->mac_reg_list = kcalloc(num_registers, sizeof(struct mac_csr_data), GFP_KERNEL);
+	ETHQOSDBG("Allocating memory for %lu registers", ethqos->mac_reg_count);
+	ethqos->mac_reg_list = kcalloc(ethqos->mac_reg_count, sizeof(struct mac_csr_data),
+				       GFP_KERNEL);
 	if (!ethqos->mac_reg_list) {
 		ETHQOSERR("Failed to allocate memory for panic notifier register dump\n");
 		return -ENOMEM;
@@ -7004,10 +7161,14 @@ static int qcom_ethqos_register_panic_notifier(struct qcom_ethqos *ethqos)
 
 	ret = atomic_notifier_chain_register(&panic_notifier_list,
 					     &ethqos->panic_nb);
-	if (ret)
+	if (ret) {
 		ETHQOSERR("Failed to register panic notifier\n");
-	else
+		kfree(ethqos->mac_reg_list);
+		ethqos->mac_reg_list = NULL;
+		ethqos->mac_reg_count = 0;
+	} else {
 		ethqos->panic_notifier_registered = true;
+	}
 
 	return ret;
 }
@@ -7016,6 +7177,7 @@ static void qcom_ethqos_unregister_panic_notifier(struct qcom_ethqos *ethqos)
 {
 	kfree(ethqos->mac_reg_list);
 	ethqos->mac_reg_list = NULL;
+	ethqos->mac_reg_count = 0;
 
 	if (ethqos->panic_notifier_registered) {
 		atomic_notifier_chain_unregister(&panic_notifier_list,
@@ -7023,6 +7185,50 @@ static void qcom_ethqos_unregister_panic_notifier(struct qcom_ethqos *ethqos)
 		ethqos->panic_notifier_registered = false;
 	}
 }
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+static void ethqos_qcom_register_minidump(uintptr_t vaddr, u64 size,
+					  const char *buf_name)
+{
+	struct md_region md_entry;
+	int ret;
+
+	if (!msm_minidump_enabled()) {
+		ETHQOSERR("Minidump not enabled, skipping registration\n");
+		return;
+	}
+
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s", buf_name);
+	md_entry.virt_addr = vaddr;
+	md_entry.phys_addr = virt_to_phys((void *)vaddr);
+	md_entry.size = size;
+
+	ret = msm_minidump_add_region(&md_entry);
+	if (ret < 0)
+		ETHQOSERR("Failed to register EMAC buffer %s in Minidump ret %d\n", buf_name, ret);
+}
+
+static void ethqos_qcom_unregister_minidump(uintptr_t vaddr, u64 size,
+					    const char *buf_name)
+{
+	struct md_region md_entry;
+	int ret;
+
+	if (!msm_minidump_enabled()) {
+		ETHQOSERR("Minidump not enabled, skipping unregistration\n");
+		return;
+	}
+
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s", buf_name);
+	md_entry.virt_addr = vaddr;
+	md_entry.phys_addr = virt_to_phys((void *)vaddr);
+	md_entry.size = size;
+
+	ret = msm_minidump_remove_region(&md_entry);
+	if (ret < 0)
+		ETHQOSERR("Failed to remove EMAC buffer %s from Minidump ret %d\n", buf_name, ret);
+}
+#endif
 
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 static void ethqos_xpcs_power_saving(struct net_device *ndev, bool enable)
@@ -8145,6 +8351,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_SCM)
 	u32 err = 0;
 #endif
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	char md_name[13];
+	int res;
+#endif
 
 	ret = pinctrl_pm_select_default_state(&pdev->dev);
 	if (ret)
@@ -8315,6 +8525,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 
 	plat_dat->early_eth = ethqos->early_eth_enabled;
 	plat_dat->bsp_priv = ethqos;
+	mutex_init(&ethqos->mdio_icc_lock);
+	INIT_DELAYED_WORK(&ethqos->mdio_icc_idle_work, ethqos_mdio_icc_idle_handler);
+	plat_dat->mdio_icc_acquire = ethqos_mdio_icc_acquire;
+	plat_dat->mdio_icc_release = ethqos_mdio_icc_release;
+	plat_dat->mdio_icc_cancel  = ethqos_mdio_icc_cancel;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->serdes_update_speed = ethqos_serdes_update;
 	plat_dat->serdes_phy_soft_reset = ethqos_serdes_phy_soft_reset;
@@ -8602,6 +8817,28 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	if (qcom_ethqos_register_panic_notifier(ethqos))
 		ETHQOSERR("Failed to register panic notifier");
 
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	scnprintf(md_name, sizeof(md_name), "emac%d_ethqos", priv->plat->port_num);
+	ethqos_qcom_register_minidump((uintptr_t)ethqos, sizeof(struct qcom_ethqos), md_name);
+
+	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
+	ethqos_qcom_register_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+
+	if (ethqos->mac_reg_list && ethqos->mac_reg_count) {
+		scnprintf(md_name, sizeof(md_name), "emac%d_macreg", priv->plat->port_num);
+		ethqos_qcom_register_minidump((uintptr_t)ethqos->mac_reg_list,
+					      ethqos->mac_reg_count * sizeof(struct mac_csr_data),
+					      md_name);
+	}
+
+	if (qcom_va_md_enabled()) {
+		res = qcom_va_md_register("emac", &qcom_va_md_dma_notif_blk);
+
+		if (res && res != -EEXIST)
+			ETHQOSERR("Failed to register emac to VA-Minidump, err: %d\n", res);
+	}
+#endif
+
 	if (ethqos->qoe_mode) {
 		ethqos_create_emac_device_node(&ethqos->emac_dev_t,
 					       &ethqos->emac_cdev,
@@ -8720,6 +8957,8 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	int i, ret;
 	struct stmmac_priv *priv;
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	char md_name[13];
+	bool last_nic = true;
 	struct net_device *ndev = platform_get_drvdata(pdev);
 #endif
 
@@ -8820,6 +9059,36 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	cancel_work_sync(&ethqos->emac_phy_state_work);
 	emac_emb_smmu_exit();
 	ethqos_disable_regulators(ethqos);
+
+#if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
+	scnprintf(md_name, sizeof(md_name), "emac%d_ethqos", priv->plat->port_num);
+	ethqos_qcom_unregister_minidump((uintptr_t)ethqos, sizeof(struct qcom_ethqos), md_name);
+
+	scnprintf(md_name, sizeof(md_name), "emac%d_stmmac", priv->plat->port_num);
+	ethqos_qcom_unregister_minidump((uintptr_t)priv, sizeof(struct stmmac_priv), md_name);
+
+	if (ethqos->mac_reg_list && ethqos->mac_reg_count) {
+		scnprintf(md_name, sizeof(md_name), "emac%d_macreg", priv->plat->port_num);
+		ethqos_qcom_unregister_minidump((uintptr_t)ethqos->mac_reg_list,
+						ethqos->mac_reg_count * sizeof(struct mac_csr_data),
+						md_name);
+	}
+
+	if (qcom_va_md_enabled()) {
+		for (i = 0; i < ETH_MAX_NICS; i++) {
+			if (pethqos[i] && pethqos[i] != ethqos) {
+				last_nic = false;
+				break;
+			}
+		}
+		if (last_nic) {
+			ret = qcom_va_md_unregister("emac", &qcom_va_md_dma_notif_blk);
+			if (ret)
+				ETHQOSERR("Failed to unregister emac from VA-Minidump, err: %d\n",
+					  ret);
+		}
+	}
+#endif
 	qcom_ethqos_unregister_panic_notifier(ethqos);
 
 	for (i = 0; i < ETH_MAX_NICS; i++) {

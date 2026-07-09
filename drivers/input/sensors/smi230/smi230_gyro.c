@@ -415,7 +415,6 @@ int8_t smi230_gyro_set_power_mode(struct smi230_dev *dev)
 	int8_t rslt;
 	uint8_t power_mode, data;
 	uint8_t is_power_switching_mode_valid = TRUE;
-	uint8_t chip_id = 0;
 
 	/* Check for null pointer in the device structure*/
 	rslt = null_ptr_check(dev);
@@ -466,11 +465,6 @@ int8_t smi230_gyro_set_power_mode(struct smi230_dev *dev)
 				}
 				if ((power_mode == SMI230_GYRO_PM_NORMAL) &&
 				    (data == SMI230_GYRO_PM_DEEP_SUSPEND)) {
-					smi230_gyro_get_regs(
-						SMI230_GYRO_CHIP_ID_REG,
-						&chip_id, 1, dev);
-					if (chip_id != 0x0F)
-						return -EIO;
 					PINFO("SMI230 gyro restore context");
 					rslt = smi230_gyro_restore_context(dev);
 					if (rslt != SMI230_OK) {
@@ -538,6 +532,8 @@ int8_t smi230_gyro_save_context(struct smi230_dev *dev)
 	dev->gyro_regs.fifo_config_0_reg = data[0];
 	dev->gyro_regs.fifo_config_1_reg = data[1];
 
+	dev->gyro_regs_saved = true;
+
 	return 0;
 }
 
@@ -552,118 +548,122 @@ int8_t smi230_gyro_restore_context(struct smi230_dev *dev)
 	if (ret)
 		return ret;
 
-	get_regs(SMI230_GYRO_LPM1_REG, &power, 1, dev);
-	if (power != 0)
-		return -1;
+	if (dev->gyro_regs_saved) {
+		get_regs(SMI230_GYRO_LPM1_REG, &power, 1, dev);
+		if (power != 0)
+			return -1;
 
-	data[0] = dev->gyro_regs.range_reg;
-	ret = set_regs(SMI230_GYRO_RANGE_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_RANGE_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_RANGE_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.range_reg;
+		ret = set_regs(SMI230_GYRO_RANGE_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_RANGE_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_RANGE_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.bw_reg;
-	ret = set_regs(SMI230_GYRO_BANDWIDTH_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_BANDWIDTH_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_BANDWIDTH_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.bw_reg;
+		ret = set_regs(SMI230_GYRO_BANDWIDTH_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_BANDWIDTH_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_BANDWIDTH_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.rate_hbw_reg;
-	ret = set_regs(SMI230_GYRO_RATE_HBW_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_RATE_HBW_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_RATE_HBW_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.rate_hbw_reg;
+		ret = set_regs(SMI230_GYRO_RATE_HBW_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_RATE_HBW_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_RATE_HBW_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.gyro_int_ctrl_reg;
-	ret = set_regs(SMI230_GYRO_INT_CTRL_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_INT_CTRL_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_INT_CTRL_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.gyro_int_ctrl_reg;
+		ret = set_regs(SMI230_GYRO_INT_CTRL_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_INT_CTRL_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_INT_CTRL_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.int_en_1_reg;
-	ret = set_regs(SMI230_GYRO_INT3_INT4_IO_CONF_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_INT3_INT4_IO_CONF_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_INT3_INT4_IO_CONF_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.int_en_1_reg;
+		ret = set_regs(SMI230_GYRO_INT3_INT4_IO_CONF_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_INT3_INT4_IO_CONF_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_INT3_INT4_IO_CONF_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.int3_int4_io_map_reg;
-	ret = set_regs(SMI230_GYRO_INT3_INT4_IO_MAP_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_INT3_INT4_IO_MAP_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_INT3_INT4_IO_MAP_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.int3_int4_io_map_reg;
+		ret = set_regs(SMI230_GYRO_INT3_INT4_IO_MAP_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_INT3_INT4_IO_MAP_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_INT3_INT4_IO_MAP_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.fifo_wm_enable_reg;
-	ret = set_regs(SMI230_GYRO_WM_INT_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_WM_INT_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_WM_INT_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.fifo_wm_enable_reg;
+		ret = set_regs(SMI230_GYRO_WM_INT_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_WM_INT_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_WM_INT_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.bgw_spi3_wdt_fifo_reg;
-	ret = set_regs(SMI230_GYRO_FIFO_EXT_INT_S_REG, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_FIFO_EXT_INT_S_REG, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_FIFO_EXT_INT_S_REG faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.bgw_spi3_wdt_fifo_reg;
+		ret = set_regs(SMI230_GYRO_FIFO_EXT_INT_S_REG, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_FIFO_EXT_INT_S_REG, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_FIFO_EXT_INT_S_REG faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.fifo_config_0_reg;
-	ret = set_regs(SMI230_GYRO_FIFO_CONFIG_0_ADDR, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_FIFO_CONFIG_0_ADDR, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_FIFO_CONFIG_0_ADDR faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
-	}
+		data[0] = dev->gyro_regs.fifo_config_0_reg;
+		ret = set_regs(SMI230_GYRO_FIFO_CONFIG_0_ADDR, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_FIFO_CONFIG_0_ADDR, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_FIFO_CONFIG_0_ADDR faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
 
-	data[0] = dev->gyro_regs.fifo_config_1_reg;
-	ret = set_regs(SMI230_GYRO_FIFO_CONFIG_1_ADDR, data, 1, dev);
-	if (ret)
-		return ret;
-	get_regs(SMI230_GYRO_FIFO_CONFIG_1_ADDR, reg, 1, dev);
-	if (data[0] != reg[0]) {
-		PINFO("restore SMI230_GYRO_FIFO_CONFIG_1_ADDR faled val%d readback %d",
-		      data[0], reg[0]);
-		return -1;
+		data[0] = dev->gyro_regs.fifo_config_1_reg;
+		ret = set_regs(SMI230_GYRO_FIFO_CONFIG_1_ADDR, data, 1, dev);
+		if (ret)
+			return ret;
+		get_regs(SMI230_GYRO_FIFO_CONFIG_1_ADDR, reg, 1, dev);
+		if (data[0] != reg[0]) {
+			PINFO("restore SMI230_GYRO_FIFO_CONFIG_1_ADDR faled val%d readback %d",
+			      data[0], reg[0]);
+			return -1;
+		}
+
+		dev->gyro_regs_saved = false;
 	}
 
 	return 0;

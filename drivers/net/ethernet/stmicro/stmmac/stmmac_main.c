@@ -1342,6 +1342,10 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+
+	if (priv->plat->mdio_icc_cancel)
+		priv->plat->mdio_icc_cancel(priv->plat->bsp_priv);
+
 #if IS_ENABLED(CONFIG_ETHQOS_QCOM_VER4)
 	if (priv->plat->enable_power_saving)
 		ret = priv->plat->enable_power_saving(priv->dev, true);
@@ -3143,8 +3147,8 @@ int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 
 	if (unlikely(netif_tx_queue_stopped(netdev_get_tx_queue(priv->dev,
 								queue))) &&
-	    stmmac_tx_avail(priv, queue) > STMMAC_TX_THRESH(priv)) {
-
+	    (stmmac_tx_avail(priv, queue) > STMMAC_TX_THRESH(priv)) &&
+	    !priv->plat->mac_suspended) {
 		netif_dbg(priv, tx_done, priv->dev,
 			  "%s: restart transmit\n", __func__);
 		netif_tx_wake_queue(netdev_get_tx_queue(priv->dev, queue));
@@ -5283,6 +5287,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	int entry, first_tx;
 	dma_addr_t des;
 	unsigned int int_mod;
+
+	if (priv->plat->mac_suspended)
+		return NETDEV_TX_BUSY;
 
 	tx_q = &priv->tx_queue[queue];
 	first_tx = tx_q->cur_tx;
@@ -8553,6 +8560,10 @@ int stmmac_dvr_remove(struct device *dev)
 	if (priv->hw->pcs != STMMAC_PCS_TBI &&
 	    priv->hw->pcs != STMMAC_PCS_RTBI)
 		stmmac_mdio_unregister(ndev);
+
+	if (priv->plat->mdio_icc_cancel)
+		priv->plat->mdio_icc_cancel(priv->plat->bsp_priv);
+
 	destroy_workqueue(priv->wq);
 	mutex_destroy(&priv->lock);
 	bitmap_free(priv->af_xdp_zc_qps);
@@ -8640,6 +8651,9 @@ int stmmac_suspend(struct device *dev)
 		stmmac_fpe_handshake(priv, false);
 		stmmac_fpe_stop_wq(priv);
 	}
+
+	if (priv->plat->mdio_icc_cancel)
+		priv->plat->mdio_icc_cancel(priv->plat->bsp_priv);
 
 	priv->plat->mac_suspended = true;
 	return 0;

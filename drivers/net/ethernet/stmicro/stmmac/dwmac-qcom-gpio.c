@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
- */
+*/
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -376,12 +377,14 @@ void ethqos_trigger_phylink(struct qcom_ethqos *ethqos, bool status)
 		    priv->plat->early_eth)
 			stmmac_set_speed100(priv);
 
-		if (node)
-			ret = phylink_of_phy_connect(priv->phylink, node, 0);
+		if (netif_running(priv->dev)) {
+			if (node)
+				ret = phylink_of_phy_connect(priv->phylink, node, 0);
 
-		rtnl_lock();
-		phylink_connect_phy(priv->phylink, priv->phydev);
-		rtnl_unlock();
+			rtnl_lock();
+			phylink_connect_phy(priv->phylink, priv->phydev);
+			rtnl_unlock();
+		}
 
 			/*Enable phy interrupt*/
 		if (priv->plat->phy_intr_en_extn_stm && phydev) {

@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2014, 2019-2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2017, Linaro Ltd.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef __QMI_HELPERS_H__
 #define __QMI_HELPERS_H__
@@ -12,6 +13,7 @@
 #include <linux/qrtr.h>
 #include <linux/types.h>
 #include <linux/workqueue.h>
+#include <linux/spinlock.h>
 
 struct socket;
 
@@ -210,6 +212,7 @@ struct qmi_msg_handler {
  * @txns:	outstanding transactions
  * @txn_lock:	lock for modifications of @txns
  * @handlers:	list of handlers for incoming messages
+ * @svc_id:	service that this handle is associated with
  */
 struct qmi_handle {
 	struct socket *sock;

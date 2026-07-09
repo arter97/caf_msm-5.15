@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef	_DWMAC_QCOM_ETHQOS_H
 #define	_DWMAC_QCOM_ETHQOS_H
@@ -361,6 +361,11 @@ static struct emac_icc_data emac_axi_icc_data[] = {
 		.average_bandwidth = 1100000,
 		.peak_bandwidth = 1100000,
 	},
+	{
+		.name = "SPEED_peak",
+		.average_bandwidth = 13106400,
+		.peak_bandwidth = 13106400,
+	},
 };
 
 static struct emac_icc_data emac_apb_icc_data[] = {
@@ -398,6 +403,11 @@ static struct emac_icc_data emac_apb_icc_data[] = {
 		.name = "SPEED_10Gbps",
 		.average_bandwidth = 0,
 		.peak_bandwidth = 1100000,
+	},
+	{
+		.name = "SPEED_peak",
+		.average_bandwidth = 655320,
+		.peak_bandwidth = 655320,
 	},
 };
 
@@ -462,6 +472,10 @@ struct qcom_ethqos {
 
 	/* Work struct for handling phy state */
 	struct work_struct emac_phy_state_work;
+
+	struct delayed_work mdio_icc_idle_work;  /* MDIO ICC idle-timer debounce */
+	struct mutex mdio_icc_lock;              /* serialises ICC peak vote access */
+	bool mdio_icc_peak_active;              /* serialised by mdio_icc_lock */
 
 	struct ethqos_emac_por *por;
 	unsigned int num_por;
@@ -547,6 +561,7 @@ struct qcom_ethqos {
 	struct notifier_block panic_nb;
 	struct notifier_block vm_nb;
 	bool panic_notifier_registered;
+	unsigned long mac_reg_count;
 
 	struct stmmac_priv *priv;
 
