@@ -163,6 +163,7 @@
 #define IPA_IOCTL_ADD_PPPOE_MAPPING             107
 #define IPA_IOCTL_SET_TUPLE_INFO                108
 #define IPA_IOCTL_ADD_RGIP                      109
+#define IPA_IOCTL_SET_IPOGRE_IFACE_ADDR         110
 
 /**
  * max size of the header to be inserted
@@ -3788,6 +3789,19 @@ struct ipa_mtu_info {
 	uint16_t mtu_v6;
 };
 
+
+struct GreIpValid_t {
+	uint8_t ipv4_addr_valid : 1;
+	uint8_t ipv6_addr_valid : 1;
+	uint8_t reserved        : 6;
+};
+
+struct GreIfaceIpInfo_t {
+	struct GreIpValid_t is_ip_valid;
+	uint8_t gre_ipv4_addr[4];
+	uint8_t gre_ipv6_addr[16];
+};
+
 struct ipa_odl_ep_info {
 	__u32 cons_pipe_num;
 	__u32 prod_pipe_num;
@@ -4467,6 +4481,11 @@ struct rgip_info {
 #define IPA_IOC_ADD_RGIP _IOWR(IPA_IOC_MAGIC, \
 				IPA_IOCTL_ADD_RGIP, \
 				struct rgip_info)
+
+#define IPA_IOC_SET_IPOGRE_IFACE_ADDR _IOWR(IPA_IOC_MAGIC, \
+				IPA_IOCTL_SET_IPOGRE_IFACE_ADDR, \
+				struct GreIfaceIpInfo_t)
+
 /*
  * unique magic number of the Tethering bridge ioctls
  */
