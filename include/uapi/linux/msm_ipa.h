@@ -3620,6 +3620,13 @@ struct ipa_lan_client_msg {
 	uint8_t mac[IPA_MAC_ADDR_SIZE];
 };
 
+/* lan client msg with VLAN ID for Mode 1/2 stats */
+struct ipa_lan_client_msg_vlan {
+	char lanIface[IPA_RESOURCE_NAME_MAX];
+	uint8_t mac[IPA_MAC_ADDR_SIZE];
+	uint16_t vlan_id;  /* 0 = untagged/Mode 0; 1-4094 = VLAN ID for Mode 1/2 */
+};
+
 /**
  * struct ipa_lan_client - lan client data
  * @mac: MAC Address of the client.
@@ -3627,6 +3634,20 @@ struct ipa_lan_client_msg {
  * @inited: Bool to indicate whether client info is set.
  */
 struct ipa_lan_client {
+	uint8_t mac[IPA_MAC_ADDR_SIZE];
+	int8_t client_idx;
+	uint8_t inited;
+};
+
+/**
+ * struct ipa_lan_client_vlan - lan client data
+ * @vlan_id: VLAN ID
+ * @mac: MAC Address of the client.
+ * @client_idx: Client Index.
+ * @inited: Bool to indicate whether client info is set.
+ */
+struct ipa_lan_client_vlan {
+	uint16_t vlan_id;
 	uint8_t mac[IPA_MAC_ADDR_SIZE];
 	int8_t client_idx;
 	uint8_t inited;
@@ -3684,6 +3705,26 @@ struct ipa_tether_device_info_v2 {
 	__u16 padding2;
 	__u32 num_clients;
 	struct ipa_lan_client lan_client[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	struct ipa_lan_client_cntr_index
+		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+	struct ipa_lan_wan_client_cntr_index
+		lan_wan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
+};
+
+/**
+ * struct ipa_tether_device_info_vlan - tether device info for VLAN-based stats
+ * Same as v2 but uses ipa_lan_client_vlan which includes vlan_id field.
+ * @ul_src_pipe: Source pipe of the lan client.
+ * @hdr_len: Header length of the client.
+ * @num_clients: Number of clients connected.
+ */
+struct ipa_tether_device_info_vlan {
+	__s32 ul_src_pipe;
+	__u8 hdr_len;
+	__u8 padding1;
+	__u16 padding2;
+	__u32 num_clients;
+	struct ipa_lan_client_vlan lan_client[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
 	struct ipa_lan_client_cntr_index
 		lan_client_indices[IPA_MAX_NUM_HW_PATH_CLIENTS_V2];
 	struct ipa_lan_wan_client_cntr_index
