@@ -537,6 +537,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	struct mhi_dma_function_params mhi_dma_fun_params = mhi_sm_ctx->mhi_dev->mhi_dma_fun_params;
 	struct mhi_dev *mhi = mhi_sm_ctx->mhi_dev;
 	unsigned long flags;
+	bool mhi_dma_enabled = false;
 
 	MHI_SM_FUNC_ENTRY(mhi->vf_id);
 
@@ -600,6 +601,7 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 				MHI_SM_ERR(mhi->vf_id, "MHI DMA enable failed:%d\n", res);
 				goto exit;
 			}
+			mhi_dma_enabled = true;
 
 			if (mhi_dma_fun_ops->mhi_dma_resume) {
 				res = mhi_dma_fun_ops->mhi_dma_resume(mhi_dma_fun_params);
@@ -699,6 +701,14 @@ static int mhi_sm_prepare_resume(struct mhi_sm_dev *mhi_sm_ctx)
 	res  = 0;
 
 exit:
+	if (res && mhi_dma_enabled) {
+		MHI_SM_ERR(mhi->vf_id,
+			"Resume failed (old_state:%s ret:%d) after DMA enable\n",
+				mhi_sm_mstate_str(old_state), res);
+		mhi_dma_fun_ops->mhi_dma_memcpy_disable(mhi_dma_fun_params);
+		MHI_SM_ERR(mhi->vf_id,
+			"Resume: IPA DMA disable done\n");
+	}
 	MHI_SM_FUNC_EXIT(mhi->vf_id);
 	return res;
 }

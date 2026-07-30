@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -4541,6 +4541,7 @@ static void mhi_dev_enable(struct work_struct *work)
 	u32 mhi_reset;
 	enum mhi_dev_state state;
 	uint32_t max_cnt = 0;
+	bool mhi_dma_enabled = false;
 
 	mutex_lock(&mhi->mhi_lock);
 
@@ -4554,8 +4555,10 @@ static void mhi_dev_enable(struct work_struct *work)
 		rc = mhi_dma_fun_ops->mhi_dma_memcpy_enable(mhi->mhi_dma_fun_params);
 		if (rc) {
 			mhi_log(mhi->vf_id, MHI_MSG_ERROR, "ipa enable failed\n");
+			mhi_dma_fun_ops->mhi_dma_memcpy_destroy(mhi->mhi_dma_fun_params);
 			goto exit;
 		}
+		mhi_dma_enabled = true;
 	}
 
 	rc = mhi_dev_mmio_get_mhi_state(mhi, &state, &mhi_reset);
@@ -4644,6 +4647,12 @@ exit:
 	 * since mhi_dev_enable() is unsuccessful, mhi is not in disconnected
 	 * state as well, so updating MHI state info to invalid state.
 	 */
+	if (mhi_dma_enabled) {
+		mhi_dma_fun_ops->mhi_dma_memcpy_disable(mhi->mhi_dma_fun_params);
+		mhi_dma_fun_ops->mhi_dma_memcpy_destroy(mhi->mhi_dma_fun_params);
+		mhi_log(mhi->vf_id, MHI_MSG_ERROR,
+			"IPA DMA disable+destroy done\n");
+	}
 	mhi_update_state_info(mhi, MHI_STATE_INVAL);
 	mutex_unlock(&mhi->mhi_lock);
 	return;
