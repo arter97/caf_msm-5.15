@@ -608,10 +608,13 @@ enum ipa_client_type {
 	IPA_CLIENT_ETHERNET_CONS3		= 153,
 
 	IPA_CLIENT_ETHERNET_PROD4		= 154,
-	IPA_CLIENT_ETHERNET_CONS4		= 155
+	IPA_CLIENT_ETHERNET_CONS4		= 155,
+
+	/* RESERVED PROD			= 156, */
+	IPA_CLIENT_WLAN_STABRG_CONS	= 157,
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_ETHERNET_CONS4 + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_WLAN_STABRG_CONS + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -705,6 +708,7 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_WLAN_CONS(client) \
 	((client) == IPA_CLIENT_WLAN1_CONS || \
+	((client) == IPA_CLIENT_WLAN_STABRG_CONS || \
 	(client) == IPA_CLIENT_WLAN2_CONS || \
 	(client) == IPA_CLIENT_WLAN3_CONS || \
 	(client) == IPA_CLIENT_WLAN2_CONS1 || \
@@ -3773,6 +3777,12 @@ struct ipa_ioc_bridge_vlan_mapping_info {
 	uint16_t vlan_id;
 	uint32_t bridge_ipv4;
 	uint32_t subnet_mask;
+};
+
+enum ipa_device_mode {
+	DEVMODE_DEFAULT   = 0x00,
+	DEVMODE_STABRIDGE = 0x01,
+	DEVMODE_APBRIDGE  = 0x02
 };
 
 struct ipa_coalesce_info {
