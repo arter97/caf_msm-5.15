@@ -934,7 +934,7 @@ extern int do_wait_intr_irq(wait_queue_head_t *, wait_queue_entry_t *);
 })
 
 #define __wait_event_state_exclusive(wq, condition, state)			\
-	___wait_event(wq, condition, state, 1, 0, schedule())
+	___wait_event(wq, condition, state, 1, 0, freezable_schedule())
 
 #define wait_event_state_exclusive(wq, condition, state)			\
 ({										\

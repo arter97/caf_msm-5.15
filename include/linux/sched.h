@@ -98,7 +98,6 @@ struct task_group;
 #define TASK_WAKING			0x0200
 #define TASK_NOLOAD			0x0400
 #define TASK_NEW			0x0800
-#define TASK_FREEZABLE                  0x2000
 /* RT specific auxilliary flag to mark RT lock waiters */
 #define TASK_RTLOCK_WAIT		0x1000
 #define TASK_STATE_MAX			0x2000
@@ -108,6 +107,7 @@ struct task_group;
 #define TASK_STOPPED			(TASK_WAKEKILL | __TASK_STOPPED)
 #define TASK_TRACED			(TASK_WAKEKILL | __TASK_TRACED)
 
+#define TASK_FREEZABLE			TASK_INTERRUPTIBLE
 #define TASK_IDLE			(TASK_UNINTERRUPTIBLE | TASK_NOLOAD)
 
 /* Convenience macros for the sake of wake_up(): */
