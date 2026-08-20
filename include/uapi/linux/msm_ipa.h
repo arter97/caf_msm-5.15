@@ -709,7 +709,7 @@ enum ipa_client_type {
 
 #define IPA_CLIENT_IS_WLAN_CONS(client) \
 	((client) == IPA_CLIENT_WLAN1_CONS || \
-	((client) == IPA_CLIENT_WLAN_STABRG_CONS || \
+	(client) == IPA_CLIENT_WLAN_STABRG_CONS || \
 	(client) == IPA_CLIENT_WLAN2_CONS || \
 	(client) == IPA_CLIENT_WLAN3_CONS || \
 	(client) == IPA_CLIENT_WLAN2_CONS1 || \
